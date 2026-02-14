@@ -1044,10 +1044,12 @@
               </button>
               <button class="btn btn-primary btn-sm" id="skills-browse-bins">
                 <svg class="icon-sm" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-                Browse Available
+                Browse &amp; Install
               </button>
             </div>
           </div>
+          <!-- Status toast -->
+          <div class="skills-toast" id="skills-toast" style="display:none"></div>
           <div class="skills-sections">
             <div class="skills-section" id="skills-installed-section">
               <div class="skills-section-label">Installed</div>
@@ -1064,6 +1066,28 @@
             <div class="empty-subtitle">Install skills to give your agent new abilities</div>
           </div>
           <div class="view-loading" id="skills-loading" style="display:none">Loading skills…</div>
+          <!-- Bins modal -->
+          <div class="modal-backdrop" id="bins-modal-backdrop" style="display:none">
+            <div class="modal" style="max-width:520px">
+              <div class="modal-header">
+                <h2 class="modal-title">Browse Skill Bins</h2>
+                <button class="btn btn-ghost btn-sm" id="bins-modal-close">✕</button>
+              </div>
+              <div class="modal-body">
+                <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:12px">Select a skill bin to install, or enter a custom skill name below.</p>
+                <div id="bins-list" class="bins-list"></div>
+                <div id="bins-loading" style="display:none;padding:1rem;color:var(--text-secondary)">Loading bins…</div>
+                <div id="bins-empty" style="display:none;padding:1rem;color:var(--text-secondary)">No additional bins found. You can install by name below.</div>
+                <div class="bins-custom" style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+                  <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary)">Install by name</label>
+                  <div style="display:flex;gap:8px;margin-top:6px">
+                    <input type="text" id="bins-custom-name" class="form-input" placeholder="e.g. memory-palace" style="flex:1">
+                    <button class="btn btn-primary btn-sm" id="bins-custom-install">Install</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <!-- ═══ Foundry View — Models & Modes ═══ -->

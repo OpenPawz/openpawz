@@ -2283,6 +2283,98 @@ button:focus:not(:focus-visible) { outline: none; }
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
+.skill-card-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.skill-toggle {
+  position: relative;
+  width: 36px;
+  height: 20px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  background: #C4C8D8;
+  transition: background var(--transition-fast);
+  flex-shrink: 0;
+}
+.skill-toggle.enabled {
+  background: var(--success);
+}
+.skill-toggle::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform var(--transition-fast);
+}
+.skill-toggle.enabled::after {
+  transform: translateX(16px);
+}
+.skill-card-link {
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.skill-card-link:hover { text-decoration: underline; }
+
+/* Skills toast */
+.skills-toast {
+  padding: 10px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.skills-toast.success {
+  background: #E6F9EF;
+  color: #00854D;
+  border: 1px solid #B3EACC;
+}
+.skills-toast.error {
+  background: #FFE5E5;
+  color: #D83A52;
+  border: 1px solid #FFB3B3;
+}
+.skills-toast.info {
+  background: #E5F0FF;
+  color: #0060B9;
+  border: 1px solid #B3D4FF;
+}
+
+/* Bins modal list */
+.bins-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.bins-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.bins-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.bins-item:hover {
+  border-color: var(--accent);
+}
 
 /* ═══ Foundry Tabs & Modes ═══ */
 .foundry-tabs {

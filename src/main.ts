@@ -1118,15 +1118,34 @@ async function loadSkills() {
     for (const skill of skills) {
       const card = document.createElement('div');
       card.className = 'skill-card';
+
+      const enabledClass = skill.enabled ? 'enabled' : '';
+      const statusLabel = skill.installed
+        ? (skill.enabled ? 'Enabled' : 'Disabled')
+        : 'Available';
+      const statusClass = skill.installed
+        ? (skill.enabled ? 'connected' : 'muted')
+        : 'muted';
+
       card.innerHTML = `
         <div class="skill-card-header">
-          <span class="skill-card-name">${escHtml(skill.name)}</span>
-          <span class="status-badge ${skill.installed ? 'connected' : 'muted'}">${skill.installed ? 'Installed' : 'Available'}</span>
+          <span class="skill-card-name">${escHtml(skill.label ?? skill.name)}</span>
+          <span class="status-badge ${statusClass}">${statusLabel}</span>
         </div>
         <div class="skill-card-desc">${escHtml(skill.description ?? '')}</div>
         <div class="skill-card-footer">
-          <span class="skill-card-version">${skill.version ? 'v' + escHtml(skill.version) : ''}</span>
-          ${!skill.installed ? `<button class="btn btn-primary btn-sm skill-install" data-name="${escAttr(skill.name)}">Install</button>` : ''}
+          <div style="display:flex;align-items:center;gap:8px">
+            <span class="skill-card-version">${skill.version ? 'v' + escHtml(skill.version) : ''}</span>
+            ${skill.homepage ? `<a class="skill-card-link" href="${escAttr(skill.homepage)}" target="_blank">docs ↗</a>` : ''}
+          </div>
+          <div class="skill-card-actions">
+            ${skill.installed ? `
+              <button class="skill-toggle ${enabledClass}" data-name="${escAttr(skill.name)}" data-enabled="${skill.enabled}" title="${skill.enabled ? 'Disable' : 'Enable'}"></button>
+              <button class="btn btn-ghost btn-sm skill-update" data-name="${escAttr(skill.name)}">Update</button>
+            ` : `
+              <button class="btn btn-primary btn-sm skill-install" data-name="${escAttr(skill.name)}">Install</button>
+            `}
+          </div>
         </div>
       `;
       if (skill.installed) {
@@ -1137,40 +1156,189 @@ async function loadSkills() {
       }
     }
 
-    // Wire install buttons
-    document.querySelectorAll('.skill-install').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const name = (btn as HTMLElement).dataset.name!;
-        const installId = crypto.randomUUID();
-        (btn as HTMLButtonElement).disabled = true;
-        (btn as HTMLButtonElement).textContent = 'Installing...';
-        try {
-          await gateway.skillsInstall(name, installId);
-          loadSkills();
-        } catch (e) {
-          alert(`Install failed: ${e}`);
-          loadSkills();
-        }
-      });
-    });
+    wireSkillActions();
   } catch (e) {
     console.warn('Skills load failed:', e);
     if (loading) loading.style.display = 'none';
     if (empty) empty.style.display = 'flex';
+    showSkillsToast(`Failed to load skills: ${e}`, 'error');
   }
 }
+
+function wireSkillActions() {
+  // Install buttons
+  document.querySelectorAll('.skill-install').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const name = (btn as HTMLElement).dataset.name!;
+      const installId = crypto.randomUUID();
+      (btn as HTMLButtonElement).disabled = true;
+      (btn as HTMLButtonElement).textContent = 'Installing…';
+      showSkillsToast(`Installing ${name}…`, 'info');
+      try {
+        await gateway.skillsInstall(name, installId);
+        showSkillsToast(`${name} installed successfully!`, 'success');
+        await loadSkills();
+      } catch (e) {
+        showSkillsToast(`Install failed for ${name}: ${e}`, 'error');
+        (btn as HTMLButtonElement).disabled = false;
+        (btn as HTMLButtonElement).textContent = 'Install';
+      }
+    });
+  });
+
+  // Enable/disable toggles
+  document.querySelectorAll('.skill-toggle').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const name = (btn as HTMLElement).dataset.name!;
+      const currentlyEnabled = (btn as HTMLElement).dataset.enabled === 'true';
+      const newState = !currentlyEnabled;
+
+      (btn as HTMLButtonElement).disabled = true;
+      try {
+        await gateway.skillsUpdate(name, { enabled: newState });
+        showSkillsToast(`${name} ${newState ? 'enabled' : 'disabled'}`, 'success');
+        await loadSkills();
+      } catch (e) {
+        showSkillsToast(`Failed to ${newState ? 'enable' : 'disable'} ${name}: ${e}`, 'error');
+        (btn as HTMLButtonElement).disabled = false;
+      }
+    });
+  });
+
+  // Update buttons
+  document.querySelectorAll('.skill-update').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const name = (btn as HTMLElement).dataset.name!;
+      (btn as HTMLButtonElement).disabled = true;
+      (btn as HTMLButtonElement).textContent = 'Updating…';
+      showSkillsToast(`Updating ${name}…`, 'info');
+      try {
+        await gateway.skillsUpdate(name, { update: true });
+        showSkillsToast(`${name} updated!`, 'success');
+        await loadSkills();
+      } catch (e) {
+        showSkillsToast(`Update failed for ${name}: ${e}`, 'error');
+        (btn as HTMLButtonElement).disabled = false;
+        (btn as HTMLButtonElement).textContent = 'Update';
+      }
+    });
+  });
+}
+
+let _skillsToastTimer: number | null = null;
+function showSkillsToast(message: string, type: 'success' | 'error' | 'info') {
+  const toast = $('skills-toast');
+  if (!toast) return;
+  toast.className = `skills-toast ${type}`;
+  toast.textContent = message;
+  toast.style.display = 'flex';
+
+  if (_skillsToastTimer) clearTimeout(_skillsToastTimer);
+  _skillsToastTimer = window.setTimeout(() => {
+    toast.style.display = 'none';
+    _skillsToastTimer = null;
+  }, type === 'error' ? 8000 : 4000);
+}
+
 $('refresh-skills-btn')?.addEventListener('click', () => loadSkills());
+
+// Bins modal
 $('skills-browse-bins')?.addEventListener('click', async () => {
+  const backdrop = $('bins-modal-backdrop');
+  const list = $('bins-list');
+  const loading = $('bins-loading');
+  const empty = $('bins-empty');
+  if (!backdrop || !list) return;
+
+  backdrop.style.display = 'flex';
+  list.innerHTML = '';
+  if (loading) loading.style.display = '';
+  if (empty) empty.style.display = 'none';
+
   try {
     const result = await gateway.skillsBins();
+    if (loading) loading.style.display = 'none';
     const bins = result.bins ?? [];
-    if (bins.length) {
-      alert(`Available skill bins:\n\n${bins.join('\n')}`);
-    } else {
-      alert('No additional skill bins available.');
+    if (!bins.length) {
+      if (empty) empty.style.display = '';
+      return;
     }
+
+    for (const bin of bins) {
+      const item = document.createElement('div');
+      item.className = 'bins-item';
+      item.innerHTML = `
+        <span class="bins-item-name">${escHtml(bin)}</span>
+        <button class="btn btn-primary btn-sm bins-item-install" data-name="${escAttr(bin)}">Install</button>
+      `;
+      list.appendChild(item);
+    }
+
+    // Wire bin install buttons
+    list.querySelectorAll('.bins-item-install').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = (btn as HTMLElement).dataset.name!;
+        (btn as HTMLButtonElement).disabled = true;
+        (btn as HTMLButtonElement).textContent = 'Installing…';
+        try {
+          await gateway.skillsInstall(name, crypto.randomUUID());
+          (btn as HTMLButtonElement).textContent = '✓ Installed';
+          showSkillsToast(`${name} installed!`, 'success');
+          loadSkills();
+        } catch (e) {
+          (btn as HTMLButtonElement).textContent = 'Failed';
+          showSkillsToast(`Install failed: ${e}`, 'error');
+          setTimeout(() => {
+            (btn as HTMLButtonElement).textContent = 'Install';
+            (btn as HTMLButtonElement).disabled = false;
+          }, 2000);
+        }
+      });
+    });
   } catch (e) {
-    alert(`Failed to load bins: ${e}`);
+    if (loading) loading.style.display = 'none';
+    if (empty) { empty.style.display = ''; empty.textContent = `Failed to load bins: ${e}`; }
+  }
+});
+
+$('bins-modal-close')?.addEventListener('click', () => {
+  const backdrop = $('bins-modal-backdrop');
+  if (backdrop) backdrop.style.display = 'none';
+});
+
+$('bins-modal-backdrop')?.addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) {
+    (e.target as HTMLElement).style.display = 'none';
+  }
+});
+
+$('bins-custom-install')?.addEventListener('click', async () => {
+  const input = $('bins-custom-name') as HTMLInputElement | null;
+  const btn = $('bins-custom-install') as HTMLButtonElement | null;
+  if (!input || !btn) return;
+
+  const name = input.value.trim();
+  if (!name) { input.focus(); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Installing…';
+
+  try {
+    await gateway.skillsInstall(name, crypto.randomUUID());
+    showSkillsToast(`${name} installed!`, 'success');
+    input.value = '';
+    loadSkills();
+    // Close modal
+    const backdrop = $('bins-modal-backdrop');
+    if (backdrop) backdrop.style.display = 'none';
+  } catch (e) {
+    showSkillsToast(`Install failed for "${name}": ${e}`, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Install';
   }
 });
 
