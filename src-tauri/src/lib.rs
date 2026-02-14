@@ -696,6 +696,65 @@ fn get_embedding_base_url() -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Run `openclaw ltm stats` — returns the memory count as a string.
+#[tauri::command]
+fn memory_stats() -> Result<String, String> {
+    let openclaw_bin = get_openclaw_path();
+    let node_dir = get_node_bin_dir();
+    let base_url = read_paw_settings()
+        .and_then(|s| s.get("embeddingBaseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()));
+
+    let mut cmd = if openclaw_bin.exists() {
+        let mut c = Command::new(openclaw_bin.to_str().unwrap());
+        c.env("PATH", join_path_env(&node_dir));
+        c
+    } else {
+        Command::new("openclaw")
+    };
+    cmd.args(["ltm", "stats"]);
+    if let Some(ref url) = base_url { cmd.env("OPENAI_BASE_URL", url); }
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to run openclaw ltm stats: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        return Err(format!("ltm stats failed: {}", stderr));
+    }
+    Ok(stdout.trim().to_string())
+}
+
+/// Run `openclaw ltm search <query>` — returns JSON array of memories.
+#[tauri::command]
+fn memory_search(query: String, limit: Option<u32>) -> Result<String, String> {
+    let openclaw_bin = get_openclaw_path();
+    let node_dir = get_node_bin_dir();
+    let limit_str = limit.unwrap_or(10).to_string();
+    let base_url = read_paw_settings()
+        .and_then(|s| s.get("embeddingBaseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()));
+
+    let mut cmd = if openclaw_bin.exists() {
+        let mut c = Command::new(openclaw_bin.to_str().unwrap());
+        c.env("PATH", join_path_env(&node_dir));
+        c
+    } else {
+        Command::new("openclaw")
+    };
+    cmd.args(["ltm", "search", &query, "--limit", &limit_str]);
+    if let Some(ref url) = base_url { cmd.env("OPENAI_BASE_URL", url); }
+
+    let output = cmd.output()
+        .map_err(|e| format!("Failed to run openclaw ltm search: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if !output.status.success() {
+        return Err(format!("ltm search failed: {}", stderr));
+    }
+    Ok(stdout.trim().to_string())
+}
+
 /// Repair openclaw.json by removing any cruft from previous Paw versions.
 /// Removes old "skills" key (from v1 palace integration) and ensures
 /// the config is valid for the gateway.
@@ -766,6 +825,8 @@ pub fn run() {
             check_memory_configured,
             enable_memory_plugin,
             get_embedding_base_url,
+            memory_stats,
+            memory_search,
             repair_openclaw_config
         ])
         .run(tauri::generate_context!())

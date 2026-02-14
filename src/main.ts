@@ -1965,7 +1965,7 @@ async function loadPalaceStats() {
   const edgesEl = $('palace-graph-edges');
   if (!totalEl) return;
 
-  if (!_palaceAvailable) {
+  if (!_palaceAvailable || !invoke) {
     // Show agent file count as fallback stats
     try {
       const result = await gateway.agentFilesList();
@@ -1982,25 +1982,19 @@ async function loadPalaceStats() {
   }
 
   try {
-    // Use memory_recall with a broad query to estimate memory count
-    const result = await Promise.race([
-      gateway.chatSend('paw-memory', 'Use memory_recall with query "summary of all stored information" and limit 50. Return only raw JSON with the count and categories.', { thinking: 'minimal' }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-    ]);
-    const text = typeof result === 'string' ? result : (result as { text?: string }).text ?? '';
-    // Try to parse count from the response
-    const countMatch = text.match(/Found (\d+) memor/i) || text.match(/"count"\s*:\s*(\d+)/);
+    // Use openclaw ltm stats via Rust command
+    const statsText = await invoke<string>('memory_stats');
+    // Format: "Total memories: N"
+    const countMatch = statsText.match(/(\d+)/);
     if (countMatch) {
       totalEl.textContent = countMatch[1];
+    } else {
+      totalEl.textContent = '0';
     }
-    // Parse categories if present
-    const catMatch = text.match(/\[(.*?)\]/);
-    if (catMatch && typesEl) {
-      const cats = new Set(catMatch[1].split(',').map(s => s.trim().replace(/"/g, '')));
-      typesEl.textContent = String(cats.size) + ' types';
-    }
+    if (typesEl) typesEl.textContent = 'memories';
     if (edgesEl) edgesEl.textContent = '—'; // LanceDB doesn't have edges
-  } catch {
+  } catch (e) {
+    console.warn('[memory] Stats load failed:', e);
     totalEl.textContent = '—';
     if (typesEl) typesEl.textContent = '—';
     if (edgesEl) edgesEl.textContent = '—';
@@ -2013,8 +2007,8 @@ async function loadPalaceSidebar() {
 
   list.innerHTML = '';
 
-  if (!_palaceAvailable) {
-    // Fall back to showing agent files as memory entries in the sidebar
+  if (!_palaceAvailable || !invoke) {
+    // Fall back to showing agent files
     try {
       const result = await gateway.agentFilesList();
       const files = result.files ?? [];
@@ -2033,7 +2027,6 @@ async function loadPalaceSidebar() {
           <div class="palace-memory-preview">${displaySize ? formatBytes(displaySize) : 'Agent file'}</div>
         `;
         card.addEventListener('click', () => {
-          // Switch to Files tab and open this file
           document.querySelectorAll('.palace-tab').forEach(t => t.classList.remove('active'));
           document.querySelectorAll('.palace-panel').forEach(p => (p as HTMLElement).style.display = 'none');
           document.querySelector('.palace-tab[data-palace-tab="files"]')?.classList.add('active');
@@ -2051,27 +2044,25 @@ async function loadPalaceSidebar() {
   }
 
   try {
-    const result = await Promise.race([
-      gateway.chatSend('paw-memory', 'Use memory_recall with query "recent important information" and limit 20. Return only raw JSON array with fields: id, text, category, importance, score.', { thinking: 'minimal' }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-    ]);
-    const text = typeof result === 'string' ? result : (result as { text?: string }).text ?? '';
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = JSON.parse(jsonMatch[0]);
-      for (const mem of memories) {
-        const card = document.createElement('div');
-        card.className = 'palace-memory-card';
-        card.innerHTML = `
-          <span class="palace-memory-type">${escHtml(mem.category ?? 'other')}</span>
-          <div class="palace-memory-subject">${escHtml((mem.text ?? '').slice(0, 60))}${(mem.text?.length ?? 0) > 60 ? '…' : ''}</div>
-          <div class="palace-memory-preview">${mem.score != null ? `${(mem.score * 100).toFixed(0)}% match` : ''}</div>
-        `;
-        card.addEventListener('click', () => {
-          if (mem.id) palaceRecallById(mem.id);
-        });
-        list.appendChild(card);
-      }
+    // Use openclaw ltm search via Rust command
+    const jsonText = await invoke<string>('memory_search', { query: 'recent important information', limit: 20 });
+    const memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = JSON.parse(jsonText);
+    if (!memories.length) {
+      list.innerHTML = '<div class="palace-list-empty">No memories yet</div>';
+      return;
+    }
+    for (const mem of memories) {
+      const card = document.createElement('div');
+      card.className = 'palace-memory-card';
+      card.innerHTML = `
+        <span class="palace-memory-type">${escHtml(mem.category ?? 'other')}</span>
+        <div class="palace-memory-subject">${escHtml((mem.text ?? '').slice(0, 60))}${(mem.text?.length ?? 0) > 60 ? '…' : ''}</div>
+        <div class="palace-memory-preview">${mem.score != null ? `${(mem.score * 100).toFixed(0)}% match` : ''}</div>
+      `;
+      card.addEventListener('click', () => {
+        if (mem.id) palaceRecallById(mem.id);
+      });
+      list.appendChild(card);
     }
   } catch (e) {
     console.warn('Memory sidebar load failed:', e);
@@ -2094,19 +2085,20 @@ async function palaceRecallById(memoryId: string) {
   resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text-secondary)">Loading…</div>';
   if (emptyEl) emptyEl.style.display = 'none';
 
+  if (!invoke) {
+    resultsEl.innerHTML = '<div style="padding:1rem;color:var(--danger)">Memory not available</div>';
+    return;
+  }
+
   try {
-    const result = await Promise.race([
-      gateway.chatSend('paw-memory', `Use memory_recall with query "id:${memoryId}" and limit 1. Return only raw JSON array.`, { thinking: 'minimal' }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-    ]);
-    const text = typeof result === 'string' ? result : (result as { text?: string }).text ?? '';
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const memories = JSON.parse(jsonMatch[0]);
-      resultsEl.innerHTML = '';
-      if (Array.isArray(memories) && memories.length) {
-        resultsEl.appendChild(renderRecallCard(memories[0]));
-      }
+    // Use openclaw ltm search via Rust command
+    const jsonText = await invoke<string>('memory_search', { query: memoryId, limit: 1 });
+    const memories = JSON.parse(jsonText);
+    resultsEl.innerHTML = '';
+    if (Array.isArray(memories) && memories.length) {
+      resultsEl.appendChild(renderRecallCard(memories[0]));
+    } else {
+      resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text-secondary)">Memory not found</div>';
     }
   } catch (e) {
     resultsEl.innerHTML = `<div style="padding:1rem;color:var(--danger)">Error: ${escHtml(String(e))}</div>`;
@@ -2177,7 +2169,7 @@ async function palaceRecallSearch() {
   resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text-secondary)">Searching…</div>';
   if (emptyEl) emptyEl.style.display = 'none';
 
-  if (!_palaceAvailable) {
+  if (!_palaceAvailable || !invoke) {
     resultsEl.innerHTML = `<div class="empty-state" style="padding:1rem;">
       <div class="empty-title">Memory not enabled</div>
       <div class="empty-subtitle" style="max-width:380px;line-height:1.6">
@@ -2188,25 +2180,16 @@ async function palaceRecallSearch() {
   }
 
   try {
-    const result = await Promise.race([
-      gateway.chatSend('paw-memory', `Use memory_recall with query "${query.replace(/"/g, '\\"')}" and limit 10. Return only raw JSON array with fields: id, text, category, importance, score.`, { thinking: 'minimal' }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-    ]);
-    const text = typeof result === 'string' ? result : (result as { text?: string }).text ?? '';
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-
-    if (jsonMatch) {
-      const memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = JSON.parse(jsonMatch[0]);
-      resultsEl.innerHTML = '';
-      if (!memories.length) {
-        if (emptyEl) emptyEl.style.display = 'flex';
-        return;
-      }
-      for (const mem of memories) {
-        resultsEl.appendChild(renderRecallCard(mem));
-      }
-    } else {
-      resultsEl.innerHTML = `<div style="padding:1rem;color:var(--text-secondary)">${escHtml(text.slice(0, 500))}</div>`;
+    // Use openclaw ltm search via Rust command
+    const jsonText = await invoke<string>('memory_search', { query, limit: 10 });
+    const memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = JSON.parse(jsonText);
+    resultsEl.innerHTML = '';
+    if (!memories.length) {
+      if (emptyEl) emptyEl.style.display = 'flex';
+      return;
+    }
+    for (const mem of memories) {
+      resultsEl.appendChild(renderRecallCard(mem));
     }
   } catch (e) {
     resultsEl.innerHTML = `<div style="padding:1rem;color:var(--danger)">Recall failed: ${escHtml(String(e))}</div>`;
@@ -2238,15 +2221,13 @@ function initPalaceRemember() {
     (btn as HTMLButtonElement).disabled = true;
 
     try {
-      const params = [
-        `text: "${content.replace(/"/g, '\\"')}"`,
-        `category: "${category}"`,
-        `importance: ${importance}`,
-      ].join(', ');
-
+      // Use the user's current chat session to ask the agent to store the memory.
+      // memory_store is registered as an agent tool, so the agent can call it.
+      const storeSessionKey = currentSessionKey ?? 'default';
+      const storePrompt = `Please store this in long-term memory using memory_store: "${content.replace(/"/g, '\\"')}" with category "${category}" and importance ${importance}. Just confirm when done.`;
       await Promise.race([
-        gateway.chatSend('paw-memory', `Use memory_store with ${params}. Confirm when saved.`, { thinking: 'minimal' }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
+        gateway.chatSend(storeSessionKey, storePrompt),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
       ]);
 
       // Clear form
@@ -2290,21 +2271,17 @@ async function renderPalaceGraph() {
 
   if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Loading memory map…'; }
 
+  if (!invoke) {
+    if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Memory not available.'; }
+    return;
+  }
+
   try {
-    // Recall memories grouped by category for visualization
-    const result = await Promise.race([
-      gateway.chatSend('paw-memory', 'Use memory_recall with query "*" and limit 50. Return only raw JSON array with fields: id, text, category, importance, score.', { thinking: 'minimal' }),
-      new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-    ]);
-    const text = typeof result === 'string' ? result : (result as { text?: string }).text ?? '';
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
+    // Use openclaw ltm search via Rust command
+    const jsonText = await invoke<string>('memory_search', { query: '*', limit: 50 });
+    let memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = [];
+    try { memories = JSON.parse(jsonText); } catch { /* empty */ }
 
-    if (!jsonMatch) {
-      if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'No memories to visualize.'; }
-      return;
-    }
-
-    const memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = JSON.parse(jsonMatch[0]);
     if (!memories.length) {
       if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'No memories to visualize.'; }
       return;
