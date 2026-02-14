@@ -12,6 +12,26 @@ Paw makes AI agents accessible to everyone. No CLI, no config files, no localhos
 - 🔑 **Bring your own keys** — Or subscribe to use ours
 - 🔄 **Auto-updates** — Always on the latest version
 
+## Development
+
+### Prerequisites
+
+- Node.js 18+
+- Rust (install via [rustup](https://rustup.rs/))
+
+### Getting Started
+
+```bash
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run tauri dev
+
+# Build for production
+npm run tauri build
+```
+
 ## Business Model
 
 - **One-time purchase** — Buy the app, use your own API keys
@@ -21,7 +41,7 @@ Paw makes AI agents accessible to everyone. No CLI, no config files, no localhos
 
 - [Tauri](https://tauri.app/) — Lightweight native app framework
 - [OpenClaw](https://github.com/openclaw/openclaw) — The AI agent infrastructure (MIT licensed)
-- Rust + TypeScript
+- Rust + TypeScript + Vite
 
 ## Status
 

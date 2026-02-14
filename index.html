@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Paw</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header">
+        <span class="logo">🐾</span>
+        <span class="title">Paw</span>
+        <span class="version">v0.1.0</span>
+      </header>
+
+      <main class="main">
+        <div class="welcome">
+          <h2>Welcome to Paw</h2>
+          <p>The desktop app for OpenClaw. AI agents made simple — no terminal required.</p>
+        </div>
+
+        <div class="status-card">
+          <h3>System Status</h3>
+          <div class="status-item">
+            <span class="status-label">
+              <span class="status-dot" id="gateway-dot"></span>
+              Gateway
+            </span>
+            <span class="status-value" id="gateway-status">Checking...</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">
+              <span class="status-dot" id="agents-dot"></span>
+              Agents
+            </span>
+            <span class="status-value" id="agents-status">—</span>
+          </div>
+          <div class="status-item">
+            <span class="status-label">
+              <span class="status-dot" id="api-dot"></span>
+              API Keys
+            </span>
+            <span class="status-value" id="api-status">Not configured</span>
+          </div>
+        </div>
+
+        <div class="actions">
+          <button class="btn btn-primary" id="setup-btn">Get Started</button>
+          <button class="btn btn-secondary" id="docs-btn">Documentation</button>
+        </div>
+      </main>
+
+      <footer class="footer">
+        <div class="footer-links">
+          <a href="https://github.com/openclaw/openclaw" target="_blank">OpenClaw</a>
+          <a href="https://discord.com/invite/clawd" target="_blank">Discord</a>
+          <a href="https://github.com/elisplash/paw" target="_blank">GitHub</a>
+        </div>
+        <span class="footer-credit">Built for the OpenClaw community</span>
+      </footer>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
