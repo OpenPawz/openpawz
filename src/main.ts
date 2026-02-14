@@ -1816,7 +1816,30 @@ function initPalaceInstall() {
         await loadMemoryPalace();
         loadMemory();
       } else {
-        if (progressText) progressText.textContent = 'Installed! Starting server… refresh in a moment.';
+        // Get palace.log for diagnostics
+        let logTail = '';
+        try {
+          logTail = await invoke<string>('get_palace_log');
+        } catch { /* ignore */ }
+
+        if (progressText) {
+          progressText.textContent = logTail
+            ? 'Server not responding. See log below:'
+            : 'Installed but server not responding. Try Refresh.';
+        }
+
+        // Show log output if available
+        if (logTail && progress) {
+          let logEl = document.getElementById('palace-log-output');
+          if (!logEl) {
+            logEl = document.createElement('pre');
+            logEl.id = 'palace-log-output';
+            logEl.style.cssText = 'max-height:140px;overflow:auto;background:#f0f0f0;border-radius:6px;padding:8px 10px;font-size:11px;color:#444;margin-top:8px;text-align:left;white-space:pre-wrap;word-break:break-all;';
+            progress.appendChild(logEl);
+          }
+          logEl.textContent = logTail;
+        }
+
         btn.textContent = 'Refresh';
         btn.disabled = false;
         btn.onclick = () => {
@@ -1825,7 +1848,25 @@ function initPalaceInstall() {
         };
       }
     } catch (e) {
+      // Get palace.log for diagnostics on error too
+      let logTail = '';
+      try {
+        if (invoke) logTail = await invoke<string>('get_palace_log');
+      } catch { /* ignore */ }
+
       if (progressText) progressText.textContent = `Error: ${e}`;
+
+      if (logTail && progress) {
+        let logEl = document.getElementById('palace-log-output');
+        if (!logEl) {
+          logEl = document.createElement('pre');
+          logEl.id = 'palace-log-output';
+          logEl.style.cssText = 'max-height:140px;overflow:auto;background:#f0f0f0;border-radius:6px;padding:8px 10px;font-size:11px;color:#444;margin-top:8px;text-align:left;white-space:pre-wrap;word-break:break-all;';
+          progress.appendChild(logEl);
+        }
+        logEl.textContent = logTail;
+      }
+
       btn.textContent = 'Retry';
       btn.disabled = false;
     }

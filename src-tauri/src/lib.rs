@@ -638,6 +638,40 @@ async fn install_palace(window: tauri::Window) -> Result<(), String> {
         }
     }
 
+    // Step 3b: Verify the module actually installed correctly
+    window.emit("palace-install-progress", serde_json::json!({
+        "stage": "verify",
+        "percent": 55,
+        "message": "Verifying installation..."
+    })).ok();
+
+    let venv_python = get_palace_python();
+    let verify = Command::new(venv_python.to_str().unwrap())
+        .args(["-c", "import memory_palace; print(getattr(memory_palace, '__version__', 'unknown'))"])
+        .output();
+    match verify {
+        Ok(ref o) if o.status.success() => {
+            let ver = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            info!("memory-palace module verified, version: {}", ver);
+        }
+        Ok(ref o) => {
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            warn!("memory-palace module import failed: {}", stderr);
+            // Try to discover what we actually installed
+            let list_out = Command::new(pip.to_str().unwrap())
+                .args(["show", "memory-palace"])
+                .output();
+            if let Ok(lo) = list_out {
+                let info_str = String::from_utf8_lossy(&lo.stdout);
+                warn!("pip show memory-palace: {}", info_str);
+            }
+            return Err(format!("memory-palace installed but module cannot be imported: {}", stderr));
+        }
+        Err(e) => {
+            return Err(format!("Failed to verify memory-palace: {}", e));
+        }
+    }
+
     window.emit("palace-install-progress", serde_json::json!({
         "stage": "configure",
         "percent": 70,
@@ -669,12 +703,19 @@ async fn install_palace(window: tauri::Window) -> Result<(), String> {
     // Step 5: Start the server
     start_palace_server()?;
 
-    // Wait for it to come up
-    for _ in 0..15 {
-        std::thread::sleep(std::time::Duration::from_millis(500));
+    // Wait for it to come up (up to 30s — first run downloads embedding model)
+    for i in 0..30 {
+        std::thread::sleep(std::time::Duration::from_secs(1));
         if is_palace_running() {
             break;
         }
+        // Update progress as we wait
+        let pct = 85 + (i as u32 * 14 / 30).min(14);
+        window.emit("palace-install-progress", serde_json::json!({
+            "stage": "starting",
+            "percent": pct,
+            "message": format!("Waiting for server to start… ({}s)", i + 1)
+        })).ok();
     }
 
     let running = is_palace_running();
@@ -686,12 +727,29 @@ async fn install_palace(window: tauri::Window) -> Result<(), String> {
         })).ok();
         info!("Memory Palace installed and running on port {}", PALACE_DEFAULT_PORT);
     } else {
+        // Read palace.log for diagnostics
+        let log_path = palace_dir.join("palace.log");
+        let log_tail = if log_path.exists() {
+            fs::read_to_string(&log_path)
+                .unwrap_or_default()
+                .lines()
+                .rev()
+                .take(20)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            "(no log file found)".to_string()
+        };
+        warn!("Memory Palace installed but not responding. Log tail:\n{}", log_tail);
+
         window.emit("palace-install-progress", serde_json::json!({
             "stage": "done",
             "percent": 100,
-            "message": "Installed! Server may need a moment to start."
+            "message": format!("Installed but server not responding. Check log for details.")
         })).ok();
-        warn!("Memory Palace installed but not yet responding on port {}", PALACE_DEFAULT_PORT);
     }
 
     Ok(())
@@ -711,21 +769,60 @@ fn start_palace_server() -> Result<(), String> {
     let palace_dir = get_palace_dir();
     let config_path = palace_dir.join("config.yaml");
     let log_path = palace_dir.join("palace.log");
+    let data_dir = get_palace_data_dir();
+    fs::create_dir_all(&data_dir).ok();
 
-    // Build command args
+    // Discover the right CLI entrypoint
+    // Try: python -m memory_palace --help to see what subcommands exist
+    let help_out = Command::new(python.to_str().unwrap())
+        .args(["-m", "memory_palace", "--help"])
+        .output();
+    let help_text = match help_out {
+        Ok(ref o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&o.stderr).to_string();
+            format!("{}{}", stdout, stderr)
+        }
+        Err(_) => String::new()
+    };
+    info!("memory_palace --help output: {}", help_text.chars().take(500).collect::<String>());
+
+    // Build command args — try common subcommands
+    let subcommand = if help_text.contains("serve") {
+        "serve"
+    } else if help_text.contains("run") {
+        "run"
+    } else if help_text.contains("start") {
+        "start"
+    } else if help_text.contains("server") {
+        "server"
+    } else {
+        "serve"  // default fallback
+    };
+
     let mut args: Vec<String> = vec![
         "-m".to_string(),
         "memory_palace".to_string(),
-        "serve".to_string(),
+        subcommand.to_string(),
     ];
 
-    if config_path.exists() {
+    // Add config if present and help mentions --config
+    if config_path.exists() && (help_text.contains("--config") || help_text.contains("-c")) {
         args.push("--config".to_string());
         args.push(config_path.to_str().unwrap().to_string());
     }
 
-    args.push("--port".to_string());
-    args.push(PALACE_DEFAULT_PORT.to_string());
+    // Add port if help mentions --port or -p
+    if help_text.contains("--port") || help_text.contains("-p ") {
+        args.push("--port".to_string());
+        args.push(PALACE_DEFAULT_PORT.to_string());
+    }
+
+    // Add host if help mentions --host
+    if help_text.contains("--host") {
+        args.push("--host".to_string());
+        args.push("127.0.0.1".to_string());
+    }
 
     info!("Starting Memory Palace: {} {:?}", python.display(), args);
 
@@ -737,6 +834,9 @@ fn start_palace_server() -> Result<(), String> {
 
     Command::new(python.to_str().unwrap())
         .args(&args)
+        .current_dir(&palace_dir)
+        .env("PALACE_DATA_DIR", data_dir.to_str().unwrap())
+        .env("PALACE_PORT", PALACE_DEFAULT_PORT.to_string())
         .stdout(std::process::Stdio::from(log_file))
         .stderr(std::process::Stdio::from(log_err))
         .spawn()
@@ -773,6 +873,25 @@ fn get_palace_port() -> u16 {
     PALACE_DEFAULT_PORT
 }
 
+#[tauri::command]
+fn get_palace_log() -> String {
+    let log_path = get_palace_dir().join("palace.log");
+    if log_path.exists() {
+        fs::read_to_string(&log_path)
+            .unwrap_or_else(|e| format!("(failed to read log: {})", e))
+            .lines()
+            .rev()
+            .take(50)
+            .collect::<Vec<_>>()
+            .into_iter()
+            .rev()
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        "(no palace.log found)".to_string()
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -802,7 +921,8 @@ pub fn run() {
             install_palace,
             start_palace,
             stop_palace,
-            get_palace_port
+            get_palace_port,
+            get_palace_log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
