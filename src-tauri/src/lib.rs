@@ -88,6 +88,19 @@ fn check_openclaw_installed() -> bool {
     openclaw_config.exists()
 }
 
+/// Read the gateway port from ~/.openclaw/openclaw.json (gateway.port),
+/// falling back to 5757 if not set or unreadable.
+fn get_gateway_port() -> u16 {
+    let port = (|| -> Option<u16> {
+        let home = dirs::home_dir()?;
+        let config_path = home.join(".openclaw/openclaw.json");
+        let content = std::fs::read_to_string(config_path).ok()?;
+        let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+        config["gateway"]["port"].as_u64().map(|p| p as u16)
+    })();
+    port.unwrap_or(5757)
+}
+
 #[tauri::command]
 fn get_gateway_token() -> Option<String> {
     let home = dirs::home_dir()?;
@@ -95,6 +108,11 @@ fn get_gateway_token() -> Option<String> {
     let content = std::fs::read_to_string(config_path).ok()?;
     let config: serde_json::Value = serde_json::from_str(&content).ok()?;
     config["gateway"]["auth"]["token"].as_str().map(|s| s.to_string())
+}
+
+#[tauri::command]
+fn get_gateway_port_setting() -> u16 {
+    get_gateway_port()
 }
 
 #[tauri::command]
@@ -229,7 +247,9 @@ async fn install_openclaw(window: tauri::Window, app_handle: tauri::AppHandle) -
     })).ok();
 
     // Step 4: Start the gateway (skip if already running)
-    if !is_gateway_running(5757) {
+    let gw_port = get_gateway_port();
+    info!("Checking if gateway already running on port {}", gw_port);
+    if !is_gateway_running(gw_port) {
         let openclaw_bin = get_openclaw_path();
         let node_bin_dir = get_node_bin_dir();
         
@@ -257,21 +277,23 @@ fn is_gateway_running(port: u16) -> bool {
 }
 
 #[tauri::command]
-fn check_gateway_health() -> bool {
-    let running = is_gateway_running(5757);
-    info!("Gateway health check: {}", if running { "running" } else { "not running" });
+fn check_gateway_health(port: Option<u16>) -> bool {
+    let p = port.unwrap_or_else(get_gateway_port);
+    let running = is_gateway_running(p);
+    info!("Gateway health check on port {}: {}", p, if running { "running" } else { "not running" });
     running
 }
 
 #[tauri::command]
-fn start_gateway() -> Result<(), String> {
+fn start_gateway(port: Option<u16>) -> Result<(), String> {
+    let p = port.unwrap_or_else(get_gateway_port);
     // Don't start if already running
-    if is_gateway_running(5757) {
-        info!("Gateway already running on port 5757, skipping start");
+    if is_gateway_running(p) {
+        info!("Gateway already running on port {}, skipping start", p);
         return Ok(());
     }
 
-    info!("Starting gateway...");
+    info!("Starting gateway (expected port {})...", p);
 
     let openclaw_bin = get_openclaw_path();
     let node_dir = get_node_bin_dir();
@@ -329,6 +351,7 @@ pub fn run() {
             check_openclaw_installed,
             check_gateway_health,
             get_gateway_token,
+            get_gateway_port_setting,
             install_openclaw,
             start_gateway,
             stop_gateway

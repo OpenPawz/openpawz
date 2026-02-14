@@ -41,6 +41,16 @@ let config: Config = {
 let messages: Message[] = [];
 let isLoading = false;
 
+/** Extract port number from a gateway URL, defaulting to 5757 */
+function getPortFromUrl(url: string): number {
+  try {
+    const u = new URL(url);
+    return u.port ? parseInt(u.port, 10) : 5757;
+  } catch {
+    return 5757;
+  }
+}
+
 // DOM Elements (safe - may be null)
 const dashboardView = document.getElementById('dashboard-view');
 const setupView = document.getElementById('setup-view');
@@ -131,16 +141,19 @@ document.getElementById('setup-detect')?.addEventListener('click', async () => {
       const token = invoke ? await invoke<string | null>('get_gateway_token') : null;
       
       if (token) {
+        // Read the actual port from openclaw.json via Rust
+        const cfgPort = invoke ? await invoke<number>('get_gateway_port_setting').catch(() => 5757) : 5757;
+        
         config.configured = true;
-        config.gateway.url = 'http://localhost:5757';
+        config.gateway.url = `http://localhost:${cfgPort}`;
         config.gateway.token = token;
         saveConfig();
         
         // Only start gateway if not already running
         if (invoke) {
-          const alreadyRunning = await invoke<boolean>('check_gateway_health').catch(() => false);
+          const alreadyRunning = await invoke<boolean>('check_gateway_health', { port: cfgPort }).catch(() => false);
           if (!alreadyRunning) {
-            await invoke('start_gateway').catch((e: unknown) => {
+            await invoke('start_gateway', { port: cfgPort }).catch((e: unknown) => {
               console.warn('Gateway start failed (may already be running):', e);
             });
             // Wait a moment for gateway to start
@@ -207,8 +220,9 @@ document.getElementById('start-install')?.addEventListener('click', async () => 
     const token = invoke ? await invoke<string | null>('get_gateway_token') : null;
     
     if (token) {
+      const cfgPort = invoke ? await invoke<number>('get_gateway_port_setting').catch(() => 5757) : 5757;
       config.configured = true;
-      config.gateway.url = 'http://localhost:5757';
+      config.gateway.url = `http://localhost:${cfgPort}`;
       config.gateway.token = token;
       saveConfig();
       
@@ -425,15 +439,25 @@ async function callGateway(userMessage: string): Promise<string> {
 
 async function checkGatewayStatus() {
   try {
+    // First try the HTTP health endpoint via the configured URL
     const status = await getGatewayStatus();
     if (status.running) {
       statusDot?.classList.add('connected');
       statusDot?.classList.remove('error');
       if (statusText) statusText.textContent = 'Connected';
     } else {
-      statusDot?.classList.remove('connected');
-      statusDot?.classList.add('error');
-      if (statusText) statusText.textContent = 'Disconnected';
+      // HTTP responded but gateway reports not running — try TCP port check as fallback
+      const port = getPortFromUrl(config.gateway.url);
+      const tcpAlive = invoke ? await invoke<boolean>('check_gateway_health', { port }).catch(() => false) : false;
+      if (tcpAlive) {
+        statusDot?.classList.add('connected');
+        statusDot?.classList.remove('error');
+        if (statusText) statusText.textContent = 'Connected';
+      } else {
+        statusDot?.classList.remove('connected');
+        statusDot?.classList.add('error');
+        if (statusText) statusText.textContent = 'Disconnected';
+      }
     }
   } catch (e) {
     console.warn('Status check failed:', e);
