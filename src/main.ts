@@ -40,7 +40,8 @@ let _streamingContent = '';  // accumulates deltas for current streaming respons
 let _streamingEl: HTMLElement | null = null;  // the live-updating DOM element
 let _streamingRunId: string | null = null;
 let _streamingSessionKey: string | null = null;  // filter events to current session
-let _streamingTimer: ReturnType<typeof setTimeout> | null = null;
+let _streamingResolve: ((text: string) => void) | null = null;  // resolves when agent run completes
+let _streamingTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function getPortFromUrl(url: string): number {
   if (!url) return 18789;
@@ -548,31 +549,43 @@ async function sendMessage() {
   _streamingContent = '';
   _streamingRunId = null;
   _streamingSessionKey = currentSessionKey ?? 'default';
-  if (_streamingTimer) { clearTimeout(_streamingTimer); _streamingTimer = null; }
   showStreamingMessage();
+
+  // chat.send is async — it returns {runId, status:"started"} immediately.
+  // The actual response arrives via 'agent' events (deltas) and 'chat' events.
+  // We create a promise that resolves when the agent 'done' event fires.
+  const responsePromise = new Promise<string>((resolve) => {
+    _streamingResolve = resolve;
+    // Safety: auto-resolve after 120s to prevent permanent hang
+    _streamingTimeout = setTimeout(() => {
+      console.warn('[main] Streaming timeout — auto-finalizing');
+      resolve(_streamingContent || '(Response timed out)');
+    }, 120_000);
+  });
 
   try {
     const sessionKey = currentSessionKey ?? 'default';
     const result = await gateway.chatSend(sessionKey, content);
-    console.log('[main] chat.send result:', JSON.stringify(result).slice(0, 500));
+    console.log('[main] chat.send ack:', JSON.stringify(result).slice(0, 300));
 
-    // Use streamed content if we got any deltas, otherwise extract from RPC result
-    const rpcText = extractContent(result.text) || extractContent(result.response) || extractContent((result as unknown as Record<string, unknown>).content);
-    const finalText = _streamingContent || rpcText || '';
-    finalizeStreaming(finalText, result.toolCalls);
-
+    // Store the runId so we can filter events precisely
+    if (result.runId) _streamingRunId = result.runId;
     if (result.sessionKey) currentSessionKey = result.sessionKey;
+
+    // Now wait for the agent events to deliver the full response
+    const finalText = await responsePromise;
+    finalizeStreaming(finalText);
     loadSessions();
   } catch (error) {
     console.error('Chat error:', error);
     const errMsg = error instanceof Error ? error.message : 'Failed to get response';
-    // If WS connection closed mid-stream, preserve partial content
     finalizeStreaming(_streamingContent || `Error: ${errMsg}`);
   } finally {
     isLoading = false;
     _streamingSessionKey = null;
     _streamingRunId = null;
-    if (_streamingTimer) { clearTimeout(_streamingTimer); _streamingTimer = null; }
+    _streamingResolve = null;
+    if (_streamingTimeout) { clearTimeout(_streamingTimeout); _streamingTimeout = null; }
     if (chatSend) chatSend.disabled = false;
   }
 }
@@ -661,6 +674,7 @@ function renderMessages() {
 gateway.on('agent', (payload: unknown) => {
   try {
     const evt = payload as import('./types').AgentEvent;
+    console.log(`[main] agent event: type=${evt.type} runId=${evt.runId?.slice(0,8)} session=${evt.sessionKey?.slice(0,12)} content=${evt.content?.slice(0,50) ?? '(none)'}`);
 
     // Filter: only process events for OUR session (not events from another client's chat)
     if (evt.sessionKey && _streamingSessionKey && evt.sessionKey !== _streamingSessionKey) return;
@@ -670,7 +684,7 @@ gateway.on('agent', (payload: unknown) => {
 
     switch (evt.type) {
       case 'start':
-        _streamingRunId = evt.runId ?? null;
+        if (!_streamingRunId) _streamingRunId = evt.runId ?? null;
         console.log(`[main] Agent run started: ${_streamingRunId}`);
         break;
       case 'delta':
@@ -680,22 +694,50 @@ gateway.on('agent', (payload: unknown) => {
         break;
       case 'tool-start':
         if (evt.tool && _streamingEl) {
-          appendStreamingDelta(`\n\n> Using ${evt.tool}...`);
+          appendStreamingDelta(`\n\n▶ ${evt.tool}...`);
         }
         break;
       case 'tool-done':
         break;
       case 'done':
-        console.log('[main] Agent run done');
+        console.log('[main] Agent run done, finalizing');
+        if (_streamingResolve) {
+          _streamingResolve(_streamingContent);
+          _streamingResolve = null;
+        }
         break;
       case 'error':
         if (evt.error) {
           appendStreamingDelta(`\n\nError: ${evt.error}`);
         }
+        // Also finalize on error
+        if (_streamingResolve) {
+          _streamingResolve(_streamingContent);
+          _streamingResolve = null;
+        }
         break;
     }
   } catch (e) {
     console.warn('[main] Agent event handler error:', e);
+  }
+});
+
+// Listen for chat events — may contain final message or status updates
+gateway.on('chat', (payload: unknown) => {
+  try {
+    const evt = payload as Record<string, unknown>;
+    console.log('[main] chat event:', JSON.stringify(evt).slice(0, 500));
+
+    // If this chat event contains message content, extract it
+    const content = extractContent(evt.content) || extractContent(evt.text) || extractContent(evt.message);
+    if (content && _streamingEl && isLoading) {
+      // If we haven't received any agent deltas, this might be the response
+      if (!_streamingContent) {
+        appendStreamingDelta(content);
+      }
+    }
+  } catch (e) {
+    console.warn('[main] Chat event handler error:', e);
   }
 });
 

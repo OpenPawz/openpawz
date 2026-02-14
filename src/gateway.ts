@@ -276,9 +276,13 @@ class GatewayClient {
         this._lastSeq = frame.seq;
       }
       this.emit(frame.event, frame.payload);
-      // Log all events for debugging (except high-frequency ones)
-      if (frame.event !== 'connect.challenge') {
-        console.log(`[gateway] Event: ${frame.event}`, frame.payload);
+      // Log events for debugging (truncated to avoid console overflow)
+      if (frame.event !== 'connect.challenge' && frame.event !== 'health' && frame.event !== 'tick') {
+        try {
+          console.log(`[gateway] Event: ${frame.event}`, JSON.stringify(frame.payload).slice(0, 300));
+        } catch {
+          console.log(`[gateway] Event: ${frame.event} (payload not serializable)`);
+        }
       }
     }
   }
