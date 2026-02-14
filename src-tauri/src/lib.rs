@@ -1016,16 +1016,15 @@ fn test_embedding_connection(
         );
         (url, format!("api-key: {}", api_key))
     } else if let Some(ref base) = base_url {
-            // Custom OpenAI-compatible: POST {base_url}/v1/embeddings
-            let url = if base.ends_with("/v1") {
-                format!("{}/embeddings", base)
-            } else if base.contains("/v1/") {
-                format!("{}/embeddings", base.trim_end_matches('/'))
-            } else {
-                format!("{}/v1/embeddings", base)
-            };
-            (url, format!("Authorization: Bearer {}", api_key))
-        }
+        // Custom OpenAI-compatible: POST {base_url}/v1/embeddings
+        let url = if base.ends_with("/v1") {
+            format!("{}/embeddings", base)
+        } else if base.contains("/v1/") {
+            format!("{}/embeddings", base.trim_end_matches('/'))
+        } else {
+            format!("{}/v1/embeddings", base)
+        };
+        (url, format!("Authorization: Bearer {}", api_key))
     } else {
         // Standard OpenAI
         let url = "https://api.openai.com/v1/embeddings".to_string();
