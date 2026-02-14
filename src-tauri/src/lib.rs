@@ -788,6 +788,39 @@ fn repair_openclaw_config() -> Result<bool, String> {
             repaired = true;
             info!("Removed invalid '_paw' key from openclaw.json");
         }
+
+        // Fix memory-lancedb embedding config — strict schema only allows apiKey + model.
+        // If the user manually added baseUrl or other properties, strip them and
+        // migrate baseUrl to paw-settings.json so it's injected as OPENAI_BASE_URL.
+        if let Some(embedding) = obj
+            .get_mut("plugins")
+            .and_then(|p| p.get_mut("entries"))
+            .and_then(|e| e.get_mut("memory-lancedb"))
+            .and_then(|m| m.get_mut("config"))
+            .and_then(|c| c.get_mut("embedding"))
+            .and_then(|e| e.as_object_mut())
+        {
+            // Rescue baseUrl before removing it — save to paw-settings.json
+            if let Some(base_url_val) = embedding.remove("baseUrl") {
+                repaired = true;
+                info!("Removed invalid 'baseUrl' from embedding config");
+                if let Some(url) = base_url_val.as_str() {
+                    let _ = save_paw_settings(&serde_json::json!({ "embeddingBaseUrl": url }));
+                    info!("Migrated embeddingBaseUrl to paw-settings.json: {}", url);
+                }
+            }
+            // Remove any other unknown properties (only apiKey and model are valid)
+            let allowed: std::collections::HashSet<&str> = ["apiKey", "model"].iter().copied().collect();
+            let invalid_keys: Vec<String> = embedding.keys()
+                .filter(|k| !allowed.contains(k.as_str()))
+                .cloned()
+                .collect();
+            for key in invalid_keys {
+                embedding.remove(&key);
+                repaired = true;
+                info!("Removed invalid '{}' from embedding config", key);
+            }
+        }
     }
 
     if repaired {

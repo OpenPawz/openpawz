@@ -167,7 +167,7 @@ async function connectGateway(): Promise<boolean> {
   if (invoke) {
     try {
       const repaired = await invoke<boolean>('repair_openclaw_config');
-      if (repaired) console.log('[main] Repaired openclaw.json (removed invalid skills key)');
+      if (repaired) console.log('[main] Repaired openclaw.json (fixed invalid config properties)');
     } catch { /* ignore — first run or no config yet */ }
   }
 
