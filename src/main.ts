@@ -1730,27 +1730,30 @@ async function loadMemoryPalace() {
   if (!_palaceInitialized) {
     _palaceInitialized = true;
 
-    // Check via gateway skills/plugins — look for memory-lancedb or memory tools
-    try {
-      const status = await gateway.skillsStatus();
-      const skills = status.skills ?? [];
-      _palaceAvailable = skills.some(
-        (s: { name: string; installed?: boolean; enabled?: boolean }) =>
-          s.name.toLowerCase().includes('memory') && s.installed !== false && s.enabled !== false,
-      );
-      if (_palaceAvailable) {
-        console.log('[memory] Memory plugin active in gateway');
-      }
-    } catch {
-      _palaceAvailable = false;
-    }
-
-    // If gateway doesn't show it, check if config is written (might need restart)
+    // memory-lancedb is a plugin, not a skill, so it won't appear in skillsStatus().
+    // Instead, check if the config is written AND the gateway is running — if both
+    // are true, the plugin is active (it registers on gateway startup).
     let configWritten = false;
-    if (!_palaceAvailable && invoke) {
+    if (invoke) {
       try {
         configWritten = await invoke<boolean>('check_memory_configured');
       } catch { /* ignore */ }
+    }
+
+    if (configWritten) {
+      // Config is present — check if gateway is actually running
+      try {
+        const healthy = invoke ? await invoke<boolean>('check_gateway_health', { port: null }) : false;
+        if (healthy) {
+          _palaceAvailable = true;
+          console.log('[memory] Memory plugin configured and gateway is running');
+        } else {
+          console.log('[memory] Config written but gateway not running');
+        }
+      } catch {
+        // If health check fails, still try — gateway might be starting up
+        _palaceAvailable = false;
+      }
     }
 
     initPalaceTabs();
@@ -1890,16 +1893,14 @@ function initPalaceInstall() {
       }
 
       // Re-check if memory plugin is now active
+      // Config was just written and gateway restarted — check if it's healthy
       _palaceInitialized = false;
       _palaceAvailable = false;
 
       try {
-        const status = await gateway.skillsStatus();
-        const skills = status.skills ?? [];
-        _palaceAvailable = skills.some(
-          (s: { name: string; installed?: boolean; enabled?: boolean }) =>
-            s.name.toLowerCase().includes('memory') && s.installed !== false && s.enabled !== false,
-        );
+        const healthy = await invoke<boolean>('check_gateway_health', { port: null });
+        const configured = await invoke<boolean>('check_memory_configured');
+        _palaceAvailable = healthy && configured;
       } catch { /* ignore */ }
 
       if (_palaceAvailable) {
