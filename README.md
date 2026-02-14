@@ -29,7 +29,7 @@ npm install
 npm run tauri dev
 
 # Build for production
-npm run tauri build
+cd ~/Desktop/paw && git pull origin main && npm run tauri dev
 ```
 
 ## Business Model

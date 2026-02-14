@@ -438,8 +438,8 @@ fn start_gateway(port: Option<u16>) -> Result<(), String> {
         let node_dir = get_node_bin_dir();
 
         // Check if we need to inject OPENAI_BASE_URL for Azure/Foundry
-        let embedding_base_url = parse_openclaw_config()
-            .and_then(|c| c.pointer("/_paw/embeddingBaseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()));
+        let embedding_base_url = read_paw_settings()
+            .and_then(|s| s.get("embeddingBaseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()));
         
         // Try bundled openclaw first
         if openclaw_bin.exists() {
@@ -589,32 +589,53 @@ fn enable_memory_plugin(api_key: String, base_url: Option<String>, model: Option
         },
     }));
 
-    // If a custom base URL is provided (Azure/Foundry), store it so we can
-    // set OPENAI_BASE_URL when the gateway is started.
-    if let Some(ref url) = base_url {
-        obj.insert("_paw".to_string(), serde_json::json!({
-            "embeddingBaseUrl": url,
-        }));
-        info!("Stored embedding base URL for gateway env: {}", url);
-    } else {
-        // Remove any existing _paw section
-        obj.remove("_paw");
-    }
-
-    // Write back
+    // Write back openclaw.json (no Paw-specific keys — gateway rejects unknown root keys)
     fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
         .map_err(|e| format!("Failed to write config: {}", e))?;
+
+    // Store the embedding base URL in a separate Paw settings file so we can
+    // inject OPENAI_BASE_URL when the gateway starts (for Azure/Foundry).
+    save_paw_settings(&serde_json::json!({
+        "embeddingBaseUrl": base_url,
+    }))?;
 
     info!("Enabled memory-lancedb plugin in openclaw.json (model: {})", model);
     Ok(())
 }
 
-/// Read the embedding base URL from the _paw section of openclaw.json.
+/// Read Paw's own settings from ~/.openclaw/paw-settings.json.
+fn read_paw_settings() -> Option<serde_json::Value> {
+    let home = dirs::home_dir()?;
+    let path = home.join(".openclaw/paw-settings.json");
+    let content = fs::read_to_string(path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+/// Write Paw's own settings to ~/.openclaw/paw-settings.json.
+/// Merges with existing settings.
+fn save_paw_settings(new_values: &serde_json::Value) -> Result<(), String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let path = home.join(".openclaw/paw-settings.json");
+    let mut settings = fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let (Some(obj), Some(new_obj)) = (settings.as_object_mut(), new_values.as_object()) {
+        for (k, v) in new_obj {
+            obj.insert(k.clone(), v.clone());
+        }
+    }
+    fs::write(&path, serde_json::to_string_pretty(&settings).unwrap())
+        .map_err(|e| format!("Failed to write paw-settings.json: {}", e))?;
+    Ok(())
+}
+
+/// Read the embedding base URL from Paw settings.
 /// Returns the URL if configured, None otherwise.
 #[tauri::command]
 fn get_embedding_base_url() -> Option<String> {
-    let config = parse_openclaw_config()?;
-    config.pointer("/_paw/embeddingBaseUrl")
+    let settings = read_paw_settings()?;
+    settings.get("embeddingBaseUrl")
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
 }
@@ -645,6 +666,12 @@ fn repair_openclaw_config() -> Result<bool, String> {
             obj.remove("skills");
             repaired = true;
             info!("Removed invalid 'skills' key from openclaw.json");
+        }
+        // Remove "_paw" key if present (pre-2026.2.14 stored settings in openclaw.json)
+        if obj.contains_key("_paw") {
+            obj.remove("_paw");
+            repaired = true;
+            info!("Removed invalid '_paw' key from openclaw.json");
         }
     }
 
