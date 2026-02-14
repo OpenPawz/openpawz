@@ -171,6 +171,24 @@ async function connectGateway(): Promise<boolean> {
     if (statusText) statusText.textContent = 'Connected';
     if (modelLabel) modelLabel.textContent = 'Connected';
 
+    // Abort any running agent executions left over from other clients
+    // (e.g. OpenClaw Chat). Stale runs can crash the gateway when
+    // two operator clients compete for the same session.
+    try {
+      const sessResult = await gateway.listSessions({ limit: 50 });
+      const activeSessions = sessResult.sessions ?? [];
+      for (const s of activeSessions) {
+        try {
+          await gateway.chatAbort(s.key);
+        } catch { /* no running exec on this session — that's fine */ }
+      }
+      if (activeSessions.length) {
+        console.log(`[main] Cleared ${activeSessions.length} session(s) of stale agent runs`);
+      }
+    } catch (e) {
+      console.warn('[main] Session cleanup failed (non-critical):', e);
+    }
+
     // Load agent name
     try {
       const agents = await gateway.listAgents();
