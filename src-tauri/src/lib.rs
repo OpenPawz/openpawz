@@ -88,29 +88,176 @@ fn check_openclaw_installed() -> bool {
     openclaw_config.exists()
 }
 
+/// Strip JSON5 features (comments, trailing commas) so serde_json can parse.
+/// OpenClaw config files are JSON5 — they may contain // comments, /* blocks */,
+/// trailing commas, and unquoted keys (we don't handle unquoted keys here).
+fn sanitize_json5(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let chars: Vec<char> = input.chars().collect();
+    let len = chars.len();
+    let mut i = 0;
+    let mut in_string = false;
+
+    while i < len {
+        if in_string {
+            out.push(chars[i]);
+            if chars[i] == '\\' && i + 1 < len {
+                i += 1;
+                out.push(chars[i]);
+            } else if chars[i] == '"' {
+                in_string = false;
+            }
+            i += 1;
+            continue;
+        }
+
+        // Line comment
+        if i + 1 < len && chars[i] == '/' && chars[i + 1] == '/' {
+            // Skip until newline
+            while i < len && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Block comment
+        if i + 1 < len && chars[i] == '/' && chars[i + 1] == '*' {
+            i += 2;
+            while i + 1 < len && !(chars[i] == '*' && chars[i + 1] == '/') {
+                i += 1;
+            }
+            if i + 1 < len {
+                i += 2; // skip */
+            }
+            continue;
+        }
+
+        // Trailing commas: comma followed by } or ]
+        if chars[i] == ',' {
+            // Peek ahead past whitespace for } or ]
+            let mut j = i + 1;
+            while j < len && chars[j].is_whitespace() {
+                j += 1;
+            }
+            if j < len && (chars[j] == '}' || chars[j] == ']') {
+                i += 1; // skip the trailing comma
+                continue;
+            }
+        }
+
+        if chars[i] == '"' {
+            in_string = true;
+        }
+
+        out.push(chars[i]);
+        i += 1;
+    }
+
+    out
+}
+
+/// Parse the OpenClaw config file, handling JSON5 features.
+fn parse_openclaw_config() -> Option<serde_json::Value> {
+    let home = dirs::home_dir()?;
+    let config_path = home.join(".openclaw/openclaw.json");
+    let content = std::fs::read_to_string(&config_path).map_err(|e| {
+        info!("Cannot read {}: {}", config_path.display(), e);
+    }).ok()?;
+
+    // Try standard JSON first (fast path)
+    if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
+        info!("Parsed openclaw.json as standard JSON");
+        return Some(config);
+    }
+
+    // Fall back to JSON5-sanitized parsing
+    let sanitized = sanitize_json5(&content);
+    match serde_json::from_str::<serde_json::Value>(&sanitized) {
+        Ok(config) => {
+            info!("Parsed openclaw.json after JSON5 sanitization");
+            Some(config)
+        }
+        Err(e) => {
+            error!("Failed to parse openclaw.json even after sanitization: {}", e);
+            info!("First 200 chars: {}", &content.chars().take(200).collect::<String>());
+            None
+        }
+    }
+}
+
 /// Read the gateway port from ~/.openclaw/openclaw.json.
 /// Checks gateway.port, then falls back to 18789 (OpenClaw default).
 fn get_gateway_port() -> u16 {
     let port = (|| -> Option<u16> {
-        let home = dirs::home_dir()?;
-        let config_path = home.join(".openclaw/openclaw.json");
-        let content = std::fs::read_to_string(config_path).ok()?;
-        let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+        let config = parse_openclaw_config()?;
         // Try gateway.port first, then top-level port
-        config["gateway"]["port"].as_u64()
+        let p = config["gateway"]["port"].as_u64()
             .or_else(|| config["port"].as_u64())
-            .map(|p| p as u16)
+            .map(|p| p as u16);
+        info!("Config port: {:?}", p);
+        p
     })();
-    port.unwrap_or(18789)
+    let result = port.unwrap_or(18789);
+    info!("Resolved gateway port: {}", result);
+    result
 }
 
 #[tauri::command]
 fn get_gateway_token() -> Option<String> {
-    let home = dirs::home_dir()?;
-    let config_path = home.join(".openclaw/openclaw.json");
-    let content = std::fs::read_to_string(config_path).ok()?;
-    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
-    config["gateway"]["auth"]["token"].as_str().map(|s| s.to_string())
+    let config = parse_openclaw_config()?;
+
+    // Primary: gateway.auth.token (the correct path per OpenClaw docs)
+    let token = config["gateway"]["auth"]["token"].as_str()
+        // Fallback: OPENCLAW_GATEWAY_TOKEN env var
+        .or_else(|| {
+            info!("gateway.auth.token not found in config, checking env");
+            std::env::var("OPENCLAW_GATEWAY_TOKEN").ok().and_then(|s| {
+                let trimmed = s.trim().to_string();
+                if trimmed.is_empty() { None } else { Some(trimmed) }
+            }).as_deref()
+            // We need to return &str but env var is owned — use map below instead
+        });
+
+    // Handle the env var case separately since lifetimes are tricky
+    if let Some(t) = token {
+        let result = t.to_string();
+        let masked = if result.len() > 8 {
+            format!("{}...{}", &result[..4], &result[result.len()-4..])
+        } else {
+            "****".to_string()
+        };
+        info!("Token found: {} ({} chars)", masked, result.len());
+        return Some(result);
+    }
+
+    // Env var fallback
+    if let Ok(env_token) = std::env::var("OPENCLAW_GATEWAY_TOKEN") {
+        let trimmed = env_token.trim().to_string();
+        if !trimmed.is_empty() {
+            info!("Token from OPENCLAW_GATEWAY_TOKEN env ({} chars)", trimmed.len());
+            return Some(trimmed);
+        }
+    }
+
+    warn!("No gateway token found in config or environment");
+    // Log what keys ARE present for debugging
+    if let Some(config) = parse_openclaw_config() {
+        let gw = &config["gateway"];
+        if gw.is_object() {
+            let keys: Vec<&str> = gw.as_object().map(|m| m.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
+            info!("gateway config keys: {:?}", keys);
+            let auth = &gw["auth"];
+            if auth.is_object() {
+                let auth_keys: Vec<&str> = auth.as_object().map(|m| m.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
+                info!("gateway.auth keys: {:?}", auth_keys);
+            } else {
+                info!("gateway.auth is not an object (type: {})", if auth.is_null() { "null/missing" } else { "other" });
+            }
+        } else {
+            info!("gateway key is not an object or is missing");
+        }
+    }
+    None
 }
 
 #[tauri::command]

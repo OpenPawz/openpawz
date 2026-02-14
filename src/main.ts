@@ -125,12 +125,28 @@ function showView(viewId: string) {
 }
 
 // ── Gateway connection ─────────────────────────────────────────────────────
+let _connectInProgress = false;
+
 async function connectGateway(): Promise<boolean> {
+  if (_connectInProgress || gateway.isConnecting) {
+    console.warn('[main] connectGateway called while already connecting, skipping');
+    return false;
+  }
+  _connectInProgress = true;
+
   try {
     const wsUrl = config.gateway.url.replace(/^http/, 'ws');
+    const tokenLen = config.gateway.token?.length ?? 0;
+    console.log(`[main] connectGateway() → url=${wsUrl} tokenLen=${tokenLen}`);
+
+    if (!wsUrl || wsUrl === 'ws://' || wsUrl === 'ws://undefined') {
+      console.error('[main] Invalid gateway URL:', config.gateway.url);
+      return false;
+    }
+
     const hello = await gateway.connect({ url: wsUrl, token: config.gateway.token });
     wsConnected = true;
-    console.log('Gateway connected:', hello);
+    console.log('[main] Gateway connected:', hello);
 
     statusDot?.classList.add('connected');
     statusDot?.classList.remove('error');
@@ -148,13 +164,15 @@ async function connectGateway(): Promise<boolean> {
 
     return true;
   } catch (e) {
-    console.error('WS connect failed:', e);
+    console.error('[main] WS connect failed:', e);
     wsConnected = false;
     statusDot?.classList.remove('connected');
     statusDot?.classList.add('error');
     if (statusText) statusText.textContent = 'Disconnected';
     if (modelLabel) modelLabel.textContent = 'Disconnected';
     return false;
+  } finally {
+    _connectInProgress = false;
   }
 }
 
@@ -174,10 +192,10 @@ gateway.on('_disconnected', () => {
 
 // ── Status check (fallback for polling) ────────────────────────────────────
 async function checkGatewayStatus() {
-  if (wsConnected) return; // WS is authoritative
+  if (wsConnected || _connectInProgress || gateway.isConnecting) return;
   try {
     const ok = await probeHealth();
-    if (ok && !wsConnected) {
+    if (ok && !wsConnected && !_connectInProgress) {
       await connectGateway();
     }
   } catch {
@@ -204,7 +222,7 @@ $('setup-detect')?.addEventListener('click', async () => {
       if (token) {
         const cfgPort = invoke ? await invoke<number>('get_gateway_port_setting').catch(() => 18789) : 18789;
         config.configured = true;
-        config.gateway.url = `http://localhost:${cfgPort}`;
+        config.gateway.url = `http://127.0.0.1:${cfgPort}`;
         config.gateway.token = token;
         saveConfig();
 
@@ -258,7 +276,7 @@ $('start-install')?.addEventListener('click', async () => {
     if (token) {
       const cfgPort = invoke ? await invoke<number>('get_gateway_port_setting').catch(() => 18789) : 18789;
       config.configured = true;
-      config.gateway.url = `http://localhost:${cfgPort}`;
+      config.gateway.url = `http://127.0.0.1:${cfgPort}`;
       config.gateway.token = token;
       saveConfig();
       await new Promise(r => setTimeout(r, 1000));
@@ -309,23 +327,38 @@ function loadConfigFromStorage() {
 
 /** Read live port+token from ~/.openclaw/openclaw.json via Tauri and update config */
 async function refreshConfigFromDisk(): Promise<boolean> {
-  if (!invoke) return false;
+  if (!invoke) {
+    console.log('[main] refreshConfigFromDisk: no Tauri runtime');
+    return false;
+  }
   try {
     const installed = await invoke<boolean>('check_openclaw_installed').catch(() => false);
+    console.log(`[main] refreshConfigFromDisk: installed=${installed}`);
     if (!installed) return false;
 
-    const token = await invoke<string | null>('get_gateway_token').catch(() => null);
+    const token = await invoke<string | null>('get_gateway_token').catch((e) => {
+      console.warn('[main] get_gateway_token invoke failed:', e);
+      return null;
+    });
     const port = await invoke<number>('get_gateway_port_setting').catch(() => 18789);
+
+    const tokenMasked = token
+      ? (token.length > 8 ? `${token.slice(0, 4)}...${token.slice(-4)}` : '****')
+      : '(null)';
+    console.log(`[main] refreshConfigFromDisk: port=${port} token=${tokenMasked} (${token?.length ?? 0} chars)`);
 
     if (token) {
       config.configured = true;
-      config.gateway.url = `http://localhost:${port}`;
+      config.gateway.url = `http://127.0.0.1:${port}`;
       config.gateway.token = token;
       saveConfig();
+      console.log(`[main] Config updated: url=${config.gateway.url}`);
       return true;
+    } else {
+      console.warn('[main] No token found in config file — check ~/.openclaw/openclaw.json gateway.auth.token');
     }
   } catch (e) {
-    console.warn('Failed to read config from disk:', e);
+    console.warn('[main] Failed to read config from disk:', e);
   }
   return false;
 }
@@ -877,52 +910,60 @@ function formatBytes(bytes: number): string {
 // ── Initialize ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    console.log('Paw starting...');
+    console.log('[main] Paw starting...');
     loadConfigFromStorage();
+    console.log(`[main] After loadConfigFromStorage: configured=${config.configured} url="${config.gateway.url}" tokenLen=${config.gateway.token?.length ?? 0}`);
 
     // Always try to read live config from disk — it may have a newer token/port
     const freshConfig = await refreshConfigFromDisk();
-    if (freshConfig) {
-      console.log('Config loaded from disk:', config.gateway.url);
-    }
+    console.log(`[main] After refreshConfigFromDisk: fresh=${freshConfig} configured=${config.configured} url="${config.gateway.url}" tokenLen=${config.gateway.token?.length ?? 0}`);
 
     if (config.configured && config.gateway.token) {
       switchView('dashboard');
 
       // Probe first, then connect
       const port = getPortFromUrl(config.gateway.url);
+      console.log(`[main] Config ready, probing gateway on port ${port}...`);
+
       const running = invoke
         ? await invoke<boolean>('check_gateway_health', { port }).catch(() => false)
         : await probeHealth().catch(() => false);
 
+      console.log(`[main] Gateway probe: running=${running}`);
+
       if (running) {
+        console.log('[main] Gateway running, connecting...');
         await connectGateway();
       } else {
         // Gateway not running — try to start it, then connect
         if (invoke) {
-          console.log('Gateway not responding, attempting to start...');
+          console.log('[main] Gateway not responding, attempting to start...');
           await invoke('start_gateway', { port }).catch((e: unknown) => {
-            console.warn('Gateway start failed:', e);
+            console.warn('[main] Gateway start failed:', e);
           });
-          await new Promise(r => setTimeout(r, 2500));
+          // Wait for gateway to boot up
+          console.log('[main] Waiting 3s for gateway to start...');
+          await new Promise(r => setTimeout(r, 3000));
+          console.log('[main] Retrying connection after gateway start...');
           await connectGateway();
         } else {
-          console.warn('No Tauri runtime — cannot start gateway');
+          console.warn('[main] No Tauri runtime — cannot start gateway');
           if (statusText) statusText.textContent = 'Disconnected';
         }
       }
     } else {
+      console.log(`[main] Not configured or no token, showing setup. configured=${config.configured} hasToken=${!!config.gateway.token}`);
       showView('setup-view');
     }
 
     // Poll status every 15s — reconnect if WS dropped
     setInterval(() => {
-      checkGatewayStatus().catch(e => console.warn('Status poll error:', e));
+      checkGatewayStatus().catch(e => console.warn('[main] Status poll error:', e));
     }, 15_000);
 
-    console.log('Paw initialized');
+    console.log('[main] Paw initialized');
   } catch (e) {
-    console.error('Init error:', e);
+    console.error('[main] Init error:', e);
     showView('setup-view');
   }
 });

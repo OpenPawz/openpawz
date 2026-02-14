@@ -52,33 +52,68 @@ class GatewayClient {
   private reconnectTimer: number | null = null;
   private reconnectAttempts = 0;
   private _connected = false;
+  private _connecting = false;
   private _lastSeq = 0;
+  private _challengeNonce: string | null = null;
   hello: HelloOk | null = null;
 
   // ── Connection lifecycle ─────────────────────────────────────────────
 
+  get isConnecting(): boolean {
+    return this._connecting;
+  }
+
   async connect(config: GatewayConfig): Promise<HelloOk> {
+    if (this._connecting) {
+      console.warn('[gateway] Connection already in progress, skipping');
+      throw new Error('Connection already in progress');
+    }
+
     this.config = config;
+    this._connecting = true;
     this.disconnect(); // clean up any previous connection
+
+    const tokenMasked = config.token
+      ? (config.token.length > 8
+        ? `${config.token.slice(0, 4)}...${config.token.slice(-4)}`
+        : '****')
+      : '(empty)';
+    console.log(`[gateway] Connecting to ${config.url} with token: ${tokenMasked}`);
 
     return new Promise((resolve, reject) => {
       const wsUrl = config.url.replace(/^http/, 'ws');
-      this.ws = new WebSocket(wsUrl);
+      console.log(`[gateway] Opening WebSocket: ${wsUrl}`);
+
+      try {
+        this.ws = new WebSocket(wsUrl);
+      } catch (e) {
+        this._connecting = false;
+        console.error('[gateway] WebSocket constructor failed:', e);
+        reject(e);
+        return;
+      }
 
       const openTimeout = setTimeout(() => {
+        this._connecting = false;
+        console.error('[gateway] WebSocket open timeout (10s)');
         reject(new Error('WebSocket open timeout'));
         this.ws?.close();
       }, 10_000);
 
       this.ws.onopen = async () => {
         clearTimeout(openTimeout);
+        console.log('[gateway] WebSocket opened, starting handshake...');
         try {
           const hello = await this.handshake();
           this._connected = true;
+          this._connecting = false;
           this.hello = hello;
+          console.log('[gateway] Handshake success:', hello?.type ?? 'hello-ok');
           this.emit('_connected', hello);
           resolve(hello);
         } catch (e) {
+          this._connecting = false;
+          console.error('[gateway] Handshake failed:', e);
           reject(e);
           this.ws?.close();
         }
@@ -93,10 +128,12 @@ class GatewayClient {
         }
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (ev) => {
         const wasConnected = this._connected;
         this._connected = false;
+        this._connecting = false;
         this.hello = null;
+        console.log(`[gateway] WebSocket closed: code=${ev.code} reason="${ev.reason}" wasConnected=${wasConnected}`);
         this.rejectAllPending('connection closed');
         if (wasConnected) {
           this.emit('_disconnected', {});
@@ -105,15 +142,43 @@ class GatewayClient {
         }
       };
 
-      this.ws.onerror = () => {
+      this.ws.onerror = (ev) => {
+        console.error('[gateway] WebSocket error event:', ev);
         // onclose will fire after this
       };
     });
   }
 
   private async handshake(): Promise<HelloOk> {
-    // Wait for optional connect.challenge event (best-effort, short timeout)
-    await new Promise<void>((r) => setTimeout(r, 200));
+    // Wait for the connect.challenge event from the gateway.
+    // OpenClaw sends { type:"event", event:"connect.challenge", payload: { nonce, ts } }
+    // immediately after the WebSocket opens. We listen for it briefly.
+    this._challengeNonce = null;
+    const challengeReceived = new Promise<void>((resolve) => {
+      const off = this.on('connect.challenge', (payload: unknown) => {
+        const p = payload as { nonce?: string } | null;
+        if (p?.nonce) {
+          this._challengeNonce = p.nonce;
+          console.log('[gateway] Received connect.challenge nonce');
+        }
+        off();
+        resolve();
+      });
+      // Don't wait forever — if no challenge arrives within 500ms, proceed anyway.
+      // Some gateway configurations may not send a challenge for loopback connections.
+      setTimeout(() => {
+        off();
+        resolve();
+      }, 500);
+    });
+    await challengeReceived;
+
+    // Build auth: only send auth object if we actually have a token.
+    // Sending { token: '' } can confuse the gateway's auth flow.
+    const token = this.config?.token?.trim();
+    const auth = token ? { token } : undefined;
+
+    console.log(`[gateway] Sending connect handshake (auth: ${auth ? 'token present' : 'none'}, nonce: ${this._challengeNonce ? 'yes' : 'no'})`);
 
     const hello = await this.request<HelloOk>('connect', {
       minProtocol: PROTOCOL_VERSION,
@@ -129,7 +194,7 @@ class GatewayClient {
       caps: [],
       commands: [],
       permissions: {},
-      auth: this.config?.token ? { token: this.config.token } : { token: '' },
+      auth,
       locale: navigator.language || 'en-US',
       userAgent: `paw-desktop/0.1.0 (${detectPlatform()})`,
     });
@@ -143,14 +208,18 @@ class GatewayClient {
       this.reconnectTimer = null;
     }
     this.rejectAllPending('disconnected');
-    this.ws?.close();
+    if (this.ws) {
+      try { this.ws.close(); } catch { /* ignore */ }
+    }
     this.ws = null;
     this._connected = false;
+    this._connecting = false;
     this.hello = null;
   }
 
   private scheduleReconnect() {
     if (this.reconnectTimer) return;
+    if (this._connecting) return; // already trying to connect
     this.reconnectAttempts++;
     if (this.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
       console.warn('[gateway] Max reconnect attempts reached, giving up');
@@ -162,9 +231,9 @@ class GatewayClient {
     console.log(`[gateway] Reconnect attempt ${this.reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`);
     this.reconnectTimer = window.setTimeout(() => {
       this.reconnectTimer = null;
-      if (this.config) {
-        this.connect(this.config).catch(() => {
-          // Failed — schedule next attempt
+      if (this.config && !this._connecting) {
+        this.connect(this.config).catch((e) => {
+          console.warn('[gateway] Reconnect failed:', e?.message ?? e);
           this.scheduleReconnect();
         });
       }

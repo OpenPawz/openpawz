@@ -38,10 +38,13 @@ export interface ConnectParams {
 }
 
 export interface HelloOk {
+  type?: string;
   protocol: number;
   connId: string;
   server: { version: string };
   config?: Record<string, unknown>;
+  policy?: { tickIntervalMs?: number; maxPayload?: number; maxBufferedBytes?: number };
+  auth?: { deviceToken?: string; role?: string; scopes?: string[] };
 }
 
 // ── Health ─────────────────────────────────────────────────────────────────
