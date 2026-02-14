@@ -90,6 +90,7 @@ setupForm.addEventListener('submit', async (e) => {
 
   config = { provider, apiKey, model, configured: true };
   saveConfig();
+  updateModelLabel();
 
   // Switch to chat view
   setupView.classList.remove('active');
@@ -157,12 +158,15 @@ async function sendMessage() {
 
   isLoading = true;
   chatSend.disabled = true;
+  showLoading();
 
   try {
     const response = await callLLM(content);
+    hideLoading();
     addMessage({ role: 'assistant', content: response, timestamp: new Date() });
   } catch (error) {
     console.error('Error:', error);
+    hideLoading();
     addMessage({
       role: 'assistant',
       content: `Error: ${error instanceof Error ? error.message : 'Failed to get response'}`,
@@ -210,6 +214,43 @@ function renderMessages() {
 
   // Scroll to bottom
   chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function showLoading() {
+  chatEmpty.style.display = 'none';
+  const loadingDiv = document.createElement('div');
+  loadingDiv.className = 'message assistant';
+  loadingDiv.id = 'loading-message';
+  loadingDiv.innerHTML = `
+    <div class="message-content">
+      <div class="loading-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+    </div>
+  `;
+  chatMessages.appendChild(loadingDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function hideLoading() {
+  const loading = document.getElementById('loading-message');
+  if (loading) loading.remove();
+}
+
+// Update model label in chat header
+function updateModelLabel() {
+  const modelLabel = document.getElementById('model-label');
+  if (modelLabel) {
+    const modelNames: Record<string, string> = {
+      'claude-sonnet-4-20250514': 'Claude Sonnet 4',
+      'claude-3-5-sonnet-20241022': 'Claude 3.5 Sonnet',
+      'gpt-4o': 'GPT-4o',
+      'gpt-4-turbo': 'GPT-4 Turbo',
+    };
+    modelLabel.textContent = modelNames[config.model] || config.model;
+  }
 }
 
 async function callLLM(userMessage: string): Promise<string> {
@@ -298,6 +339,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (config.configured) {
     setupView.classList.remove('active');
     chatView.classList.add('active');
+    updateModelLabel();
   } else {
     setupView.classList.add('active');
   }

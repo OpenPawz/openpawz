@@ -11,27 +11,48 @@
       <!-- Sidebar -->
       <aside class="sidebar">
         <div class="sidebar-header">
-          <span class="sidebar-logo">🐾</span>
-          <span class="sidebar-title">Claw Desktop</span>
+          <div class="sidebar-brand">
+            <div class="sidebar-logo">
+              <svg viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+            </div>
+            <span class="sidebar-title">Claw</span>
+          </div>
         </div>
         
         <nav class="sidebar-nav">
-          <div class="nav-item active" data-view="chat">
-            <span class="nav-icon">💬</span>
-            <span>Chat</span>
+          <div class="nav-section">
+            <div class="nav-section-label">Main</div>
+            <div class="nav-item active" data-view="chat">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>Chat</span>
+            </div>
+            <div class="nav-item" data-view="agents">
+              <svg class="icon" viewBox="0 0 24 24">
+                <rect x="3" y="11" width="18" height="10" rx="2"/>
+                <circle cx="12" cy="5" r="3"/>
+              </svg>
+              <span>Agents</span>
+            </div>
           </div>
-          <div class="nav-item" data-view="agents">
-            <span class="nav-icon">🤖</span>
-            <span>Agents</span>
-          </div>
-          <div class="nav-item" data-view="settings">
-            <span class="nav-icon">⚙️</span>
-            <span>Settings</span>
+          
+          <div class="nav-section">
+            <div class="nav-section-label">System</div>
+            <div class="nav-item" data-view="settings">
+              <svg class="icon" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="3"/>
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+              </svg>
+              <span>Settings</span>
+            </div>
           </div>
         </nav>
         
         <div class="sidebar-footer">
-          <div class="status-badge">
+          <div class="status-indicator">
             <span class="status-dot" id="status-dot"></span>
             <span id="status-text">Connecting...</span>
           </div>
@@ -40,29 +61,34 @@
 
       <!-- Main Content -->
       <main class="main">
-        <!-- Setup View (shown if not configured) -->
+        <!-- Setup View -->
         <div class="view setup-view" id="setup-view">
           <div class="setup-card">
             <div class="setup-header">
-              <div class="setup-icon">🔑</div>
-              <h1 class="setup-title">Welcome to Claw</h1>
-              <p class="setup-subtitle">Enter your API key to get started with AI agents</p>
+              <div class="setup-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                  <polyline points="10 17 15 12 10 7"/>
+                  <line x1="15" y1="12" x2="3" y2="12"/>
+                </svg>
+              </div>
+              <h1 class="setup-title">Connect your AI</h1>
+              <p class="setup-subtitle">Add your API key to start chatting</p>
             </div>
             
             <form id="setup-form">
               <div class="form-group">
-                <label class="form-label">API Provider</label>
+                <label class="form-label">Provider</label>
                 <select class="form-select" id="provider-select">
                   <option value="anthropic">Anthropic (Claude)</option>
                   <option value="openai">OpenAI (GPT)</option>
-                  <option value="foundry">Azure Foundry</option>
                 </select>
               </div>
               
               <div class="form-group">
                 <label class="form-label">API Key</label>
-                <input type="password" class="form-input" id="api-key-input" placeholder="sk-..." autocomplete="off" />
-                <p class="form-hint">Your key is stored locally and never sent to our servers</p>
+                <input type="password" class="form-input" id="api-key-input" placeholder="sk-ant-..." autocomplete="off" />
+                <p class="form-hint">Stored locally on your device. Never sent to us.</p>
               </div>
               
               <div class="form-group">
@@ -71,12 +97,11 @@
                   <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
                   <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
                   <option value="gpt-4o">GPT-4o</option>
-                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
                 </select>
               </div>
               
               <button type="submit" class="btn btn-primary" id="setup-btn">
-                Start Chatting →
+                Continue
               </button>
             </form>
           </div>
@@ -85,14 +110,29 @@
         <!-- Chat View -->
         <div class="view chat-view" id="chat-view">
           <div class="chat-header">
-            <span class="chat-title">Chat with Agent</span>
+            <div class="chat-header-left">
+              <div class="chat-avatar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="3" y="11" width="18" height="10" rx="2"/>
+                  <circle cx="12" cy="5" r="3"/>
+                </svg>
+              </div>
+              <div>
+                <div class="chat-title">Assistant</div>
+                <div class="chat-subtitle" id="model-label">Claude Sonnet 4</div>
+              </div>
+            </div>
           </div>
           
           <div class="chat-messages" id="chat-messages">
             <div class="empty-state" id="chat-empty">
-              <div class="empty-icon">💬</div>
+              <div class="empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+              </div>
               <div class="empty-title">Start a conversation</div>
-              <div class="empty-subtitle">Type a message below to chat with your AI agent</div>
+              <div class="empty-subtitle">Send a message to begin chatting with your AI assistant</div>
             </div>
           </div>
           
@@ -101,10 +141,16 @@
               <textarea 
                 class="chat-input" 
                 id="chat-input" 
-                placeholder="Type your message..." 
+                placeholder="Message..." 
                 rows="1"
               ></textarea>
-              <button class="chat-send" id="chat-send">Send</button>
+              <button class="chat-send" id="chat-send">
+                Send
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="22" y1="2" x2="11" y2="13"/>
+                  <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -112,14 +158,21 @@
         <!-- Agents View -->
         <div class="view" id="agents-view">
           <div class="empty-state">
-            <div class="empty-icon">🤖</div>
+            <div class="empty-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <rect x="3" y="11" width="18" height="10" rx="2"/>
+                <circle cx="12" cy="5" r="3"/>
+              </svg>
+            </div>
             <div class="empty-title">Agent Management</div>
-            <div class="empty-subtitle">Coming soon — create and manage multiple agents</div>
+            <div class="empty-subtitle">Create and manage multiple AI agents with different capabilities</div>
           </div>
         </div>
 
         <!-- Settings View -->
         <div class="view settings-view" id="settings-view">
+          <h1 class="settings-title">Settings</h1>
+          
           <div class="settings-section">
             <h2 class="settings-section-title">API Configuration</h2>
             <div class="form-group">
@@ -127,7 +180,6 @@
               <select class="form-select" id="settings-provider">
                 <option value="anthropic">Anthropic (Claude)</option>
                 <option value="openai">OpenAI (GPT)</option>
-                <option value="foundry">Azure Foundry</option>
               </select>
             </div>
             <div class="form-group">
@@ -142,14 +194,14 @@
                 <option value="gpt-4o">GPT-4o</option>
               </select>
             </div>
-            <button class="btn btn-primary" id="settings-save">Save Settings</button>
+            <button class="btn btn-primary" id="settings-save">Save Changes</button>
           </div>
           
           <div class="settings-section">
             <h2 class="settings-section-title">About</h2>
-            <p style="color: var(--text-secondary); font-size: 14px;">
+            <p style="color: var(--text-secondary); font-size: 13px; line-height: 1.6;">
               Claw Desktop v0.1.0<br>
-              Built on <a href="https://github.com/openclaw/openclaw" target="_blank" style="color: var(--accent);">OpenClaw</a>
+              <a href="https://github.com/elisplash/paw" target="_blank" style="color: var(--accent); text-decoration: none;">View on GitHub</a>
             </p>
           </div>
         </div>
