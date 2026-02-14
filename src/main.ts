@@ -1730,31 +1730,30 @@ async function loadMemoryPalace() {
   if (!_palaceInitialized) {
     _palaceInitialized = true;
 
-    // Check via Tauri if palace is installed + registered as MCP skill
-    if (invoke) {
-      try {
-        const healthy = await invoke<boolean>('check_palace_health');
-        _palaceAvailable = healthy;
-        if (healthy) {
-          console.log('[palace] Memory Palace installed and registered as MCP skill');
-        }
-      } catch {
-        _palaceAvailable = false;
+    // Check via gateway skills API — the skill must be registered and enabled
+    // in the gateway for palace commands to work. Module installation alone
+    // is not enough (the skill needs gateway registration via skills.install).
+    try {
+      const status = await gateway.skillsStatus();
+      const skills = status.skills ?? [];
+      _palaceAvailable = skills.some(
+        (s: { name: string; installed?: boolean; enabled?: boolean }) =>
+          s.name.toLowerCase().includes('memory') && s.installed !== false && s.enabled !== false,
+      );
+      if (_palaceAvailable) {
+        console.log('[palace] Memory Palace registered and enabled in gateway');
       }
+    } catch {
+      _palaceAvailable = false;
     }
 
-    // Fallback: check via gateway skills API
-    if (!_palaceAvailable) {
+    // If the module is installed but not registered, show install banner
+    // (user may need to re-install to trigger gateway registration)
+    let moduleInstalled = false;
+    if (!_palaceAvailable && invoke) {
       try {
-        const status = await gateway.skillsStatus();
-        const skills = status.skills ?? [];
-        _palaceAvailable = skills.some(
-          (s: { name: string; installed?: boolean; enabled?: boolean }) =>
-            s.name.toLowerCase().includes('memory') && s.installed !== false && s.enabled !== false,
-        );
-      } catch {
-        _palaceAvailable = false;
-      }
+        moduleInstalled = await invoke<boolean>('check_palace_health');
+      } catch { /* ignore */ }
     }
 
     initPalaceTabs();
@@ -1769,6 +1768,10 @@ async function loadMemoryPalace() {
     if (!_palaceAvailable && !_palaceSkipped) {
       // Show install banner
       if (banner) banner.style.display = 'flex';
+      if (moduleInstalled) {
+        // Module is installed but not registered with gateway
+        console.log('[palace] Module installed but not registered as gateway skill');
+      }
       // Check Python availability for the banner
       if (invoke) {
         try {
