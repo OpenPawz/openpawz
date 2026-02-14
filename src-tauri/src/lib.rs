@@ -582,20 +582,19 @@ fn check_palace_installed() -> bool {
 
 #[tauri::command]
 fn check_palace_health() -> bool {
-    // Palace is "healthy" if it's installed and registered as a gateway skill.
-    // Since it's an MCP stdio server, there's no port to check.
-    // We check: (1) mcp entrypoint exists, (2) it's in the gateway config.
-    let mcp_bin = get_palace_mcp_bin();
-    if !mcp_bin.exists() {
+    // Palace is "healthy" if the module is installed and importable.
+    // Registration with the gateway happens via the skills.install API at runtime.
+    let python = get_palace_python();
+    if !python.exists() {
         return false;
     }
-    // Check if registered in gateway config
-    if let Some(config) = parse_openclaw_config() {
-        if let Some(skills) = config["skills"].as_object() {
-            return skills.contains_key("memory-palace");
-        }
+    let output = Command::new(python.to_str().unwrap())
+        .args(["-c", "import memory_palace; print('ok')"])
+        .output();
+    match output {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
     }
-    false
 }
 
 #[tauri::command]
@@ -808,30 +807,33 @@ async fn install_palace(window: tauri::Window, api_key: String, base_url: Option
         "message": "Registering Memory Palace as gateway skill..."
     })).ok();
 
-    register_palace_skill()?;
+    // Note: Gateway skill registration happens via the skills.install API
+    // from the frontend after this install completes. We don't write to
+    // openclaw.json directly — the gateway schema doesn't allow arbitrary skill keys.
 
     // ── Done ──────────────────────────────────────────────────────────────
     window.emit("palace-install-progress", serde_json::json!({
         "stage": "done",
         "percent": 100,
-        "message": "Memory Palace installed with cloud embeddings!"
+        "message": "Memory Palace installed! Registering with gateway..."
     })).ok();
     info!("Memory Palace installation complete (cloud embeddings)");
 
     Ok(())
 }
 
-/// Register Memory Palace as an MCP skill in the OpenClaw gateway config.
-/// Adds/updates the "memory-palace" entry under the "skills" key in openclaw.json.
-fn register_palace_skill() -> Result<(), String> {
+/// Repair openclaw.json by removing any invalid "skills" key that Paw
+/// may have written in a previous version. The gateway manages skills
+/// through its own API, not through raw config keys.
+#[tauri::command]
+fn repair_openclaw_config() -> Result<bool, String> {
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
     let config_path = home.join(".openclaw/openclaw.json");
 
     if !config_path.exists() {
-        return Err("OpenClaw config not found. Install OpenClaw first.".to_string());
+        return Ok(false);
     }
 
-    // Read current config
     let content = fs::read_to_string(&config_path)
         .map_err(|e| format!("Failed to read config: {}", e))?;
 
@@ -839,37 +841,23 @@ fn register_palace_skill() -> Result<(), String> {
     let mut config: serde_json::Value = serde_json::from_str(&sanitized)
         .map_err(|e| format!("Failed to parse config: {}", e))?;
 
-    // Build the MCP command for the skill
-    let mcp_bin = get_palace_mcp_bin();
-    let venv_python = get_palace_python();
-
-    // Prefer the direct entrypoint, fall back to python -m
-    let (command, args) = if mcp_bin.exists() {
-        (mcp_bin.to_str().unwrap().to_string(), Vec::<String>::new())
-    } else {
-        (venv_python.to_str().unwrap().to_string(), vec!["-m".to_string(), "mcp_server.server".to_string()])
-    };
-
-    // Create skill entry
-    let skill_config = serde_json::json!({
-        "command": command,
-        "args": args,
-        "transport": "stdio",
-        "enabled": true
-    });
-
-    // Ensure "skills" object exists
-    if !config["skills"].is_object() {
-        config["skills"] = serde_json::json!({});
+    // Remove the invalid "skills" key if present
+    let mut repaired = false;
+    if let Some(obj) = config.as_object_mut() {
+        if obj.contains_key("skills") {
+            obj.remove("skills");
+            repaired = true;
+            info!("Removed invalid 'skills' key from openclaw.json");
+        }
     }
-    config["skills"]["memory-palace"] = skill_config;
 
-    // Write back
-    fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
-        .map_err(|e| format!("Failed to write config: {}", e))?;
+    if repaired {
+        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
+            .map_err(|e| format!("Failed to write config: {}", e))?;
+        info!("Repaired openclaw.json at {:?}", config_path);
+    }
 
-    info!("Registered memory-palace as MCP skill in {:?}", config_path);
-    Ok(())
+    Ok(repaired)
 }
 
 fn start_palace_server() -> Result<(), String> {
@@ -949,7 +937,8 @@ pub fn run() {
             start_palace,
             stop_palace,
             get_palace_port,
-            get_palace_log
+            get_palace_log,
+            repair_openclaw_config
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

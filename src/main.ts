@@ -163,6 +163,14 @@ async function connectGateway(): Promise<boolean> {
   }
   _connectInProgress = true;
 
+  // Repair openclaw.json if it was corrupted by a previous Paw version
+  if (invoke) {
+    try {
+      const repaired = await invoke<boolean>('repair_openclaw_config');
+      if (repaired) console.log('[main] Repaired openclaw.json (removed invalid skills key)');
+    } catch { /* ignore — first run or no config yet */ }
+  }
+
   try {
     const wsUrl = config.gateway.url.replace(/^http/, 'ws');
     const tokenLen = config.gateway.token?.length ?? 0;
@@ -1827,6 +1835,16 @@ function initPalaceInstall() {
       }
 
       await invoke('install_palace', { apiKey: apiKey, baseUrl: baseUrl || null });
+
+      // Register the skill via gateway API (not config file)
+      if (wsConnected) {
+        try {
+          await gateway.skillsInstall('memory-palace', crypto.randomUUID());
+          console.log('[main] Registered memory-palace skill via gateway API');
+        } catch (e) {
+          console.warn('[main] skills.install failed (may need gateway restart):', e);
+        }
+      }
 
       // Check if it's now registered as a gateway skill
       await new Promise(r => setTimeout(r, 1000));
