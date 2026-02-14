@@ -1,20 +1,20 @@
 // Claw Desktop - Main Application
 
-declare global {
-  interface Window {
-    __TAURI__?: {
-      core: {
-        invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
-      };
-      event: {
-        listen: <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
-      };
+// Tauri API types
+interface TauriWindow {
+  __TAURI__?: {
+    core: {
+      invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
     };
-  }
+    event: {
+      listen: <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
+    };
+  };
 }
 
-const invoke = window.__TAURI__?.core?.invoke;
-const listen = window.__TAURI__?.event?.listen;
+const tauriWindow = window as unknown as TauriWindow;
+const invoke = tauriWindow.__TAURI__?.core?.invoke;
+const listen = tauriWindow.__TAURI__?.event?.listen;
 
 interface Config {
   configured: boolean;
@@ -183,7 +183,7 @@ document.getElementById('start-install')?.addEventListener('click', async () => 
   try {
     // Listen for progress events
     if (listen) {
-      await listen<InstallProgress>('install-progress', (event) => {
+      await listen<InstallProgress>('install-progress', (event: { payload: InstallProgress }) => {
         const { percent, message } = event.payload;
         if (progressBar) progressBar.style.width = `${percent}%`;
         if (progressText) progressText.textContent = message;

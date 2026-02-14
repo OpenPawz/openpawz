@@ -1,8 +1,40 @@
 use std::process::Command;
-use tauri::Emitter;
+use std::path::PathBuf;
+use std::fs;
+use tauri::{Emitter, Manager};
+
+fn get_app_data_dir() -> PathBuf {
+    let home = dirs::home_dir().unwrap_or_default();
+    home.join("Library/Application Support/Claw")
+}
+
+fn get_bundled_node_path() -> Option<PathBuf> {
+    let app_dir = get_app_data_dir();
+    let node_bin = app_dir.join("node/bin/node");
+    if node_bin.exists() {
+        Some(node_bin)
+    } else {
+        None
+    }
+}
+
+fn get_npm_path() -> PathBuf {
+    let app_dir = get_app_data_dir();
+    app_dir.join("node/bin/npm")
+}
+
+fn get_openclaw_path() -> PathBuf {
+    let app_dir = get_app_data_dir();
+    app_dir.join("node_modules/.bin/openclaw")
+}
 
 #[tauri::command]
 fn check_node_installed() -> bool {
+    // Check bundled node first
+    if get_bundled_node_path().is_some() {
+        return true;
+    }
+    // Fall back to system node
     Command::new("node")
         .arg("--version")
         .output()
@@ -27,34 +59,66 @@ fn get_gateway_token() -> Option<String> {
 }
 
 #[tauri::command]
-async fn install_openclaw(window: tauri::Window) -> Result<(), String> {
-    // Emit progress events to the window
+async fn install_openclaw(window: tauri::Window, app_handle: tauri::AppHandle) -> Result<(), String> {
+    let app_dir = get_app_data_dir();
+    fs::create_dir_all(&app_dir).map_err(|e| format!("Failed to create app dir: {}", e))?;
+
+    // Step 1: Extract bundled Node.js if not already done
     window.emit("install-progress", serde_json::json!({
-        "stage": "checking",
-        "percent": 0,
-        "message": "Checking system..."
+        "stage": "extracting",
+        "percent": 5,
+        "message": "Setting up runtime..."
     })).ok();
 
-    // Check if npm/node is available
-    let has_node = Command::new("node")
-        .arg("--version")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false);
+    let node_dir = app_dir.join("node");
+    if !node_dir.exists() {
+        // Determine architecture
+        let arch = if cfg!(target_arch = "aarch64") { "arm64" } else { "x64" };
+        let resource_name = format!("node/node-darwin-{}.tar.gz", arch);
+        
+        // Get the resource path from the app bundle
+        let resource_path = app_handle.path()
+            .resource_dir()
+            .map_err(|e| format!("Failed to get resource dir: {}", e))?
+            .join(&resource_name);
+        
+        if !resource_path.exists() {
+            return Err(format!("Node.js bundle not found at {:?}", resource_path));
+        }
 
-    if !has_node {
-        return Err("Node.js is required. Please install Node.js from https://nodejs.org".to_string());
+        window.emit("install-progress", serde_json::json!({
+            "stage": "extracting",
+            "percent": 15,
+            "message": "Extracting Node.js runtime..."
+        })).ok();
+
+        // Create node directory and extract
+        fs::create_dir_all(&node_dir).map_err(|e| format!("Failed to create node dir: {}", e))?;
+        
+        let extract_result = Command::new("tar")
+            .args(["-xzf", resource_path.to_str().unwrap(), "-C", node_dir.to_str().unwrap(), "--strip-components=1"])
+            .output()
+            .map_err(|e| format!("Failed to extract Node.js: {}", e))?;
+
+        if !extract_result.status.success() {
+            let stderr = String::from_utf8_lossy(&extract_result.stderr);
+            return Err(format!("Failed to extract Node.js: {}", stderr));
+        }
     }
 
     window.emit("install-progress", serde_json::json!({
         "stage": "downloading",
-        "percent": 20,
+        "percent": 30,
         "message": "Installing OpenClaw..."
     })).ok();
 
-    // Install openclaw globally
-    let install_result = Command::new("npm")
-        .args(["install", "-g", "openclaw"])
+    // Step 2: Install OpenClaw using bundled npm
+    let npm_path = get_npm_path();
+    let node_modules_dir = app_dir.join("node_modules");
+    
+    let install_result = Command::new(npm_path.to_str().unwrap())
+        .args(["install", "openclaw", "--prefix", app_dir.to_str().unwrap()])
+        .env("PATH", format!("{}:{}", node_dir.join("bin").display(), std::env::var("PATH").unwrap_or_default()))
         .output()
         .map_err(|e| format!("Failed to run npm: {}", e))?;
 
@@ -66,15 +130,50 @@ async fn install_openclaw(window: tauri::Window) -> Result<(), String> {
     window.emit("install-progress", serde_json::json!({
         "stage": "configuring",
         "percent": 60,
-        "message": "Running initial setup..."
+        "message": "Configuring..."
     })).ok();
 
-    // Run openclaw wizard
-    let _wizard_result = Command::new("openclaw")
-        .args(["wizard", "--non-interactive"])
-        .output();
+    // Step 3: Create default config if it doesn't exist
+    let home = dirs::home_dir().ok_or("Could not find home directory")?;
+    let openclaw_dir = home.join(".openclaw");
+    let config_path = openclaw_dir.join("openclaw.json");
 
-    // Wizard might fail if already configured, that's ok
+    if !config_path.exists() {
+        fs::create_dir_all(&openclaw_dir).map_err(|e| format!("Failed to create .openclaw dir: {}", e))?;
+        
+        // Generate random token
+        let token: String = (0..48)
+            .map(|_| {
+                let idx = rand::random::<usize>() % 36;
+                if idx < 10 { (b'0' + idx as u8) as char } else { (b'a' + (idx - 10) as u8) as char }
+            })
+            .collect();
+
+        let config = serde_json::json!({
+            "meta": {
+                "lastTouchedVersion": "2026.2.0",
+                "lastTouchedAt": chrono::Utc::now().to_rfc3339()
+            },
+            "gateway": {
+                "mode": "local",
+                "auth": {
+                    "mode": "token",
+                    "token": token
+                }
+            },
+            "agents": {
+                "defaults": {
+                    "maxConcurrent": 4
+                }
+            }
+        });
+
+        fs::write(&config_path, serde_json::to_string_pretty(&config).unwrap())
+            .map_err(|e| format!("Failed to write config: {}", e))?;
+
+        // Create workspace directory
+        fs::create_dir_all(openclaw_dir.join("workspace")).ok();
+    }
 
     window.emit("install-progress", serde_json::json!({
         "stage": "starting",
@@ -82,13 +181,18 @@ async fn install_openclaw(window: tauri::Window) -> Result<(), String> {
         "message": "Starting gateway..."
     })).ok();
 
-    // Start the gateway
-    let _ = Command::new("openclaw")
+    // Step 4: Start the gateway
+    let openclaw_bin = get_openclaw_path();
+    let node_bin_dir = node_dir.join("bin");
+    
+    Command::new(openclaw_bin.to_str().unwrap())
         .args(["gateway", "start"])
-        .spawn();
+        .env("PATH", format!("{}:{}", node_bin_dir.display(), std::env::var("PATH").unwrap_or_default()))
+        .spawn()
+        .map_err(|e| format!("Failed to start gateway: {}", e))?;
 
-    // Give it a moment to start
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // Give it time to start
+    std::thread::sleep(std::time::Duration::from_secs(3));
 
     window.emit("install-progress", serde_json::json!({
         "stage": "done",
@@ -101,10 +205,23 @@ async fn install_openclaw(window: tauri::Window) -> Result<(), String> {
 
 #[tauri::command]
 fn start_gateway() -> Result<(), String> {
-    Command::new("openclaw")
-        .args(["gateway", "start"])
-        .spawn()
-        .map_err(|e| format!("Failed to start gateway: {}", e))?;
+    let openclaw_bin = get_openclaw_path();
+    let node_dir = get_app_data_dir().join("node/bin");
+    
+    // Try bundled openclaw first
+    if openclaw_bin.exists() {
+        Command::new(openclaw_bin.to_str().unwrap())
+            .args(["gateway", "start"])
+            .env("PATH", format!("{}:{}", node_dir.display(), std::env::var("PATH").unwrap_or_default()))
+            .spawn()
+            .map_err(|e| format!("Failed to start gateway: {}", e))?;
+    } else {
+        // Fall back to system openclaw
+        Command::new("openclaw")
+            .args(["gateway", "start"])
+            .spawn()
+            .map_err(|e| format!("Failed to start gateway: {}", e))?;
+    }
     Ok(())
 }
 
