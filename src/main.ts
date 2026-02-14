@@ -1174,8 +1174,7 @@ async function loadSkills() {
           </div>
           <div class="skill-card-actions">
             ${isInstalled ? `
-              <button class="skill-toggle ${enabledClass}" data-name="${escAttr(skill.name)}" data-enabled="${isEnabled}" title="${isEnabled ? 'Disable' : 'Enable'}"></button>
-              <button class="btn btn-ghost btn-sm skill-update" data-name="${escAttr(skill.name)}">Update</button>
+              <button class="skill-toggle ${enabledClass}" data-skill-key="${escAttr(skill.skillKey ?? skill.name)}" data-name="${escAttr(skill.name)}" data-enabled="${isEnabled}" title="${isEnabled ? 'Disable' : 'Enable'}"></button>
             ` : installOptions.length > 0 ? `
               <button class="btn btn-primary btn-sm skill-install" data-name="${escAttr(skill.name)}" data-install-id="${escAttr(installSpecId)}">${escHtml(installLabel)}</button>
             ` : `
@@ -1231,38 +1230,19 @@ function wireSkillActions() {
   document.querySelectorAll('.skill-toggle').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const name = (btn as HTMLElement).dataset.name!;
+      const skillKey = (btn as HTMLElement).dataset.skillKey!;
+      const name = (btn as HTMLElement).dataset.name ?? skillKey;
       const currentlyEnabled = (btn as HTMLElement).dataset.enabled === 'true';
       const newState = !currentlyEnabled;
 
       (btn as HTMLButtonElement).disabled = true;
       try {
-        await gateway.skillsUpdate(name, { enabled: newState });
+        await gateway.skillsUpdate(skillKey, { enabled: newState });
         showSkillsToast(`${name} ${newState ? 'enabled' : 'disabled'}`, 'success');
         await loadSkills();
       } catch (e) {
         showSkillsToast(`Failed to ${newState ? 'enable' : 'disable'} ${name}: ${e}`, 'error');
         (btn as HTMLButtonElement).disabled = false;
-      }
-    });
-  });
-
-  // Update buttons
-  document.querySelectorAll('.skill-update').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      const name = (btn as HTMLElement).dataset.name!;
-      (btn as HTMLButtonElement).disabled = true;
-      (btn as HTMLButtonElement).textContent = 'Updating…';
-      showSkillsToast(`Updating ${name}…`, 'info');
-      try {
-        await gateway.skillsUpdate(name, { update: true });
-        showSkillsToast(`${name} updated!`, 'success');
-        await loadSkills();
-      } catch (e) {
-        showSkillsToast(`Update failed for ${name}: ${e}`, 'error');
-        (btn as HTMLButtonElement).disabled = false;
-        (btn as HTMLButtonElement).textContent = 'Update';
       }
     });
   });

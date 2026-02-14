@@ -506,8 +506,8 @@ class GatewayClient {
     return this.request('skills.install', { name, installId }, 120_000);
   }
 
-  async skillsUpdate(name: string, updates: Record<string, unknown>): Promise<unknown> {
-    return this.request('skills.update', { name, ...updates });
+  async skillsUpdate(skillKey: string, updates: { enabled?: boolean; apiKey?: string; env?: Record<string, string> }): Promise<unknown> {
+    return this.request('skills.update', { skillKey, ...updates });
   }
 
   // Models
