@@ -3,62 +3,157 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Paw</title>
+    <title>Claw Desktop</title>
     <link rel="stylesheet" href="/src/styles.css" />
   </head>
   <body>
-    <div class="container">
-      <header class="header">
-        <span class="logo">🐾</span>
-        <span class="title">Paw</span>
-        <span class="version">v0.1.0</span>
-      </header>
+    <div class="app">
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-logo">🐾</span>
+          <span class="sidebar-title">Claw Desktop</span>
+        </div>
+        
+        <nav class="sidebar-nav">
+          <div class="nav-item active" data-view="chat">
+            <span class="nav-icon">💬</span>
+            <span>Chat</span>
+          </div>
+          <div class="nav-item" data-view="agents">
+            <span class="nav-icon">🤖</span>
+            <span>Agents</span>
+          </div>
+          <div class="nav-item" data-view="settings">
+            <span class="nav-icon">⚙️</span>
+            <span>Settings</span>
+          </div>
+        </nav>
+        
+        <div class="sidebar-footer">
+          <div class="status-badge">
+            <span class="status-dot" id="status-dot"></span>
+            <span id="status-text">Connecting...</span>
+          </div>
+        </div>
+      </aside>
 
+      <!-- Main Content -->
       <main class="main">
-        <div class="welcome">
-          <h2>Welcome to Paw</h2>
-          <p>The desktop app for OpenClaw. AI agents made simple — no terminal required.</p>
+        <!-- Setup View (shown if not configured) -->
+        <div class="view setup-view" id="setup-view">
+          <div class="setup-card">
+            <div class="setup-header">
+              <div class="setup-icon">🔑</div>
+              <h1 class="setup-title">Welcome to Claw</h1>
+              <p class="setup-subtitle">Enter your API key to get started with AI agents</p>
+            </div>
+            
+            <form id="setup-form">
+              <div class="form-group">
+                <label class="form-label">API Provider</label>
+                <select class="form-select" id="provider-select">
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="openai">OpenAI (GPT)</option>
+                  <option value="foundry">Azure Foundry</option>
+                </select>
+              </div>
+              
+              <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input type="password" class="form-input" id="api-key-input" placeholder="sk-..." autocomplete="off" />
+                <p class="form-hint">Your key is stored locally and never sent to our servers</p>
+              </div>
+              
+              <div class="form-group">
+                <label class="form-label">Model</label>
+                <select class="form-select" id="model-select">
+                  <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                  <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                  <option value="gpt-4o">GPT-4o</option>
+                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                </select>
+              </div>
+              
+              <button type="submit" class="btn btn-primary" id="setup-btn">
+                Start Chatting →
+              </button>
+            </form>
+          </div>
         </div>
 
-        <div class="status-card">
-          <h3>System Status</h3>
-          <div class="status-item">
-            <span class="status-label">
-              <span class="status-dot" id="gateway-dot"></span>
-              Gateway
-            </span>
-            <span class="status-value" id="gateway-status">Checking...</span>
+        <!-- Chat View -->
+        <div class="view chat-view" id="chat-view">
+          <div class="chat-header">
+            <span class="chat-title">Chat with Agent</span>
           </div>
-          <div class="status-item">
-            <span class="status-label">
-              <span class="status-dot" id="agents-dot"></span>
-              Agents
-            </span>
-            <span class="status-value" id="agents-status">—</span>
+          
+          <div class="chat-messages" id="chat-messages">
+            <div class="empty-state" id="chat-empty">
+              <div class="empty-icon">💬</div>
+              <div class="empty-title">Start a conversation</div>
+              <div class="empty-subtitle">Type a message below to chat with your AI agent</div>
+            </div>
           </div>
-          <div class="status-item">
-            <span class="status-label">
-              <span class="status-dot" id="api-dot"></span>
-              API Keys
-            </span>
-            <span class="status-value" id="api-status">Not configured</span>
+          
+          <div class="chat-input-container">
+            <div class="chat-input-wrapper">
+              <textarea 
+                class="chat-input" 
+                id="chat-input" 
+                placeholder="Type your message..." 
+                rows="1"
+              ></textarea>
+              <button class="chat-send" id="chat-send">Send</button>
+            </div>
           </div>
         </div>
 
-        <div class="actions">
-          <button class="btn btn-primary" id="setup-btn">Get Started</button>
-          <button class="btn btn-secondary" id="docs-btn">Documentation</button>
+        <!-- Agents View -->
+        <div class="view" id="agents-view">
+          <div class="empty-state">
+            <div class="empty-icon">🤖</div>
+            <div class="empty-title">Agent Management</div>
+            <div class="empty-subtitle">Coming soon — create and manage multiple agents</div>
+          </div>
+        </div>
+
+        <!-- Settings View -->
+        <div class="view settings-view" id="settings-view">
+          <div class="settings-section">
+            <h2 class="settings-section-title">API Configuration</h2>
+            <div class="form-group">
+              <label class="form-label">Provider</label>
+              <select class="form-select" id="settings-provider">
+                <option value="anthropic">Anthropic (Claude)</option>
+                <option value="openai">OpenAI (GPT)</option>
+                <option value="foundry">Azure Foundry</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">API Key</label>
+              <input type="password" class="form-input" id="settings-api-key" placeholder="sk-..." />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Model</label>
+              <select class="form-select" id="settings-model">
+                <option value="claude-sonnet-4-20250514">Claude Sonnet 4</option>
+                <option value="claude-3-5-sonnet-20241022">Claude 3.5 Sonnet</option>
+                <option value="gpt-4o">GPT-4o</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="settings-save">Save Settings</button>
+          </div>
+          
+          <div class="settings-section">
+            <h2 class="settings-section-title">About</h2>
+            <p style="color: var(--text-secondary); font-size: 14px;">
+              Claw Desktop v0.1.0<br>
+              Built on <a href="https://github.com/openclaw/openclaw" target="_blank" style="color: var(--accent);">OpenClaw</a>
+            </p>
+          </div>
         </div>
       </main>
-
-      <footer class="footer">
-        <div class="footer-links">
-          <a href="https://github.com/openclaw/openclaw" target="_blank">OpenClaw</a>
-          <a href="https://discord.com/invite/clawd" target="_blank">Discord</a>
-          <a href="https://github.com/elisplash/paw" target="_blank">GitHub</a>
-        </div>
-        <span class="footer-credit">Built for the OpenClaw community</span>
-      </footer>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

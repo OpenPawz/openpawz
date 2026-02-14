@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Paw",
+  "productName": "Claw Desktop",
   "version": "0.1.0",
   "identifier": "com.elibury.paw",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Paw",
+        "title": "Claw Desktop",
         "width": 1024,
         "height": 768,
         "resizable": true,
@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self'; connect-src 'self' https://api.anthropic.com https://api.openai.com http://localhost:* https://*; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
     }
   },
   "bundle": {
