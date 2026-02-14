@@ -820,19 +820,30 @@ if (_pawIsAzure) {{
 
       // Mutate the cached module exports in-place so ALL future imports
       // (both CJS require and ESM import) see the proxied constructor.
-      if (openaiMod.default) openaiMod.default = proxied;
-      if (openaiMod.OpenAI)  openaiMod.OpenAI  = proxied;
+      // Use Object.defineProperty because the openai package defines
+      // `default` as a getter-only property — direct assignment throws.
+      function patchExports(obj) {{
+        if (!obj) return;
+        for (const key of ['default', 'OpenAI']) {{
+          if (obj[key]) {{
+            try {{ obj[key] = proxied; }} catch (_) {{
+              try {{
+                Object.defineProperty(obj, key, {{
+                  value: proxied, writable: true, configurable: true, enumerable: true
+                }});
+              }} catch (_e) {{ /* truly frozen — skip */ }}
+            }}
+          }}
+        }}
+      }}
+      patchExports(openaiMod);
 
       // Also patch the CJS cache entry directly for extra safety
       const Module = require('module');
       try {{
         const resolvedPath = Module._resolveFilename('openai', module);
         if (resolvedPath && Module._cache && Module._cache[resolvedPath]) {{
-          const cached = Module._cache[resolvedPath];
-          if (cached.exports) {{
-            if (cached.exports.default) cached.exports.default = proxied;
-            if (cached.exports.OpenAI)  cached.exports.OpenAI  = proxied;
-          }}
+          patchExports(Module._cache[resolvedPath].exports);
         }}
       }} catch (_e) {{ /* _resolveFilename may throw if openai not in default paths */ }}
 
