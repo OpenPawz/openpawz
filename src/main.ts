@@ -1814,11 +1814,36 @@ function initPalaceInstall() {
     const progressText = $('palace-progress-text') as HTMLElement | null;
     if (!btn || !invoke) return;
 
-    // Read API key and base URL from inputs
+    // Read API key, base URL, and model from inputs
     const apiKeyInput = $('palace-api-key') as HTMLInputElement | null;
     const baseUrlInput = $('palace-base-url') as HTMLInputElement | null;
-    const apiKey = apiKeyInput?.value?.trim() ?? '';
-    const baseUrl = baseUrlInput?.value?.trim() ?? '';
+    const modelInput = $('palace-model-name') as HTMLInputElement | null;
+    let apiKey = apiKeyInput?.value?.trim() ?? '';
+    let baseUrl = baseUrlInput?.value?.trim() ?? '';
+    const modelName = modelInput?.value?.trim() ?? '';
+
+    // Detect URL pasted into API key field (common mistake)
+    if (apiKey.startsWith('http://') || apiKey.startsWith('https://')) {
+      // Swap: what's in key looks like a URL, what's in URL might be the key
+      if (baseUrl && !baseUrl.startsWith('http')) {
+        // baseUrl has the actual key, apiKey has the URL — swap them
+        const temp = apiKey;
+        apiKey = baseUrl;
+        baseUrl = temp;
+        if (apiKeyInput) apiKeyInput.value = apiKey;
+        if (baseUrlInput) baseUrlInput.value = baseUrl;
+      } else if (!baseUrl) {
+        // User put URL in key field, base URL is empty — move it
+        baseUrl = apiKey;
+        apiKey = '';
+        if (baseUrlInput) baseUrlInput.value = baseUrl;
+        if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.style.borderColor = '#e44'; apiKeyInput.focus(); apiKeyInput.placeholder = 'Enter your API key here (not a URL)'; }
+        return;
+      } else {
+        if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.style.borderColor = '#e44'; apiKeyInput.focus(); apiKeyInput.placeholder = 'This looks like a URL — enter your API key instead'; }
+        return;
+      }
+    }
 
     if (!apiKey) {
       if (apiKeyInput) {
@@ -1844,7 +1869,7 @@ function initPalaceInstall() {
         });
       }
 
-      await invoke('install_palace', { apiKey: apiKey, baseUrl: baseUrl || null });
+      await invoke('install_palace', { apiKey: apiKey, baseUrl: baseUrl || null, modelName: modelName || null });
 
       // Register the skill via gateway API (not config file)
       if (wsConnected) {

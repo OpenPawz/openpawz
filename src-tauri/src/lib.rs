@@ -598,7 +598,7 @@ fn check_palace_health() -> bool {
 }
 
 #[tauri::command]
-async fn install_palace(window: tauri::Window, api_key: String, base_url: Option<String>) -> Result<(), String> {
+async fn install_palace(window: tauri::Window, api_key: String, base_url: Option<String>, model_name: Option<String>) -> Result<(), String> {
     info!("Starting Memory Palace installation (cloud embeddings)...");
 
     let api_key = api_key.trim().to_string();
@@ -606,10 +606,20 @@ async fn install_palace(window: tauri::Window, api_key: String, base_url: Option
         return Err("An embedding API key is required. Enter your API key for text-embedding-3-small.".to_string());
     }
 
+    // Validate key doesn't look like a URL (common user mistake)
+    if api_key.starts_with("http://") || api_key.starts_with("https://") {
+        return Err("The API key looks like a URL. Please enter your actual API key, not the endpoint URL.".to_string());
+    }
+
     let base_url = base_url
         .map(|u| u.trim().to_string())
         .filter(|u| !u.is_empty())
         .unwrap_or_else(|| "https://api.openai.com/v1".to_string());
+
+    let model = model_name
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| "text-embedding-3-small".to_string());
 
     // ── Step 1: Check Python ──────────────────────────────────────────────
     window.emit("palace-install-progress", serde_json::json!({
@@ -779,7 +789,7 @@ async fn install_palace(window: tauri::Window, api_key: String, base_url: Option
         "embedding_provider": "openai",
         "openai_api_key": api_key,
         "openai_base_url": base_url,
-        "embedding_model": "text-embedding-3-small",
+        "embedding_model": model,
         "embedding_dimension": 1536,
         "ollama_url": "http://localhost:11434",
         "llm_model": null,
