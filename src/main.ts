@@ -1953,6 +1953,9 @@ async function loadMemoryPalace() {
       // Memory is available — full mode
       if (banner) banner.style.display = 'none';
       if (filesDivider) filesDivider.style.display = '';
+      // Show settings gear so user can reconfigure endpoint/API key
+      const settingsBtn = $('palace-settings');
+      if (settingsBtn) settingsBtn.style.display = '';
     }
   }
 
@@ -1965,6 +1968,29 @@ async function loadMemoryPalace() {
 }
 
 function initPalaceInstall() {
+  // Settings gear — show the setup banner for reconfiguration
+  $('palace-settings')?.addEventListener('click', async () => {
+    const banner = $('palace-install-banner');
+    if (!banner) return;
+    banner.style.display = 'flex';
+    // Pre-fill with existing settings
+    if (invoke) {
+      try {
+        const existingUrl = await invoke<string | null>('get_embedding_base_url');
+        const existingVersion = await invoke<string | null>('get_azure_api_version');
+        const baseUrlInput = $('palace-base-url') as HTMLInputElement | null;
+        const apiVersionInput = $('palace-api-version') as HTMLInputElement | null;
+        if (existingUrl && baseUrlInput) baseUrlInput.value = existingUrl;
+        if (existingVersion && apiVersionInput) apiVersionInput.value = existingVersion;
+      } catch { /* ignore */ }
+    }
+    // Update button text to indicate reconfiguration
+    const btn = $('palace-install-btn') as HTMLButtonElement | null;
+    if (btn) { btn.textContent = 'Save & Restart'; btn.disabled = false; }
+    const progressDiv = $('palace-install-progress');
+    if (progressDiv) progressDiv.style.display = 'none';
+  });
+
   // Enable button
   $('palace-install-btn')?.addEventListener('click', async () => {
     const btn = $('palace-install-btn') as HTMLButtonElement | null;
