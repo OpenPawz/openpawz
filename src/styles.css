@@ -913,3 +913,52 @@ button:focus:not(:focus-visible) {
   width: 18px;
   height: 18px;
 }
+
+/* Install Progress */
+.install-requirements {
+  margin-bottom: 24px;
+}
+
+.requirement-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.requirement-item svg {
+  stroke: var(--text-muted);
+}
+
+.requirement-item.checked svg {
+  stroke: var(--success);
+  fill: var(--success);
+}
+
+.install-progress {
+  margin-bottom: 24px;
+}
+
+.progress-bar {
+  height: 6px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  width: 0%;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+}

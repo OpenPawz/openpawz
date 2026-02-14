@@ -142,6 +142,54 @@
           </div>
         </div>
 
+        <!-- Install View -->
+        <div class="view setup-view" id="install-view">
+          <div class="setup-card">
+            <div class="setup-header">
+              <div class="setup-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+              </div>
+              <h1 class="setup-title">Install OpenClaw</h1>
+              <p class="setup-subtitle">We'll download and set up everything for you</p>
+            </div>
+            
+            <div class="install-requirements">
+              <div class="requirement-item" id="req-node">
+                <svg class="icon-sm" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"/>
+                </svg>
+                <span>Node.js runtime</span>
+              </div>
+              <div class="requirement-item">
+                <svg class="icon-sm" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10"/>
+                </svg>
+                <span>OpenClaw gateway</span>
+              </div>
+            </div>
+            
+            <div class="install-progress">
+              <div class="progress-bar">
+                <div class="progress-fill" id="install-progress-bar"></div>
+              </div>
+              <p class="progress-text" id="install-progress-text">Ready to install</p>
+            </div>
+            
+            <div class="btn-group">
+              <button type="button" class="btn btn-secondary" id="install-back">Back</button>
+              <button type="button" class="btn btn-primary" id="start-install">Install Now</button>
+            </div>
+            
+            <p class="form-hint" style="text-align: center; margin-top: 16px;">
+              Requires Node.js. <a href="https://nodejs.org" target="_blank" style="color: var(--accent);">Download here</a> if not installed.
+            </p>
+          </div>
+        </div>
+
         <!-- Manual Config View -->
         <div class="view setup-view" id="manual-setup-view">
           <div class="setup-card">

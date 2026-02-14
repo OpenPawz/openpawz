@@ -1,6 +1,20 @@
 // Claw Desktop - Main Application
 
-import { getGatewayStatus, setGatewayConfig } from './api';
+declare global {
+  interface Window {
+    __TAURI__?: {
+      core: {
+        invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
+      };
+      event: {
+        listen: <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void>;
+      };
+    };
+  }
+}
+
+const invoke = window.__TAURI__?.core?.invoke;
+const listen = window.__TAURI__?.event?.listen;
 
 interface Config {
   configured: boolean;
@@ -14,6 +28,12 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: Date;
+}
+
+interface InstallProgress {
+  stage: string;
+  percent: number;
+  message: string;
 }
 
 // State
@@ -31,6 +51,7 @@ let isLoading = false;
 // DOM Elements
 const setupView = document.getElementById('setup-view')!;
 const manualSetupView = document.getElementById('manual-setup-view')!;
+const installView = document.getElementById('install-view')!;
 const chatView = document.getElementById('chat-view')!;
 const agentsView = document.getElementById('agents-view')!;
 const channelsView = document.getElementById('channels-view')!;
@@ -44,7 +65,7 @@ const chatEmpty = document.getElementById('chat-empty')!;
 const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement;
 const chatSend = document.getElementById('chat-send') as HTMLButtonElement;
 
-const allViews = [setupView, manualSetupView, chatView, agentsView, channelsView, memoryView, cronView, settingsView];
+const allViews = [setupView, manualSetupView, installView, chatView, agentsView, channelsView, memoryView, cronView, settingsView].filter(Boolean);
 
 // Navigation
 document.querySelectorAll('.nav-item').forEach((item) => {
@@ -55,86 +76,145 @@ document.querySelectorAll('.nav-item').forEach((item) => {
 });
 
 function switchView(viewName: string) {
-  // Don't allow navigation if not configured (except settings)
   if (!config.configured && viewName !== 'settings') {
     return;
   }
 
-  // Update nav
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.classList.toggle('active', item.getAttribute('data-view') === viewName);
   });
 
-  // Hide all views
-  allViews.forEach((v) => v.classList.remove('active'));
+  allViews.forEach((v) => v?.classList.remove('active'));
 
-  // Show selected view
   switch (viewName) {
     case 'chat':
-      chatView.classList.add('active');
+      chatView?.classList.add('active');
       break;
     case 'agents':
-      agentsView.classList.add('active');
+      agentsView?.classList.add('active');
       break;
     case 'channels':
-      channelsView.classList.add('active');
+      channelsView?.classList.add('active');
       break;
     case 'memory':
-      memoryView.classList.add('active');
+      memoryView?.classList.add('active');
       break;
     case 'cron':
-      cronView.classList.add('active');
+      cronView?.classList.add('active');
       break;
     case 'settings':
-      settingsView.classList.add('active');
+      settingsView?.classList.add('active');
       syncSettingsForm();
       break;
   }
 }
 
-function showSetup() {
-  allViews.forEach((v) => v.classList.remove('active'));
-  setupView.classList.add('active');
-}
-
-function showManualSetup() {
-  allViews.forEach((v) => v.classList.remove('active'));
-  manualSetupView.classList.add('active');
+function showView(viewId: string) {
+  allViews.forEach((v) => v?.classList.remove('active'));
+  document.getElementById(viewId)?.classList.add('active');
 }
 
 // Setup handlers
 document.getElementById('setup-detect')?.addEventListener('click', async () => {
   statusText.textContent = 'Detecting...';
   
-  // Try to find config file and connect
-  const status = await getGatewayStatus();
-  
-  if (status.running) {
-    // Gateway found! Try to load token from default location
-    config.configured = true;
-    config.gateway.url = 'http://localhost:5757';
-    saveConfig();
+  try {
+    // Check if OpenClaw is installed
+    const installed = invoke ? await invoke<boolean>('check_openclaw_installed') : false;
     
-    statusDot.classList.add('connected');
-    statusText.textContent = 'Connected';
+    if (installed) {
+      // Get the token
+      const token = invoke ? await invoke<string | null>('get_gateway_token') : null;
+      
+      if (token) {
+        config.configured = true;
+        config.gateway.url = 'http://localhost:5757';
+        config.gateway.token = token;
+        saveConfig();
+        
+        // Start gateway if not running
+        if (invoke) {
+          await invoke('start_gateway');
+        }
+        
+        // Wait a moment for gateway to start
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        await checkGatewayStatus();
+        switchView('chat');
+        return;
+      }
+    }
     
-    switchView('chat');
-  } else {
-    alert('No gateway detected. Make sure OpenClaw is running, or use Manual Setup.');
+    // Not installed - show install view
+    showView('install-view');
+    
+  } catch (error) {
+    console.error('Detection error:', error);
+    alert('Could not detect OpenClaw. Try manual setup or install.');
   }
 });
 
 document.getElementById('setup-manual')?.addEventListener('click', () => {
-  showManualSetup();
+  showView('manual-setup-view');
 });
 
 document.getElementById('setup-new')?.addEventListener('click', () => {
-  // Open OpenClaw docs in browser
-  window.open('https://docs.openclaw.ai/getting-started', '_blank');
+  showView('install-view');
 });
 
 document.getElementById('gateway-back')?.addEventListener('click', () => {
-  showSetup();
+  showView('setup-view');
+});
+
+document.getElementById('install-back')?.addEventListener('click', () => {
+  showView('setup-view');
+});
+
+// Install OpenClaw
+document.getElementById('start-install')?.addEventListener('click', async () => {
+  const progressBar = document.getElementById('install-progress-bar') as HTMLElement;
+  const progressText = document.getElementById('install-progress-text') as HTMLElement;
+  const installBtn = document.getElementById('start-install') as HTMLButtonElement;
+  
+  installBtn.disabled = true;
+  installBtn.textContent = 'Installing...';
+  
+  try {
+    // Listen for progress events
+    if (listen) {
+      await listen<InstallProgress>('install-progress', (event) => {
+        const { percent, message } = event.payload;
+        if (progressBar) progressBar.style.width = `${percent}%`;
+        if (progressText) progressText.textContent = message;
+      });
+    }
+    
+    // Start installation
+    if (invoke) {
+      await invoke('install_openclaw');
+    }
+    
+    // Get the token after install
+    const token = invoke ? await invoke<string | null>('get_gateway_token') : null;
+    
+    if (token) {
+      config.configured = true;
+      config.gateway.url = 'http://localhost:5757';
+      config.gateway.token = token;
+      saveConfig();
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await checkGatewayStatus();
+      switchView('chat');
+    }
+    
+  } catch (error) {
+    console.error('Install error:', error);
+    if (progressText) progressText.textContent = `Error: ${error}`;
+    installBtn.disabled = false;
+    installBtn.textContent = 'Retry Installation';
+  }
 });
 
 // Gateway form
@@ -145,46 +225,58 @@ document.getElementById('gateway-form')?.addEventListener('submit', async (e) =>
   const token = (document.getElementById('gateway-token') as HTMLInputElement).value;
   
   // Test connection
-  setGatewayConfig(url, token);
-  const status = await getGatewayStatus();
-  
-  if (status.running) {
-    config.configured = true;
-    config.gateway = { url, token };
-    saveConfig();
+  try {
+    const response = await fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(3000),
+    });
     
-    statusDot.classList.add('connected');
-    statusText.textContent = 'Connected';
-    
-    switchView('chat');
-  } else {
+    if (response.ok) {
+      config.configured = true;
+      config.gateway = { url, token };
+      saveConfig();
+      
+      statusDot.classList.add('connected');
+      statusText.textContent = 'Connected';
+      
+      switchView('chat');
+    } else {
+      throw new Error('Gateway not responding');
+    }
+  } catch (error) {
     alert('Could not connect to gateway. Check URL and try again.');
   }
 });
 
 // Settings Form
 function syncSettingsForm() {
-  (document.getElementById('settings-gateway-url') as HTMLInputElement).value = config.gateway.url;
-  (document.getElementById('settings-gateway-token') as HTMLInputElement).value = config.gateway.token;
+  const urlInput = document.getElementById('settings-gateway-url') as HTMLInputElement;
+  const tokenInput = document.getElementById('settings-gateway-token') as HTMLInputElement;
+  if (urlInput) urlInput.value = config.gateway.url;
+  if (tokenInput) tokenInput.value = config.gateway.token;
 }
 
 document.getElementById('settings-save-gateway')?.addEventListener('click', async () => {
   const url = (document.getElementById('settings-gateway-url') as HTMLInputElement).value;
   const token = (document.getElementById('settings-gateway-token') as HTMLInputElement).value;
   
-  setGatewayConfig(url, token);
-  const status = await getGatewayStatus();
-  
-  if (status.running) {
-    config.gateway = { url, token };
-    saveConfig();
+  try {
+    const response = await fetch(`${url}/health`, {
+      signal: AbortSignal.timeout(3000),
+    });
     
-    statusDot.classList.add('connected');
-    statusDot.classList.remove('error');
-    statusText.textContent = 'Connected';
-    
-    alert('Settings saved!');
-  } else {
+    if (response.ok) {
+      config.gateway = { url, token };
+      saveConfig();
+      
+      statusDot.classList.add('connected');
+      statusDot.classList.remove('error');
+      statusText.textContent = 'Connected';
+      
+      alert('Settings saved!');
+    } else {
+      throw new Error('Not OK');
+    }
+  } catch {
     alert('Could not connect to gateway with these settings.');
   }
 });
@@ -199,45 +291,41 @@ function loadConfig() {
   if (saved) {
     try {
       config = JSON.parse(saved);
-      setGatewayConfig(config.gateway.url, config.gateway.token);
     } catch {
-      // Invalid config, use defaults
+      // Invalid config
     }
   }
 }
 
 // Chat functionality
-chatSend.addEventListener('click', sendMessage);
-chatInput.addEventListener('keydown', (e) => {
+chatSend?.addEventListener('click', sendMessage);
+chatInput?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
     sendMessage();
   }
 });
 
-// Auto-resize textarea
-chatInput.addEventListener('input', () => {
+chatInput?.addEventListener('input', () => {
   chatInput.style.height = 'auto';
   chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
 });
 
-// New chat
 document.getElementById('new-chat-btn')?.addEventListener('click', () => {
   messages = [];
   renderMessages();
 });
 
 async function sendMessage() {
-  const content = chatInput.value.trim();
+  const content = chatInput?.value.trim();
   if (!content || isLoading) return;
 
-  // Add user message
   addMessage({ role: 'user', content, timestamp: new Date() });
-  chatInput.value = '';
-  chatInput.style.height = 'auto';
+  if (chatInput) chatInput.value = '';
+  if (chatInput) chatInput.style.height = 'auto';
 
   isLoading = true;
-  chatSend.disabled = true;
+  if (chatSend) chatSend.disabled = true;
   showLoading();
 
   try {
@@ -254,7 +342,7 @@ async function sendMessage() {
     });
   } finally {
     isLoading = false;
-    chatSend.disabled = false;
+    if (chatSend) chatSend.disabled = false;
   }
 }
 
@@ -265,15 +353,14 @@ function addMessage(message: Message) {
 
 function renderMessages() {
   if (messages.length === 0) {
-    chatEmpty.style.display = 'flex';
+    if (chatEmpty) chatEmpty.style.display = 'flex';
     return;
   }
 
-  chatEmpty.style.display = 'none';
+  if (chatEmpty) chatEmpty.style.display = 'none';
 
-  // Clear and re-render
-  const existingMessages = chatMessages.querySelectorAll('.message');
-  existingMessages.forEach((m) => m.remove());
+  const existingMessages = chatMessages?.querySelectorAll('.message');
+  existingMessages?.forEach((m) => m.remove());
 
   messages.forEach((msg) => {
     const div = document.createElement('div');
@@ -289,14 +376,14 @@ function renderMessages() {
 
     div.appendChild(content);
     div.appendChild(time);
-    chatMessages.appendChild(div);
+    chatMessages?.appendChild(div);
   });
 
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function showLoading() {
-  chatEmpty.style.display = 'none';
+  if (chatEmpty) chatEmpty.style.display = 'none';
   const loadingDiv = document.createElement('div');
   loadingDiv.className = 'message assistant';
   loadingDiv.id = 'loading-message';
@@ -309,82 +396,64 @@ function showLoading() {
       </div>
     </div>
   `;
-  chatMessages.appendChild(loadingDiv);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  chatMessages?.appendChild(loadingDiv);
+  if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function hideLoading() {
-  const loading = document.getElementById('loading-message');
-  if (loading) loading.remove();
+  document.getElementById('loading-message')?.remove();
 }
 
 async function callGateway(userMessage: string): Promise<string> {
-  // Call gateway API
-  const response = await fetch(`${config.gateway.url}/api/v1/chat`, {
+  // Try the webchat endpoint first
+  const response = await fetch(`${config.gateway.url}/webchat/send`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.gateway.token}`,
     },
     body: JSON.stringify({
       message: userMessage,
-      history: messages.slice(-10).map((m) => ({
-        role: m.role,
-        content: m.content,
-      })),
     }),
   });
 
   if (!response.ok) {
-    // Try webchat endpoint
-    const webchatResponse = await fetch(`${config.gateway.url}/webchat/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        message: userMessage,
-      }),
-    });
-
-    if (!webchatResponse.ok) {
-      throw new Error(`Gateway error: ${response.status}`);
-    }
-
-    const data = await webchatResponse.json();
-    return data.response || data.message || 'No response';
+    throw new Error(`Gateway error: ${response.status}`);
   }
 
   const data = await response.json();
   return data.response || data.message || data.content || 'No response';
 }
 
-// Gateway status check
 async function checkGatewayStatus() {
-  const status = await getGatewayStatus();
-  
-  if (status.running) {
-    statusDot.classList.add('connected');
-    statusDot.classList.remove('error');
-    statusText.textContent = 'Connected';
-  } else {
-    statusDot.classList.remove('connected');
-    statusDot.classList.add('error');
-    statusText.textContent = 'Disconnected';
+  try {
+    const response = await fetch(`${config.gateway.url}/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    
+    if (response.ok) {
+      statusDot?.classList.add('connected');
+      statusDot?.classList.remove('error');
+      if (statusText) statusText.textContent = 'Connected';
+    } else {
+      throw new Error('Not OK');
+    }
+  } catch {
+    statusDot?.classList.remove('connected');
+    statusDot?.classList.add('error');
+    if (statusText) statusText.textContent = 'Disconnected';
   }
 }
 
 // Initialize
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   loadConfig();
 
   if (config.configured) {
     switchView('chat');
     checkGatewayStatus();
   } else {
-    showSetup();
+    showView('setup-view');
   }
 
-  // Periodic status check
   setInterval(checkGatewayStatus, 10000);
 });

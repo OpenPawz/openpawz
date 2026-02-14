@@ -5,6 +5,10 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "opener:default",
+    "shell:allow-spawn",
+    "shell:allow-execute",
+    "fs:default",
+    "process:default"
   ]
 }
