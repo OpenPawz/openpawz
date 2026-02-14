@@ -1769,34 +1769,24 @@ async function loadMemoryPalace() {
       // Show setup banner
       if (banner) banner.style.display = 'flex';
       if (configWritten) {
-        // Config is written but gateway hasn't picked it up — need restart
-        console.log('[memory] Config written but plugin not active — gateway restart needed');
+        // Config is written but gateway hasn't picked it up or plugin failed
+        // Show the form so users can update their settings, plus a restart note
+        console.log('[memory] Config written but plugin not active — show form + restart option');
         const progressEl = $('palace-progress-text');
         const progressDiv = $('palace-install-progress');
         if (progressEl && progressDiv) {
           progressDiv.style.display = '';
-          progressEl.textContent = 'Memory is configured but needs a gateway restart to activate.';
+          progressEl.textContent = 'Memory is configured but not active. Update settings or restart the gateway.';
         }
-        const btn = $('palace-install-btn') as HTMLButtonElement | null;
-        if (btn) {
-          btn.textContent = 'Restart Gateway';
-          btn.onclick = async () => {
-            btn.disabled = true;
-            btn.textContent = 'Restarting…';
-            try {
-              await invoke?.('stop_gateway');
-              await new Promise(r => setTimeout(r, 4000));
-              await invoke?.('start_gateway', { port: null });
-              await new Promise(r => setTimeout(r, 5000));
-              _palaceInitialized = false;
-              await loadMemoryPalace();
-              loadMemory();
-            } catch (e) {
-              if (progressEl) progressEl.textContent = `Restart failed: ${e}`;
-              btn.disabled = false;
-              btn.textContent = 'Retry';
+        // Pre-fill the base URL from settings if available
+        if (invoke) {
+          try {
+            const existingUrl = await invoke<string | null>('get_embedding_base_url');
+            const baseUrlInput = $('palace-base-url') as HTMLInputElement | null;
+            if (existingUrl && baseUrlInput && !baseUrlInput.value) {
+              baseUrlInput.value = existingUrl;
             }
-          };
+          } catch { /* ignore */ }
         }
       }
     } else if (!_palaceAvailable && _palaceSkipped) {
@@ -1817,9 +1807,12 @@ async function loadMemoryPalace() {
     }
   }
 
-  // Load memory stats + sidebar
-  await loadPalaceStats();
-  await loadPalaceSidebar();
+  // Only load stats + sidebar when memory is actually available
+  // (don't call CLI commands when plugin is misconfigured — they can hang)
+  if (_palaceAvailable) {
+    await loadPalaceStats();
+    await loadPalaceSidebar();
+  }
 }
 
 function initPalaceInstall() {

@@ -2,6 +2,7 @@ use std::process::Command;
 use std::path::PathBuf;
 use std::fs;
 use std::net::TcpStream;
+use std::time::{Duration, Instant};
 use log::{info, warn, error};
 use tauri::{Emitter, Manager};
 
@@ -717,6 +718,41 @@ fn get_embedding_base_url() -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Run a command with a timeout. Returns stdout on success.
+fn run_with_timeout(mut cmd: Command, timeout_secs: u64) -> Result<String, String> {
+    let mut child = cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn command: {}", e))?;
+
+    let start = Instant::now();
+    let timeout = Duration::from_secs(timeout_secs);
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = child.stdout.take()
+                    .map(|mut s| { let mut buf = String::new(); std::io::Read::read_to_string(&mut s, &mut buf).ok(); buf })
+                    .unwrap_or_default();
+                let stderr = child.stderr.take()
+                    .map(|mut s| { let mut buf = String::new(); std::io::Read::read_to_string(&mut s, &mut buf).ok(); buf })
+                    .unwrap_or_default();
+                if !status.success() {
+                    return Err(format!("Command failed: {}", stderr.trim()));
+                }
+                return Ok(stdout.trim().to_string());
+            }
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    return Err("Command timed out".to_string());
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            Err(e) => return Err(format!("Wait failed: {}", e)),
+        }
+    }
+}
+
 /// Run `openclaw ltm stats` — returns the memory count as a string.
 #[tauri::command]
 fn memory_stats() -> Result<String, String> {
@@ -735,15 +771,7 @@ fn memory_stats() -> Result<String, String> {
     cmd.args(["ltm", "stats"]);
     if let Some(ref url) = base_url { cmd.env("OPENAI_BASE_URL", url); }
 
-    let output = cmd.output()
-        .map_err(|e| format!("Failed to run openclaw ltm stats: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    if !output.status.success() {
-        return Err(format!("ltm stats failed: {}", stderr));
-    }
-    Ok(stdout.trim().to_string())
+    run_with_timeout(cmd, 10)
 }
 
 /// Run `openclaw ltm search <query>` — returns JSON array of memories.
@@ -765,15 +793,7 @@ fn memory_search(query: String, limit: Option<u32>) -> Result<String, String> {
     cmd.args(["ltm", "search", &query, "--limit", &limit_str]);
     if let Some(ref url) = base_url { cmd.env("OPENAI_BASE_URL", url); }
 
-    let output = cmd.output()
-        .map_err(|e| format!("Failed to run openclaw ltm search: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    if !output.status.success() {
-        return Err(format!("ltm search failed: {}", stderr));
-    }
-    Ok(stdout.trim().to_string())
+    run_with_timeout(cmd, 15)
 }
 
 /// Repair openclaw.json by removing any cruft from previous Paw versions.
