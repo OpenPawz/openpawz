@@ -1470,7 +1470,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* ═══ IDE / Build View ═══ */
-.ide-view {
+.ide-view.active {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -1699,7 +1699,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .ide-chat-input:focus { outline: none; border-color: var(--accent); }
 
 /* ═══ Studio Views (Create + Research) ═══ */
-.studio-view {
+.studio-view.active {
   display: flex;
   height: 100%;
   overflow: hidden;
@@ -1898,7 +1898,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* ═══ Mail Client View ═══ */
-.mail-client-view {
+.mail-client-view.active {
   display: flex;
   height: 100%;
   overflow: hidden;
@@ -2428,7 +2428,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 
 /* ═══ Memory Split View ═══ */
-.memory-split-view {
+.memory-split-view.active {
   display: flex;
   height: 100%;
   overflow: hidden;
