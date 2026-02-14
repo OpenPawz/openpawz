@@ -24,11 +24,16 @@ export function getGatewayToken(): string {
 export async function probeHealth(): Promise<boolean> {
   if (!gatewayUrl) return false;
   try {
+    // Use a simple GET without custom headers to avoid CORS preflight (OPTIONS).
+    // The gateway's HTTP endpoint may return 405 for OPTIONS requests.
     const response = await fetch(`${gatewayUrl}/health`, {
-      headers: gatewayToken ? { Authorization: `Bearer ${gatewayToken}` } : {},
+      method: 'GET',
+      mode: 'no-cors',
       signal: AbortSignal.timeout(3000),
     });
-    return response.ok;
+    // In no-cors mode, response.type is 'opaque' and status is 0,
+    // but a successful fetch means the server is reachable.
+    return response.ok || response.type === 'opaque';
   } catch {
     return false;
   }
