@@ -2039,11 +2039,32 @@ function initPalaceInstall() {
     if (apiKeyInput) apiKeyInput.style.borderColor = '';
 
     btn.disabled = true;
-    btn.textContent = 'Saving…';
+    btn.textContent = 'Testing connection…';
     if (progressDiv) progressDiv.style.display = '';
+    if (progressText) progressText.textContent = 'Testing embedding endpoint…';
 
     try {
-      // Write config to openclaw.json (pure config — no install needed)
+      // Step 1: Test the embedding connection before saving
+      try {
+        await invoke('test_embedding_connection', {
+          apiKey,
+          baseUrl: baseUrl || null,
+          model: modelName || null,
+          apiVersion: apiVersion || null,
+        });
+        if (progressText) progressText.textContent = 'Connection test passed ✓ Saving configuration…';
+      } catch (testErr: any) {
+        // Connection test failed — show the error and let user fix
+        const errMsg = typeof testErr === 'string' ? testErr : testErr?.message || String(testErr);
+        if (progressText) progressText.textContent = `Connection test failed: ${errMsg}`;
+        btn.textContent = 'Retry';
+        btn.disabled = false;
+        return;
+      }
+
+      btn.textContent = 'Saving…';
+
+      // Step 2: Write config to openclaw.json
       await invoke('enable_memory_plugin', {
         apiKey,
         baseUrl: baseUrl || null,

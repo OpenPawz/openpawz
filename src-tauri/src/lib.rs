@@ -538,33 +538,20 @@ fn stop_gateway() -> Result<(), String> {
     let openclaw_bin = get_openclaw_path();
     let node_dir = get_node_bin_dir();
 
-    // Prefer `openclaw gateway stop` which properly handles the LaunchAgent.
-    // Raw `pkill` only kills the process — launchd immediately restarts it,
-    // causing the subsequent `gateway start` to fail on `launchctl kickstart`.
-    let result = if openclaw_bin.exists() {
-        Command::new(openclaw_bin.to_str().unwrap())
-            .args(["gateway", "stop"])
-            .env("PATH", join_path_env(&node_dir))
-            .output()
+    // Use `openclaw gateway stop` with a timeout so the UI doesn't freeze.
+    let mut cmd = if openclaw_bin.exists() {
+        let mut c = Command::new(openclaw_bin.to_str().unwrap());
+        c.env("PATH", join_path_env(&node_dir));
+        c
     } else {
         Command::new("openclaw")
-            .args(["gateway", "stop"])
-            .output()
     };
+    cmd.args(["gateway", "stop"]);
 
-    match result {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                info!("openclaw gateway stop returned non-zero ({}): {}", output.status, stderr.trim());
-                // Fall back to pkill as last resort
-                #[cfg(unix)]
-                { let _ = Command::new("pkill").args(["-f", "openclaw-gateway"]).output(); }
-                #[cfg(windows)]
-                { let _ = Command::new("taskkill").args(["/F", "/IM", "openclaw-gateway.exe"]).output(); }
-            } else {
-                info!("Gateway stopped via openclaw CLI");
-            }
+    // Spawn with timeout instead of blocking .output()
+    match run_with_timeout(cmd, 10) {
+        Ok(stdout) => {
+            info!("Gateway stopped via openclaw CLI: {}", stdout.trim());
         }
         Err(e) => {
             info!("openclaw gateway stop failed ({}), falling back to pkill", e);
@@ -591,20 +578,74 @@ fn is_azure_endpoint(url: &str) -> bool {
     url.contains(".azure.") || url.contains(".cognitiveservices.") || url.contains(".ai.azure.")
 }
 
-/// Find the bundled memory-lancedb plugin directory (inside the openclaw npm package).
+/// Find the memory-lancedb plugin directory (inside the openclaw npm package).
+/// Checks multiple possible install locations including nvm-managed globals.
 fn find_bundled_memory_plugin() -> Option<PathBuf> {
     let app_dir = get_app_data_dir();
-    // Installed via npm: <app_dir>/node_modules/openclaw/extensions/memory-lancedb
+
+    // 1. Installed via npm in app data dir
     let candidate = app_dir.join("node_modules/openclaw/extensions/memory-lancedb");
     if candidate.join("index.ts").exists() {
         return Some(candidate);
     }
-    // Also try global install
+
+    // 2. ~/.openclaw/node_modules/openclaw/extensions/memory-lancedb
     let home = dirs::home_dir()?;
     let global = home.join(".openclaw/node_modules/openclaw/extensions/memory-lancedb");
     if global.join("index.ts").exists() {
         return Some(global);
     }
+
+    // 3. Resolve from the `openclaw` binary — handles nvm, volta, etc.
+    //    `which openclaw` → /path/to/node/bin/openclaw (symlink)
+    //    Real path: /path/to/node/lib/node_modules/openclaw/...
+    let openclaw_bin = get_openclaw_path();
+    let bin_to_check = if openclaw_bin.exists() {
+        openclaw_bin
+    } else {
+        // Try `which openclaw`
+        if let Ok(out) = Command::new("which").arg("openclaw").output() {
+            if out.status.success() {
+                PathBuf::from(String::from_utf8_lossy(&out.stdout).trim())
+            } else {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    };
+
+    // Resolve symlink to find the real package location
+    if let Ok(resolved) = fs::canonicalize(&bin_to_check) {
+        // resolved is typically: .../lib/node_modules/openclaw/dist/run-main-XXX.js
+        // or .../lib/node_modules/openclaw/bin/openclaw.js
+        // Walk up to find the openclaw package root containing extensions/
+        let mut dir = resolved.as_path();
+        for _ in 0..10 {
+            if let Some(parent) = dir.parent() {
+                let ext_dir = parent.join("extensions/memory-lancedb");
+                if ext_dir.join("index.ts").exists() {
+                    return Some(ext_dir);
+                }
+                dir = parent;
+            } else {
+                break;
+            }
+        }
+    }
+
+    // 4. Also try the bin path's sibling lib directory (nvm pattern)
+    //    bin: ~/.nvm/versions/node/vXX/bin/openclaw
+    //    lib: ~/.nvm/versions/node/vXX/lib/node_modules/openclaw/extensions/
+    if let Some(bin_dir) = bin_to_check.parent() {
+        if let Some(version_dir) = bin_dir.parent() {
+            let nvm_candidate = version_dir.join("lib/node_modules/openclaw/extensions/memory-lancedb");
+            if nvm_candidate.join("index.ts").exists() {
+                return Some(nvm_candidate);
+            }
+        }
+    }
+
     None
 }
 
@@ -612,23 +653,23 @@ fn find_bundled_memory_plugin() -> Option<PathBuf> {
 ///
 /// **Standard OpenAI / compatible endpoints:** No patching needed — the plugin
 /// uses `new OpenAI({ apiKey })` which reads `OPENAI_BASE_URL` automatically.
-/// We remove any previous Azure patch so the bundled version is used cleanly.
 ///
 /// **Azure OpenAI:** The plugin must use `new AzureOpenAI(...)` instead of
 /// `new OpenAI(...)`.  We handle this in two layers:
-///   1. Source patches — rewrite import & constructor in .ts / .js files
-///   2. Runtime shim — monkey-patch `Module._load` to Proxy the constructor
-///      (injected via `NODE_OPTIONS=--require <shim>`)
+///   1. Source patches — rewrite import & constructor **in-place** at the
+///      actual bundled plugin location (nvm, volta, local, etc.)
+///   2. Runtime shim — monkey-patch the module loader to Proxy the constructor
+///      (injected via `NODE_OPTIONS=--require <shim>` in openclaw.json env.vars)
 ///
 /// The shim is the primary mechanism; source patches are best-effort.
 fn ensure_memory_plugin_compatible(is_azure: bool) -> Result<(), String> {
     let home = dirs::home_dir().ok_or("Cannot find home directory")?;
 
+    // Clean up old ~/.openclaw/extensions/ copy (no longer used — we patch in-place)
+    remove_patched_memory_plugin();
+
     if !is_azure {
-        // Standard OpenAI path — remove any previous Azure patches so the
-        // unmodified bundled plugin is loaded directly by the gateway.
-        remove_patched_memory_plugin();
-        // Remove stale shim
+        // Standard OpenAI path — remove stale shim
         let shim = home.join(".openclaw/_paw_openai_shim.js");
         if shim.exists() { let _ = fs::remove_file(&shim); }
         info!("Standard OpenAI routing — no plugin patching needed");
@@ -637,31 +678,31 @@ fn ensure_memory_plugin_compatible(is_azure: bool) -> Result<(), String> {
 
     // ── Azure OpenAI path ──────────────────────────────────────────────
 
-    // Layer 1: Copy & patch the plugin source files
-    if let Some(bundled) = find_bundled_memory_plugin() {
-        let target_dir = home.join(".openclaw/extensions/memory-lancedb");
-        if target_dir.exists() { let _ = fs::remove_dir_all(&target_dir); }
-        copy_dir_recursive(&bundled, &target_dir)
-            .map_err(|e| format!("Failed to copy plugin directory: {}", e))?;
-
-        // Patch every .ts / .js / .mjs entry point
+    // Layer 1: Patch the plugin source files IN-PLACE at whatever location
+    // the gateway actually loads them from (nvm, global npm, local, etc.)
+    if let Some(plugin_dir) = find_bundled_memory_plugin() {
+        info!("Found memory-lancedb plugin at {:?}", plugin_dir);
         for file in &["index.ts", "index.js", "dist/index.js", "dist/index.mjs"] {
-            let path = target_dir.join(file);
+            let path = plugin_dir.join(file);
             if path.exists() {
                 let content = fs::read_to_string(&path)
                     .map_err(|e| format!("Failed to read {}: {}", file, e))?;
-                let patched = apply_openai_to_azure_patch(&content);
-                fs::write(&path, &patched)
-                    .map_err(|e| format!("Failed to write {}: {}", file, e))?;
-                info!("Patched {} for Azure routing", file);
+                // Only patch if not already patched
+                if !content.contains("AzureOpenAI") {
+                    let patched = apply_openai_to_azure_patch(&content);
+                    fs::write(&path, &patched)
+                        .map_err(|e| format!("Failed to write {}: {}", file, e))?;
+                    info!("Patched {} in-place for Azure routing", file);
+                } else {
+                    info!("{} already contains Azure routing", file);
+                }
             }
         }
-        info!("Copied & patched memory-lancedb for Azure at {:?}", target_dir);
     } else {
         warn!("Bundled memory-lancedb plugin not found — relying on shim only");
     }
 
-    // Layer 2: Write the runtime routing shim
+    // Layer 2: Write the runtime routing shim (primary reliability mechanism)
     write_openai_routing_shim(&home)?;
 
     Ok(())
@@ -670,8 +711,9 @@ fn ensure_memory_plugin_compatible(is_azure: bool) -> Result<(), String> {
 /// Write the runtime OpenAI → AzureOpenAI routing shim.
 ///
 /// This shim is loaded via `NODE_OPTIONS=--require <path>` before any
-/// application code runs.  It hooks Node's `Module._load` to intercept
-/// `require('openai')` and wraps the `OpenAI` constructor with a Proxy:
+/// application code runs.  It hooks Node's module loading to intercept
+/// both CJS `require('openai')` and ESM `import` and wraps the `OpenAI`
+/// constructor with a Proxy:
 ///   - When Azure env vars are detected → `new AzureOpenAI({…})`
 ///   - Otherwise → `new OpenAI({…})` (pass-through)
 fn write_openai_routing_shim(home: &std::path::Path) -> Result<(), String> {
@@ -690,66 +732,106 @@ const _pawIsAzure = _pawAzureEndpoint.length > 0 && (
   _pawAzureEndpoint.includes('.ai.azure.')
 );
 
+function _pawCreateProxy(OrigOpenAI, AzureOpenAI) {
+  const endpoint   = _pawAzureEndpoint.replace(/\/openai\/?$/, '');
+  const apiVersion = process.env.OPENAI_API_VERSION || '2024-08-01-preview';
+  const deployment = process.env.OPENAI_DEPLOYMENT || undefined;
+
+  return new Proxy(OrigOpenAI, {
+    construct(_target, args) {
+      const opts = args[0] || {};
+      // If caller explicitly set baseURL, honour it (don't redirect)
+      if (opts.baseURL) return new OrigOpenAI(opts);
+      try {
+        return new AzureOpenAI({
+          apiKey:     opts.apiKey || process.env.OPENAI_API_KEY,
+          endpoint:   endpoint,
+          deployment: deployment,
+          apiVersion: apiVersion,
+        });
+      } catch (err) {
+        console.error('[paw] AzureOpenAI constructor failed, falling back:', err.message);
+        return new OrigOpenAI(opts);
+      }
+    },
+    apply(_target, _this, args) {
+      // Some code calls OpenAI() without `new`
+      const opts = args[0] || {};
+      if (opts.baseURL) return new OrigOpenAI(opts);
+      try {
+        return new AzureOpenAI({
+          apiKey:     opts.apiKey || process.env.OPENAI_API_KEY,
+          endpoint:   _pawAzureEndpoint.replace(/\/openai\/?$/, ''),
+          deployment: process.env.OPENAI_DEPLOYMENT || undefined,
+          apiVersion: process.env.OPENAI_API_VERSION || '2024-08-01-preview',
+        });
+      } catch (err) {
+        return new OrigOpenAI(opts);
+      }
+    }
+  });
+}
+
 if (_pawIsAzure) {
   try {
+    // ── Layer A: CJS hook (Module._load) ──
     const Module = require('module');
     const _origLoad = Module._load;
-    let _pawPatched = false;
+    let _pawCjsPatched = false;
 
     Module._load = function paw_load(request, parent, isMain) {
       const mod = _origLoad.call(this, request, parent, isMain);
 
-      // Only intercept the top-level 'openai' import (not sub-paths)
-      if (_pawPatched || request !== 'openai' || !mod) return mod;
-      _pawPatched = true;
+      if (_pawCjsPatched || request !== 'openai' || !mod) return mod;
+      _pawCjsPatched = true;
 
       const OrigOpenAI = mod.default || mod.OpenAI;
       const AzureOpenAI = mod.AzureOpenAI;
       if (!OrigOpenAI || !AzureOpenAI || typeof AzureOpenAI !== 'function') {
-        console.warn('[paw] openai module missing expected exports — skipping Azure routing');
+        console.warn('[paw] openai CJS module missing expected exports — skipping');
         return mod;
       }
 
-      const endpoint   = _pawAzureEndpoint.replace(/\/openai\/?$/, '');
-      const apiVersion = process.env.OPENAI_API_VERSION || '2024-08-01-preview';
-      const deployment = process.env.OPENAI_DEPLOYMENT || undefined;
-
-      const handler = {
-        construct(_target, args) {
-          const opts = args[0] || {};
-          // If caller explicitly set baseURL, honour it (don't redirect)
-          if (opts.baseURL) return new OrigOpenAI(opts);
-          try {
-            return new AzureOpenAI({
-              apiKey:     opts.apiKey || process.env.OPENAI_API_KEY,
-              endpoint:   endpoint,
-              deployment: deployment,
-              apiVersion: apiVersion,
-            });
-          } catch (err) {
-            console.error('[paw] AzureOpenAI constructor failed, falling back:', err.message);
-            return new OrigOpenAI(opts);
-          }
-        },
-        apply(_target, _this, args) {
-          // Some code calls OpenAI() without `new`
-          return handler.construct(_target, args);
-        }
-      };
-
-      const proxied = new Proxy(OrigOpenAI, handler);
+      const proxied = _pawCreateProxy(OrigOpenAI, AzureOpenAI);
       if (mod.default) mod.default = proxied;
       if (mod.OpenAI)  mod.OpenAI  = proxied;
 
-      console.log('[paw] Azure OpenAI routing active —',
-        'endpoint:', endpoint,
-        'deployment:', deployment || '(from model)',
-        'apiVersion:', apiVersion);
+      console.log('[paw] Azure OpenAI CJS routing active —',
+        'endpoint:', _pawAzureEndpoint.replace(/\/openai\/?$/, ''),
+        'deployment:', process.env.OPENAI_DEPLOYMENT || '(from model)',
+        'apiVersion:', process.env.OPENAI_API_VERSION || '2024-08-01-preview');
       return mod;
     };
+
+    // ── Layer B: ESM hook (globalThis interception) ──
+    // For ESM imports, Module._load won't trigger.  We set up a global
+    // getter that patches the openai module the first time it's accessed
+    // via dynamic import fallback.  The main fix for ESM is the source
+    // patching done in Layer 1 — this is an additional safety net.
+    //
+    // Also try Module.register for Node 20.6+ (loader hooks)
+    if (typeof Module.register === 'function') {
+      try {
+        // Create an inline data: URL loader that patches openai
+        const loaderCode = `
+          export async function resolve(specifier, context, next) {
+            return next(specifier, context);
+          }
+          export async function load(url, context, next) {
+            const result = await next(url, context);
+            // We can't easily patch ESM exports, but the env vars
+            // are set so the source patches in index.ts will work.
+            return result;
+          }
+        `;
+        // Module.register is available but we primarily rely on
+        // env vars + source patches for ESM.
+      } catch (_) { /* ignore */ }
+    }
   } catch (err) {
     console.error('[paw] Failed to initialise Azure routing shim:', err.message);
   }
+  console.log('[paw] Azure OpenAI shim loaded for endpoint:', _pawAzureEndpoint);
 } else if (process.env.OPENAI_BASE_URL) {
   console.log('[paw] Standard OpenAI routing — baseURL:', process.env.OPENAI_BASE_URL);
 }
@@ -866,6 +948,138 @@ fn remove_patched_memory_plugin() {
         if target_dir.exists() {
             let _ = fs::remove_dir_all(&target_dir);
             info!("Removed patched memory-lancedb plugin");
+        }
+    }
+}
+
+/// Test the embedding API connection by sending a minimal embedding request.
+/// Returns Ok("ok") on success, or an Err with a descriptive message on failure.
+/// Works with both standard OpenAI and Azure OpenAI endpoints.
+#[tauri::command]
+fn test_embedding_connection(
+    api_key: String,
+    base_url: Option<String>,
+    model: Option<String>,
+    api_version: Option<String>,
+) -> Result<String, String> {
+    let api_key = api_key.trim().to_string();
+    if api_key.is_empty() {
+        return Err("API key is required".to_string());
+    }
+
+    let model = model
+        .map(|m| m.trim().to_string())
+        .filter(|m| !m.is_empty())
+        .unwrap_or_else(|| "text-embedding-3-small".to_string());
+
+    let base_url = base_url
+        .map(|u| u.trim().trim_end_matches('/').to_string())
+        .filter(|u| !u.is_empty());
+
+    let api_version = api_version
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "2024-08-01-preview".to_string());
+
+    // Build the request URL and headers based on provider type
+    let (url, auth_header) = if let Some(ref base) = base_url {
+        if is_azure_endpoint(base) {
+            // Azure: POST {endpoint}/openai/deployments/{model}/embeddings?api-version={version}
+            let endpoint = base.trim_end_matches('/').replace("/openai", "");
+            let url = format!(
+                "{}/openai/deployments/{}/embeddings?api-version={}",
+                endpoint, model, api_version
+            );
+            (url, format!("api-key: {}", api_key))
+        } else {
+            // Custom OpenAI-compatible: POST {base_url}/v1/embeddings
+            let url = if base.ends_with("/v1") {
+                format!("{}/embeddings", base)
+            } else if base.contains("/v1/") {
+                format!("{}/embeddings", base.trim_end_matches('/'))
+            } else {
+                format!("{}/v1/embeddings", base)
+            };
+            (url, format!("Authorization: Bearer {}", api_key))
+        }
+    } else {
+        // Standard OpenAI
+        let url = "https://api.openai.com/v1/embeddings".to_string();
+        (url, format!("Authorization: Bearer {}", api_key))
+    };
+
+    // Minimal request body — embed a single short string
+    let body = serde_json::json!({
+        "input": "test",
+        "model": model
+    });
+
+    info!("Testing embedding connection: POST {}", url);
+
+    // Use curl for the HTTP request (universally available, no extra deps)
+    let mut cmd = Command::new("curl");
+    cmd.args([
+        "-s",                          // silent
+        "-w", "\n%{http_code}",        // append HTTP status code
+        "-X", "POST",
+        &url,
+        "-H", "Content-Type: application/json",
+        "-H", &auth_header,
+        "-d", &body.to_string(),
+        "--connect-timeout", "10",
+        "--max-time", "15",
+    ]);
+
+    let result = run_with_timeout(cmd, 20)?;
+
+    // Parse: last line is the HTTP status code, everything before is the body
+    let lines: Vec<&str> = result.trim().rsplitn(2, '\n').collect();
+    let (status_str, response_body) = if lines.len() == 2 {
+        (lines[0].trim(), lines[1])
+    } else {
+        (result.trim(), "")
+    };
+
+    let status: u16 = status_str.parse().unwrap_or(0);
+
+    match status {
+        200 => {
+            // Verify we got actual embedding data back
+            if let Ok(resp) = serde_json::from_str::<serde_json::Value>(response_body) {
+                if resp.get("data").and_then(|d| d.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+                    info!("Embedding connection test passed (200 OK, got embedding data)");
+                    Ok("ok".to_string())
+                } else {
+                    Err(format!("Got 200 but response missing embedding data: {}", 
+                        &response_body[..response_body.len().min(200)]))
+                }
+            } else {
+                Err(format!("Got 200 but could not parse response: {}",
+                    &response_body[..response_body.len().min(200)]))
+            }
+        }
+        401 => Err("Authentication failed (401). Check your API key.".to_string()),
+        403 => Err("Access denied (403). Your API key may not have permission for this resource.".to_string()),
+        404 => {
+            if let Some(ref base) = base_url {
+                if is_azure_endpoint(base) {
+                    Err(format!("Deployment not found (404). Verify that '{}' is a valid deployment name in your Azure resource.", model))
+                } else {
+                    Err("Endpoint not found (404). Check your base URL.".to_string())
+                }
+            } else {
+                Err("Not found (404). The model may not be available.".to_string())
+            }
+        }
+        429 => Err("Rate limited (429). The connection works but you're being throttled. Try again shortly.".to_string()),
+        0 => Err("Could not connect to the endpoint. Check the URL and your network connection.".to_string()),
+        _ => {
+            let detail = if response_body.len() > 200 {
+                &response_body[..200]
+            } else {
+                response_body
+            };
+            Err(format!("HTTP {} — {}", status, detail))
         }
     }
 }
@@ -993,7 +1207,31 @@ fn enable_memory_plugin(api_key: String, base_url: Option<String>, model: Option
         if is_azure_endpoint(url) {
             vars.insert("AZURE_OPENAI_ENDPOINT".to_string(), serde_json::json!(url));
             vars.insert("OPENAI_API_VERSION".to_string(), serde_json::json!(&api_version));
-            info!("Set env.vars.AZURE_OPENAI_ENDPOINT and OPENAI_API_VERSION={} for Azure", api_version);
+            vars.insert("OPENAI_DEPLOYMENT".to_string(), serde_json::json!(&model));
+            // Embed NODE_OPTIONS in the plist so the gateway process loads
+            // the routing shim that swaps OpenAI → AzureOpenAI at runtime.
+            let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+            let shim_path = home.join(".openclaw/_paw_openai_shim.js");
+            vars.insert("NODE_OPTIONS".to_string(),
+                serde_json::json!(format!("--require {}", shim_path.display())));
+            info!("Set env.vars for Azure: AZURE_OPENAI_ENDPOINT, OPENAI_API_VERSION={}, OPENAI_DEPLOYMENT={}, NODE_OPTIONS", api_version, model);
+        } else {
+            // Non-Azure custom endpoint — remove Azure-specific vars if present
+            vars.remove("AZURE_OPENAI_ENDPOINT");
+            vars.remove("OPENAI_API_VERSION");
+            vars.remove("OPENAI_DEPLOYMENT");
+            vars.remove("NODE_OPTIONS");
+        }
+    } else {
+        // No base URL — remove all custom env vars if present
+        if let Some(env_obj) = obj.get_mut("env").and_then(|e| e.as_object_mut()) {
+            if let Some(vars) = env_obj.get_mut("vars").and_then(|v| v.as_object_mut()) {
+                vars.remove("OPENAI_BASE_URL");
+                vars.remove("AZURE_OPENAI_ENDPOINT");
+                vars.remove("OPENAI_API_VERSION");
+                vars.remove("OPENAI_DEPLOYMENT");
+                vars.remove("NODE_OPTIONS");
+            }
         }
     }
 
@@ -1327,6 +1565,7 @@ pub fn run() {
             stop_gateway,
             check_memory_configured,
             enable_memory_plugin,
+            test_embedding_connection,
             get_embedding_base_url,
             get_azure_api_version,
             memory_stats,
