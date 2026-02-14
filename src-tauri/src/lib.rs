@@ -431,38 +431,65 @@ fn start_gateway(port: Option<u16>) -> Result<(), String> {
     // Don't start if already running
     if is_gateway_running(p) {
         info!("Gateway already running on port {}, skipping start", p);
-    } else {
-        info!("Starting gateway (expected port {})...", p);
-
-        let openclaw_bin = get_openclaw_path();
-        let node_dir = get_node_bin_dir();
-
-        // Check if we need to inject OPENAI_BASE_URL for Azure/Foundry
-        let embedding_base_url = read_paw_settings()
-            .and_then(|s| s.get("embeddingBaseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()));
-        
-        // Try bundled openclaw first
-        if openclaw_bin.exists() {
-            let mut cmd = Command::new(openclaw_bin.to_str().unwrap());
-            cmd.args(["gateway", "start"])
-                .env("PATH", join_path_env(&node_dir));
-            if let Some(ref url) = embedding_base_url {
-                cmd.env("OPENAI_BASE_URL", url);
-                info!("Injecting OPENAI_BASE_URL={} into gateway env", url);
-            }
-            cmd.spawn()
-                .map_err(|e| format!("Failed to start gateway: {}", e))?;
-        } else {
-            // Fall back to system openclaw
-            let mut cmd = Command::new("openclaw");
-            cmd.args(["gateway", "start"]);
-            if let Some(ref url) = embedding_base_url {
-                cmd.env("OPENAI_BASE_URL", url);
-            }
-            cmd.spawn()
-                .map_err(|e| format!("Failed to start gateway: {}", e))?;
-        }
+        return Ok(());
     }
+
+    info!("Starting gateway (expected port {})...", p);
+
+    let openclaw_bin = get_openclaw_path();
+    let node_dir = get_node_bin_dir();
+
+    // Check if we need to inject OPENAI_BASE_URL for Azure/Foundry
+    let embedding_base_url = read_paw_settings()
+        .and_then(|s| s.get("embeddingBaseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()));
+
+    // On macOS, set the env var for the launchd user session so the
+    // LaunchAgent picks it up when gateway is started/restarted by launchd.
+    #[cfg(target_os = "macos")]
+    if let Some(ref url) = embedding_base_url {
+        info!("Setting OPENAI_BASE_URL={} via launchctl setenv", url);
+        let _ = Command::new("launchctl")
+            .args(["setenv", "OPENAI_BASE_URL", url])
+            .output();
+    }
+
+    let bin_str: String;
+    let path_env: String;
+
+    if openclaw_bin.exists() {
+        bin_str = openclaw_bin.to_str().unwrap().to_string();
+        path_env = join_path_env(&node_dir);
+    } else {
+        bin_str = "openclaw".to_string();
+        path_env = std::env::var("PATH").unwrap_or_default();
+    }
+
+    // Ensure the LaunchAgent plist is installed. After `openclaw gateway stop`
+    // unloads the service, `openclaw gateway start` fails with "service not
+    // loaded". Running install first re-registers the plist with launchd.
+    info!("Ensuring gateway LaunchAgent is installed...");
+    let install_result = Command::new(&bin_str)
+        .args(["gateway", "install"])
+        .env("PATH", &path_env)
+        .output();
+    match &install_result {
+        Ok(out) => {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let stderr = String::from_utf8_lossy(&out.stderr);
+            info!("gateway install exit={} stdout={} stderr={}", out.status, stdout.trim(), stderr.trim());
+        }
+        Err(e) => info!("gateway install failed to run: {}", e),
+    }
+
+    // Now start the service (launchctl kickstart)
+    let mut cmd = Command::new(&bin_str);
+    cmd.args(["gateway", "start"])
+        .env("PATH", &path_env);
+    if let Some(ref url) = embedding_base_url {
+        cmd.env("OPENAI_BASE_URL", url);
+    }
+    cmd.spawn()
+        .map_err(|e| format!("Failed to start gateway: {}", e))?;
 
     Ok(())
 }
