@@ -251,6 +251,7 @@ export interface CronListResult {
 export interface CronRunLogEntry {
   runId: string;
   jobId: string;
+  jobLabel?: string;
   startedAt: number;
   finishedAt?: number;
   status: string;

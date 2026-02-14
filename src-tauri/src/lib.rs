@@ -483,6 +483,7 @@ pub fn run() {
             ))
             .max_file_size(5_000_000) // 5MB max per log file
             .build())
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())

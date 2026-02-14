@@ -4,6 +4,8 @@
 import type { AppConfig, Message, InstallProgress, ChatMessage, Session } from './types';
 import { setGatewayConfig, probeHealth } from './api';
 import { gateway } from './gateway';
+import { initDb, listModes, saveMode, deleteMode, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, deleteProject } from './db';
+import type { AgentMode } from './db';
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -128,11 +130,17 @@ function switchView(viewName: string) {
       case 'channels': loadChannels(); break;
       case 'automations': loadCron(); break;
       case 'skills': loadSkills(); break;
-      case 'foundry': loadModels(); break;
+      case 'foundry': loadModels(); loadModes(); break;
       case 'memory': loadMemory(); break;
       case 'settings': syncSettingsForm(); loadGatewayConfig(); break;
       default: break;
     }
+  }
+  // Local-only views (no gateway needed)
+  switch (viewName) {
+    case 'content': loadContentDocs(); break;
+    case 'research': loadResearchProjects(); break;
+    default: break;
   }
   if (viewName === 'settings') syncSettingsForm();
 }
@@ -830,7 +838,14 @@ gateway.on('chat', (payload: unknown) => {
   }
 });
 
-// ── Channels ───────────────────────────────────────────────────────────────
+// ── Channels — Connection Hub ──────────────────────────────────────────────
+const CHANNEL_ICONS: Record<string, string> = {
+  telegram: '✈️', discord: '🎮', whatsapp: '💬', signal: '🔒', slack: '💼',
+};
+const CHANNEL_CLASSES: Record<string, string> = {
+  telegram: 'telegram', discord: 'discord', whatsapp: 'whatsapp', signal: 'signal', slack: 'slack',
+};
+
 async function loadChannels() {
   const list = $('channels-list');
   const empty = $('channels-empty');
@@ -854,19 +869,63 @@ async function loadChannels() {
 
     for (const id of keys) {
       const ch = channels[id];
+      const lId = id.toLowerCase();
+      const icon = CHANNEL_ICONS[lId] ?? '📡';
+      const cssClass = CHANNEL_CLASSES[lId] ?? 'default';
+      const linked = ch.linked;
+      const configured = ch.configured;
+      const accounts = ch.accounts ? Object.keys(ch.accounts) : [];
+
       const card = document.createElement('div');
-      card.className = 'list-item';
-      const statusClass = ch.linked ? 'connected' : (ch.configured ? 'warning' : 'muted');
-      const statusLabel = ch.linked ? 'Linked' : (ch.configured ? 'Configured' : 'Not set up');
+      card.className = 'channel-card';
       card.innerHTML = `
-        <div class="list-item-header">
-          <span class="list-item-title">${escHtml(String(id))}</span>
-          <span class="status-badge ${statusClass}">${statusLabel}</span>
+        <div class="channel-card-header">
+          <div class="channel-card-icon ${cssClass}">${icon}</div>
+          <div>
+            <div class="channel-card-title">${escHtml(String(id))}</div>
+            <div class="channel-card-status">
+              <span class="status-dot ${linked ? 'connected' : (configured ? 'error' : '')}"></span>
+              <span>${linked ? 'Connected' : (configured ? 'Disconnected' : 'Not configured')}</span>
+            </div>
+          </div>
         </div>
-        ${ch.accounts ? `<div class="list-item-meta">${Object.keys(ch.accounts).length} account(s)</div>` : ''}
+        ${accounts.length ? `<div class="channel-card-accounts">${accounts.map(a => escHtml(a)).join(', ')}</div>` : ''}
+        <div class="channel-card-actions">
+          ${!linked && configured ? `<button class="btn btn-primary btn-sm ch-login" data-ch="${escAttr(id)}">Login</button>` : ''}
+          ${linked ? `<button class="btn btn-ghost btn-sm ch-logout" data-ch="${escAttr(id)}">Logout</button>` : ''}
+          <button class="btn btn-ghost btn-sm ch-refresh-single" data-ch="${escAttr(id)}">Refresh</button>
+        </div>
       `;
       list.appendChild(card);
     }
+
+    // Wire up login/logout buttons
+    list.querySelectorAll('.ch-login').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const chId = (btn as HTMLElement).dataset.ch!;
+        try {
+          (btn as HTMLButtonElement).disabled = true;
+          (btn as HTMLButtonElement).textContent = 'Logging in...';
+          await gateway.startWebLogin(chId);
+          await gateway.waitWebLogin(chId, 120_000);
+          loadChannels();
+        } catch (e) {
+          alert(`Login failed: ${e instanceof Error ? e.message : e}`);
+          loadChannels();
+        }
+      });
+    });
+    list.querySelectorAll('.ch-logout').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const chId = (btn as HTMLElement).dataset.ch!;
+        if (!confirm(`Disconnect ${chId}?`)) return;
+        try { await gateway.logoutChannel(chId); loadChannels(); }
+        catch (e) { alert(`Logout failed: ${e}`); }
+      });
+    });
+    list.querySelectorAll('.ch-refresh-single').forEach(btn => {
+      btn.addEventListener('click', () => loadChannels());
+    });
   } catch (e) {
     console.warn('Channels load failed:', e);
     if (loading) loading.style.display = 'none';
@@ -875,16 +934,24 @@ async function loadChannels() {
 }
 $('refresh-channels-btn')?.addEventListener('click', () => loadChannels());
 
-// ── Automations / Cron ─────────────────────────────────────────────────────
+// ── Automations / Cron — Card Board ────────────────────────────────────────
 async function loadCron() {
-  const list = $('cron-list');
+  const activeCards = $('cron-active-cards');
+  const pausedCards = $('cron-paused-cards');
+  const historyCards = $('cron-history-cards');
   const empty = $('cron-empty');
   const loading = $('cron-loading');
-  if (!wsConnected || !list) return;
+  const activeCount = $('cron-active-count');
+  const pausedCount = $('cron-paused-count');
+  const board = document.querySelector('.auto-board') as HTMLElement | null;
+  if (!wsConnected) return;
 
   if (loading) loading.style.display = '';
   if (empty) empty.style.display = 'none';
-  list.innerHTML = '';
+  if (board) board.style.display = 'grid';
+  if (activeCards) activeCards.innerHTML = '';
+  if (pausedCards) pausedCards.innerHTML = '';
+  if (historyCards) historyCards.innerHTML = '';
 
   try {
     const result = await gateway.cronList();
@@ -893,72 +960,147 @@ async function loadCron() {
     const jobs = result.jobs ?? [];
     if (!jobs.length) {
       if (empty) empty.style.display = 'flex';
+      if (board) board.style.display = 'none';
       return;
     }
 
+    let active = 0, paused = 0;
     for (const job of jobs) {
-      const card = document.createElement('div');
-      card.className = 'list-item';
       const scheduleStr = typeof job.schedule === 'string' ? job.schedule : (job.schedule?.type ?? '');
+      const card = document.createElement('div');
+      card.className = 'auto-card';
       card.innerHTML = `
-        <div class="list-item-header">
-          <span class="list-item-title">${escHtml(job.label ?? job.id)}</span>
-          <span class="status-badge ${job.enabled ? 'connected' : 'muted'}">${job.enabled ? 'Active' : 'Paused'}</span>
-        </div>
-        <div class="list-item-meta">${escHtml(scheduleStr)} ${job.prompt ? '— ' + escHtml(String(job.prompt)) : ''}</div>
-        <div class="list-item-actions">
-          <button class="btn btn-ghost btn-sm cron-run" data-id="${escAttr(job.id)}">Run Now</button>
-          <button class="btn btn-ghost btn-sm cron-toggle" data-id="${escAttr(job.id)}" data-enabled="${job.enabled}">${job.enabled ? 'Pause' : 'Enable'}</button>
+        <div class="auto-card-title">${escHtml(job.label ?? job.id)}</div>
+        <div class="auto-card-schedule">${escHtml(scheduleStr)}</div>
+        ${job.prompt ? `<div class="auto-card-prompt">${escHtml(String(job.prompt))}</div>` : ''}
+        <div class="auto-card-actions">
+          <button class="btn btn-ghost btn-sm cron-run" data-id="${escAttr(job.id)}">▶ Run</button>
+          <button class="btn btn-ghost btn-sm cron-toggle" data-id="${escAttr(job.id)}" data-enabled="${job.enabled}">${job.enabled ? '⏸ Pause' : '▶ Enable'}</button>
+          <button class="btn btn-ghost btn-sm cron-delete" data-id="${escAttr(job.id)}">🗑</button>
         </div>
       `;
-      list.appendChild(card);
+      if (job.enabled) {
+        active++;
+        activeCards?.appendChild(card);
+      } else {
+        paused++;
+        pausedCards?.appendChild(card);
+      }
     }
+    if (activeCount) activeCount.textContent = String(active);
+    if (pausedCount) pausedCount.textContent = String(paused);
 
-    list.querySelectorAll('.cron-run').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = (btn as HTMLElement).dataset.id!;
-        try { await gateway.cronRun(id); alert('Job triggered!'); }
-        catch (e) { alert(`Failed: ${e}`); }
+    // Wire card actions
+    const wireActions = (container: HTMLElement | null) => {
+      if (!container) return;
+      container.querySelectorAll('.cron-run').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = (btn as HTMLElement).dataset.id!;
+          try { await gateway.cronRun(id); alert('Job triggered!'); }
+          catch (e) { alert(`Failed: ${e}`); }
+        });
       });
-    });
-    list.querySelectorAll('.cron-toggle').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const id = (btn as HTMLElement).dataset.id!;
-        const enabled = (btn as HTMLElement).dataset.enabled === 'true';
-        try {
-          await gateway.cronUpdate(id, { enabled: !enabled });
-          loadCron();
-        } catch (e) { alert(`Failed: ${e}`); }
+      container.querySelectorAll('.cron-toggle').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = (btn as HTMLElement).dataset.id!;
+          const enabled = (btn as HTMLElement).dataset.enabled === 'true';
+          try { await gateway.cronUpdate(id, { enabled: !enabled }); loadCron(); }
+          catch (e) { alert(`Failed: ${e}`); }
+        });
       });
-    });
+      container.querySelectorAll('.cron-delete').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const id = (btn as HTMLElement).dataset.id!;
+          if (!confirm('Delete this automation?')) return;
+          try { await gateway.cronRemove(id); loadCron(); }
+          catch (e) { alert(`Failed: ${e}`); }
+        });
+      });
+    };
+    wireActions(activeCards);
+    wireActions(pausedCards);
+
+    // Load run history
+    try {
+      const runs = await gateway.cronRuns(undefined, 20);
+      if (runs.runs?.length && historyCards) {
+        for (const run of runs.runs.slice(0, 10)) {
+          const histCard = document.createElement('div');
+          histCard.className = 'auto-card';
+          const statusClass = run.status === 'success' ? 'success' : (run.status === 'running' ? 'running' : 'failed');
+          histCard.innerHTML = `
+            <div class="auto-card-time">${run.startedAt ? new Date(run.startedAt).toLocaleString() : ''}</div>
+            <div class="auto-card-title">${escHtml(run.jobLabel ?? run.jobId ?? 'Job')}</div>
+            <span class="auto-card-status ${statusClass}">${run.status ?? 'unknown'}</span>
+          `;
+          historyCards.appendChild(histCard);
+        }
+      }
+    } catch { /* run history not available */ }
   } catch (e) {
     console.warn('Cron load failed:', e);
     if (loading) loading.style.display = 'none';
     if (empty) empty.style.display = 'flex';
+    if (board) board.style.display = 'none';
   }
 }
-$('add-cron-btn')?.addEventListener('click', () => {
-  const label = prompt('Job name:');
-  if (!label) return;
-  const schedule = prompt('Cron schedule (e.g. "0 * * * *"):');
-  if (!schedule) return;
-  const prompt_ = prompt('Task prompt:');
-  if (!prompt_) return;
-  gateway.cronAdd({ label, schedule, prompt: prompt_, enabled: true })
-    .then(() => loadCron())
-    .catch(e => alert(`Failed: ${e}`));
+
+// Cron modal logic
+function showCronModal() {
+  const modal = $('cron-modal');
+  if (modal) modal.style.display = 'flex';
+  // Reset form
+  const label = $('cron-form-label') as HTMLInputElement;
+  const schedule = $('cron-form-schedule') as HTMLInputElement;
+  const prompt_ = $('cron-form-prompt') as HTMLTextAreaElement;
+  const preset = $('cron-form-schedule-preset') as HTMLSelectElement;
+  if (label) label.value = '';
+  if (schedule) schedule.value = '';
+  if (prompt_) prompt_.value = '';
+  if (preset) preset.value = '';
+}
+function hideCronModal() {
+  const modal = $('cron-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+$('add-cron-btn')?.addEventListener('click', showCronModal);
+$('cron-empty-add')?.addEventListener('click', showCronModal);
+$('cron-modal-close')?.addEventListener('click', hideCronModal);
+$('cron-modal-cancel')?.addEventListener('click', hideCronModal);
+
+$('cron-form-schedule-preset')?.addEventListener('change', () => {
+  const preset = ($('cron-form-schedule-preset') as HTMLSelectElement).value;
+  const scheduleInput = $('cron-form-schedule') as HTMLInputElement;
+  if (preset && scheduleInput) scheduleInput.value = preset;
 });
 
-// ── Skills ─────────────────────────────────────────────────────────────────
+$('cron-modal-save')?.addEventListener('click', async () => {
+  const label = ($('cron-form-label') as HTMLInputElement).value.trim();
+  const schedule = ($('cron-form-schedule') as HTMLInputElement).value.trim();
+  const prompt_ = ($('cron-form-prompt') as HTMLTextAreaElement).value.trim();
+  if (!label || !schedule || !prompt_) { alert('All fields required'); return; }
+  try {
+    await gateway.cronAdd({ label, schedule, prompt: prompt_, enabled: true });
+    hideCronModal();
+    loadCron();
+  } catch (e) { alert(`Failed: ${e}`); }
+});
+
+// ── Skills — Plugin Manager ────────────────────────────────────────────────
 async function loadSkills() {
-  const list = $('skills-list');
+  const installed = $('skills-installed-list');
+  const available = $('skills-available-list');
+  const availableSection = $('skills-available-section');
   const empty = $('skills-empty');
   const loading = $('skills-loading');
-  if (!wsConnected || !list) return;
+  if (!wsConnected) return;
 
   if (loading) loading.style.display = '';
   if (empty) empty.style.display = 'none';
-  list.innerHTML = '';
+  if (installed) installed.innerHTML = '';
+  if (available) available.innerHTML = '';
+  if (availableSection) availableSection.style.display = 'none';
 
   try {
     const result = await gateway.skillsStatus();
@@ -972,16 +1114,42 @@ async function loadSkills() {
 
     for (const skill of skills) {
       const card = document.createElement('div');
-      card.className = 'list-item';
+      card.className = 'skill-card';
       card.innerHTML = `
-        <div class="list-item-header">
-          <span class="list-item-title">${escHtml(skill.name)}</span>
+        <div class="skill-card-header">
+          <span class="skill-card-name">${escHtml(skill.name)}</span>
           <span class="status-badge ${skill.installed ? 'connected' : 'muted'}">${skill.installed ? 'Installed' : 'Available'}</span>
         </div>
-        <div class="list-item-meta">${escHtml(skill.description ?? '')}</div>
+        <div class="skill-card-desc">${escHtml(skill.description ?? '')}</div>
+        <div class="skill-card-footer">
+          <span class="skill-card-version">${skill.version ? 'v' + escHtml(skill.version) : ''}</span>
+          ${!skill.installed ? `<button class="btn btn-primary btn-sm skill-install" data-name="${escAttr(skill.name)}">Install</button>` : ''}
+        </div>
       `;
-      list.appendChild(card);
+      if (skill.installed) {
+        installed?.appendChild(card);
+      } else {
+        if (availableSection) availableSection.style.display = '';
+        available?.appendChild(card);
+      }
     }
+
+    // Wire install buttons
+    document.querySelectorAll('.skill-install').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const name = (btn as HTMLElement).dataset.name!;
+        const installId = crypto.randomUUID();
+        (btn as HTMLButtonElement).disabled = true;
+        (btn as HTMLButtonElement).textContent = 'Installing...';
+        try {
+          await gateway.skillsInstall(name, installId);
+          loadSkills();
+        } catch (e) {
+          alert(`Install failed: ${e}`);
+          loadSkills();
+        }
+      });
+    });
   } catch (e) {
     console.warn('Skills load failed:', e);
     if (loading) loading.style.display = 'none';
@@ -989,8 +1157,23 @@ async function loadSkills() {
   }
 }
 $('refresh-skills-btn')?.addEventListener('click', () => loadSkills());
+$('skills-browse-bins')?.addEventListener('click', async () => {
+  try {
+    const result = await gateway.skillsBins();
+    const bins = result.bins ?? [];
+    if (bins.length) {
+      alert(`Available skill bins:\n\n${bins.join('\n')}`);
+    } else {
+      alert('No additional skill bins available.');
+    }
+  } catch (e) {
+    alert(`Failed to load bins: ${e}`);
+  }
+});
 
-// ── Models / Foundry ───────────────────────────────────────────────────────
+// ── Models / Foundry — Models + Agent Modes ────────────────────────────────
+let _cachedModels: { id: string; name?: string; provider?: string; contextWindow?: number; reasoning?: boolean }[] = [];
+
 async function loadModels() {
   const list = $('models-list');
   const empty = $('models-empty');
@@ -1006,6 +1189,7 @@ async function loadModels() {
     if (loading) loading.style.display = 'none';
 
     const models = result.models ?? [];
+    _cachedModels = models;
     if (!models.length) {
       if (empty) empty.style.display = 'flex';
       return;
@@ -1013,13 +1197,16 @@ async function loadModels() {
 
     for (const model of models) {
       const card = document.createElement('div');
-      card.className = 'list-item';
+      card.className = 'model-card';
       card.innerHTML = `
-        <div class="list-item-header">
-          <span class="list-item-title">${escHtml(model.name ?? model.id)}</span>
-          <span class="list-item-tag">${escHtml(model.provider ?? '')}</span>
+        <div class="model-card-header">
+          <span class="model-card-name">${escHtml(model.name ?? model.id)}</span>
+          ${model.provider ? `<span class="model-card-provider">${escHtml(model.provider)}</span>` : ''}
         </div>
-        <div class="list-item-meta">${model.contextWindow ? `Context: ${model.contextWindow.toLocaleString()} tokens` : ''} ${model.reasoning ? '• Reasoning' : ''}</div>
+        <div class="model-card-meta">
+          ${model.contextWindow ? `<span>${model.contextWindow.toLocaleString()} tokens</span>` : ''}
+          ${model.reasoning ? `<span class="model-card-badge">Reasoning</span>` : ''}
+        </div>
       `;
       list.appendChild(card);
     }
@@ -1029,19 +1216,144 @@ async function loadModels() {
     if (empty) empty.style.display = 'flex';
   }
 }
-$('refresh-models-btn')?.addEventListener('click', () => loadModels());
+$('refresh-models-btn')?.addEventListener('click', () => { loadModels(); loadModes(); });
 
-// ── Memory / Agent Files ───────────────────────────────────────────────────
+// Foundry tab switching
+document.querySelectorAll('.foundry-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.foundry-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    const target = tab.getAttribute('data-foundry-tab');
+    const modelsPanel = $('foundry-models-panel');
+    const modesPanel = $('foundry-modes-panel');
+    if (modelsPanel) modelsPanel.style.display = target === 'models' ? '' : 'none';
+    if (modesPanel) modesPanel.style.display = target === 'modes' ? '' : 'none';
+  });
+});
+
+// ── Agent Modes ────────────────────────────────────────────────────────────
+let _editingModeId: string | null = null;
+
+async function loadModes() {
+  const list = $('modes-list');
+  const empty = $('modes-empty');
+  if (!list) return;
+  list.innerHTML = '';
+
+  try {
+    const modes = await listModes();
+    if (!modes.length) {
+      if (empty) empty.style.display = '';
+      return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    for (const mode of modes) {
+      const card = document.createElement('div');
+      card.className = 'mode-card';
+      card.style.borderLeftColor = mode.color || 'var(--accent)';
+      card.innerHTML = `
+        <div class="mode-card-icon" style="background:${mode.color}22">${mode.icon || '🤖'}</div>
+        <div class="mode-card-info">
+          <div class="mode-card-name">${escHtml(mode.name)}</div>
+          <div class="mode-card-detail">${mode.model ? escHtml(mode.model) : 'Default model'} · ${mode.thinking_level || 'normal'} thinking</div>
+        </div>
+        ${mode.is_default ? '<span class="mode-card-default">Default</span>' : ''}
+      `;
+      card.addEventListener('click', () => editMode(mode));
+      list.appendChild(card);
+    }
+  } catch (e) {
+    console.warn('Modes load failed:', e);
+  }
+}
+
+function editMode(mode?: AgentMode) {
+  _editingModeId = mode?.id ?? null;
+  const modal = $('mode-modal');
+  const title = $('mode-modal-title');
+  const deleteBtn = $('mode-modal-delete');
+  if (!modal) return;
+  modal.style.display = 'flex';
+  if (title) title.textContent = mode ? 'Edit Agent Mode' : 'New Agent Mode';
+  if (deleteBtn) deleteBtn.style.display = mode && !mode.is_default ? '' : 'none';
+
+  // Populate model select
+  const modelSelect = $('mode-form-model') as HTMLSelectElement;
+  if (modelSelect) {
+    modelSelect.innerHTML = '<option value="">Default model</option>';
+    for (const m of _cachedModels) {
+      const opt = document.createElement('option');
+      opt.value = m.id;
+      opt.textContent = m.name ?? m.id;
+      if (mode?.model === m.id) opt.selected = true;
+      modelSelect.appendChild(opt);
+    }
+  }
+
+  // Fill form
+  ($('mode-form-icon') as HTMLInputElement).value = mode?.icon ?? '🤖';
+  ($('mode-form-name') as HTMLInputElement).value = mode?.name ?? '';
+  ($('mode-form-color') as HTMLInputElement).value = mode?.color ?? '#0073EA';
+  ($('mode-form-prompt') as HTMLTextAreaElement).value = mode?.system_prompt ?? '';
+  ($('mode-form-thinking') as HTMLSelectElement).value = mode?.thinking_level ?? 'normal';
+  ($('mode-form-temp') as HTMLInputElement).value = String(mode?.temperature ?? 1);
+  const tempVal = $('mode-form-temp-value');
+  if (tempVal) tempVal.textContent = String(mode?.temperature ?? 1.0);
+}
+
+function hideModeModal() {
+  const modal = $('mode-modal');
+  if (modal) modal.style.display = 'none';
+  _editingModeId = null;
+}
+
+$('modes-add-btn')?.addEventListener('click', () => editMode());
+$('mode-modal-close')?.addEventListener('click', hideModeModal);
+$('mode-modal-cancel')?.addEventListener('click', hideModeModal);
+
+$('mode-form-temp')?.addEventListener('input', () => {
+  const val = ($('mode-form-temp') as HTMLInputElement).value;
+  const display = $('mode-form-temp-value');
+  if (display) display.textContent = parseFloat(val).toFixed(1);
+});
+
+$('mode-modal-save')?.addEventListener('click', async () => {
+  const name = ($('mode-form-name') as HTMLInputElement).value.trim();
+  if (!name) { alert('Name is required'); return; }
+  const id = _editingModeId ?? name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  await saveMode({
+    id,
+    name,
+    icon: ($('mode-form-icon') as HTMLInputElement).value || '🤖',
+    color: ($('mode-form-color') as HTMLInputElement).value || '#0073EA',
+    model: ($('mode-form-model') as HTMLSelectElement).value || null,
+    system_prompt: ($('mode-form-prompt') as HTMLTextAreaElement).value,
+    thinking_level: ($('mode-form-thinking') as HTMLSelectElement).value,
+    temperature: parseFloat(($('mode-form-temp') as HTMLInputElement).value),
+  });
+  hideModeModal();
+  loadModes();
+});
+
+$('mode-modal-delete')?.addEventListener('click', async () => {
+  if (!_editingModeId || !confirm('Delete this mode?')) return;
+  await deleteMode(_editingModeId);
+  hideModeModal();
+  loadModes();
+});
+
+// ── Memory / Agent Files — Split View ──────────────────────────────────────
 async function loadMemory() {
   const list = $('memory-list');
   const empty = $('memory-empty');
   const loading = $('memory-loading');
-  const editor = $('memory-editor');
+  const editorPanel = $('memory-editor');
   if (!wsConnected || !list) return;
 
   if (loading) loading.style.display = '';
   if (empty) empty.style.display = 'none';
-  if (editor) editor.style.display = 'none';
+  if (editorPanel) editorPanel.style.display = 'none';
   list.innerHTML = '';
 
   try {
@@ -1061,7 +1373,7 @@ async function loadMemory() {
       const displaySize = file.sizeBytes ?? file.size;
       card.innerHTML = `
         <div class="list-item-header">
-          <span class="list-item-title">${escHtml(displayName)}</span>
+          <span class="list-item-title">📄 ${escHtml(displayName)}</span>
           <span class="list-item-meta">${displaySize ? formatBytes(displaySize) : ''}</span>
         </div>
       `;
@@ -1079,9 +1391,11 @@ async function openMemoryFile(filePath: string) {
   const editor = $('memory-editor');
   const content = $('memory-editor-content') as HTMLTextAreaElement | null;
   const pathEl = $('memory-editor-path');
+  const empty = $('memory-empty');
   if (!editor || !content) return;
 
   editor.style.display = '';
+  if (empty) empty.style.display = 'none';
   if (pathEl) pathEl.textContent = filePath;
   content.value = 'Loading...';
   content.disabled = true;
@@ -1113,6 +1427,372 @@ $('memory-editor-close')?.addEventListener('click', () => {
 });
 
 $('refresh-memory-btn')?.addEventListener('click', () => loadMemory());
+
+// ══════════════════════════════════════════════════════════════════════════
+// ═══ LOCAL APPLICATION SPACES ═══════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+
+// ── Content / Create Studio ────────────────────────────────────────────────
+let _activeDocId: string | null = null;
+
+async function loadContentDocs() {
+  const list = $('content-doc-list');
+  const empty = $('content-empty');
+  const toolbar = $('content-toolbar');
+  const body = $('content-body') as HTMLTextAreaElement | null;
+  const wordCount = $('content-word-count');
+  if (!list) return;
+
+  const docs = await listDocs();
+  list.innerHTML = '';
+
+  if (!docs.length && !_activeDocId) {
+    if (empty) empty.style.display = 'flex';
+    if (toolbar) toolbar.style.display = 'none';
+    if (body) body.style.display = 'none';
+    if (wordCount) wordCount.style.display = 'none';
+    return;
+  }
+
+  for (const doc of docs) {
+    const item = document.createElement('div');
+    item.className = `studio-doc-item${doc.id === _activeDocId ? ' active' : ''}`;
+    item.innerHTML = `
+      <div class="studio-doc-title">${escHtml(doc.title || 'Untitled')}</div>
+      <div class="studio-doc-meta">${doc.word_count} words · ${new Date(doc.updated_at).toLocaleDateString()}</div>
+    `;
+    item.addEventListener('click', () => openContentDoc(doc.id));
+    list.appendChild(item);
+  }
+}
+
+async function openContentDoc(docId: string) {
+  const doc = await getDoc(docId);
+  if (!doc) return;
+  _activeDocId = docId;
+
+  const empty = $('content-empty');
+  const toolbar = $('content-toolbar');
+  const body = $('content-body') as HTMLTextAreaElement;
+  const titleInput = $('content-title') as HTMLInputElement;
+  const typeSelect = $('content-type') as HTMLSelectElement;
+  const wordCount = $('content-word-count');
+
+  if (empty) empty.style.display = 'none';
+  if (toolbar) toolbar.style.display = 'flex';
+  if (body) { body.style.display = ''; body.value = doc.content; }
+  if (titleInput) titleInput.value = doc.title;
+  if (typeSelect) typeSelect.value = doc.content_type;
+  if (wordCount) {
+    wordCount.style.display = '';
+    wordCount.textContent = `${doc.word_count} words`;
+  }
+  loadContentDocs();
+}
+
+async function createNewDoc() {
+  const id = crypto.randomUUID();
+  await saveDoc({ id, title: 'Untitled document', content: '', content_type: 'markdown' });
+  await openContentDoc(id);
+}
+
+$('content-new-doc')?.addEventListener('click', createNewDoc);
+$('content-create-first')?.addEventListener('click', createNewDoc);
+
+$('content-save')?.addEventListener('click', async () => {
+  if (!_activeDocId) return;
+  const title = ($('content-title') as HTMLInputElement).value.trim() || 'Untitled';
+  const content = ($('content-body') as HTMLTextAreaElement).value;
+  const contentType = ($('content-type') as HTMLSelectElement).value;
+  await saveDoc({ id: _activeDocId, title, content, content_type: contentType });
+  const wordCount = $('content-word-count');
+  if (wordCount) wordCount.textContent = `${content.split(/\s+/).filter(Boolean).length} words`;
+  loadContentDocs();
+});
+
+$('content-body')?.addEventListener('input', () => {
+  const body = $('content-body') as HTMLTextAreaElement;
+  const wordCount = $('content-word-count');
+  if (wordCount && body) {
+    wordCount.textContent = `${body.value.split(/\s+/).filter(Boolean).length} words`;
+  }
+});
+
+$('content-ai-improve')?.addEventListener('click', async () => {
+  if (!_activeDocId || !wsConnected) { alert('Connect to gateway first'); return; }
+  const body = ($('content-body') as HTMLTextAreaElement).value.trim();
+  if (!body) return;
+  const sessionKey = 'paw-create-' + _activeDocId;
+  try {
+    const result = await gateway.chatSend(sessionKey, `Improve this text. Return only the improved version, no explanations:\n\n${body}`);
+    if (result.runId) {
+      // Wait for response via events — simplified
+      alert('AI improvement request sent. Check Chat for the response.');
+    }
+  } catch (e) {
+    alert(`Failed: ${e}`);
+  }
+});
+
+$('content-delete-doc')?.addEventListener('click', async () => {
+  if (!_activeDocId) return;
+  if (!confirm('Delete this document?')) return;
+  await deleteDoc(_activeDocId);
+  _activeDocId = null;
+  loadContentDocs();
+});
+
+// ── Research Notebook ──────────────────────────────────────────────────────
+let _activeResearchId: string | null = null;
+
+async function loadResearchProjects() {
+  const list = $('research-project-list');
+  const empty = $('research-empty');
+  const tabs = $('research-tabs');
+  if (!list) return;
+
+  const projects = await listProjects('research');
+  list.innerHTML = '';
+
+  if (!projects.length && !_activeResearchId) {
+    if (empty) empty.style.display = 'flex';
+    if (tabs) tabs.style.display = 'none';
+    hideResearchPanels();
+    return;
+  }
+
+  for (const p of projects) {
+    const item = document.createElement('div');
+    item.className = `studio-doc-item${p.id === _activeResearchId ? ' active' : ''}`;
+    item.innerHTML = `
+      <div class="studio-doc-title">${escHtml(p.name)}</div>
+      <div class="studio-doc-meta">${new Date(p.updated_at).toLocaleDateString()}</div>
+    `;
+    item.addEventListener('click', () => openResearchProject(p.id));
+    list.appendChild(item);
+  }
+}
+
+function hideResearchPanels() {
+  [$('research-sources'), $('research-findings'), $('research-report')].forEach(p => {
+    if (p) p.style.display = 'none';
+  });
+}
+
+function openResearchProject(id: string) {
+  _activeResearchId = id;
+  const empty = $('research-empty');
+  const tabs = $('research-tabs');
+  if (empty) empty.style.display = 'none';
+  if (tabs) tabs.style.display = 'flex';
+  // Show sources panel by default
+  switchResearchTab('sources');
+  loadResearchProjects();
+}
+
+function switchResearchTab(tab: string) {
+  document.querySelectorAll('.research-tab').forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === tab));
+  hideResearchPanels();
+  const panel = $(`research-${tab}`);
+  if (panel) panel.style.display = '';
+}
+
+document.querySelectorAll('.research-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    const t = tab.getAttribute('data-tab');
+    if (t) switchResearchTab(t);
+  });
+});
+
+async function createNewResearch() {
+  const name = prompt('Research project name:');
+  if (!name) return;
+  const id = crypto.randomUUID();
+  await saveProject({ id, name, space: 'research' });
+  openResearchProject(id);
+  loadResearchProjects();
+}
+
+$('research-new-project')?.addEventListener('click', createNewResearch);
+$('research-create-first')?.addEventListener('click', createNewResearch);
+
+$('research-add-source')?.addEventListener('click', () => {
+  const url = prompt('Source URL:');
+  if (!url) return;
+  const list = $('research-sources-list');
+  if (!list) return;
+  const item = document.createElement('div');
+  item.className = 'research-item';
+  item.innerHTML = `
+    <div class="research-item-title">${escHtml(url)}</div>
+    <div class="research-item-meta">Added ${new Date().toLocaleDateString()}</div>
+  `;
+  list.appendChild(item);
+});
+
+$('research-agent-find')?.addEventListener('click', async () => {
+  if (!_activeResearchId || !wsConnected) { alert('Connect to gateway first'); return; }
+  const topic = prompt('What should the agent research?');
+  if (!topic) return;
+  alert('Research request sent. Check Chat for findings.');
+  gateway.chatSend('paw-research-' + _activeResearchId, `Research this topic thoroughly and provide key findings with sources: ${topic}`).catch(console.warn);
+});
+
+$('research-delete-project')?.addEventListener('click', async () => {
+  if (!_activeResearchId) return;
+  if (!confirm('Delete this research project?')) return;
+  await deleteProject(_activeResearchId);
+  _activeResearchId = null;
+  loadResearchProjects();
+});
+
+// ── Build IDE ──────────────────────────────────────────────────────────────
+let _buildProjectId: string | null = null;
+let _buildOpenFiles: { path: string; content: string }[] = [];
+let _buildActiveFile: string | null = null;
+
+$('build-new-project')?.addEventListener('click', async () => {
+  const name = prompt('Project name:');
+  if (!name) return;
+  const id = crypto.randomUUID();
+  await saveProject({ id, name, space: 'build' });
+  _buildProjectId = id;
+  loadBuildProject();
+});
+
+async function loadBuildProject() {
+  if (!_buildProjectId) return;
+  const fileList = $('build-file-list');
+  const empty = $('build-empty');
+  /* editor loaded on demand */
+
+  if (empty) empty.style.display = 'none';
+
+  // For now, show project files from DB (simplified)
+  if (fileList) {
+    fileList.innerHTML = '';
+    // TODO: Load actual files from project_files table
+    const placeholder = document.createElement('div');
+    placeholder.className = 'ide-file-empty';
+    placeholder.textContent = 'Create files with the + button';
+    fileList.appendChild(placeholder);
+  }
+}
+
+$('build-add-file')?.addEventListener('click', () => {
+  if (!_buildProjectId) { alert('Create a project first'); return; }
+  const filename = prompt('File name (e.g. index.html):');
+  if (!filename) return;
+  const _fl = $('build-file-list'); void _fl;
+  const editor = $('build-code-editor') as HTMLTextAreaElement;
+  const empty = $('build-empty');
+
+  _buildOpenFiles.push({ path: filename, content: '' });
+  _buildActiveFile = filename;
+
+  if (empty) empty.style.display = 'none';
+  if (editor) { editor.style.display = ''; editor.value = ''; }
+
+  updateBuildTabs();
+  updateBuildFileList();
+});
+
+function updateBuildTabs() {
+  const tabs = $('build-tabs');
+  if (!tabs) return;
+  tabs.innerHTML = '';
+  for (const f of _buildOpenFiles) {
+    const tab = document.createElement('div');
+    tab.className = `ide-tab${f.path === _buildActiveFile ? ' active' : ''}`;
+    tab.innerHTML = `<span>${escHtml(f.path)}</span><span class="ide-tab-close">✕</span>`;
+    tab.querySelector('span:first-child')?.addEventListener('click', () => {
+      _buildActiveFile = f.path;
+      const editor = $('build-code-editor') as HTMLTextAreaElement;
+      if (editor) editor.value = f.content;
+      updateBuildTabs();
+    });
+    tab.querySelector('.ide-tab-close')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _buildOpenFiles = _buildOpenFiles.filter(x => x.path !== f.path);
+      if (_buildActiveFile === f.path) {
+        _buildActiveFile = _buildOpenFiles[0]?.path ?? null;
+        const editor = $('build-code-editor') as HTMLTextAreaElement;
+        if (editor) editor.value = _buildActiveFile ? _buildOpenFiles[0].content : '';
+        if (!_buildActiveFile) { editor.style.display = 'none'; const empty = $('build-empty'); if (empty) empty.style.display = 'flex'; }
+      }
+      updateBuildTabs();
+    });
+    tabs.appendChild(tab);
+  }
+}
+
+function updateBuildFileList() {
+  const fileList = $('build-file-list');
+  if (!fileList) return;
+  fileList.innerHTML = '';
+  for (const f of _buildOpenFiles) {
+    const item = document.createElement('div');
+    item.className = `ide-file-item${f.path === _buildActiveFile ? ' active' : ''}`;
+    item.textContent = f.path;
+    item.addEventListener('click', () => {
+      _buildActiveFile = f.path;
+      const editor = $('build-code-editor') as HTMLTextAreaElement;
+      if (editor) { editor.style.display = ''; editor.value = f.content; }
+      updateBuildTabs();
+      updateBuildFileList();
+    });
+    fileList.appendChild(item);
+  }
+  if (!_buildOpenFiles.length) {
+    fileList.innerHTML = '<div class="ide-file-empty">No files yet</div>';
+  }
+}
+
+// Save file content as user types
+$('build-code-editor')?.addEventListener('input', () => {
+  if (!_buildActiveFile) return;
+  const editor = $('build-code-editor') as HTMLTextAreaElement;
+  const file = _buildOpenFiles.find(f => f.path === _buildActiveFile);
+  if (file && editor) file.content = editor.value;
+});
+
+// Build chat — send to agent in build context
+$('build-chat-send')?.addEventListener('click', async () => {
+  const input = $('build-chat-input') as HTMLTextAreaElement;
+  const messages = $('build-chat-messages');
+  if (!input?.value.trim() || !wsConnected) return;
+
+  const userMsg = input.value.trim();
+  input.value = '';
+
+  // Show user message
+  const userDiv = document.createElement('div');
+  userDiv.className = 'message user';
+  userDiv.innerHTML = `<div class="message-content">${escHtml(userMsg)}</div>`;
+  messages?.appendChild(userDiv);
+
+  // Provide context about open files
+  let context = userMsg;
+  if (_buildOpenFiles.length) {
+    const fileContext = _buildOpenFiles.map(f => `--- ${f.path} ---\n${f.content}`).join('\n\n');
+    context = `[Build context]\nOpen files:\n${fileContext}\n\n[User instruction]: ${userMsg}`;
+  }
+
+  try {
+    const sessionKey = _buildProjectId ? `paw-build-${_buildProjectId}` : 'paw-build';
+    await gateway.chatSend(sessionKey, context);
+    // Response will come via events
+    const agentDiv = document.createElement('div');
+    agentDiv.className = 'message assistant';
+    agentDiv.innerHTML = `<div class="message-content">Request sent — check Chat view for the full response.</div>`;
+    messages?.appendChild(agentDiv);
+  } catch (e) {
+    const errDiv = document.createElement('div');
+    errDiv.className = 'message assistant';
+    errDiv.innerHTML = `<div class="message-content">Error: ${escHtml(e instanceof Error ? e.message : String(e))}</div>`;
+    messages?.appendChild(errDiv);
+  }
+});
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 function escHtml(s: string): string {
@@ -1146,6 +1826,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
     } catch { /* ignore */ }
     crashLog('startup');
+
+    // Initialise local SQLite database
+    await initDb().catch(e => console.warn('[main] DB init failed:', e));
 
     loadConfigFromStorage();
     console.log(`[main] After loadConfigFromStorage: configured=${config.configured} url="${config.gateway.url}" tokenLen=${config.gateway.token?.length ?? 0}`);
