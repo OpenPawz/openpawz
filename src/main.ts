@@ -2086,60 +2086,88 @@ function initPalaceInstall() {
     if (progressDiv) progressDiv.style.display = 'none';
   });
 
-  // Enable button
+  // ── Shared form reader & validator ──
+  function readMemoryForm(): { apiKey: string; baseUrl: string; modelName: string; apiVersion: string; provider: string } | null {
+    const apiKeyInput = $('palace-api-key') as HTMLInputElement | null;
+    const provider = getSelectedProvider();
+    let apiKey = apiKeyInput?.value?.trim() ?? '';
+    let baseUrl = getBaseUrlForProvider();
+    const modelName = ($('palace-model-name') as HTMLInputElement | null)?.value?.trim() ?? '';
+    const apiVersion = ($('palace-api-version') as HTMLInputElement | null)?.value?.trim() ?? '';
+
+    // Detect URL pasted into API key field
+    if (apiKey.startsWith('http://') || apiKey.startsWith('https://')) {
+      if (!baseUrl) {
+        baseUrl = apiKey;
+        apiKey = '';
+        const targetId = provider === 'azure' ? 'palace-base-url' : 'palace-base-url-openai';
+        const bi = $(targetId) as HTMLInputElement | null;
+        if (bi) bi.value = baseUrl;
+        if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.style.borderColor = '#e44'; apiKeyInput.focus(); apiKeyInput.placeholder = 'Enter your API key here (not a URL)'; }
+        return null;
+      } else {
+        if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.style.borderColor = '#e44'; apiKeyInput.focus(); apiKeyInput.placeholder = 'This looks like a URL — enter your API key instead'; }
+        return null;
+      }
+    }
+
+    if (provider === 'azure' && !baseUrl) {
+      const bi = $('palace-base-url') as HTMLInputElement | null;
+      if (bi) { bi.style.borderColor = '#e44'; bi.focus(); bi.placeholder = 'Azure endpoint is required'; }
+      return null;
+    }
+
+    if (!apiKey) {
+      if (apiKeyInput) { apiKeyInput.style.borderColor = '#e44'; apiKeyInput.focus(); apiKeyInput.placeholder = 'API key is required'; }
+      return null;
+    }
+    if (apiKeyInput) apiKeyInput.style.borderColor = '';
+    return { apiKey, baseUrl, modelName, apiVersion, provider };
+  }
+
+  // ── Test Connection button ──
+  $('palace-test-btn')?.addEventListener('click', async () => {
+    const testBtn = $('palace-test-btn') as HTMLButtonElement | null;
+    const progressDiv = $('palace-install-progress');
+    const progressText = $('palace-progress-text') as HTMLElement | null;
+    if (!testBtn || !invoke) return;
+
+    const form = readMemoryForm();
+    if (!form) return;
+
+    testBtn.disabled = true;
+    testBtn.textContent = 'Testing…';
+    if (progressDiv) progressDiv.style.display = '';
+    if (progressText) progressText.textContent = 'Testing embedding endpoint…';
+
+    try {
+      await invoke('test_embedding_connection', {
+        apiKey: form.apiKey,
+        baseUrl: form.baseUrl || null,
+        model: form.modelName || null,
+        apiVersion: form.apiVersion || null,
+        provider: form.provider,
+      });
+      if (progressText) progressText.textContent = 'Connection test passed ✓';
+    } catch (testErr: any) {
+      const errMsg = typeof testErr === 'string' ? testErr : testErr?.message || String(testErr);
+      if (progressText) progressText.textContent = `Connection test failed: ${errMsg}`;
+    } finally {
+      testBtn.disabled = false;
+      testBtn.textContent = 'Test Connection';
+    }
+  });
+
+  // ── Enable / Save button ──
   $('palace-install-btn')?.addEventListener('click', async () => {
     const btn = $('palace-install-btn') as HTMLButtonElement | null;
     const progressDiv = $('palace-install-progress');
     const progressText = $('palace-progress-text') as HTMLElement | null;
     if (!btn || !invoke) return;
 
-    // Read form values
-    const apiKeyInput = $('palace-api-key') as HTMLInputElement | null;
-    const modelInput = $('palace-model-name') as HTMLInputElement | null;
-    const apiVersionInput = $('palace-api-version') as HTMLInputElement | null;
-    const provider = getSelectedProvider();
-    let apiKey = apiKeyInput?.value?.trim() ?? '';
-    let baseUrl = getBaseUrlForProvider();
-    const modelName = modelInput?.value?.trim() ?? '';
-    const apiVersion = apiVersionInput?.value?.trim() ?? '';
-
-    // Detect URL pasted into API key field (common mistake)
-    if (apiKey.startsWith('http://') || apiKey.startsWith('https://')) {
-      if (!baseUrl) {
-        // Move it to the right field
-        baseUrl = apiKey;
-        apiKey = '';
-        if (provider === 'azure') {
-          const bi = $('palace-base-url') as HTMLInputElement | null;
-          if (bi) bi.value = baseUrl;
-        } else {
-          const bi = $('palace-base-url-openai') as HTMLInputElement | null;
-          if (bi) bi.value = baseUrl;
-        }
-        if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.style.borderColor = '#e44'; apiKeyInput.focus(); apiKeyInput.placeholder = 'Enter your API key here (not a URL)'; }
-        return;
-      } else {
-        if (apiKeyInput) { apiKeyInput.value = ''; apiKeyInput.style.borderColor = '#e44'; apiKeyInput.focus(); apiKeyInput.placeholder = 'This looks like a URL — enter your API key instead'; }
-        return;
-      }
-    }
-
-    // Azure requires an endpoint
-    if (provider === 'azure' && !baseUrl) {
-      const bi = $('palace-base-url') as HTMLInputElement | null;
-      if (bi) { bi.style.borderColor = '#e44'; bi.focus(); bi.placeholder = 'Azure endpoint is required'; }
-      return;
-    }
-
-    if (!apiKey) {
-      if (apiKeyInput) {
-        apiKeyInput.style.borderColor = '#e44';
-        apiKeyInput.focus();
-        apiKeyInput.placeholder = 'API key is required';
-      }
-      return;
-    }
-    if (apiKeyInput) apiKeyInput.style.borderColor = '';
+    const form = readMemoryForm();
+    if (!form) return;
+    const { apiKey, baseUrl, modelName, apiVersion, provider } = form;
 
     btn.disabled = true;
     btn.textContent = 'Testing connection…';

@@ -2775,8 +2775,34 @@ button:focus:not(:focus-visible) { outline: none; }
   align-items: center;
   width: 100%;
 }
-.palace-install-actions .btn-primary {
+.palace-btn-row {
+  display: flex;
+  gap: 8px;
   width: 100%;
+}
+.palace-btn-row .btn {
+  flex: 1;
+}
+.palace-install-actions .btn-primary {
+  width: auto;
+}
+.btn-outline {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.btn-outline:hover {
+  border-color: var(--brand);
+  background: var(--bg-hover);
+}
+.btn-outline:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .palace-view.active {
