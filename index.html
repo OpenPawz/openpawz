@@ -830,7 +830,7 @@
               <div class="research-workspace" id="research-workspace" style="display:none">
                 <!-- Topic input -->
                 <div class="research-input-bar">
-                  <input type="text" class="form-input research-topic-input" id="research-topic-input"
+                  <input type="text" class="research-topic-input" id="research-topic-input"
                          placeholder="What do you want to research?" autocomplete="off" />
                   <button class="btn btn-primary" id="research-run-btn">
                     <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
@@ -1299,15 +1299,15 @@
               <label class="form-label">Token</label>
               <input type="password" class="form-input" id="settings-gateway-token" />
             </div>
-            <button class="btn btn-primary" id="settings-save-gateway" style="width: auto;">Save Gateway Settings</button>
+            <button class="btn btn-primary" id="settings-save-gateway">Save Gateway Settings</button>
           </div>
 
           <div class="settings-section" id="settings-config-section" style="display:none">
             <h2 class="settings-section-title">OpenClaw Configuration</h2>
             <textarea class="form-input" id="settings-config-editor" rows="12" style="font-family:var(--font-mono);font-size:12px;line-height:1.5;resize:vertical"></textarea>
             <div style="display:flex;gap:8px;margin-top:12px">
-              <button class="btn btn-primary" id="settings-save-config" style="width:auto">Save Config</button>
-              <button class="btn btn-secondary" id="settings-reload-config" style="width:auto">Reload</button>
+              <button class="btn btn-primary" id="settings-save-config">Save Config</button>
+              <button class="btn btn-secondary" id="settings-reload-config">Reload</button>
             </div>
           </div>
           
