@@ -1580,6 +1580,25 @@ fn repair_openclaw_config() -> Result<bool, String> {
                 info!("Removed invalid 'baseUrl' from embedding config");
                 rescued_base_url = base_url_val.as_str().map(|s| s.to_string());
             }
+            // Fix invalid embedding model — only text-embedding-3-small and
+            // text-embedding-3-large are supported by the memory-lancedb plugin.
+            let valid_models: std::collections::HashSet<&str> =
+                ["text-embedding-3-small", "text-embedding-3-large"].iter().copied().collect();
+            if let Some(model_val) = embedding.get("model") {
+                let model_str = model_val.as_str().unwrap_or("");
+                if !valid_models.contains(model_str) {
+                    info!(
+                        "Replacing invalid embedding model '{}' with 'text-embedding-3-small'",
+                        model_str
+                    );
+                    embedding.insert(
+                        "model".to_string(),
+                        serde_json::json!("text-embedding-3-small"),
+                    );
+                    repaired = true;
+                }
+            }
+
             // Remove any other unknown properties (only apiKey and model are valid)
             let allowed: std::collections::HashSet<&str> = ["apiKey", "model"].iter().copied().collect();
             let invalid_keys: Vec<String> = embedding.keys()
