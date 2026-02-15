@@ -2,6 +2,7 @@
 // Extracted from main.ts for maintainability
 
 import { gateway } from '../gateway';
+import type { CronJob, CronRunLogEntry } from '../types';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -19,6 +20,9 @@ function escHtml(s: string): string {
 function escAttr(s: string): string {
   return escHtml(s).replace(/\n/g, '&#10;');
 }
+
+/** Currently editing job id (null = creating new) */
+let _editingJobId: string | null = null;
 
 // ── Load Cron Jobs ─────────────────────────────────────────────────────────
 export async function loadCron() {
@@ -71,18 +75,25 @@ export async function loadCron() {
     let active = 0, paused = 0;
     for (const job of jobs) {
       const scheduleStr = typeof job.schedule === 'string' ? job.schedule : (job.schedule?.type ?? '');
+      const nextRun = job.nextRunAt ? new Date(job.nextRunAt).toLocaleString() : '';
+      const lastRun = job.lastRunAt ? new Date(job.lastRunAt).toLocaleString() : '';
       const card = document.createElement('div');
       card.className = 'auto-card';
       card.innerHTML = `
         <div class="auto-card-title">${escHtml(job.label ?? job.id)}</div>
         <div class="auto-card-schedule">${escHtml(scheduleStr)}</div>
         ${job.prompt ? `<div class="auto-card-prompt">${escHtml(String(job.prompt))}</div>` : ''}
+        ${nextRun ? `<div class="auto-card-meta">Next: ${escHtml(nextRun)}</div>` : ''}
+        ${lastRun ? `<div class="auto-card-meta">Last: ${escHtml(lastRun)}</div>` : ''}
         <div class="auto-card-actions">
-          <button class="btn btn-ghost btn-sm cron-run" data-id="${escAttr(job.id)}">Run</button>
+          <button class="btn btn-ghost btn-sm cron-run" data-id="${escAttr(job.id)}" title="Run now">▶ Run</button>
+          <button class="btn btn-ghost btn-sm cron-edit" data-id="${escAttr(job.id)}" title="Edit">✎ Edit</button>
           <button class="btn btn-ghost btn-sm cron-toggle" data-id="${escAttr(job.id)}" data-enabled="${job.enabled}">${job.enabled ? 'Pause' : 'Enable'}</button>
           <button class="btn btn-ghost btn-sm cron-delete" data-id="${escAttr(job.id)}">Delete</button>
         </div>
       `;
+      // Store job data for editing
+      (card as unknown as Record<string, unknown>)._job = job;
       if (job.enabled) {
         active++;
         activeCards?.appendChild(card);
@@ -102,16 +113,8 @@ export async function loadCron() {
     try {
       const runs = await gateway.cronRuns(undefined, 20);
       if (runs.runs?.length && historyCards) {
-        for (const run of runs.runs.slice(0, 10)) {
-          const histCard = document.createElement('div');
-          histCard.className = 'auto-card';
-          const statusClass = run.status === 'success' ? 'success' : (run.status === 'running' ? 'running' : 'failed');
-          histCard.innerHTML = `
-            <div class="auto-card-time">${run.startedAt ? new Date(run.startedAt).toLocaleString() : ''}</div>
-            <div class="auto-card-title">${escHtml(run.jobLabel ?? run.jobId ?? 'Job')}</div>
-            <span class="auto-card-status ${statusClass}">${run.status ?? 'unknown'}</span>
-          `;
-          historyCards.appendChild(histCard);
+        for (const run of runs.runs.slice(0, 15)) {
+          renderRunHistoryCard(run, historyCards);
         }
       }
     } catch { /* run history not available */ }
@@ -123,6 +126,69 @@ export async function loadCron() {
   }
 }
 
+// ── Run History Card (with error highlighting + timeout visualization) ──────
+function renderRunHistoryCard(run: CronRunLogEntry, container: HTMLElement) {
+  const card = document.createElement('div');
+  const isFailed = run.status === 'error' || run.status === 'failed' || run.status === 'timeout';
+  const isRunning = run.status === 'running';
+  const statusClass = isFailed ? 'failed' : (isRunning ? 'running' : 'success');
+  card.className = `auto-card${isFailed ? ' auto-card-error' : ''}`;
+
+  // Duration calculation
+  let durationStr = '';
+  let durationPct = 0;
+  if (run.startedAt) {
+    const endMs = run.finishedAt ?? Date.now();
+    const durationMs = endMs - run.startedAt;
+    if (durationMs < 1000) durationStr = `${durationMs}ms`;
+    else if (durationMs < 60_000) durationStr = `${(durationMs / 1000).toFixed(1)}s`;
+    else durationStr = `${(durationMs / 60_000).toFixed(1)}m`;
+    // Timeout bar: assume 5 min default timeout for visualization
+    const timeoutMs = 300_000;
+    durationPct = Math.min((durationMs / timeoutMs) * 100, 100);
+  }
+
+  // Error icon for failed runs
+  const errorIcon = isFailed
+    ? '<svg class="icon-sm auto-card-error-icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>'
+    : '';
+
+  const timeStr = run.startedAt ? new Date(run.startedAt).toLocaleString() : '';
+
+  card.innerHTML = `
+    <div class="auto-card-header-row">
+      ${errorIcon}
+      <div class="auto-card-time">${timeStr}</div>
+      <span class="auto-card-status ${statusClass}">${run.status ?? 'unknown'}</span>
+    </div>
+    <div class="auto-card-title">${escHtml(run.jobLabel ?? run.jobId ?? 'Job')}</div>
+    ${durationStr ? `<div class="auto-card-duration">
+      <span class="auto-card-duration-text">${durationStr}</span>
+      <div class="auto-card-duration-bar"><div class="auto-card-duration-fill${durationPct >= 80 ? ' danger' : durationPct >= 50 ? ' warning' : ''}" style="width:${durationPct}%"></div></div>
+    </div>` : ''}
+    ${run.error ? `<div class="auto-card-error-detail auto-card-error-collapsed" data-expandable="true">
+      <div class="auto-card-error-toggle">Error details ▸</div>
+      <div class="auto-card-error-content"><pre>${escHtml(run.error)}</pre></div>
+    </div>` : ''}
+  `;
+
+  // Wire error detail expansion
+  const expandable = card.querySelector('[data-expandable]');
+  if (expandable) {
+    const toggle = expandable.querySelector('.auto-card-error-toggle');
+    toggle?.addEventListener('click', () => {
+      expandable.classList.toggle('auto-card-error-collapsed');
+      if (toggle) {
+        toggle.textContent = expandable.classList.contains('auto-card-error-collapsed')
+          ? 'Error details ▸'
+          : 'Error details ▾';
+      }
+    });
+  }
+
+  container.appendChild(card);
+}
+
 function wireCardActions(container: HTMLElement | null) {
   if (!container) return;
   container.querySelectorAll('.cron-run').forEach(btn => {
@@ -130,6 +196,20 @@ function wireCardActions(container: HTMLElement | null) {
       const id = (btn as HTMLElement).dataset.id!;
       try { await gateway.cronRun(id); alert('Job triggered!'); }
       catch (e) { alert(`Failed: ${e}`); }
+    });
+  });
+  container.querySelectorAll('.cron-edit').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = (btn as HTMLElement).dataset.id!;
+      // Find job data from card
+      const card = (btn as HTMLElement).closest('.auto-card') as (HTMLElement & { _job?: CronJob }) | null;
+      if (card?._job) {
+        openEditModal(card._job);
+      } else {
+        // Fallback: just open with ID, fields blank
+        _editingJobId = id;
+        openEditModal({ id, enabled: true });
+      }
     });
   });
   container.querySelectorAll('.cron-toggle').forEach(btn => {
@@ -150,44 +230,82 @@ function wireCardActions(container: HTMLElement | null) {
   });
 }
 
-// ── Cron Modal ─────────────────────────────────────────────────────────────
-function showCronModal() {
+// ── Cron Modal (Create + Edit) ─────────────────────────────────────────────
+function openCreateModal() {
+  _editingJobId = null;
   const modal = $('cron-modal');
+  const title = $('cron-modal-title');
+  const saveBtn = $('cron-modal-save');
   if (modal) modal.style.display = 'flex';
+  if (title) title.textContent = 'New Automation';
+  if (saveBtn) saveBtn.textContent = 'Create';
   // Reset form
   const label = $('cron-form-label') as HTMLInputElement;
   const schedule = $('cron-form-schedule') as HTMLInputElement;
   const prompt_ = $('cron-form-prompt') as HTMLTextAreaElement;
   const preset = $('cron-form-schedule-preset') as HTMLSelectElement;
+  const agentId = $('cron-form-agent') as HTMLInputElement | null;
   if (label) label.value = '';
   if (schedule) schedule.value = '';
   if (prompt_) prompt_.value = '';
   if (preset) preset.value = '';
+  if (agentId) agentId.value = '';
+}
+
+function openEditModal(job: CronJob) {
+  _editingJobId = job.id;
+  const modal = $('cron-modal');
+  const title = $('cron-modal-title');
+  const saveBtn = $('cron-modal-save');
+  if (modal) modal.style.display = 'flex';
+  if (title) title.textContent = 'Edit Automation';
+  if (saveBtn) saveBtn.textContent = 'Save';
+  // Populate form
+  const label = $('cron-form-label') as HTMLInputElement;
+  const schedule = $('cron-form-schedule') as HTMLInputElement;
+  const prompt_ = $('cron-form-prompt') as HTMLTextAreaElement;
+  const preset = $('cron-form-schedule-preset') as HTMLSelectElement;
+  const agentId = $('cron-form-agent') as HTMLInputElement | null;
+  if (label) label.value = job.label ?? '';
+  const schedStr = typeof job.schedule === 'string' ? job.schedule : '';
+  if (schedule) schedule.value = schedStr;
+  if (preset) preset.value = '';
+  if (prompt_) prompt_.value = job.prompt ?? '';
+  if (agentId) agentId.value = (job.agentId as string) ?? '';
 }
 
 function hideCronModal() {
   const modal = $('cron-modal');
   if (modal) modal.style.display = 'none';
+  _editingJobId = null;
 }
 
 async function saveCronJob() {
   const label = ($('cron-form-label') as HTMLInputElement).value.trim();
   const schedule = ($('cron-form-schedule') as HTMLInputElement).value.trim();
   const prompt_ = ($('cron-form-prompt') as HTMLTextAreaElement).value.trim();
-  if (!label || !schedule || !prompt_) { alert('All fields required'); return; }
+  const agentId = ($('cron-form-agent') as HTMLInputElement | null)?.value.trim() || undefined;
+  if (!label || !schedule || !prompt_) { alert('Name, schedule, and prompt are required'); return; }
+
   try {
-    await gateway.cronAdd({ label, schedule, prompt: prompt_, enabled: true });
+    if (_editingJobId) {
+      // Update existing job
+      await gateway.cronUpdate(_editingJobId, { label, schedule, prompt: prompt_, agentId });
+    } else {
+      // Create new job
+      await gateway.cronAdd({ label, schedule, prompt: prompt_, enabled: true, agentId });
+    }
     hideCronModal();
     loadCron();
   } catch (e) {
-    alert(`Failed to create: ${e instanceof Error ? e.message : e}`);
+    alert(`Failed to ${_editingJobId ? 'update' : 'create'}: ${e instanceof Error ? e.message : e}`);
   }
 }
 
 // ── Initialize ─────────────────────────────────────────────────────────────
 export function initAutomations() {
-  $('add-cron-btn')?.addEventListener('click', showCronModal);
-  $('cron-empty-add')?.addEventListener('click', showCronModal);
+  $('add-cron-btn')?.addEventListener('click', openCreateModal);
+  $('cron-empty-add')?.addEventListener('click', openCreateModal);
   $('cron-modal-close')?.addEventListener('click', hideCronModal);
   $('cron-modal-cancel')?.addEventListener('click', hideCronModal);
   

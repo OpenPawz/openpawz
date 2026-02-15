@@ -1,6 +1,6 @@
 # Paw — Full Architecture, Status & Wiring Plan
 
-> Last updated: 2026-02-15 (Sprint 1 COMPLETE — usage dashboard, token meter, compaction warnings, per-conversation cost, budget alerts, memory export)  
+> Last updated: 2026-02-15 (Sprint 1+2 COMPLETE — cost visibility, cron reliability, 10/19 roadmap items done)  
 > Cross-referenced against: [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw) main branch
 
 ---
@@ -946,9 +946,9 @@ The gateway exposes its full API via WebSocket on `ws://127.0.0.1:{port}` (defau
 
 **What's missing entirely**: TTS UI (5 typed methods, no UI), Talk Mode UI (2 typed, no UI), Voice Wake UI (2 typed, no UI). That's **~9 gateway methods with zero UI**. Beyond gateway wiring, the Community Gap Analysis identifies **19 feature items** across 5 sprints that address real user pain (memory visibility, cost tracking, cron reliability, multi-agent routing).
 
-**Coverage reality**: Paw calls **~77 of ~90 gateway methods** (**~86% UI wired, ~98% typed**). 12 of 18 gateway events consumed. Every category except TTS/Talk/Voice Wake is at **100%**. Sprint 1 COMPLETE — usage dashboard enhanced with per-model cost, per-conversation cost in chat header, budget alerts with configurable limits, token meter, compaction warnings, memory export.
+**Coverage reality**: Paw calls **~77 of ~90 gateway methods** (**~86% UI wired, ~98% typed**). 12 of 18 gateway events consumed. Every category except TTS/Talk/Voice Wake is at **100%**. Sprints 1+2 COMPLETE — 10 of 19 roadmap items done. Users get cost visibility (per-model, per-session, budget alerts) and cron reliability (job editing, error highlighting, timeout visualization, expandable run details).
 
-**Next up**: Sprint 2 (Cron Reliability — job editor, error highlighting, timeout visualization, test run output). See Sprint Plan section for the full 19-item roadmap (6 of 19 complete).
+**Next up**: Sprint 3 (TTS & Voice — TTS settings, TTS in chat, morning brief template). See Sprint Plan section for the full 19-item roadmap (10 of 19 complete).
 
 ---
 
@@ -1072,10 +1072,10 @@ Priority order based on community pain severity + implementation feasibility.
 
 | # | Feature | Gateway methods | Effort | Details |
 |---|---------|----------------|--------|---------|
-| 6 | **Cron job editor** | `cron.update` | M | Edit existing jobs (schedule, prompt, agent) instead of delete+recreate |
-| 7 | **Run output viewer** | `cron.runs` + run detail | M | Expandable run rows showing output, errors, duration, timeout status |
-| 8 | **Error highlighting** | `cron.runs` (error field) | S | Red rows for failed runs, error icon, filter by status |
-| 9 | **Timeout visualization** | `cron.runs` (duration) | S | Progress bar or timer showing job duration vs configured timeout |
+| 6 | ~~**Cron job editor**~~ | ~~`cron.update`~~ | ~~M~~ | ✅ **DONE** — Edit button on cards, modal reused for create+edit, agent ID field, `cronUpdate` call |
+| 7 | ~~**Run output viewer**~~ | ~~`cron.runs` + run detail~~ | ~~M~~ | ✅ **DONE** — Expandable error details with pre-formatted output, click to toggle |
+| 8 | ~~**Error highlighting**~~ | ~~`cron.runs` (error field)~~ | ~~S~~ | ✅ **DONE** — Red left-border + tinted bg for failed/timeout runs, error X icon |
+| 9 | ~~**Timeout visualization**~~ | ~~`cron.runs` (duration)~~ | ~~S~~ | ✅ **DONE** — Duration bar (green/yellow/red at 50%/80%), duration text, 5min reference |
 
 ### Sprint 3: TTS & Voice (morning brief enabler)
 

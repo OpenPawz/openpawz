@@ -2706,6 +2706,103 @@ button:focus:not(:focus-visible) { outline: none; }
 .auto-card-status.failed { background: var(--error-subtle); color: var(--error); }
 .auto-card-status.running { background: var(--blue-subtle); color: var(--blue); }
 
+/* Error-highlighted run cards */
+.auto-card-error {
+  border-left: 3px solid var(--error, #d83a52);
+  background: color-mix(in srgb, var(--error, #d83a52) 5%, var(--bg-secondary));
+}
+.auto-card-error-icon {
+  stroke: var(--error, #d83a52);
+  fill: none;
+  flex-shrink: 0;
+}
+
+/* Run card header row (time + status inline) */
+.auto-card-header-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.auto-card-header-row .auto-card-time {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+/* Meta line (next/last run) */
+.auto-card-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 2px;
+}
+
+/* Duration / timeout bar */
+.auto-card-duration {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  margin-bottom: 4px;
+}
+.auto-card-duration-text {
+  font-size: 11px;
+  color: var(--text-muted);
+  min-width: 36px;
+}
+.auto-card-duration-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--border-light, #e6e9ef);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.auto-card-duration-fill {
+  height: 100%;
+  background: var(--success, #00854d);
+  border-radius: 2px;
+  transition: width 300ms ease;
+}
+.auto-card-duration-fill.warning {
+  background: var(--warning, #ffcb00);
+}
+.auto-card-duration-fill.danger {
+  background: var(--error, #d83a52);
+}
+
+/* Expandable error detail */
+.auto-card-error-detail {
+  margin-top: 6px;
+  border-top: 1px solid var(--border-light, #e6e9ef);
+  padding-top: 6px;
+}
+.auto-card-error-toggle {
+  font-size: 11px;
+  color: var(--error, #d83a52);
+  cursor: pointer;
+  font-weight: 500;
+}
+.auto-card-error-toggle:hover {
+  text-decoration: underline;
+}
+.auto-card-error-content {
+  margin-top: 6px;
+}
+.auto-card-error-content pre {
+  font-size: 11px;
+  color: var(--error, #d83a52);
+  background: color-mix(in srgb, var(--error, #d83a52) 6%, transparent);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 120px;
+  overflow-y: auto;
+  margin: 0;
+}
+.auto-card-error-collapsed .auto-card-error-content {
+  display: none;
+}
+
 /* ═══ Channel Grid ═══ */
 .channel-grid {
   display: grid;
