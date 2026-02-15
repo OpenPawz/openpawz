@@ -277,6 +277,149 @@ export async function loadSettingsDevices() {
   }
 }
 
+// ── Onboarding Wizard ──────────────────────────────────────────────────────
+export async function loadSettingsWizard() {
+  if (!wsConnected) return;
+  const section = $('settings-wizard-section');
+  const statusEl = $('settings-wizard-status');
+  const stepEl = $('settings-wizard-step');
+  const startBtn = $('settings-wizard-start');
+  try {
+    const result = await gateway.wizardStatus();
+    if (section) section.style.display = '';
+    if (result.active && result.step) {
+      // Wizard is in progress
+      if (statusEl) statusEl.innerHTML = `<span class="wizard-badge active">Wizard active — Step: ${escHtml(result.step)}</span>`;
+      if (stepEl) { stepEl.style.display = ''; }
+      if (startBtn) startBtn.style.display = 'none';
+      const content = $('settings-wizard-step-content');
+      if (content) content.innerHTML = `<p style="color:var(--text-secondary)">Current step: <strong>${escHtml(result.step)}</strong></p>
+        <p style="font-size:12px;color:var(--text-muted)">Click "Next Step" to advance, or "Cancel Wizard" to abort.</p>`;
+    } else if (result.completed) {
+      if (statusEl) statusEl.innerHTML = '<span class="wizard-badge completed">Setup Complete</span>';
+      if (stepEl) stepEl.style.display = 'none';
+      if (startBtn) startBtn.style.display = 'none';
+    } else {
+      if (statusEl) statusEl.innerHTML = '<span class="wizard-badge idle">Not started</span>';
+      if (stepEl) stepEl.style.display = 'none';
+      if (startBtn) startBtn.style.display = '';
+    }
+  } catch (e) {
+    console.warn('[settings] Wizard status failed:', e);
+    // Gateway may not support wizard — hide section
+    if (section) section.style.display = 'none';
+  }
+}
+
+async function startWizard() {
+  try {
+    const result = await gateway.wizardStart();
+    showSettingsToast(`Wizard started — step: ${result.step}`, 'success');
+    loadSettingsWizard();
+  } catch (e) {
+    showSettingsToast(`Failed to start wizard: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+}
+
+async function wizardNext() {
+  try {
+    const result = await gateway.wizardNext();
+    if (result.completed) {
+      showSettingsToast('Wizard completed!', 'success');
+    } else if (result.step) {
+      showSettingsToast(`Step: ${result.step}`, 'info');
+    }
+    loadSettingsWizard();
+  } catch (e) {
+    showSettingsToast(`Wizard step failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+}
+
+async function cancelWizard() {
+  try {
+    await gateway.wizardCancel();
+    showSettingsToast('Wizard cancelled', 'info');
+    loadSettingsWizard();
+  } catch (e) {
+    showSettingsToast(`Failed to cancel wizard: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+}
+
+// ── Self-Update ────────────────────────────────────────────────────────────
+async function runUpdate() {
+  const btn = $('settings-update-run') as HTMLButtonElement | null;
+  if (btn) { btn.disabled = true; btn.textContent = 'Updating…'; }
+  try {
+    const result = await gateway.updateRun();
+    if (result.updated) {
+      showSettingsToast(`Updated to ${result.version ?? 'latest'}! Restart gateway for changes.`, 'success');
+    } else {
+      showSettingsToast('Already up to date', 'info');
+    }
+  } catch (e) {
+    showSettingsToast(`Update failed: ${e instanceof Error ? e.message : e}`, 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Update OpenClaw'; }
+  }
+}
+
+// ── Browser Control ────────────────────────────────────────────────────────
+export async function loadSettingsBrowser() {
+  if (!wsConnected) return;
+  const section = $('settings-browser-section');
+  const statusEl = $('settings-browser-status');
+  const tabsEl = $('settings-browser-tabs');
+  const startBtn = $('settings-browser-start');
+  const stopBtn = $('settings-browser-stop');
+  try {
+    const result = await gateway.browserStatus();
+    if (section) section.style.display = '';
+    if (result.running) {
+      if (statusEl) statusEl.innerHTML = '<span class="browser-badge running">Browser Running</span>';
+      if (startBtn) startBtn.style.display = 'none';
+      if (stopBtn) stopBtn.style.display = '';
+      if (result.tabs?.length && tabsEl) {
+        tabsEl.innerHTML = '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">Open tabs:</div>' +
+          result.tabs.map(t => `<div class="browser-tab-entry"><span class="browser-tab-title">${escHtml(t.title || t.url)}</span><span class="browser-tab-url">${escHtml(t.url)}</span></div>`).join('');
+      } else if (tabsEl) {
+        tabsEl.innerHTML = '';
+      }
+    } else {
+      if (statusEl) statusEl.innerHTML = '<span class="browser-badge stopped">Browser Stopped</span>';
+      if (startBtn) startBtn.style.display = '';
+      if (stopBtn) stopBtn.style.display = 'none';
+      if (tabsEl) tabsEl.innerHTML = '';
+    }
+  } catch (e) {
+    console.warn('[settings] Browser status failed:', e);
+    if (section) section.style.display = 'none';
+  }
+}
+
+async function startBrowser() {
+  const btn = $('settings-browser-start') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+  try {
+    await gateway.browserStart();
+    showSettingsToast('Browser started', 'success');
+    loadSettingsBrowser();
+  } catch (e) {
+    showSettingsToast(`Browser start failed: ${e instanceof Error ? e.message : e}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function stopBrowser() {
+  try {
+    await gateway.browserStop();
+    showSettingsToast('Browser stopped', 'info');
+    loadSettingsBrowser();
+  } catch (e) {
+    showSettingsToast(`Browser stop failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+}
+
 // ── Exec Approvals Config ──────────────────────────────────────────────────
 // Each tool gets a 3-way toggle row: Allow | Ask | Deny
 // Tools are gathered from the existing allow/deny lists
@@ -462,6 +605,16 @@ export function initSettings() {
   $('settings-refresh-approvals')?.addEventListener('click', () => loadSettingsApprovals());
   $('settings-save-approvals')?.addEventListener('click', () => saveSettingsApprovals());
   $('approvals-add-tool')?.addEventListener('click', () => addToolRule());
+  // Wizard
+  $('settings-wizard-start')?.addEventListener('click', () => startWizard());
+  $('settings-wizard-next')?.addEventListener('click', () => wizardNext());
+  $('settings-wizard-cancel')?.addEventListener('click', () => cancelWizard());
+  // Update
+  $('settings-update-run')?.addEventListener('click', () => runUpdate());
+  // Browser
+  $('settings-browser-start')?.addEventListener('click', () => startBrowser());
+  $('settings-browser-stop')?.addEventListener('click', () => stopBrowser());
+  $('settings-refresh-browser')?.addEventListener('click', () => loadSettingsBrowser());
 }
 
 // ── Load all settings data ─────────────────────────────────────────────────
@@ -474,5 +627,7 @@ export async function loadSettings() {
     loadSettingsNodes(),
     loadSettingsDevices(),
     loadSettingsApprovals(),
+    loadSettingsWizard(),
+    loadSettingsBrowser(),
   ]);
 }

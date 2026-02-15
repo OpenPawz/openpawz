@@ -591,6 +591,19 @@ class GatewayClient {
     return this.request('system-presence', {});
   }
 
+  // System events
+  async systemEvent(event: string, data?: Record<string, unknown>): Promise<unknown> {
+    return this.request('system-event', { event, ...(data ?? {}) });
+  }
+
+  async lastHeartbeat(): Promise<{ ts?: number; ok?: boolean; [key: string]: unknown }> {
+    return this.request('last-heartbeat', {});
+  }
+
+  async setHeartbeats(enabled: boolean, intervalMs?: number): Promise<unknown> {
+    return this.request('set-heartbeats', { enabled, ...(intervalMs ? { intervalMs } : {}) });
+  }
+
   // Exec Approvals
   async execApprovalsGet(): Promise<ExecApprovalsSnapshot> {
     return this.request<ExecApprovalsSnapshot>('exec.approvals.get', {});
@@ -598,6 +611,18 @@ class GatewayClient {
 
   async execApprovalsSet(updates: Partial<ExecApprovalsSnapshot>): Promise<unknown> {
     return this.request('exec.approvals.set', updates);
+  }
+
+  async execApprovalsNodeGet(): Promise<ExecApprovalsSnapshot> {
+    return this.request<ExecApprovalsSnapshot>('exec.approvals.node.get', {});
+  }
+
+  async execApprovalsNodeSet(updates: Partial<ExecApprovalsSnapshot>): Promise<unknown> {
+    return this.request('exec.approvals.node.set', updates);
+  }
+
+  async execApprovalResolve(id: string, allowed: boolean): Promise<unknown> {
+    return this.request('exec.approvals.resolve', { id, allowed });
   }
 
   // Agent files (memory)

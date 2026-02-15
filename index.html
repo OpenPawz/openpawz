@@ -826,6 +826,23 @@
             </div>
           </div>
           <div class="channel-grid" id="channels-list"></div>
+
+          <!-- Direct Send Message (channel send) -->
+          <div class="channel-send-section" id="channel-send-section" style="display:none;margin-top:20px;border-top:1px solid var(--border-light);padding-top:16px">
+            <h3 style="font-size:14px;font-weight:600;margin-bottom:8px">Send Direct Message</h3>
+            <div style="display:flex;gap:8px;align-items:flex-end">
+              <div style="flex:1">
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Channel</label>
+                <select id="channel-send-target" class="settings-input" style="width:100%"></select>
+              </div>
+              <div style="flex:2">
+                <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:4px">Message</label>
+                <input type="text" id="channel-send-message" class="settings-input" placeholder="Type a message…" style="width:100%" />
+              </div>
+              <button class="btn btn-primary btn-sm" id="channel-send-btn">Send</button>
+            </div>
+          </div>
+
           <div class="empty-state" id="channels-empty">
             <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 10l4.553-2.276A1 1 0 0 1 21 8.618v6.764a1 1 0 0 1-1.447.894L15 14"/><rect x="1" y="6" width="14" height="12" rx="2"/></svg></div>
             <div class="empty-title">No channels configured</div>
@@ -1525,6 +1542,40 @@
               <span id="settings-gateway-version" style="color:var(--text-muted)"></span><br>
               <a href="https://github.com/elisplash/paw" target="_blank" style="color: var(--text-muted);">View source on GitHub</a>
             </p>
+            <div style="margin-top:10px;display:flex;gap:8px">
+              <button class="btn btn-primary btn-sm" id="settings-update-run">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="21 15 21 19 3 19 3 15"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Update OpenClaw
+              </button>
+            </div>
+          </div>
+
+          <!-- Onboarding Wizard -->
+          <div class="settings-section" id="settings-wizard-section" style="display:none">
+            <h2 class="settings-section-title">Setup Wizard</h2>
+            <p class="settings-section-desc">OpenClaw's guided setup flow. Walk through initial configuration step by step.</p>
+            <div id="settings-wizard-status" class="wizard-status"></div>
+            <div id="settings-wizard-step" class="wizard-step" style="display:none">
+              <div id="settings-wizard-step-content" class="wizard-step-content"></div>
+              <div style="display:flex;gap:8px;margin-top:12px">
+                <button class="btn btn-primary btn-sm" id="settings-wizard-next">Next Step</button>
+                <button class="btn btn-ghost btn-sm" id="settings-wizard-cancel">Cancel Wizard</button>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-sm" id="settings-wizard-start" style="display:none">Start Wizard</button>
+          </div>
+
+          <!-- Browser Control -->
+          <div class="settings-section" id="settings-browser-section" style="display:none">
+            <h2 class="settings-section-title">Browser Control</h2>
+            <p class="settings-section-desc">Agent-driven browser automation via Chrome DevTools Protocol.</p>
+            <div id="settings-browser-status" class="browser-status"></div>
+            <div id="settings-browser-tabs" class="browser-tabs" style="margin-top:8px"></div>
+            <div style="display:flex;gap:8px;margin-top:12px">
+              <button class="btn btn-primary btn-sm" id="settings-browser-start">Start Browser</button>
+              <button class="btn btn-danger btn-sm" id="settings-browser-stop" style="display:none">Stop Browser</button>
+              <button class="btn btn-ghost btn-sm" id="settings-refresh-browser">Refresh</button>
+            </div>
           </div>
 
           <!-- Connected Clients -->

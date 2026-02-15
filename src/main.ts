@@ -1839,6 +1839,17 @@ async function loadChannels() {
         }
       });
     });
+
+    // Populate channel send dropdown
+    const sendSection = $('channel-send-section');
+    const sendTarget = $('channel-send-target') as HTMLSelectElement | null;
+    const connectedKeys = keys.filter(k => channels[k].linked);
+    if (connectedKeys.length && sendSection && sendTarget) {
+      sendSection.style.display = '';
+      sendTarget.innerHTML = connectedKeys.map(k => `<option value="${escAttr(k)}">${escHtml(k)}</option>`).join('');
+    } else if (sendSection) {
+      sendSection.style.display = 'none';
+    }
   } catch (e) {
     console.warn('Channels load failed:', e);
     if (loading) loading.style.display = 'none';
@@ -1846,6 +1857,21 @@ async function loadChannels() {
   }
 }
 $('refresh-channels-btn')?.addEventListener('click', () => loadChannels());
+
+// Direct channel send
+$('channel-send-btn')?.addEventListener('click', async () => {
+  const target = ($('channel-send-target') as HTMLSelectElement)?.value;
+  const msgInput = $('channel-send-message') as HTMLInputElement;
+  const message = msgInput?.value.trim();
+  if (!target || !message || !wsConnected) return;
+  try {
+    await gateway.send({ channelId: target, message });
+    showToast(`Sent to ${target}`, 'success');
+    if (msgInput) msgInput.value = '';
+  } catch (e) {
+    showToast(`Send failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+});
 
 // ── Automations / Cron — Card Board ────────────────────────────────────────
 async function loadCron() {
@@ -2763,7 +2789,7 @@ gateway.on('exec.approval.requested', (payload: unknown) => {
     });
     if (!anyAllowed) {
       // Auto-deny and log
-      if (id) gateway.request('exec.approvals.resolve', { id, allowed: false }).catch(console.warn);
+      if (id) gateway.execApprovalResolve(id, false).catch(console.warn);
       logCredentialActivity({
         action: 'blocked',
         toolName: tool,
@@ -2801,17 +2827,51 @@ gateway.on('exec.approval.requested', (payload: unknown) => {
   };
   const onAllow = () => {
     cleanup();
-    if (id) gateway.request('exec.approvals.resolve', { id, allowed: true }).catch(console.warn);
+    if (id) gateway.execApprovalResolve(id, true).catch(console.warn);
     showToast('Tool approved', 'success');
   };
   const onDeny = () => {
     cleanup();
-    if (id) gateway.request('exec.approvals.resolve', { id, allowed: false }).catch(console.warn);
+    if (id) gateway.execApprovalResolve(id, false).catch(console.warn);
     showToast('Tool denied', 'warning');
   };
   $('approval-allow-btn')?.addEventListener('click', onAllow);
   $('approval-deny-btn')?.addEventListener('click', onDeny);
   $('approval-modal-close')?.addEventListener('click', onDeny);
+});
+
+// ── Additional gateway events ──────────────────────────────────────────────
+gateway.on('exec.approval.resolved', (payload: unknown) => {
+  const evt = payload as { id?: string; tool?: string; allowed?: boolean };
+  console.log('[main] exec.approval.resolved:', evt);
+  // Close modal if it was for this approval
+  const modal = $('approval-modal');
+  if (modal?.style.display !== 'none') {
+    modal!.style.display = 'none';
+  }
+});
+
+gateway.on('presence', (payload: unknown) => {
+  console.log('[main] presence:', payload);
+  // Refresh presence list if settings is open
+  if (wsConnected && settingsView?.classList.contains('active')) {
+    SettingsModule.loadSettingsPresence();
+  }
+});
+
+gateway.on('cron', (payload: unknown) => {
+  const evt = payload as { jobId?: string; status?: string; label?: string };
+  console.log('[main] cron event:', evt);
+  // Refresh automations if that view is open
+  const autoView = $('automations-view');
+  if (wsConnected && autoView?.classList.contains('active')) {
+    loadCron();
+  }
+});
+
+gateway.on('shutdown', (_payload: unknown) => {
+  console.warn('[main] Gateway shutdown event received');
+  showToast('Gateway is shutting down…', 'warning');
 });
 
 // ── Initialize ─────────────────────────────────────────────────────────────
