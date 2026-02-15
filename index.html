@@ -32,6 +32,13 @@
               </svg>
               <span>Home</span>
             </div>
+            <div class="nav-item" data-view="today">
+              <svg class="icon" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              <span>Today</span>
+            </div>
             <div class="nav-item" data-view="chat">
               <svg class="icon" viewBox="0 0 24 24">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -437,6 +444,13 @@
           </div>
         </div>
 
+
+        <!-- ═══ Today View ═══ -->
+        <div class="view today-view" id="today-view">
+          <div class="today-content" id="today-content">
+            <!-- Rendered by today.ts -->
+          </div>
+        </div>
 
         <!-- ═══ Agents View ═══ -->
         <div class="view agents-view" id="agents-view">
