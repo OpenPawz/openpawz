@@ -4,14 +4,14 @@
 import type { AppConfig, Message, InstallProgress, ChatMessage, Session } from './types';
 import { setGatewayConfig, probeHealth } from './api';
 import { gateway } from './gateway';
-import { initDb, listModes, saveMode, deleteMode, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, deleteProject, listProjectFiles, saveProjectFile, deleteProjectFile, logCredentialActivity } from './db';
-import type { AgentMode } from './db';
+import { initDb, listModes, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, deleteProject, listProjectFiles, saveProjectFile, deleteProjectFile, logCredentialActivity } from './db';
 import * as SettingsModule from './views/settings';
 import * as AutomationsModule from './views/automations';
 import * as MemoryPalaceModule from './views/memory-palace';
 import * as MailModule from './views/mail';
 import type { MailPermissions } from './views/mail';
 import * as SkillsModule from './views/skills';
+import * as FoundryModule from './views/foundry';
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -137,7 +137,7 @@ function switchView(viewName: string) {
       case 'channels': loadChannels(); break;
       case 'automations': AutomationsModule.loadCron(); break;
       case 'skills': SkillsModule.loadSkills(); break;
-      case 'foundry': loadModels(); loadModes(); loadAgents(); break;
+      case 'foundry': FoundryModule.loadModels(); FoundryModule.loadModes(); FoundryModule.loadAgents(); break;
       case 'memory': MemoryPalaceModule.loadMemoryPalace(); loadMemory(); break;
       case 'build': loadBuildProjects(); loadSpaceCron('build'); break;
       case 'mail': MailModule.loadMail(); loadSpaceCron('mail'); break;
@@ -250,6 +250,7 @@ gateway.on('_connected', () => {
   MemoryPalaceModule.setWsConnected(true);
   MailModule.setWsConnected(true);
   SkillsModule.setWsConnected(true);
+  FoundryModule.setWsConnected(true);
   statusDot?.classList.add('connected');
   statusDot?.classList.remove('error');
   if (statusText) statusText.textContent = 'Connected';
@@ -260,6 +261,7 @@ gateway.on('_disconnected', () => {
   MemoryPalaceModule.setWsConnected(false);
   MailModule.setWsConnected(false);
   SkillsModule.setWsConnected(false);
+  FoundryModule.setWsConnected(false);
   statusDot?.classList.remove('connected');
   statusDot?.classList.add('error');
   if (statusText) statusText.textContent = 'Reconnecting...';
@@ -1659,509 +1661,6 @@ $('cron-modal-save')?.addEventListener('click', async () => {
   } catch (e) { alert(`Failed: ${e}`); }
 });
 
-// ── Models / Foundry — Models + Agent Modes ────────────────────────────────
-let _cachedModels: { id: string; name?: string; provider?: string; contextWindow?: number; reasoning?: boolean }[] = [];
-
-async function loadModels() {
-  const list = $('models-list');
-  const empty = $('models-empty');
-  const loading = $('models-loading');
-  if (!wsConnected || !list) return;
-
-  if (loading) loading.style.display = '';
-  if (empty) empty.style.display = 'none';
-  list.innerHTML = '';
-
-  try {
-    const result = await gateway.modelsList();
-    if (loading) loading.style.display = 'none';
-
-    const models = result.models ?? [];
-    _cachedModels = models;
-    if (!models.length) {
-      if (empty) empty.style.display = 'flex';
-      return;
-    }
-
-    for (const model of models) {
-      const card = document.createElement('div');
-      card.className = 'model-card';
-      card.innerHTML = `
-        <div class="model-card-header">
-          <span class="model-card-name">${escHtml(model.name ?? model.id)}</span>
-          ${model.provider ? `<span class="model-card-provider">${escHtml(model.provider)}</span>` : ''}
-        </div>
-        <div class="model-card-meta">
-          ${model.contextWindow ? `<span>${model.contextWindow.toLocaleString()} tokens</span>` : ''}
-          ${model.reasoning ? `<span class="model-card-badge">Reasoning</span>` : ''}
-        </div>
-      `;
-      list.appendChild(card);
-    }
-  } catch (e) {
-    console.warn('Models load failed:', e);
-    if (loading) loading.style.display = 'none';
-    if (empty) empty.style.display = 'flex';
-  }
-}
-$('refresh-models-btn')?.addEventListener('click', () => { loadModels(); loadModes(); });
-
-// Foundry tab switching
-document.querySelectorAll('.foundry-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.foundry-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    const target = tab.getAttribute('data-foundry-tab');
-    const modelsPanel = $('foundry-models-panel');
-    const modesPanel = $('foundry-modes-panel');
-    const agentsPanel = $('foundry-agents-panel');
-    if (modelsPanel) modelsPanel.style.display = target === 'models' ? '' : 'none';
-    if (modesPanel) modesPanel.style.display = target === 'modes' ? '' : 'none';
-    if (agentsPanel) agentsPanel.style.display = target === 'agents' ? '' : 'none';
-    // Auto-load agents when switching to agents tab
-    if (target === 'agents') loadAgents();
-  });
-});
-
-// ── Agent Modes ────────────────────────────────────────────────────────────
-let _editingModeId: string | null = null;
-
-async function loadModes() {
-  const list = $('modes-list');
-  const empty = $('modes-empty');
-  if (!list) return;
-  list.innerHTML = '';
-
-  try {
-    const modes = await listModes();
-    if (!modes.length) {
-      if (empty) empty.style.display = '';
-      return;
-    }
-    if (empty) empty.style.display = 'none';
-
-    for (const mode of modes) {
-      const card = document.createElement('div');
-      card.className = 'mode-card';
-      card.style.borderLeftColor = mode.color || 'var(--accent)';
-      card.innerHTML = `
-        <div class="mode-card-icon" style="background:${mode.color}22">${mode.icon || mode.name?.charAt(0) || 'M'}</div>
-        <div class="mode-card-info">
-          <div class="mode-card-name">${escHtml(mode.name)}</div>
-          <div class="mode-card-detail">${mode.model ? escHtml(mode.model) : 'Default model'} · ${mode.thinking_level || 'normal'} thinking</div>
-        </div>
-        ${mode.is_default ? '<span class="mode-card-default">Default</span>' : ''}
-      `;
-      card.addEventListener('click', () => editMode(mode));
-      list.appendChild(card);
-    }
-  } catch (e) {
-    console.warn('Modes load failed:', e);
-  }
-}
-
-function editMode(mode?: AgentMode) {
-  _editingModeId = mode?.id ?? null;
-  const modal = $('mode-modal');
-  const title = $('mode-modal-title');
-  const deleteBtn = $('mode-modal-delete');
-  if (!modal) return;
-  modal.style.display = 'flex';
-  if (title) title.textContent = mode ? 'Edit Agent Mode' : 'New Agent Mode';
-  if (deleteBtn) deleteBtn.style.display = mode && !mode.is_default ? '' : 'none';
-
-  // Populate model select
-  const modelSelect = $('mode-form-model') as HTMLSelectElement;
-  if (modelSelect) {
-    modelSelect.innerHTML = '<option value="">Default model</option>';
-    for (const m of _cachedModels) {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = m.name ?? m.id;
-      if (mode?.model === m.id) opt.selected = true;
-      modelSelect.appendChild(opt);
-    }
-  }
-
-  // Fill form
-  ($('mode-form-icon') as HTMLInputElement).value = mode?.icon ?? '';
-  ($('mode-form-name') as HTMLInputElement).value = mode?.name ?? '';
-  ($('mode-form-color') as HTMLInputElement).value = mode?.color ?? '#0073EA';
-  ($('mode-form-prompt') as HTMLTextAreaElement).value = mode?.system_prompt ?? '';
-  ($('mode-form-thinking') as HTMLSelectElement).value = mode?.thinking_level ?? 'normal';
-  ($('mode-form-temp') as HTMLInputElement).value = String(mode?.temperature ?? 1);
-  const tempVal = $('mode-form-temp-value');
-  if (tempVal) tempVal.textContent = String(mode?.temperature ?? 1.0);
-}
-
-function hideModeModal() {
-  const modal = $('mode-modal');
-  if (modal) modal.style.display = 'none';
-  _editingModeId = null;
-}
-
-$('modes-add-btn')?.addEventListener('click', () => editMode());
-$('mode-modal-close')?.addEventListener('click', hideModeModal);
-$('mode-modal-cancel')?.addEventListener('click', hideModeModal);
-
-$('mode-form-temp')?.addEventListener('input', () => {
-  const val = ($('mode-form-temp') as HTMLInputElement).value;
-  const display = $('mode-form-temp-value');
-  if (display) display.textContent = parseFloat(val).toFixed(1);
-});
-
-$('mode-modal-save')?.addEventListener('click', async () => {
-  const name = ($('mode-form-name') as HTMLInputElement).value.trim();
-  if (!name) { alert('Name is required'); return; }
-  const id = _editingModeId ?? name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  await saveMode({
-    id,
-    name,
-    icon: ($('mode-form-icon') as HTMLInputElement).value || '',
-    color: ($('mode-form-color') as HTMLInputElement).value || '#0073EA',
-    model: ($('mode-form-model') as HTMLSelectElement).value || null,
-    system_prompt: ($('mode-form-prompt') as HTMLTextAreaElement).value,
-    thinking_level: ($('mode-form-thinking') as HTMLSelectElement).value,
-    temperature: parseFloat(($('mode-form-temp') as HTMLInputElement).value),
-  });
-  hideModeModal();
-  loadModes();
-});
-
-$('mode-modal-delete')?.addEventListener('click', async () => {
-  if (!_editingModeId || !confirm('Delete this mode?')) return;
-  await deleteMode(_editingModeId);
-  hideModeModal();
-  loadModes();
-});
-
-// ══════════════════════════════════════════════════════════════════════════
-// ═══ AGENTS — Multi-Agent Persona Management ═══════════════════════════════
-// ══════════════════════════════════════════════════════════════════════════
-
-let _agentsList: import('./types').AgentSummary[] = [];
-let _currentAgentId: string | null = null;
-let _editingAgentId: string | null = null;
-
-/** Standard workspace files that OpenClaw agents use */
-const AGENT_STANDARD_FILES: { name: string; label: string; description: string }[] = [
-  { name: 'AGENTS.md',    label: 'Instructions',   description: 'Operating rules, priorities, memory usage guide' },
-  { name: 'SOUL.md',      label: 'Persona',         description: 'Personality, tone, communication style, boundaries' },
-  { name: 'USER.md',      label: 'About User',      description: 'Who the user is, how to address them, preferences' },
-  { name: 'IDENTITY.md',  label: 'Identity',         description: 'Agent name, emoji, vibe/creature, avatar' },
-  { name: 'TOOLS.md',     label: 'Tool Notes',       description: 'Notes about local tools and conventions' },
-  { name: 'HEARTBEAT.md', label: 'Heartbeat',        description: 'Optional cron checklist (keep short to save tokens)' },
-];
-
-async function loadAgents() {
-  const list = $('agents-list');
-  const empty = $('agents-empty');
-  const loading = $('agents-loading');
-  if (!wsConnected || !list) return;
-
-  if (loading) loading.style.display = '';
-  if (empty) empty.style.display = 'none';
-  list.innerHTML = '';
-
-  try {
-    const result = await gateway.listAgents();
-    if (loading) loading.style.display = 'none';
-
-    _agentsList = result.agents ?? [];
-    if (!_agentsList.length) {
-      if (empty) empty.style.display = 'flex';
-      return;
-    }
-
-    const defaultId = result.defaultId;
-
-    for (const agent of _agentsList) {
-      const card = document.createElement('div');
-      card.className = 'agent-card';
-      const isDefault = agent.id === defaultId;
-      const emoji = agent.identity?.emoji ?? agent.name?.charAt(0)?.toUpperCase() ?? 'A';
-      const name = agent.identity?.name ?? agent.name ?? agent.id;
-      const theme = agent.identity?.theme ?? '';
-      card.innerHTML = `
-        <div class="agent-card-avatar">${escHtml(emoji)}</div>
-        <div class="agent-card-body">
-          <div class="agent-card-name">${escHtml(name)}${isDefault ? ' <span class="agent-card-badge">Default</span>' : ''}</div>
-          <div class="agent-card-id">${escHtml(agent.id)}</div>
-          ${theme ? `<div class="agent-card-theme">${escHtml(theme)}</div>` : ''}
-        </div>
-        <svg class="agent-card-chevron" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
-      `;
-      card.addEventListener('click', () => openAgentDetail(agent.id));
-      list.appendChild(card);
-    }
-  } catch (e) {
-    console.warn('Agents load failed:', e);
-    if (loading) loading.style.display = 'none';
-    if (empty) empty.style.display = 'flex';
-  }
-}
-
-// ── Agent Detail View ──────────────────────────────────────────────────────
-async function openAgentDetail(agentId: string) {
-  _currentAgentId = agentId;
-  const listView = $('agents-list-view');
-  const detailView = $('agent-detail-view');
-  if (listView) listView.style.display = 'none';
-  if (detailView) detailView.style.display = '';
-
-  // Populate header from cached agent list
-  const agent = _agentsList.find(a => a.id === agentId);
-  const emojiEl = $('agent-detail-emoji');
-  const nameEl = $('agent-detail-name');
-  const idEl = $('agent-detail-id');
-  const deleteBtn = $('agent-detail-delete');
-  if (emojiEl) emojiEl.textContent = agent?.identity?.emoji ?? agent?.name?.charAt(0)?.toUpperCase() ?? 'A';
-  if (nameEl) nameEl.textContent = agent?.identity?.name ?? agent?.name ?? agentId;
-  if (idEl) idEl.textContent = agentId;
-  // Don't allow deleting the "main" agent
-  if (deleteBtn) deleteBtn.style.display = agentId === 'main' ? 'none' : '';
-
-  // Load agent files
-  await loadAgentFiles(agentId);
-}
-
-function closeAgentDetail() {
-  _currentAgentId = null;
-  const listView = $('agents-list-view');
-  const detailView = $('agent-detail-view');
-  const editor = $('agent-file-editor');
-  if (listView) listView.style.display = '';
-  if (detailView) detailView.style.display = 'none';
-  if (editor) editor.style.display = 'none';
-}
-
-$('agent-detail-back')?.addEventListener('click', closeAgentDetail);
-
-// ── Agent Files ────────────────────────────────────────────────────────────
-async function loadAgentFiles(agentId: string) {
-  const grid = $('agent-files-list');
-  const workspaceEl = $('agent-detail-workspace');
-  if (!grid) return;
-  grid.innerHTML = '<div class="view-loading">Loading files…</div>';
-
-  try {
-    const result = await gateway.agentFilesList(agentId);
-    if (workspaceEl) workspaceEl.textContent = result.workspace || '—';
-
-    const files = result.files ?? [];
-    grid.innerHTML = '';
-
-    // Render standard files first (even if they don't exist yet — show them as "create" cards)
-    const existingPaths = new Set(files.map(f => f.path ?? f.name ?? ''));
-    for (const sf of AGENT_STANDARD_FILES) {
-      const exists = existingPaths.has(sf.name);
-      const file = files.find(f => (f.path ?? f.name) === sf.name);
-      const card = document.createElement('div');
-      card.className = `agent-file-card ${exists ? '' : 'agent-file-card-new'}`;
-      card.innerHTML = `
-        <div class="agent-file-card-icon">${exists ? 'F' : '+'}</div>
-        <div class="agent-file-card-body">
-          <div class="agent-file-card-name">${escHtml(sf.name)}</div>
-          <div class="agent-file-card-desc">${escHtml(sf.label)} — ${escHtml(sf.description)}</div>
-          ${exists && file?.sizeBytes ? `<div class="agent-file-card-size">${formatBytes(file.sizeBytes)}</div>` : ''}
-        </div>
-      `;
-      card.addEventListener('click', () => openAgentFileEditor(agentId, sf.name, exists));
-      grid.appendChild(card);
-    }
-
-    // Render any extra files not in the standard list
-    for (const file of files) {
-      const path = file.path ?? file.name ?? '';
-      if (AGENT_STANDARD_FILES.some(sf => sf.name === path)) continue;
-      const card = document.createElement('div');
-      card.className = 'agent-file-card';
-      card.innerHTML = `
-        <div class="agent-file-card-icon">F</div>
-        <div class="agent-file-card-body">
-          <div class="agent-file-card-name">${escHtml(path)}</div>
-          ${file.sizeBytes ? `<div class="agent-file-card-size">${formatBytes(file.sizeBytes)}</div>` : ''}
-        </div>
-      `;
-      card.addEventListener('click', () => openAgentFileEditor(agentId, path, true));
-      grid.appendChild(card);
-    }
-  } catch (e) {
-    console.warn('Agent files load failed:', e);
-    grid.innerHTML = '<div class="empty-state"><div class="empty-title">Could not load files</div></div>';
-  }
-}
-
-async function openAgentFileEditor(agentId: string, filePath: string, exists: boolean) {
-  const editor = $('agent-file-editor');
-  const pathEl = $('agent-file-editor-path');
-  const content = $('agent-file-editor-content') as HTMLTextAreaElement | null;
-  if (!editor || !content) return;
-
-  editor.style.display = '';
-  if (pathEl) pathEl.textContent = filePath;
-  content.value = exists ? 'Loading…' : '';
-  content.disabled = exists;
-  content.dataset.agentId = agentId;
-  content.dataset.filePath = filePath;
-
-  if (exists) {
-    try {
-      const result = await gateway.agentFilesGet(filePath, agentId);
-      content.value = result.content ?? '';
-      content.disabled = false;
-    } catch (e) {
-      content.value = `Error loading file: ${e}`;
-      content.disabled = false;
-    }
-  } else {
-    // New file — pre-populate with a template for standard files
-    const standard = AGENT_STANDARD_FILES.find(sf => sf.name === filePath);
-    if (standard) {
-      content.value = getAgentFileTemplate(filePath, agentId);
-    }
-    content.disabled = false;
-  }
-
-  // Scroll editor into view
-  editor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function getAgentFileTemplate(fileName: string, agentId: string): string {
-  const templates: Record<string, string> = {
-    'AGENTS.md': `# ${agentId} — Operating Instructions\n\n## Priorities\n1. Be helpful and accurate\n2. Use memory to remember context across sessions\n3. Follow the user's preferences defined in USER.md\n\n## Rules\n- Always check memory before answering questions about past conversations\n- Be concise unless asked for detail\n- Ask clarifying questions when intent is ambiguous\n`,
-    'SOUL.md': `# ${agentId} — Persona\n\n## Personality\n- Friendly and professional\n- Direct and clear in communication\n- Proactive — anticipates needs\n\n## Tone\n- Warm but not overly casual\n- Confident without being arrogant\n\n## Boundaries\n- Always be honest about limitations\n- Never fabricate information\n`,
-    'USER.md': `# About the User\n\n## How to address them\n- Use their first name\n\n## Preferences\n- Prefers concise responses\n- Likes code examples over lengthy explanations\n`,
-    'IDENTITY.md': `# IDENTITY.md - Agent Identity\n\n- Name: ${agentId}\n- Creature: helpful assistant\n- Vibe: warm and capable\n`,
-    'TOOLS.md': `# ${agentId} — Tool Notes\n\n## Available Tools\nThis agent has access to the standard OpenClaw tool set.\n\n## Conventions\n- Use the file system for persistent work\n- Use memory_store for important facts to remember\n`,
-    'HEARTBEAT.md': `# ${agentId} — Heartbeat Checklist\n\n- [ ] Check for pending tasks\n- [ ] Review recent messages\n`,
-  };
-  return templates[fileName] ?? `# ${fileName}\n\n`;
-}
-
-$('agent-file-editor-save')?.addEventListener('click', async () => {
-  const content = $('agent-file-editor-content') as HTMLTextAreaElement | null;
-  if (!content?.dataset.filePath || !content?.dataset.agentId) return;
-  try {
-    await gateway.agentFilesSet(content.dataset.filePath, content.value, content.dataset.agentId);
-    showToast('File saved', 'success');
-    // Reload file list to reflect new file / size changes
-    loadAgentFiles(content.dataset.agentId);
-  } catch (e) {
-    showToast(`Save failed: ${e instanceof Error ? e.message : e}`, 'error');
-  }
-});
-
-$('agent-file-editor-close')?.addEventListener('click', () => {
-  const editor = $('agent-file-editor');
-  if (editor) editor.style.display = 'none';
-});
-
-$('agent-files-refresh')?.addEventListener('click', () => {
-  if (_currentAgentId) loadAgentFiles(_currentAgentId);
-});
-
-// New custom file
-$('agent-files-new')?.addEventListener('click', async () => {
-  if (!_currentAgentId) return;
-  const name = await promptModal('New File', 'File name (e.g. PROJECTS.md)…');
-  if (!name) return;
-  const fileName = name.endsWith('.md') ? name : name + '.md';
-  openAgentFileEditor(_currentAgentId, fileName, false);
-});
-
-// ── Agent Create Modal ─────────────────────────────────────────────────────
-function showAgentModal(agent?: import('./types').AgentSummary) {
-  _editingAgentId = agent?.id ?? null;
-  const modal = $('agent-modal');
-  const title = $('agent-modal-title');
-  const saveBtn = $('agent-modal-save');
-  if (!modal) return;
-  modal.style.display = 'flex';
-  if (title) title.textContent = agent ? 'Edit Agent' : 'New Agent';
-  if (saveBtn) saveBtn.textContent = agent ? 'Save Changes' : 'Create Agent';
-
-  // Populate model select
-  const modelSelect = $('agent-form-model') as HTMLSelectElement;
-  if (modelSelect) {
-    modelSelect.innerHTML = '<option value="">Default model</option>';
-    for (const m of _cachedModels) {
-      const opt = document.createElement('option');
-      opt.value = m.id;
-      opt.textContent = m.name ?? m.id;
-      modelSelect.appendChild(opt);
-    }
-  }
-
-  // Fill fields
-  ($('agent-form-emoji') as HTMLInputElement).value = agent?.identity?.emoji ?? '';
-  ($('agent-form-name') as HTMLInputElement).value = agent?.identity?.name ?? agent?.name ?? '';
-  ($('agent-form-workspace') as HTMLInputElement).value = '';
-}
-
-function hideAgentModal() {
-  const modal = $('agent-modal');
-  if (modal) modal.style.display = 'none';
-  _editingAgentId = null;
-}
-
-$('agents-create-btn')?.addEventListener('click', () => showAgentModal());
-$('agent-modal-close')?.addEventListener('click', hideAgentModal);
-$('agent-modal-cancel')?.addEventListener('click', hideAgentModal);
-
-$('agent-modal-save')?.addEventListener('click', async () => {
-  const name = ($('agent-form-name') as HTMLInputElement).value.trim();
-  if (!name) { showToast('Name is required', 'error'); return; }
-  const emoji = ($('agent-form-emoji') as HTMLInputElement).value || '';
-  const workspace = ($('agent-form-workspace') as HTMLInputElement).value.trim() || undefined;
-  const model = ($('agent-form-model') as HTMLSelectElement).value || undefined;
-
-  try {
-    if (_editingAgentId) {
-      // Update existing
-      await gateway.updateAgent({ agentId: _editingAgentId, name, workspace, model });
-      showToast('Agent updated', 'success');
-    } else {
-      // Create new
-      const result = await gateway.createAgent({ name, workspace, emoji });
-      showToast(`Agent "${result.name}" created`, 'success');
-      // Open the new agent detail
-      hideAgentModal();
-      await loadAgents();
-      openAgentDetail(result.agentId);
-      return;
-    }
-  } catch (e) {
-    showToast(`Failed: ${e instanceof Error ? e.message : e}`, 'error');
-    return;
-  }
-  hideAgentModal();
-  loadAgents();
-});
-
-// ── Agent Edit / Delete buttons in detail view ─────────────────────────────
-$('agent-detail-edit')?.addEventListener('click', () => {
-  if (!_currentAgentId) return;
-  const agent = _agentsList.find(a => a.id === _currentAgentId);
-  showAgentModal(agent);
-});
-
-$('agent-detail-delete')?.addEventListener('click', async () => {
-  if (!_currentAgentId || _currentAgentId === 'main') return;
-  const agent = _agentsList.find(a => a.id === _currentAgentId);
-  const name = agent?.identity?.name ?? agent?.name ?? _currentAgentId;
-  if (!confirm(`Delete agent "${name}"? This will remove the agent and optionally its workspace files.`)) return;
-  const deleteFiles = confirm('Also delete workspace files? (Cancel = keep files)');
-  try {
-    await gateway.deleteAgent(_currentAgentId, deleteFiles);
-    showToast(`Agent "${name}" deleted`, 'success');
-    closeAgentDetail();
-    loadAgents();
-  } catch (e) {
-    showToast(`Delete failed: ${e instanceof Error ? e.message : e}`, 'error');
-  }
-});
-
 // ── Memory / Agent Files — Split View ──────────────────────────────────────
 async function loadMemory() {
   const list = $('memory-list');
@@ -3277,6 +2776,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize Skills module events
     SkillsModule.initSkillsEvents();
+
+    // Initialize Foundry module events
+    FoundryModule.configure({ promptModal });
+    FoundryModule.initFoundryEvents();
 
     loadConfigFromStorage();
     console.log(`[main] After loadConfigFromStorage: configured=${config.configured} url="${config.gateway.url}" tokenLen=${config.gateway.token?.length ?? 0}`);
