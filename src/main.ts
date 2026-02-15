@@ -6,6 +6,7 @@ import { setGatewayConfig, probeHealth } from './api';
 import { gateway } from './gateway';
 import { initDb, listModes, saveMode, deleteMode, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, deleteProject, listProjectFiles, saveProjectFile, deleteProjectFile, logCredentialActivity, getCredentialActivityLog } from './db';
 import type { AgentMode } from './db';
+import * as SettingsModule from './views/settings';
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -135,7 +136,7 @@ function switchView(viewName: string) {
       case 'memory': loadMemoryPalace(); loadMemory(); break;
       case 'build': loadBuildProjects(); loadSpaceCron('build'); break;
       case 'mail': loadMail(); loadSpaceCron('mail'); break;
-      case 'settings': syncSettingsForm(); loadGatewayConfig(); loadSettingsLogs(); loadSettingsUsage(); loadSettingsPresence(); break;
+      case 'settings': syncSettingsForm(); loadGatewayConfig(); SettingsModule.loadSettings(); break;
       default: break;
     }
   }
@@ -240,12 +241,14 @@ async function connectGateway(): Promise<boolean> {
 // Subscribe to gateway lifecycle events
 gateway.on('_connected', () => {
   wsConnected = true;
+  SettingsModule.setWsConnected(true);
   statusDot?.classList.add('connected');
   statusDot?.classList.remove('error');
   if (statusText) statusText.textContent = 'Connected';
 });
 gateway.on('_disconnected', () => {
   wsConnected = false;
+  SettingsModule.setWsConnected(false);
   statusDot?.classList.remove('connected');
   statusDot?.classList.add('error');
   if (statusText) statusText.textContent = 'Reconnecting...';
@@ -5109,105 +5112,7 @@ function showToast(message: string, type: 'info' | 'success' | 'error' | 'warnin
   }, durationMs);
 }
 
-// ── Settings: Logs viewer ──────────────────────────────────────────────────
-async function loadSettingsLogs() {
-  if (!wsConnected) return;
-  const section = $('settings-logs-section');
-  const output = $('settings-logs-output');
-  const linesSelect = $('settings-logs-lines') as HTMLSelectElement | null;
-  try {
-    const lines = parseInt(linesSelect?.value ?? '100', 10);
-    const result = await gateway.logsTail(lines);
-    if (section) section.style.display = '';
-    if (output) output.textContent = (result.lines ?? []).join('\n') || '(no logs)';
-  } catch (e) {
-    console.warn('[settings] Logs load failed:', e);
-    if (section) section.style.display = 'none';
-  }
-}
-
-$('settings-refresh-logs')?.addEventListener('click', () => loadSettingsLogs());
-
-// ── Settings: Usage dashboard ──────────────────────────────────────────────
-async function loadSettingsUsage() {
-  if (!wsConnected) return;
-  const section = $('settings-usage-section');
-  const content = $('settings-usage-content');
-  try {
-    const [status, cost] = await Promise.all([
-      gateway.usageStatus().catch(() => null),
-      gateway.usageCost().catch(() => null),
-    ]);
-    if (!status && !cost) { if (section) section.style.display = 'none'; return; }
-    if (section) section.style.display = '';
-    let html = '';
-    if (status?.total) {
-      html += `<div class="usage-card">
-        <div class="usage-card-label">Requests</div>
-        <div class="usage-card-value">${status.total.requests?.toLocaleString() ?? '—'}</div>
-      </div>
-      <div class="usage-card">
-        <div class="usage-card-label">Tokens</div>
-        <div class="usage-card-value">${status.total.tokens?.toLocaleString() ?? '—'}</div>
-        <div class="usage-card-sub">In: ${(status.total.inputTokens ?? 0).toLocaleString()} / Out: ${(status.total.outputTokens ?? 0).toLocaleString()}</div>
-      </div>`;
-    }
-    if (cost?.totalCost != null) {
-      html += `<div class="usage-card">
-        <div class="usage-card-label">Cost</div>
-        <div class="usage-card-value">$${cost.totalCost.toFixed(4)} ${cost.currency ?? ''}</div>
-      </div>`;
-    }
-    if (status?.byModel) {
-      html += '<div class="usage-models"><h4>By Model</h4>';
-      for (const [model, data] of Object.entries(status.byModel)) {
-        const d = data as { requests?: number; tokens?: number };
-        html += `<div class="usage-model-row"><span class="usage-model-name">${escHtml(model)}</span><span>${(d.requests ?? 0).toLocaleString()} req / ${(d.tokens ?? 0).toLocaleString()} tok</span></div>`;
-      }
-      html += '</div>';
-    }
-    if (content) content.innerHTML = html || '<p style="color:var(--text-muted)">No usage data</p>';
-  } catch (e) {
-    console.warn('[settings] Usage load failed:', e);
-    if (section) section.style.display = 'none';
-  }
-}
-
-$('settings-refresh-usage')?.addEventListener('click', () => loadSettingsUsage());
-
-// ── Settings: System presence ──────────────────────────────────────────────
-async function loadSettingsPresence() {
-  if (!wsConnected) return;
-  const section = $('settings-presence-section');
-  const list = $('settings-presence-list');
-  try {
-    const result = await gateway.systemPresence();
-    const entries = result.entries ?? [];
-    if (!entries.length) { if (section) section.style.display = 'none'; return; }
-    if (section) section.style.display = '';
-    if (list) {
-      list.innerHTML = entries.map(e => {
-        const name = e.client?.id ?? e.connId ?? 'Unknown';
-        const platform = e.client?.platform ?? '';
-        const role = e.role ?? '';
-        return `
-          <div class="presence-entry">
-            <div class="presence-dot online"></div>
-            <div class="presence-info">
-              <div class="presence-name">${escHtml(name)}</div>
-              <div class="presence-meta">${escHtml(role)} · ${escHtml(platform)}${e.connectedAt ? ' · ' + new Date(e.connectedAt).toLocaleString() : ''}</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-  } catch (e) {
-    console.warn('[settings] Presence load failed:', e);
-    if (section) section.style.display = 'none';
-  }
-}
-
-$('settings-refresh-presence')?.addEventListener('click', () => loadSettingsPresence());
+// Settings view is now in src/views/settings.ts
 
 // ── Exec Approval event handler ────────────────────────────────────────────
 // Maps himalaya CLI subcommands to permission categories
