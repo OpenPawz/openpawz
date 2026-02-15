@@ -266,3 +266,34 @@ export async function deleteDoc(id: string): Promise<void> {
   if (!db) return;
   await db.execute('DELETE FROM content_documents WHERE id = ?', [id]);
 }
+
+// ── Project Files ──────────────────────────────────────────────────────────
+
+export interface ProjectFile {
+  id: string;
+  project_id: string;
+  path: string;
+  content: string;
+  language: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export async function listProjectFiles(projectId: string): Promise<ProjectFile[]> {
+  if (!db) return [];
+  return db.select<ProjectFile[]>('SELECT * FROM project_files WHERE project_id = ? ORDER BY path ASC', [projectId]);
+}
+
+export async function saveProjectFile(file: { id: string; project_id: string; path: string; content: string; language?: string }): Promise<void> {
+  if (!db) return;
+  await db.execute(
+    `INSERT OR REPLACE INTO project_files (id, project_id, path, content, language, updated_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))`,
+    [file.id, file.project_id, file.path, file.content, file.language ?? null]
+  );
+}
+
+export async function deleteProjectFile(id: string): Promise<void> {
+  if (!db) return;
+  await db.execute('DELETE FROM project_files WHERE id = ?', [id]);
+}

@@ -1499,6 +1499,35 @@ fn memory_search(query: String, limit: Option<u32>) -> Result<String, String> {
     run_with_timeout(cmd, 15)
 }
 
+/// Run `openclaw ltm store <text> --category <cat> --importance <n>` — stores a memory directly.
+#[tauri::command]
+fn memory_store(content: String, category: Option<String>, importance: Option<u32>) -> Result<String, String> {
+    let openclaw_bin = get_openclaw_path();
+    let node_dir = get_node_bin_dir();
+    let base_url = read_paw_settings()
+        .and_then(|s| s.get("embeddingBaseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()));
+
+    let mut cmd = if openclaw_bin.exists() {
+        let mut c = Command::new(openclaw_bin.to_str().unwrap());
+        c.env("PATH", join_path_env(&node_dir));
+        c
+    } else {
+        Command::new("openclaw")
+    };
+    cmd.args(["ltm", "store", &content]);
+    if let Some(ref cat) = category {
+        cmd.args(["--category", cat]);
+    }
+    if let Some(imp) = importance {
+        cmd.args(["--importance", &imp.to_string()]);
+    }
+    if let Some(ref url) = base_url {
+        apply_embedding_env(&mut cmd, url);
+    }
+
+    run_with_timeout(cmd, 15)
+}
+
 /// Repair openclaw.json by removing any cruft from previous Paw versions.
 /// Removes old "skills" key (from v1 palace integration) and ensures
 /// the config is valid for the gateway.
@@ -1625,6 +1654,7 @@ pub fn run() {
             get_embedding_provider,
             memory_stats,
             memory_search,
+            memory_store,
             repair_openclaw_config
         ])
         .run(tauri::generate_context!())

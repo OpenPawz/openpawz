@@ -4,7 +4,7 @@
 import type { AppConfig, Message, InstallProgress, ChatMessage, Session } from './types';
 import { setGatewayConfig, probeHealth } from './api';
 import { gateway } from './gateway';
-import { initDb, listModes, saveMode, deleteMode, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, deleteProject } from './db';
+import { initDb, listModes, saveMode, deleteMode, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, deleteProject, listProjectFiles, saveProjectFile, deleteProjectFile } from './db';
 import type { AgentMode } from './db';
 
 // ── Global error handlers ──────────────────────────────────────────────────
@@ -133,7 +133,7 @@ function switchView(viewName: string) {
       case 'skills': loadSkills(); break;
       case 'foundry': loadModels(); loadModes(); break;
       case 'memory': loadMemoryPalace(); loadMemory(); break;
-      case 'build': loadSpaceCron('build'); break;
+      case 'build': loadBuildProjects(); loadSpaceCron('build'); break;
       case 'mail': loadSpaceCron('mail'); break;
       case 'settings': syncSettingsForm(); loadGatewayConfig(); loadSettingsLogs(); loadSettingsUsage(); loadSettingsPresence(); break;
       default: break;
@@ -2675,23 +2675,31 @@ function initPalaceRemember() {
     (btn as HTMLButtonElement).disabled = true;
 
     try {
-      // Use the user's current chat session to ask the agent to store the memory.
-      // memory_store is registered as an agent tool, so the agent can call it.
-      const storeSessionKey = currentSessionKey ?? 'default';
-      const storePrompt = `Please store this in long-term memory using memory_store: "${content.replace(/"/g, '\\"')}" with category "${category}" and importance ${importance}. Just confirm when done.`;
-      await Promise.race([
-        gateway.chatSend(storeSessionKey, storePrompt),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
-      ]);
+      // Call the Tauri command directly for reliable storage
+      if (invoke) {
+        await invoke('memory_store', {
+          content,
+          category,
+          importance,
+        });
+      } else {
+        // Fallback: ask agent to store (less reliable, for browser-only dev)
+        const storeSessionKey = currentSessionKey ?? 'default';
+        const storePrompt = `Please store this in long-term memory using memory_store: "${content.replace(/"/g, '\\"')}" with category "${category}" and importance ${importance}. Just confirm when done.`;
+        await Promise.race([
+          gateway.chatSend(storeSessionKey, storePrompt),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 30000)),
+        ]);
+      }
 
       // Clear form
       if ($('palace-remember-content') as HTMLTextAreaElement) ($('palace-remember-content') as HTMLTextAreaElement).value = '';
 
-      alert('Memory saved!');
+      showToast('Memory saved!', 'success');
       await loadPalaceSidebar();
       await loadPalaceStats();
     } catch (e) {
-      alert(`Save failed: ${e}`);
+      showToast(`Save failed: ${e instanceof Error ? e.message : e}`, 'error');
     } finally {
       btn.textContent = '💾 Save Memory';
       (btn as HTMLButtonElement).disabled = false;
@@ -3030,7 +3038,25 @@ async function loadResearchFindings(projectId: string) {
   // Load findings saved as content docs linked to this project
   const allDocs = await listDocs();
   const findings = allDocs.filter(d => d.project_id === projectId && d.content_type === 'research-finding');
+  const savedReports = allDocs.filter(d => d.project_id === projectId && d.content_type === 'research-report');
   list.innerHTML = '';
+
+  // Show "View Saved Report" button if a report was previously generated
+  if (savedReports.length) {
+    const reportBtn = document.createElement('button');
+    reportBtn.className = 'btn btn-ghost btn-sm';
+    reportBtn.style.marginBottom = '8px';
+    reportBtn.textContent = `📄 View saved report (${new Date(savedReports[0].created_at).toLocaleDateString()})`;
+    reportBtn.addEventListener('click', () => {
+      const reportArea = $('research-report-area');
+      const findingsArea = $('research-findings-area');
+      const reportContent = $('research-report-content');
+      if (reportArea) reportArea.style.display = '';
+      if (findingsArea) findingsArea.style.display = 'none';
+      if (reportContent) reportContent.innerHTML = formatResearchContent(savedReports[0].content);
+    });
+    list.appendChild(reportBtn);
+  }
 
   if (findings.length) {
     if (header) header.style.display = 'flex';
@@ -3211,6 +3237,19 @@ async function generateResearchReport() {
 
     const reportText = await done;
     if (reportContent) reportContent.innerHTML = formatResearchContent(reportText);
+
+    // Persist report to DB so it survives reload
+    if (reportText && _activeResearchId) {
+      const reportId = crypto.randomUUID();
+      await saveDoc({
+        id: reportId,
+        project_id: _activeResearchId,
+        title: `Research Report — ${new Date().toLocaleDateString()}`,
+        content: reportText,
+        content_type: 'research-report',
+      });
+      showToast('Report saved', 'success');
+    }
   } catch (e) {
     if (reportContent) reportContent.textContent = `Error generating report: ${e instanceof Error ? e.message : e}`;
   } finally {
@@ -3275,8 +3314,9 @@ $('research-delete-project')?.addEventListener('click', async () => {
 
 // ── Build IDE ──────────────────────────────────────────────────────────────
 let _buildProjectId: string | null = null;
-let _buildOpenFiles: { path: string; content: string }[] = [];
+let _buildOpenFiles: { id: string; path: string; content: string }[] = [];
 let _buildActiveFile: string | null = null;
+let _buildSaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 $('build-new-project')?.addEventListener('click', async () => {
   const name = await promptModal('Project name:', 'My project');
@@ -3284,44 +3324,101 @@ $('build-new-project')?.addEventListener('click', async () => {
   const id = crypto.randomUUID();
   await saveProject({ id, name, space: 'build' });
   _buildProjectId = id;
+  _buildOpenFiles = [];
+  _buildActiveFile = null;
+  await loadBuildProjects();
   loadBuildProject();
+});
+
+async function loadBuildProjects() {
+  const sel = $('build-project-select') as HTMLSelectElement | null;
+  if (!sel) return;
+  const projects = await listProjects('build');
+  sel.innerHTML = '<option value="">No project</option>';
+  for (const p of projects) {
+    const opt = document.createElement('option');
+    opt.value = p.id;
+    opt.textContent = p.name;
+    if (p.id === _buildProjectId) opt.selected = true;
+    sel.appendChild(opt);
+  }
+  // Auto-select first project if none selected
+  if (!_buildProjectId && projects.length) {
+    _buildProjectId = projects[0].id;
+    sel.value = projects[0].id;
+    await loadBuildProject();
+  }
+}
+
+$('build-project-select')?.addEventListener('change', async () => {
+  const sel = $('build-project-select') as HTMLSelectElement;
+  _buildProjectId = sel?.value || null;
+  _buildOpenFiles = [];
+  _buildActiveFile = null;
+  if (_buildProjectId) {
+    await loadBuildProject();
+  } else {
+    const empty = $('build-empty');
+    if (empty) empty.style.display = 'flex';
+    const editor = $('build-code-editor') as HTMLTextAreaElement;
+    if (editor) editor.style.display = 'none';
+    updateBuildTabs();
+    updateBuildFileList();
+  }
 });
 
 async function loadBuildProject() {
   if (!_buildProjectId) return;
-  const fileList = $('build-file-list');
   const empty = $('build-empty');
-  /* editor loaded on demand */
 
-  if (empty) empty.style.display = 'none';
+  // Load files from SQLite
+  const dbFiles = await listProjectFiles(_buildProjectId);
+  _buildOpenFiles = dbFiles.map(f => ({ id: f.id, path: f.path, content: f.content ?? '' }));
+  _buildActiveFile = _buildOpenFiles[0]?.path ?? null;
 
-  // For now, show project files from DB (simplified)
-  if (fileList) {
-    fileList.innerHTML = '';
-    // TODO: Load actual files from project_files table
-    const placeholder = document.createElement('div');
-    placeholder.className = 'ide-file-empty';
-    placeholder.textContent = 'Create files with the + button';
-    fileList.appendChild(placeholder);
+  if (!_buildOpenFiles.length) {
+    if (empty) empty.style.display = 'flex';
+    const editor = $('build-code-editor') as HTMLTextAreaElement;
+    if (editor) editor.style.display = 'none';
+  } else {
+    if (empty) empty.style.display = 'none';
+    const editor = $('build-code-editor') as HTMLTextAreaElement;
+    if (editor && _buildActiveFile) {
+      editor.style.display = '';
+      editor.value = _buildOpenFiles[0]?.content ?? '';
+    }
   }
+
+  updateBuildTabs();
+  updateBuildFileList();
 }
 
 $('build-add-file')?.addEventListener('click', async () => {
-  if (!_buildProjectId) { alert('Create a project first'); return; }
+  if (!_buildProjectId) { showToast('Create a project first', 'warning'); return; }
   const filename = await promptModal('File name', 'e.g. index.html');
   if (!filename) return;
-  const _fl = $('build-file-list'); void _fl;
-  const editor = $('build-code-editor') as HTMLTextAreaElement;
-  const empty = $('build-empty');
 
-  _buildOpenFiles.push({ path: filename, content: '' });
+  // Check for duplicate
+  if (_buildOpenFiles.some(f => f.path === filename)) {
+    showToast('File already exists', 'warning');
+    return;
+  }
+
+  const fileId = crypto.randomUUID();
+  // Persist immediately
+  await saveProjectFile({ id: fileId, project_id: _buildProjectId, path: filename, content: '' });
+
+  _buildOpenFiles.push({ id: fileId, path: filename, content: '' });
   _buildActiveFile = filename;
 
+  const empty = $('build-empty');
+  const editor = $('build-code-editor') as HTMLTextAreaElement;
   if (empty) empty.style.display = 'none';
   if (editor) { editor.style.display = ''; editor.value = ''; }
 
   updateBuildTabs();
   updateBuildFileList();
+  showToast(`Created ${filename}`, 'success');
 });
 
 function updateBuildTabs() {
@@ -3338,8 +3435,10 @@ function updateBuildTabs() {
       if (editor) editor.value = f.content;
       updateBuildTabs();
     });
-    tab.querySelector('.ide-tab-close')?.addEventListener('click', (e) => {
+    tab.querySelector('.ide-tab-close')?.addEventListener('click', async (e) => {
       e.stopPropagation();
+      // Delete from DB
+      await deleteProjectFile(f.id);
       _buildOpenFiles = _buildOpenFiles.filter(x => x.path !== f.path);
       if (_buildActiveFile === f.path) {
         _buildActiveFile = _buildOpenFiles[0]?.path ?? null;
@@ -3348,6 +3447,7 @@ function updateBuildTabs() {
         if (!_buildActiveFile) { editor.style.display = 'none'; const empty = $('build-empty'); if (empty) empty.style.display = 'flex'; }
       }
       updateBuildTabs();
+      updateBuildFileList();
     });
     tabs.appendChild(tab);
   }
@@ -3375,12 +3475,20 @@ function updateBuildFileList() {
   }
 }
 
-// Save file content as user types
+// Auto-save file content as user types (debounced 500ms)
 $('build-code-editor')?.addEventListener('input', () => {
-  if (!_buildActiveFile) return;
+  if (!_buildActiveFile || !_buildProjectId) return;
   const editor = $('build-code-editor') as HTMLTextAreaElement;
   const file = _buildOpenFiles.find(f => f.path === _buildActiveFile);
-  if (file && editor) file.content = editor.value;
+  if (file && editor) {
+    file.content = editor.value;
+    // Debounce save to SQLite
+    if (_buildSaveTimer) clearTimeout(_buildSaveTimer);
+    _buildSaveTimer = setTimeout(() => {
+      saveProjectFile({ id: file.id, project_id: _buildProjectId!, path: file.path, content: file.content })
+        .catch(e => console.warn('[build] Auto-save failed:', e));
+    }, 500);
+  }
 });
 
 // Build chat — send to agent in build context
