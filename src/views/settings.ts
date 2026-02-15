@@ -17,6 +17,39 @@ function escHtml(s: string): string {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// ── Gateway Status ─────────────────────────────────────────────────────────
+export async function loadSettingsStatus() {
+  if (!wsConnected) return;
+  const section = $('settings-status-section');
+  const content = $('settings-status-content');
+  try {
+    const [health, status] = await Promise.all([
+      gateway.getHealth().catch(() => null),
+      gateway.getStatus().catch(() => null) as Promise<Record<string, unknown> | null>,
+    ]);
+    if (!health && !status) { if (section) section.style.display = 'none'; return; }
+    if (section) section.style.display = '';
+    let html = '';
+    if (health) {
+      html += `<div class="status-card"><div class="status-card-label">Uptime</div><div class="status-card-value">${health.ts ? new Date(health.ts).toLocaleString() : '—'}</div></div>`;
+      html += `<div class="status-card"><div class="status-card-label">Sessions</div><div class="status-card-value">${health.sessions?.active ?? 0} active / ${health.sessions?.total ?? 0} total</div></div>`;
+      html += `<div class="status-card"><div class="status-card-label">Agents</div><div class="status-card-value">${health.agents?.length ?? 0}</div></div>`;
+      const channelCount = Object.keys(health.channels ?? {}).length;
+      html += `<div class="status-card"><div class="status-card-label">Channels</div><div class="status-card-value">${channelCount}</div></div>`;
+    }
+    if (status) {
+      const version = (status as Record<string, unknown>).version;
+      const nodeVersion = (status as Record<string, unknown>).nodeVersion;
+      if (version) html += `<div class="status-card"><div class="status-card-label">Version</div><div class="status-card-value">${escHtml(String(version))}</div></div>`;
+      if (nodeVersion) html += `<div class="status-card"><div class="status-card-label">Node.js</div><div class="status-card-value">${escHtml(String(nodeVersion))}</div></div>`;
+    }
+    if (content) content.innerHTML = html || '<p style="color:var(--text-muted)">No status data</p>';
+  } catch (e) {
+    console.warn('[settings] Status load failed:', e);
+    if (section) section.style.display = 'none';
+  }
+}
+
 // ── Logs Viewer ────────────────────────────────────────────────────────────
 export async function loadSettingsLogs() {
   if (!wsConnected) return;
@@ -420,6 +453,7 @@ function showSettingsToast(message: string, type: 'success' | 'error' | 'info' =
 
 // ── Initialize event listeners ─────────────────────────────────────────────
 export function initSettings() {
+  $('settings-refresh-status')?.addEventListener('click', () => loadSettingsStatus());
   $('settings-refresh-logs')?.addEventListener('click', () => loadSettingsLogs());
   $('settings-refresh-usage')?.addEventListener('click', () => loadSettingsUsage());
   $('settings-refresh-presence')?.addEventListener('click', () => loadSettingsPresence());
@@ -433,6 +467,7 @@ export function initSettings() {
 // ── Load all settings data ─────────────────────────────────────────────────
 export async function loadSettings() {
   await Promise.all([
+    loadSettingsStatus(),
     loadSettingsLogs(),
     loadSettingsUsage(),
     loadSettingsPresence(),

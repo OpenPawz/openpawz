@@ -255,12 +255,24 @@ async function connectGateway(): Promise<boolean> {
       console.warn('[main] Session cleanup failed (non-critical):', e);
     }
 
-    // Load agent name
+    // Load agent name + identity
     try {
       const agents = await gateway.listAgents();
       if (agents.agents?.length && chatAgentName) {
         const main = agents.agents.find(a => a.id === agents.defaultId) ?? agents.agents[0];
         chatAgentName.textContent = main.identity?.name ?? main.name ?? main.id;
+
+        // Fetch detailed identity (emoji, theme) for richer header display
+        try {
+          const identity = await gateway.getAgentIdentity(main.id);
+          const emoji = identity.emoji ?? main.identity?.emoji;
+          const name = identity.name ?? main.identity?.name ?? main.name ?? main.id;
+          if (emoji) {
+            chatAgentName.textContent = `${emoji} ${name}`;
+          } else {
+            chatAgentName.textContent = name;
+          }
+        } catch { /* identity detail not available, keep agents.list name */ }
       }
     } catch { /* non-critical */ }
 
@@ -588,7 +600,59 @@ $('settings-save-config')?.addEventListener('click', async () => {
   }
 });
 
+// Apply Config (validate + write + restart — safer than configSet)
+$('settings-apply-config')?.addEventListener('click', async () => {
+  const editor = $('settings-config-editor') as HTMLTextAreaElement;
+  if (!editor) return;
+  try {
+    const parsed = JSON.parse(editor.value);
+    const configStr = JSON.stringify(parsed);
+    if (configStr.includes('__OPENCLAW_REDACTED__')) {
+      const proceed = confirm(
+        'Warning: This config contains redacted values ("__OPENCLAW_REDACTED__"). ' +
+        'Applying will write these placeholder strings into your config.\n\n' +
+        'Save anyway?'
+      );
+      if (!proceed) return;
+    }
+    const result = await gateway.configApply(parsed);
+    if (result.errors?.length) {
+      alert(`Config applied with warnings:\n${result.errors.join('\n')}`);
+    } else {
+      showToast(`Config applied${result.restarted ? ' — gateway restarting' : ''}`, 'success');
+    }
+  } catch (e) {
+    alert(`Apply failed: ${e instanceof Error ? e.message : e}`);
+  }
+});
+
 $('settings-reload-config')?.addEventListener('click', () => loadGatewayConfig());
+
+// View config schema
+$('settings-view-schema')?.addEventListener('click', async () => {
+  if (!wsConnected) return;
+  try {
+    const result = await gateway.configSchema();
+    const editor = $('settings-config-editor') as HTMLTextAreaElement;
+    if (editor) {
+      editor.value = JSON.stringify(result.schema ?? result, null, 2);
+      showToast('Schema loaded — showing available config keys', 'info');
+    }
+  } catch (e) {
+    showToast(`Schema load failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+});
+
+// Wake Agent button (dashboard)
+$('wake-agent-btn')?.addEventListener('click', async () => {
+  if (!wsConnected) { showToast('Not connected to gateway', 'error'); return; }
+  try {
+    await gateway.wake();
+    showToast('Agent woken', 'success');
+  } catch (e) {
+    showToast(`Wake failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+});
 
 // ══════════════════════════════════════════════════════════════════════════
 // ═══ DATA VIEWS ════════════════════════════════════════════════════════════
@@ -837,6 +901,31 @@ $('session-delete-btn')?.addEventListener('click', async () => {
     await loadSessions();
   } catch (e) {
     showToast(`Delete failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+});
+
+// Session clear history (reset)
+$('session-clear-btn')?.addEventListener('click', async () => {
+  if (!currentSessionKey || !wsConnected) return;
+  if (!confirm('Clear all messages in this session? The session itself will remain.')) return;
+  try {
+    await gateway.resetSession(currentSessionKey);
+    messages = [];
+    renderMessages();
+    showToast('Session history cleared', 'success');
+  } catch (e) {
+    showToast(`Clear failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+});
+
+// Session compact (compress storage)
+$('session-compact-btn')?.addEventListener('click', async () => {
+  if (!wsConnected) return;
+  try {
+    const result = await gateway.sessionsCompact(currentSessionKey ?? undefined);
+    showToast(`Compacted${result.removed ? ` — removed ${result.removed} entries` : ''}`, 'success');
+  } catch (e) {
+    showToast(`Compact failed: ${e instanceof Error ? e.message : e}`, 'error');
   }
 });
 

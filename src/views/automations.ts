@@ -30,7 +30,25 @@ export async function loadCron() {
   const activeCount = $('cron-active-count');
   const pausedCount = $('cron-paused-count');
   const board = document.querySelector('.auto-board') as HTMLElement | null;
+  const statusEl = $('cron-service-status');
   if (!wsConnected) return;
+
+  // Fetch and display cron service status
+  if (statusEl) {
+    try {
+      const cronSt = await gateway.cronStatus() as Record<string, unknown>;
+      const running = cronSt.running !== false;
+      const jobCount = typeof cronSt.jobs === 'number' ? cronSt.jobs : undefined;
+      statusEl.className = `cron-service-status ${running ? 'running' : 'stopped'}`;
+      statusEl.textContent = running
+        ? `Scheduler active${jobCount != null ? ` · ${jobCount} jobs` : ''}`
+        : 'Scheduler stopped';
+      statusEl.title = running ? 'Cron scheduler is running' : 'Cron scheduler is not running';
+    } catch {
+      statusEl.className = 'cron-service-status';
+      statusEl.textContent = '';
+    }
+  }
 
   if (loading) loading.style.display = '';
   if (empty) empty.style.display = 'none';

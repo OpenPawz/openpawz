@@ -4622,6 +4622,51 @@ select.form-input {
   align-items: center;
   margin-bottom: 8px;
 }
+
+/* ─── Settings: Gateway Status ─── */
+.status-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.status-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  min-width: 130px;
+  flex: 1;
+}
+.status-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.status-card-value {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* ─── Cron Service Status Badge ─── */
+.cron-service-status {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  letter-spacing: 0.02em;
+}
+.cron-service-status.running {
+  background: #e6f6e6;
+  color: #1a7a1a;
+}
+.cron-service-status.stopped {
+  background: #fde8e8;
+  color: #b91c1c;
+}
 .logs-output {
   background: #1e1e2e;
   color: #cdd6f4;

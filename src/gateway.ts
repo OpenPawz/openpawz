@@ -8,6 +8,8 @@ import type {
   AgentIdentityResult,
   ChannelsStatusResult,
   SessionsListResult,
+  SessionPreviewResult,
+  SessionCompactResult,
   ChatHistoryResult,
   ChatSendResult,
   CronListResult,
@@ -17,6 +19,8 @@ import type {
   ModelsListResult,
   NodeListResult,
   GatewayConfigResult,
+  ConfigApplyResult,
+  ConfigSchemaResult,
   PresenceEntry,
   ExecApprovalsSnapshot,
   AgentsFilesListResult,
@@ -24,6 +28,7 @@ import type {
   UsageStatusResult,
   UsageCostResult,
   LogsTailResult,
+  AgentWaitResult,
 } from './types';
 
 const PROTOCOL_VERSION = 3;
@@ -460,6 +465,14 @@ class GatewayClient {
     return this.request('sessions.delete', { key });
   }
 
+  async sessionsPreview(key: string): Promise<SessionPreviewResult> {
+    return this.request<SessionPreviewResult>('sessions.preview', { key });
+  }
+
+  async sessionsCompact(key?: string): Promise<SessionCompactResult> {
+    return this.request<SessionCompactResult>('sessions.compact', key ? { key } : {});
+  }
+
   // Chat
   async chatHistory(sessionKey: string, limit = 50): Promise<ChatHistoryResult> {
     return this.request<ChatHistoryResult>('chat.history', { sessionKey, limit });
@@ -565,8 +578,12 @@ class GatewayClient {
     return this.request('config.patch', { patch });
   }
 
-  async configSchema(): Promise<unknown> {
-    return this.request('config.schema', {});
+  async configSchema(): Promise<ConfigSchemaResult> {
+    return this.request<ConfigSchemaResult>('config.schema', {});
+  }
+
+  async configApply(config: Record<string, unknown>): Promise<ConfigApplyResult> {
+    return this.request<ConfigApplyResult>('config.apply', { config }, 60_000);
   }
 
   // Presence
@@ -618,6 +635,16 @@ class GatewayClient {
   // Agent run (agent turn)
   async agent(params: Record<string, unknown>): Promise<unknown> {
     return this.request('agent', params, 120_000);
+  }
+
+  // Agent wait for completion
+  async agentWait(runId: string, timeoutMs = 120_000): Promise<AgentWaitResult> {
+    return this.request<AgentWaitResult>('agent.wait', { runId }, timeoutMs + 5000);
+  }
+
+  // Wake event (system trigger)
+  async wake(params?: Record<string, unknown>): Promise<unknown> {
+    return this.request('wake', params ?? {});
   }
 
   // Session reset (clear history, keep session)

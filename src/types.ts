@@ -191,6 +191,20 @@ export interface SessionsListResult {
   sessions: Session[];
 }
 
+export interface SessionPreviewResult {
+  key: string;
+  lastMessage?: string;
+  lastRole?: string;
+  lastTs?: number;
+  messageCount?: number;
+}
+
+export interface SessionCompactResult {
+  ok: boolean;
+  key?: string;
+  removed?: number;
+}
+
 // ── Chat ───────────────────────────────────────────────────────────────────
 
 export type ContentBlock =
@@ -242,6 +256,13 @@ export interface ChatSendResult {
   sessionKey?: string;
   text?: string;
   response?: unknown;
+  toolCalls?: ToolCall[];
+}
+
+export interface AgentWaitResult {
+  runId: string;
+  status: string;
+  text?: string;
   toolCalls?: ToolCall[];
 }
 
@@ -397,6 +418,16 @@ export interface NodeListResult {
 export interface GatewayConfigResult {
   config: Record<string, unknown>;
   path: string;
+}
+
+export interface ConfigApplyResult {
+  ok: boolean;
+  restarted?: boolean;
+  errors?: string[];
+}
+
+export interface ConfigSchemaResult {
+  schema: Record<string, unknown>;
 }
 
 // ── Presence ───────────────────────────────────────────────────────────────
