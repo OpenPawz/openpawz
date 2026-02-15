@@ -2821,6 +2821,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       },
     });
 
+    // Initialize Settings module (wires approvals save/refresh/add-rule buttons)
+    SettingsModule.initSettings();
+
     loadConfigFromStorage();
     console.log(`[main] After loadConfigFromStorage: configured=${config.configured} url="${config.gateway.url}" tokenLen=${config.gateway.token?.length ?? 0}`);
 

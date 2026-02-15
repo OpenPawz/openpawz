@@ -316,7 +316,7 @@ function addToolRule() {
   const promptTitle = $('prompt-modal-title');
   const promptOk = $('prompt-modal-ok');
   const promptClose = $('prompt-modal-close');
-
+  const promptCancel = $('prompt-modal-cancel');
   if (promptModal && promptInput && promptOk && promptClose) {
     if (promptTitle) promptTitle.textContent = 'Add Tool Rule';
     promptInput.value = '';
@@ -328,6 +328,7 @@ function addToolRule() {
       promptModal.style.display = 'none';
       promptOk.removeEventListener('click', onOk);
       promptClose.removeEventListener('click', onCancel);
+      if (promptCancel) promptCancel.removeEventListener('click', onCancel);
       promptInput.removeEventListener('keydown', onKey);
     };
     const onOk = () => {
@@ -345,6 +346,7 @@ function addToolRule() {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Enter') onOk(); if (e.key === 'Escape') onCancel(); };
     promptOk.addEventListener('click', onOk);
     promptClose.addEventListener('click', onCancel);
+    if (promptCancel) promptCancel.addEventListener('click', onCancel);
     promptInput.addEventListener('keydown', onKey);
   } else {
     const name = prompt('Tool name (e.g. brave_search):');
