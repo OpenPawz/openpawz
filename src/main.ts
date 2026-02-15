@@ -1650,7 +1650,45 @@ async function loadMailInbox() {
 function showMailEmpty(show: boolean) {
   const empty = $('mail-empty');
   const items = $('mail-items');
-  if (empty) empty.style.display = show ? 'flex' : 'none';
+  if (empty) {
+    empty.style.display = show ? 'flex' : 'none';
+    // Update empty state content based on what's configured
+    if (show) {
+      if (_mailHimalayaReady && !_mailGmailConfigured) {
+        empty.innerHTML = `
+          <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+          <div class="empty-title">Himalaya is ready</div>
+          <div class="empty-subtitle">Your agent can send &amp; read emails. Set up Gmail hooks to receive incoming emails in real-time, or use Compose to send one now.</div>
+          <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn btn-primary" id="mail-setup-gmail-cta">Set Up Gmail Inbox</button>
+            <button class="btn btn-ghost" id="mail-compose-cta">Compose Email</button>
+          </div>
+        `;
+        $('mail-setup-gmail-cta')?.addEventListener('click', () => openMailAccountSetup());
+        $('mail-compose-cta')?.addEventListener('click', () => {
+          const prompt = 'I want to compose a new email. Please help me draft it and use himalaya to send it when ready.';
+          currentSessionKey = null;
+          switchView('chat');
+          if (chatInput) { chatInput.value = prompt; chatInput.focus(); }
+        });
+      } else if (!_mailHimalayaReady && !_mailGmailConfigured) {
+        empty.innerHTML = `
+          <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+          <div class="empty-title">Connect your email</div>
+          <div class="empty-subtitle">Add the Himalaya skill for IMAP/SMTP access, then set up Gmail hooks for real-time inbox delivery.</div>
+          <button class="btn btn-primary" id="mail-setup-account" style="margin-top:16px">Add Email Account</button>
+        `;
+        $('mail-setup-account')?.addEventListener('click', () => openMailAccountSetup());
+      } else {
+        // Gmail configured but empty inbox
+        empty.innerHTML = `
+          <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+          <div class="empty-title">No emails yet</div>
+          <div class="empty-subtitle">Incoming Gmail hook messages will appear here automatically.</div>
+        `;
+      }
+    }
+  }
   if (items) items.style.display = show ? 'none' : '';
 }
 

@@ -76,7 +76,6 @@
                 <polyline points="22,6 12,13 2,6"/>
               </svg>
               <span>Mail</span>
-              <span class="nav-badge muted">Soon</span>
             </div>
             <div class="nav-item" data-view="automations">
               <svg class="icon" viewBox="0 0 24 24">
@@ -819,21 +818,21 @@
             </div>
           </div>
           <div class="view-loading" id="channels-loading" style="display:none">Loading channels…</div>
+        </div>
 
-          <!-- Channel Setup Modal -->
-          <div class="modal-overlay" id="channel-setup-modal" style="display:none">
-            <div class="modal-card channel-setup-modal-inner">
-              <div class="modal-header">
-                <h2 id="channel-setup-title">Set Up Channel</h2>
-                <button class="btn-icon" id="channel-setup-close">&times;</button>
-              </div>
-              <div class="modal-body" id="channel-setup-body">
-                <!-- Filled dynamically -->
-              </div>
-              <div class="modal-footer">
-                <button class="btn btn-ghost" id="channel-setup-cancel">Cancel</button>
-                <button class="btn btn-primary" id="channel-setup-save">Save &amp; Connect</button>
-              </div>
+        <!-- Channel / Mail Setup Modal (global — not inside any view) -->
+        <div class="modal-overlay" id="channel-setup-modal" style="display:none">
+          <div class="modal-card channel-setup-modal-inner">
+            <div class="modal-header">
+              <h2 id="channel-setup-title">Set Up Channel</h2>
+              <button class="btn-icon" id="channel-setup-close">&times;</button>
+            </div>
+            <div class="modal-body" id="channel-setup-body">
+              <!-- Filled dynamically -->
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-ghost" id="channel-setup-cancel">Cancel</button>
+              <button class="btn btn-primary" id="channel-setup-save">Save &amp; Connect</button>
             </div>
           </div>
         </div>

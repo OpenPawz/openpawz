@@ -2014,17 +2014,20 @@ button:focus:not(:focus-visible) { outline: none; }
 /* ═══ Mail Client View ═══ */
 .mail-client-view.active {
   display: flex;
+  flex-direction: row;
   height: 100%;
   overflow: hidden;
 }
 .mail-sidebar {
-  width: 220px;
-  background: var(--bg-sidebar);
+  width: 230px;
+  min-width: 200px;
+  background: var(--bg-secondary);
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  padding: 12px;
+  padding: 14px;
+  overflow-y: auto;
 }
 .mail-sidebar-header {
   margin-bottom: 16px;
@@ -2064,7 +2067,7 @@ button:focus:not(:focus-visible) { outline: none; }
 .mail-count-accent { background: var(--accent-muted); color: var(--accent); }
 .mail-accounts-section {
   margin-top: auto;
-  padding-top: 16px;
+  padding-top: 14px;
   border-top: 1px solid var(--border);
 }
 .mail-accounts-header {
@@ -2081,13 +2084,14 @@ button:focus:not(:focus-visible) { outline: none; }
   padding: 8px 0;
 }
 .mail-list {
-  flex: 1;
-  min-width: 320px;
-  max-width: 400px;
+  width: 360px;
+  min-width: 280px;
+  max-width: 420px;
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  flex-shrink: 0;
 }
 .mail-list-header {
   display: flex;
@@ -2149,8 +2153,8 @@ button:focus:not(:focus-visible) { outline: none; }
 .mail-preview {
   flex: 1;
   overflow-y: auto;
-  padding: 24px;
-  background: var(--bg-secondary);
+  padding: 32px;
+  background: var(--bg-primary);
   min-width: 0;
 }
 .mail-preview-empty {
