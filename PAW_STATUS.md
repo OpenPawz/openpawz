@@ -152,7 +152,7 @@ OpenClaw is a local-first personal AI assistant framework with:
 - No syntax highlighting (should add CodeMirror or Monaco)
 - No file save/load from gateway agent workspace
 - No terminal/console output panel
-- The "Code" view (`code-view`) is a completely **empty shell** — zero functionality
+- The "Projects" view (`code-view`) — **BUILT** as a local file browser for browsing project folders
 
 ---
 
@@ -332,15 +332,17 @@ OpenClaw is a local-first personal AI assistant framework with:
 
 ---
 
-### 13. Code View 🔴 SHELL ONLY
+### 13. Projects View ✅ BUILT (was Code View)
+| Component | Status | Details |
+|-----------|--------|--------|
+| Folder management | ✅ | Add/remove local project folders, persisted to localStorage |
+| File tree | ✅ | Recursive directory listing with expand/collapse, auto-skips node_modules/.git |
+| File viewer | ✅ | Read and display text files with line numbers |
+| Tauri filesystem | ✅ | Uses `@tauri-apps/plugin-fs` readDir/readTextFile, falls back gracefully |
+| Folder picker | ✅ | Native Tauri dialog or text prompt fallback |
+| Sidebar | ✅ | Lists added project folders with remove button |
 
-The sidebar has a "Code" nav item (`data-view="code"`), and the HTML contains `<div id="code-view">` — but the view body is **completely empty**. There is:
-- No HTML content for the code view
-- No JavaScript handlers
-- No gateway integration
-- Zero functionality
-
-This was planned for "Git repos, branches, PRs, code review" per the dashboard card description.
+Repurposed from the empty Code shell into a real local file browser for viewing projects your agent is editing.
 
 ---
 
@@ -485,7 +487,7 @@ Fully wired in Settings.
 | **Build chat responses lost** | Build chat send handler | Route `paw-build-*` session events back to Build view (like Research does) |
 | **Content AI Improve responses lost** | `content-ai-improve` handler | Stream response back to the editor, don't redirect to Chat |
 | ~~**Mail is completely empty**~~ | ~~mail-view, db.ts~~ | ✅ FIXED — Full Himalaya integration, provider setup, credential vault, OS keychain, audit log |
-| **Code view is completely empty** | code-view | Either build git integration or remove from nav |
+| ~~**Code view is completely empty**~~ | ~~code-view~~ | ✅ DONE — Repurposed as Projects file browser |
 | **No bundled Node.js** | resources/node/ | Add platform-specific Node.js tarballs for the installer or document how to add them |
 | ~~**Remember uses chat instead of CLI**~~ | ~~`palace-remember-save` handler~~ | ✅ FIXED — Uses `invoke('memory_store', ...)` Tauri command directly |
 
@@ -530,6 +532,7 @@ Fully wired in Settings.
 | `mail.ts` | 849 | Himalaya integration, credential vault, inbox |
 | `foundry.ts` | 539 | Models, modes, multi-agent CRUD |
 | `nodes.ts` | 436 | **NEW** — Node management, pairing, commands |
+| `projects.ts` | 563 | **NEW** — Local file browser, project folders, file tree + viewer |
 | `skills.ts` | 413 | Skill browser, install, configure |
 | `research.ts` | 360 | Research projects, findings, reports |
 | `automations.ts` | 183 | Cron job management |
@@ -909,7 +912,7 @@ These are features that OpenClaw already exposes via gateway methods. Paw just n
 
 ### Phase 5: Build remaining empty shells
 43. ~~**Mail** — Decision needed: build it or remove it~~ → ✅ **BUILT**: Full IMAP/SMTP setup via Himalaya, provider picker, credential vault, OS keychain, audit log, agent permission enforcement
-44. **Code view** — Decision needed: build git integration (gateway has no git methods) or remove
+44. ~~**Code view**~~ — ✅ DONE: Repurposed as Projects view (local file browser)
 45. ~~**Clean up orphaned DB tables**~~ — `email_accounts` and `emails` now used; `research_findings` and `automation_runs` still orphaned
 
 ### Phase 6: Polish
@@ -942,7 +945,7 @@ The gateway exposes its full API via WebSocket on `ws://127.0.0.1:{port}` (defau
 
 **What works**: Chat (streaming + markdown + abort + mode selection + session management + retry + attachments + image preview), Research (full flow), Channels (+ per-channel setup forms + direct channel send), Automations (+ live cron events), Skills, Models/Modes/Multi-Agent (CRUD + detail view), Memory (with setup), Settings (+ gateway status + logs + usage/cost + connected clients + device pairing + tool approval toggles + onboarding wizard + browser control + self-update), Dashboard (+ wake agent), Mail (full IMAP/SMTP setup via Himalaya + provider picker + credential vault + OS keychain + agent permissions + audit log + compose + inbox), Node Management (list + describe + invoke + pairing), Exec Approvals (live approval modal + resolve + node approvals + permission enforcement + visual toggle config UI), Content AI Improve (direct agent run). The core gateway integration is solid — **19 of 21 method categories at 100%**.
 
-**What's broken**: Build/Content chat responses still not routed, Code view is empty.
+**What's broken**: Build/Content chat responses still not routed.
 
 **What's missing entirely**: TTS UI (5 typed methods, no UI), Talk Mode UI (2 typed, no UI), Voice Wake UI (2 typed, no UI). That's **~9 gateway methods with zero UI**. Beyond gateway wiring, the Community Gap Analysis identifies **19 feature items** across 5 sprints that address real user pain (memory visibility, cost tracking, cron reliability, multi-agent routing).
 

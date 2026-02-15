@@ -53,11 +53,9 @@
             </div>
             <div class="nav-item" data-view="code">
               <svg class="icon" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="3"/>
-                <path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
               </svg>
-              <span>Code</span>
-              <span class="nav-badge muted">Soon</span>
+              <span>Projects</span>
             </div>
             <div class="nav-item" data-view="content">
               <svg class="icon" viewBox="0 0 24 24">
@@ -594,29 +592,41 @@
           </div>
         </div>
 
-        <!-- ═══ Code View — Git & Repos ═══ -->
-        <div class="view list-view" id="code-view">
+        <!-- ═══ Projects View — Local File Browser ═══ -->
+        <div class="view projects-view" id="code-view">
           <div class="view-header">
-            <h1 class="view-title">Code</h1>
+            <h1 class="view-title">Projects</h1>
             <div style="display:flex;gap:6px">
-              <button class="btn btn-ghost btn-sm" id="code-refresh-btn">
+              <button class="btn btn-primary btn-sm" id="projects-add-folder">
+                <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Add Folder
+              </button>
+              <button class="btn btn-ghost btn-sm" id="projects-refresh-btn">
                 <svg class="icon-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                 Refresh
               </button>
             </div>
           </div>
-          <div class="code-actions-bar">
-            <button class="btn btn-primary btn-sm" id="code-new-repo">
-              <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              New Repo
-            </button>
-            <button class="btn btn-secondary btn-sm" id="code-clone-repo">Clone</button>
-          </div>
-          <div class="list-content" id="code-repo-list"></div>
-          <div class="empty-state" id="code-empty">
-            <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4"/></svg></div>
-            <div class="empty-title">Git & code management</div>
-            <div class="empty-subtitle">Create repos, manage branches, review PRs — all through your agent</div>
+          <div class="projects-layout">
+            <div class="projects-sidebar">
+              <div class="projects-sidebar-header">
+                <span class="projects-sidebar-title">Folders</span>
+              </div>
+              <div class="projects-sidebar-list" id="projects-sidebar-list"></div>
+            </div>
+            <div class="projects-main">
+              <div class="projects-file-tree" id="projects-file-tree"></div>
+              <div class="projects-file-viewer" id="projects-file-viewer"></div>
+              <div class="empty-state" id="projects-empty">
+                <div class="empty-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                  </svg>
+                </div>
+                <div class="empty-title">Your Projects</div>
+                <div class="empty-subtitle">Add a local folder to browse files your agent is working on</div>
+              </div>
+            </div>
           </div>
         </div>
 

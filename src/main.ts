@@ -32,6 +32,7 @@ import * as SkillsModule from './views/skills';
 import * as FoundryModule from './views/foundry';
 import * as ResearchModule from './views/research';
 import * as NodesModule from './views/nodes';
+import * as ProjectsModule from './views/projects';
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -213,6 +214,7 @@ function switchView(viewName: string) {
   switch (viewName) {
     case 'content': loadContentDocs(); if (wsConnected) loadSpaceCron('content'); break;
     case 'research': ResearchModule.loadResearchProjects(); if (wsConnected) loadSpaceCron('research'); break;
+    case 'code': ProjectsModule.loadProjects(); break;
     default: break;
   }
   if (viewName === 'settings') syncSettingsForm();
@@ -3191,6 +3193,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize Settings module (wires approvals save/refresh/add-rule buttons)
     SettingsModule.initSettings();
+
+    // Initialize Projects module events
+    ProjectsModule.bindEvents();
 
     loadConfigFromStorage();
     console.log(`[main] After loadConfigFromStorage: configured=${config.configured} url="${config.gateway.url}" tokenLen=${config.gateway.token?.length ?? 0}`);
