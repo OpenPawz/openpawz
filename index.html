@@ -900,87 +900,163 @@
         </div>
 
         <!-- ═══ Research View — Agent-powered research ═══ -->
-        <div class="view studio-view" id="research-view">
-          <div class="studio-sidebar">
-            <div class="studio-sidebar-header">
-              <span class="studio-sidebar-title">Research</span>
+        <div class="view research-view-redesign" id="research-view">
+          <!-- Sidebar: Projects + Recent -->
+          <div class="research-sidebar">
+            <div class="research-sidebar-header">
+              <span class="research-sidebar-title">Research</span>
               <button class="btn-icon" id="research-new-project" title="New research project">
                 <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </button>
             </div>
-            <div class="studio-doc-list" id="research-project-list">
-              <div class="studio-doc-empty">No research projects</div>
+            
+            <div class="research-sidebar-section">
+              <div class="research-sidebar-label">Projects</div>
+              <div class="research-project-list" id="research-project-list"></div>
             </div>
-            <!-- Research scheduled tasks -->
-            <div class="space-cron-widget space-cron-widget-sidebar" id="research-cron-widget" style="display:none">
-              <div class="space-cron-header">
-                <svg class="icon-sm" viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                <span>Recurring</span>
-                <span class="space-cron-count" id="research-cron-count">0</span>
-              </div>
-              <div class="space-cron-items" id="research-cron-items"></div>
+            
+            <div class="research-sidebar-section">
+              <div class="research-sidebar-label">Recent Queries</div>
+              <div class="research-recent-list" id="research-recent-queries"></div>
+            </div>
+            
+            <div class="research-sidebar-footer">
+              <button class="btn btn-ghost btn-sm" id="research-open-workspace" title="Open in Finder">
+                <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                Open Folder
+              </button>
             </div>
           </div>
-          <div class="studio-main">
+          
+          <!-- Main content area -->
+          <div class="research-main">
             <!-- Empty state -->
-            <div class="studio-editor" id="research-content">
-              <div class="empty-state" id="research-empty">
-                <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg></div>
-                <div class="empty-title">Research assistant</div>
-                <div class="empty-subtitle">Create a project, ask a question, and your agent will research it — browsing the web, gathering sources, and compiling findings</div>
-                <button class="btn btn-primary" id="research-create-first" style="margin-top:16px">New Research Project</button>
+            <div class="research-empty-state" id="research-empty">
+              <div class="research-empty-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="64" height="64">
+                  <circle cx="11" cy="11" r="8"/>
+                  <path d="M21 21l-4.35-4.35"/>
+                  <path d="M11 8v6M8 11h6"/>
+                </svg>
               </div>
-
-              <!-- Active project workspace -->
-              <div class="research-workspace" id="research-workspace" style="display:none">
-                <!-- Topic input -->
-                <div class="research-input-bar">
-                  <input type="text" class="research-topic-input" id="research-topic-input"
-                         placeholder="What do you want to research?" autocomplete="off" />
-                  <button class="btn btn-primary" id="research-run-btn">
-                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
-                    Research
+              <h2 class="research-empty-title">Research Assistant</h2>
+              <p class="research-empty-desc">Create a project, ask questions, and your AI agent will research the web — gathering sources, extracting insights, and building a knowledge base you can explore.</p>
+              <button class="btn btn-primary btn-lg" id="research-create-first">
+                <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Research Project
+              </button>
+              <p class="research-empty-hint">Your findings are saved as markdown files in ~/Documents/Paw</p>
+            </div>
+            
+            <!-- Active project workspace -->
+            <div class="research-workspace" id="research-workspace" style="display:none">
+              <!-- Project header -->
+              <div class="research-project-header" id="research-project-header"></div>
+              
+              <!-- Search bar with mode toggle -->
+              <div class="research-search-bar">
+                <div class="research-mode-toggle">
+                  <button class="research-mode-btn active" id="research-mode-quick" title="Fast research (2-3 sources)">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+                    Quick
+                  </button>
+                  <button class="research-mode-btn" id="research-mode-deep" title="Deep research (10+ sources)">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+                    Deep
                   </button>
                 </div>
-
-                <!-- Live agent output (shown during research) -->
-                <div class="research-live" id="research-live" style="display:none">
-                  <div class="research-live-header">
-                    <div class="research-live-status">
-                      <div class="loading-dots"><span></span><span></span><span></span></div>
-                      <span id="research-live-label">Researching…</span>
-                    </div>
-                    <button class="btn btn-ghost btn-sm" id="research-abort-btn">Stop</button>
-                  </div>
-                  <div class="research-live-content" id="research-live-content"></div>
+                <div class="research-input-wrapper">
+                  <input type="text" class="research-topic-input" id="research-topic-input"
+                         placeholder="What do you want to research?" autocomplete="off" />
+                  <button class="btn btn-primary research-run-btn" id="research-run-btn">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                    Research
+                  </button>
+                  <button class="btn btn-error research-stop-btn" id="research-stop-btn" style="display:none">
+                    <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"/></svg>
+                    Stop
+                  </button>
                 </div>
-
-                <!-- Accumulated findings -->
-                <div class="research-findings" id="research-findings-area">
-                  <div class="research-findings-header" id="research-findings-header" style="display:none">
+              </div>
+              
+              <!-- Live research panel (shown during research) -->
+              <div class="research-live-panel" id="research-live-panel" style="display:none">
+                <div class="research-live-header">
+                  <div class="research-live-title">
+                    <div class="research-live-spinner"></div>
+                    <span>Researching...</span>
+                  </div>
+                </div>
+                
+                <div class="research-live-body">
+                  <!-- Progress steps -->
+                  <div class="research-progress-steps" id="research-progress-steps"></div>
+                  
+                  <!-- Live source feed -->
+                  <div class="research-live-sources">
+                    <div class="research-live-sources-label">Sources being checked:</div>
+                    <div class="research-source-feed" id="research-source-feed"></div>
+                  </div>
+                  
+                  <!-- Live output stream -->
+                  <div class="research-live-output">
+                    <div class="research-live-output-label">Live output:</div>
+                    <div class="research-live-content" id="research-live-content"></div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Findings + Sources layout -->
+              <div class="research-content-layout" id="research-findings-area">
+                <!-- Findings grid -->
+                <div class="research-findings-section">
+                  <div class="research-findings-header">
                     <h3>Findings</h3>
                     <button class="btn btn-primary btn-sm" id="research-generate-report">
-                      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                      <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                      </svg>
                       Generate Report
                     </button>
                   </div>
-                  <div id="research-findings-list" class="research-findings-list"></div>
+                  <div class="research-findings-grid" id="research-findings-grid"></div>
                 </div>
-
-                <!-- Report (generated synthesis) -->
-                <div class="research-report-area" id="research-report-area" style="display:none">
-                  <div class="research-findings-header">
-                    <h3>Report</h3>
-                    <button class="btn btn-ghost btn-sm" id="research-close-report">Back to Findings</button>
-                  </div>
-                  <div class="research-report-content" id="research-report-content"></div>
-                </div>
-
-                <!-- Project actions -->
-                <div class="research-project-actions">
-                  <button class="btn btn-ghost btn-sm btn-error" id="research-delete-project">Delete Project</button>
+                
+                <!-- Sources panel -->
+                <div class="research-sources-section">
+                  <div class="research-sources-title">All Sources</div>
+                  <div class="research-sources-panel" id="research-sources-panel"></div>
                 </div>
               </div>
+            </div>
+          </div>
+          
+          <!-- Finding detail modal -->
+          <div class="research-modal" id="research-detail-modal" style="display:none">
+            <div class="research-modal-content research-modal-lg">
+              <div class="research-modal-header">
+                <h2>Finding Details</h2>
+                <button class="btn-icon" id="research-detail-close">
+                  <svg class="icon-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div class="research-modal-body" id="research-detail-content"></div>
+            </div>
+          </div>
+          
+          <!-- Report modal -->
+          <div class="research-modal" id="research-report-modal" style="display:none">
+            <div class="research-modal-content research-modal-lg">
+              <div class="research-modal-header">
+                <h2>Research Report</h2>
+                <button class="btn-icon" id="research-report-close">
+                  <svg class="icon-sm" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+              <div class="research-modal-body" id="research-report-content"></div>
             </div>
           </div>
         </div>
