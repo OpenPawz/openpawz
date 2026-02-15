@@ -79,13 +79,14 @@ function showToast(message: string, type: 'info' | 'success' | 'error' | 'warnin
   }, durationMs);
 }
 
-function extractContent(content: unknown): string {
+function _extractContent(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content.map(c => (c as { text?: string }).text ?? '').join('');
   }
   return '';
 }
+void _extractContent;
 
 function formatMarkdown(text: string): string {
   // Basic markdown formatting for display
@@ -571,69 +572,171 @@ async function openMailMessage(msgId: string) {
   const preview = $('mail-preview');
   if (!preview || !msg) return;
 
-  let body = msg.snippet;
-  if (msg.sessionKey) {
+  // Show loading state
+  preview.innerHTML = `
+    <div class="mail-preview-header">
+      <div class="mail-preview-avatar ${getAvatarClass(msg.from)}">${getInitials(msg.from)}</div>
+      <div class="mail-preview-meta">
+        <div class="mail-preview-from">${escHtml(msg.from)}</div>
+        <div class="mail-preview-date">${msg.date.toLocaleString()}</div>
+      </div>
+    </div>
+    <div class="mail-preview-subject">${escHtml(msg.subject)}</div>
+    <div class="mail-preview-body" style="opacity:0.5">Loading...</div>
+  `;
+
+  // Fetch full content via himalaya
+  let body = msg.body || '';
+  if (invoke && !msg.body) {
     try {
-      const result = await gateway.chatHistory(msg.sessionKey);
-      const msgs = result.messages ?? [];
-      const emailMsg = msgs.find(m => m.role === 'user');
-      if (emailMsg) body = extractContent(emailMsg.content);
-      const agentMsg = [...msgs].reverse().find(m => m.role === 'assistant');
-      const agentReply = agentMsg ? extractContent(agentMsg.content) : null;
-
-      preview.innerHTML = `
-        <div class="mail-preview-header">
-          <div class="mail-preview-from">${escHtml(msg.from)}</div>
-          <div class="mail-preview-date">${msg.date.toLocaleString()}</div>
-        </div>
-        <div class="mail-preview-subject">${escHtml(msg.subject)}</div>
-        <div class="mail-preview-body">${formatMarkdown(body)}</div>
-        ${agentReply ? `
-          <div class="mail-preview-agent-reply">
-            <div class="mail-preview-agent-label">Agent Response</div>
-            <div class="mail-preview-agent-body">${formatMarkdown(agentReply)}</div>
-          </div>
-        ` : ''}
-        <div class="mail-preview-actions">
-          ${_mailHimalayaReady ? `<button class="btn btn-primary btn-sm mail-reply-btn" data-session="${escAttr(msg.sessionKey ?? '')}">Reply via Agent</button>` : ''}
-          <button class="btn btn-ghost btn-sm mail-open-session-btn" data-session="${escAttr(msg.sessionKey ?? '')}">Open in Chat</button>
-        </div>
-      `;
-
-      preview.querySelector('.mail-reply-btn')?.addEventListener('click', () => {
-        composeMailReply(msg);
+      const accountName = _mailAccounts.length > 0 ? _mailAccounts[0].name : undefined;
+      body = await invoke<string>('fetch_email_content', {
+        account: accountName,
+        folder: 'INBOX',
+        id: msgId
       });
-      preview.querySelector('.mail-open-session-btn')?.addEventListener('click', () => {
-        if (msg.sessionKey) {
-          onSetCurrentSession?.(msg.sessionKey);
-          onSwitchView?.('chat');
-        }
-      });
+      msg.body = body;
     } catch (e) {
-      preview.innerHTML = `
-        <div class="mail-preview-header">
-          <div class="mail-preview-from">${escHtml(msg.from)}</div>
-          <div class="mail-preview-date">${msg.date.toLocaleString()}</div>
-        </div>
-        <div class="mail-preview-subject">${escHtml(msg.subject)}</div>
-        <div class="mail-preview-body">${escHtml(body)}</div>
-      `;
+      console.warn('[mail] Failed to fetch content:', e);
+      body = '(Failed to load email content)';
     }
   }
+
+  preview.innerHTML = `
+    <div class="mail-preview-header">
+      <div class="mail-preview-avatar ${getAvatarClass(msg.from)}">${getInitials(msg.from)}</div>
+      <div class="mail-preview-meta">
+        <div class="mail-preview-from">${escHtml(msg.from)}</div>
+        <div class="mail-preview-date">${msg.date.toLocaleString()}</div>
+      </div>
+    </div>
+    <div class="mail-preview-subject">${escHtml(msg.subject)}</div>
+    <div class="mail-preview-body">${formatMarkdown(body)}</div>
+    <div class="mail-preview-actions">
+      <button class="btn btn-primary mail-action-reply">Reply</button>
+      <button class="btn btn-ghost mail-action-forward">Forward</button>
+      <button class="btn btn-ghost mail-action-archive">Archive</button>
+      <button class="btn btn-ghost mail-action-delete">Delete</button>
+    </div>
+    <div class="mail-ai-actions">
+      <span class="mail-ai-label">AI Actions</span>
+      <button class="btn btn-sm btn-ghost mail-ai-summarize">Summarize</button>
+      <button class="btn btn-sm btn-ghost mail-ai-draft">Draft Reply</button>
+      <button class="btn btn-sm btn-ghost mail-ai-actions">Extract Tasks</button>
+    </div>
+  `;
+
+  // Reply - open compose in mail view
+  preview.querySelector('.mail-action-reply')?.addEventListener('click', () => openComposeModal('reply', msg));
+  preview.querySelector('.mail-action-forward')?.addEventListener('click', () => openComposeModal('forward', msg));
+  preview.querySelector('.mail-action-archive')?.addEventListener('click', () => archiveEmail(msg));
+  preview.querySelector('.mail-action-delete')?.addEventListener('click', () => deleteEmail(msg));
+  
+  // AI actions
+  preview.querySelector('.mail-ai-summarize')?.addEventListener('click', () => aiMailAction('summarize', msg));
+  preview.querySelector('.mail-ai-draft')?.addEventListener('click', () => aiMailAction('draft', msg));
+  preview.querySelector('.mail-ai-actions')?.addEventListener('click', () => aiMailAction('tasks', msg));
 }
 
-function composeMailReply(msg: { from: string; subject: string; sessionKey?: string }) {
-  const chatInput = getChatInput?.();
-  const replyPrompt = `Please compose a reply to this email from ${msg.from} with subject "${msg.subject}". Use the himalaya skill to send it when I approve.`;
-  if (msg.sessionKey) {
-    onSetCurrentSession?.(msg.sessionKey);
-  }
-  onSwitchView?.('chat');
-  if (chatInput) {
-    chatInput.value = replyPrompt;
-    chatInput.focus();
+// Compose modal for reply/forward
+function openComposeModal(mode: 'reply' | 'forward', msg: { from: string; subject: string; body?: string }) {
+  const modal = document.createElement('div');
+  modal.className = 'mail-compose-modal';
+  modal.innerHTML = `
+    <div class="mail-compose-dialog">
+      <div class="mail-compose-header">
+        <span>${mode === 'reply' ? 'Reply' : 'Forward'}</span>
+        <button class="btn-icon mail-compose-close">×</button>
+      </div>
+      <div class="mail-compose-body">
+        <input type="text" class="mail-compose-to" placeholder="To" value="${mode === 'reply' ? escAttr(msg.from) : ''}">
+        <input type="text" class="mail-compose-subject" placeholder="Subject" value="${mode === 'reply' ? 'Re: ' : 'Fwd: '}${escAttr(msg.subject)}">
+        <textarea class="mail-compose-content" placeholder="Write your message...">${mode === 'forward' ? '\n\n--- Forwarded ---\n' + (msg.body || '') : ''}</textarea>
+      </div>
+      <div class="mail-compose-footer">
+        <button class="btn btn-ghost mail-compose-cancel">Cancel</button>
+        <button class="btn btn-primary mail-compose-send">Send</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+
+  const close = () => modal.remove();
+  modal.querySelector('.mail-compose-close')?.addEventListener('click', close);
+  modal.querySelector('.mail-compose-cancel')?.addEventListener('click', close);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+
+  modal.querySelector('.mail-compose-send')?.addEventListener('click', async () => {
+    const to = (modal.querySelector('.mail-compose-to') as HTMLInputElement)?.value;
+    const subject = (modal.querySelector('.mail-compose-subject') as HTMLInputElement)?.value;
+    const body = (modal.querySelector('.mail-compose-content') as HTMLTextAreaElement)?.value;
+    if (!to || !subject) { showToast('Please fill in To and Subject', 'error'); return; }
+    
+    try {
+      const accountName = _mailAccounts.length > 0 ? _mailAccounts[0].name : undefined;
+      await invoke?.('send_email', { account: accountName, to, subject, body });
+      showToast('Email sent!', 'success');
+      close();
+    } catch (e) {
+      showToast(`Failed to send: ${e}`, 'error');
+    }
+  });
+}
+
+async function archiveEmail(msg: { id: string }) {
+  try {
+    // Move to archive folder via himalaya
+    const accountName = _mailAccounts.length > 0 ? _mailAccounts[0].name : undefined;
+    // himalaya message move <id> <folder>
+    await invoke?.('move_email', { account: accountName, id: msg.id, folder: '[Gmail]/All Mail' });
+    showToast('Archived', 'success');
+    _mailMessages = _mailMessages.filter(m => m.id !== msg.id);
+    renderMailList();
+    const preview = $('mail-preview');
+    if (preview) preview.innerHTML = '<div class="mail-preview-empty">Select an email to read</div>';
+  } catch (e) {
+    showToast(`Archive failed: ${e}`, 'error');
   }
 }
+
+async function deleteEmail(msg: { id: string; subject: string }) {
+  if (!confirm(`Delete "${msg.subject}"?`)) return;
+  try {
+    const accountName = _mailAccounts.length > 0 ? _mailAccounts[0].name : undefined;
+    await invoke?.('delete_email', { account: accountName, id: msg.id });
+    showToast('Deleted', 'success');
+    _mailMessages = _mailMessages.filter(m => m.id !== msg.id);
+    renderMailList();
+    const preview = $('mail-preview');
+    if (preview) preview.innerHTML = '<div class="mail-preview-empty">Select an email to read</div>';
+  } catch (e) {
+    showToast(`Delete failed: ${e}`, 'error');
+  }
+}
+
+async function aiMailAction(action: 'summarize' | 'draft' | 'tasks', msg: { from: string; subject: string; body?: string }) {
+  const prompts: Record<string, string> = {
+    summarize: `Summarize this email from ${msg.from}:\n\nSubject: ${msg.subject}\n\n${msg.body || ''}`,
+    draft: `Draft a professional reply to this email from ${msg.from}:\n\nSubject: ${msg.subject}\n\n${msg.body || ''}`,
+    tasks: `Extract any action items or tasks from this email from ${msg.from}:\n\nSubject: ${msg.subject}\n\n${msg.body || ''}`
+  };
+  
+  // Send to chat and switch view
+  onSetCurrentSession?.(null);
+  onSwitchView?.('chat');
+  const chatInput = getChatInput?.();
+  if (chatInput) {
+    chatInput.value = prompts[action];
+    chatInput.focus();
+    // Auto-submit
+    chatInput.form?.requestSubmit();
+  }
+}
+
+function _composeMailReply(msg: { from: string; subject: string; sessionKey?: string }) {
+  openComposeModal('reply', msg);
+}
+void _composeMailReply;
 
 // ── Provider presets ───────────────────────────────────────────────────────
 const EMAIL_PROVIDERS: Record<string, { name: string; icon: string; imap: string; imapPort: number; smtp: string; smtpPort: number; hint: string }> = {

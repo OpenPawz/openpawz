@@ -1986,6 +1986,57 @@ fn list_mail_folders(account: Option<String>) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Move an email to a folder.
+#[tauri::command]
+fn move_email(account: Option<String>, id: String, folder: String) -> Result<(), String> {
+    let mut cmd = Command::new("himalaya");
+    cmd.arg("message").arg("move");
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    cmd.arg(&id).arg(&folder);
+    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("himalaya failed: {}", stderr));
+    }
+    Ok(())
+}
+
+/// Delete an email.
+#[tauri::command]
+fn delete_email(account: Option<String>, id: String) -> Result<(), String> {
+    let mut cmd = Command::new("himalaya");
+    cmd.arg("message").arg("delete");
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    cmd.arg(&id);
+    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("himalaya failed: {}", stderr));
+    }
+    Ok(())
+}
+
+/// Mark email as read/unread.
+#[tauri::command]
+fn set_email_flag(account: Option<String>, id: String, flag: String, add: bool) -> Result<(), String> {
+    let mut cmd = Command::new("himalaya");
+    cmd.arg("flag").arg(if add { "add" } else { "remove" });
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    cmd.arg(&id).arg("--flag").arg(&flag);
+    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("himalaya failed: {}", stderr));
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -2027,7 +2078,10 @@ pub fn run() {
             fetch_emails,
             fetch_email_content,
             send_email,
-            list_mail_folders
+            list_mail_folders,
+            move_email,
+            delete_email,
+            set_email_flag
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

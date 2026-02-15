@@ -2631,9 +2631,114 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 .mail-preview-actions {
   display: flex;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.mail-preview-actions .btn { padding: 10px 20px; }
+
+.mail-ai-actions {
+  display: flex;
+  align-items: center;
   gap: 8px;
-  margin-top: 20px;
-  padding-top: 16px;
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+.mail-ai-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-right: 8px;
+}
+.mail-ai-actions .btn { font-size: 12px; }
+
+/* Compose Modal */
+.mail-compose-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.mail-compose-dialog {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  width: 560px;
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
+.mail-compose-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 15px;
+}
+.mail-compose-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-muted);
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+.mail-compose-close:hover { color: var(--text-primary); }
+.mail-compose-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  overflow: auto;
+}
+.mail-compose-to,
+.mail-compose-subject {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  background: var(--bg-primary);
+}
+.mail-compose-to:focus,
+.mail-compose-subject:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.mail-compose-content {
+  width: 100%;
+  min-height: 200px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  background: var(--bg-primary);
+}
+.mail-compose-content:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.mail-compose-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
   border-top: 1px solid var(--border);
 }
 
