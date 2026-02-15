@@ -1903,6 +1903,89 @@ fn repair_openclaw_config() -> Result<bool, String> {
     Ok(repaired)
 }
 
+/// Fetch emails from an IMAP account via himalaya CLI.
+#[tauri::command]
+fn fetch_emails(account: Option<String>, folder: Option<String>, page_size: Option<u32>) -> Result<String, String> {
+    let mut cmd = Command::new("himalaya");
+    cmd.arg("envelope").arg("list");
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    if let Some(f) = folder {
+        cmd.arg("--folder").arg(f);
+    }
+    cmd.arg("--page-size").arg(page_size.unwrap_or(50).to_string());
+    cmd.arg("--output").arg("json");
+    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("himalaya failed: {}", stderr));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Fetch a single email's full content via himalaya CLI.
+#[tauri::command]
+fn fetch_email_content(account: Option<String>, folder: Option<String>, id: String) -> Result<String, String> {
+    let mut cmd = Command::new("himalaya");
+    cmd.arg("message").arg("read");
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    if let Some(f) = folder {
+        cmd.arg("--folder").arg(f);
+    }
+    cmd.arg(&id);
+    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("himalaya failed: {}", stderr));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Send an email via himalaya CLI.
+#[tauri::command]
+fn send_email(account: Option<String>, to: String, subject: String, body: String) -> Result<(), String> {
+    let mut cmd = Command::new("himalaya");
+    cmd.arg("template").arg("send");
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    let email_template = format!("To: {}\nSubject: {}\n\n{}", to, subject, body);
+    cmd.stdin(std::process::Stdio::piped());
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn himalaya: {}", e))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin.write_all(email_template.as_bytes()).map_err(|e| format!("Failed to write: {}", e))?;
+    }
+    let output = child.wait_with_output().map_err(|e| format!("Failed to wait: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.contains("Folder doesn't exist") {
+            return Err(format!("himalaya failed: {}", stderr));
+        }
+    }
+    Ok(())
+}
+
+/// List mail folders via himalaya CLI.
+#[tauri::command]
+fn list_mail_folders(account: Option<String>) -> Result<String, String> {
+    let mut cmd = Command::new("himalaya");
+    cmd.arg("folder").arg("list");
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    cmd.arg("--output").arg("json");
+    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("himalaya failed: {}", stderr));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1940,7 +2023,11 @@ pub fn run() {
             read_himalaya_config,
             remove_himalaya_account,
             keyring_has_password,
-            keyring_delete_password
+            keyring_delete_password,
+            fetch_emails,
+            fetch_email_content,
+            send_email,
+            list_mail_folders
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

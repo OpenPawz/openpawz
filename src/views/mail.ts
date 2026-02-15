@@ -409,34 +409,42 @@ async function renderCredentialActivityLog() {
 }
 
 async function loadMailInbox() {
+  if (!invoke) {
+    console.warn('[mail] Tauri invoke not available');
+    _mailMessages = [];
+    renderMailList();
+    showMailEmpty(true);
+    return;
+  }
+
+  const accountName = _mailAccounts.length > 0 ? _mailAccounts[0].name : undefined;
+
   try {
-    const result = await gateway.listSessions({ limit: 100, includeDerivedTitles: true, includeLastMessage: true });
-    // Include gmail hook sessions AND himalaya/mail-related sessions
-    const hookSessions = (result.sessions ?? []).filter(s =>
-      s.key.startsWith('hook:gmail:') ||
-      s.key.startsWith('hook:mail:') ||
-      s.key.startsWith('mail:') ||
-      (s.label ?? s.displayName ?? '').toLowerCase().includes('email') ||
-      (s.label ?? s.displayName ?? '').toLowerCase().includes('mail')
-    );
+    const jsonResult = await invoke<string>('fetch_emails', {
+      account: accountName,
+      folder: _mailFolder === 'inbox' ? 'INBOX' : _mailFolder,
+      pageSize: 50
+    });
 
-    _mailMessages = hookSessions.map(s => {
-      const label = s.label ?? s.displayName ?? s.key;
-      const fromMatch = label.match(/from\s+(.+?)(?:\n|$)/i);
-      const subjMatch = label.match(/subject:\s*(.+?)(?:\n|$)/i);
+    interface HimalayaEnvelope {
+      id: string;
+      flags: string[];
+      subject: string;
+      from: { name?: string; addr: string };
+      date: string;
+    }
 
-      return {
-        id: s.key,
-        from: fromMatch?.[1] ?? 'Unknown sender',
-        subject: subjMatch?.[1] ?? (label.slice(0, 80) || 'No subject'),
-        snippet: (s as unknown as Record<string, unknown>).lastMessage
-          ? extractContent(((s as unknown as Record<string, unknown>).lastMessage as Record<string, unknown>)?.content).slice(0, 120)
-          : '',
-        date: s.updatedAt ? new Date(s.updatedAt) : new Date(),
-        sessionKey: s.key,
-        read: true,
-      };
-    }).sort((a, b) => b.date.getTime() - a.date.getTime());
+    let envelopes: HimalayaEnvelope[] = [];
+    try { envelopes = JSON.parse(jsonResult); } catch { /* ignore */ }
+
+    _mailMessages = envelopes.map(env => ({
+      id: String(env.id),
+      from: env.from?.name || env.from?.addr || 'Unknown',
+      subject: env.subject || '(No subject)',
+      snippet: '',
+      date: env.date ? new Date(env.date) : new Date(),
+      read: env.flags?.includes('Seen') ?? false,
+    })).sort((a, b) => b.date.getTime() - a.date.getTime());
 
     renderMailList();
     showMailEmpty(_mailMessages.length === 0);
@@ -495,6 +503,22 @@ function showMailEmpty(show: boolean) {
   if (items) items.style.display = show ? 'none' : '';
 }
 
+function getAvatarClass(sender: string): string {
+  const colors = ['', 'avatar-green', 'avatar-purple', 'avatar-orange', 'avatar-pink'];
+  if (sender.toLowerCase().includes('google')) return 'avatar-google';
+  if (sender.toLowerCase().includes('microsoft')) return 'avatar-microsoft';
+  const hash = sender.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return colors[hash % colors.length];
+}
+
+function getInitials(sender: string): string {
+  const name = sender.replace(/<.*>/, '').trim();
+  if (!name) return '?';
+  const parts = name.split(/[\s@._-]+/).filter(p => p.length > 0);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name.slice(0, 2).toUpperCase();
+}
+
 function renderMailList() {
   const container = $('mail-items');
   if (!container) return;
@@ -513,10 +537,14 @@ function renderMailList() {
     const item = document.createElement('div');
     item.className = `mail-item${msg.id === _mailSelectedId ? ' active' : ''}${!msg.read ? ' unread' : ''}`;
     item.innerHTML = `
-      <div class="mail-item-sender">${escHtml(msg.from)}</div>
-      <div class="mail-item-subject">${escHtml(msg.subject)}</div>
-      <div class="mail-item-snippet">${escHtml(msg.snippet)}</div>
-      <div class="mail-item-date">${formatMailDate(msg.date)}</div>
+      <div class="mail-item-avatar ${getAvatarClass(msg.from)}">${getInitials(msg.from)}</div>
+      <div class="mail-item-content">
+        <div class="mail-item-top">
+          <div class="mail-item-sender">${escHtml(msg.from)}</div>
+          <div class="mail-item-date">${formatMailDate(msg.date)}</div>
+        </div>
+        <div class="mail-item-subject">${escHtml(msg.subject)}</div>
+      </div>
     `;
     item.addEventListener('click', () => openMailMessage(msg.id));
     container.appendChild(item);
