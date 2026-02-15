@@ -63,6 +63,7 @@ let _streamingEl: HTMLElement | null = null;  // the live-updating DOM element
 let _streamingRunId: string | null = null;
 let _streamingResolve: ((text: string) => void) | null = null;  // resolves when agent run completes
 let _streamingTimeout: ReturnType<typeof setTimeout> | null = null;
+let _pendingAttachments: File[] = [];
 
 function getPortFromUrl(url: string): number {
   if (!url) return 18789;
@@ -670,6 +671,71 @@ chatInput?.addEventListener('input', () => {
   }
 });
 
+// ── Attachment picker ────────────────────────────────────────────────────────
+const chatAttachBtn = $('chat-attach-btn');
+const chatFileInput = $('chat-file-input') as HTMLInputElement | null;
+const chatAttachmentPreview = $('chat-attachment-preview');
+
+chatAttachBtn?.addEventListener('click', () => chatFileInput?.click());
+
+chatFileInput?.addEventListener('change', () => {
+  if (!chatFileInput.files) return;
+  for (const file of Array.from(chatFileInput.files)) {
+    _pendingAttachments.push(file);
+  }
+  chatFileInput.value = ''; // reset so same file can be re-selected
+  renderAttachmentPreview();
+});
+
+function renderAttachmentPreview() {
+  if (!chatAttachmentPreview) return;
+  if (_pendingAttachments.length === 0) {
+    chatAttachmentPreview.style.display = 'none';
+    chatAttachmentPreview.innerHTML = '';
+    return;
+  }
+  chatAttachmentPreview.style.display = 'flex';
+  chatAttachmentPreview.innerHTML = '';
+  for (let i = 0; i < _pendingAttachments.length; i++) {
+    const file = _pendingAttachments[i];
+    const chip = document.createElement('div');
+    chip.className = 'attachment-chip';
+    if (file.type.startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      img.className = 'attachment-chip-thumb';
+      img.onload = () => URL.revokeObjectURL(img.src);
+      chip.appendChild(img);
+    } else {
+      const icon = document.createElement('span');
+      icon.className = 'attachment-chip-icon';
+      icon.textContent = '\uD83D\uDCC4'; // 📄
+      chip.appendChild(icon);
+    }
+    const name = document.createElement('span');
+    name.className = 'attachment-chip-name';
+    name.textContent = file.name.length > 20 ? file.name.slice(0, 17) + '...' : file.name;
+    name.title = file.name;
+    chip.appendChild(name);
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'attachment-chip-remove';
+    removeBtn.innerHTML = '\u00D7'; // ×
+    removeBtn.title = 'Remove';
+    const idx = i;
+    removeBtn.addEventListener('click', () => {
+      _pendingAttachments.splice(idx, 1);
+      renderAttachmentPreview();
+    });
+    chip.appendChild(removeBtn);
+    chatAttachmentPreview.appendChild(chip);
+  }
+}
+
+function clearPendingAttachments() {
+  _pendingAttachments = [];
+  renderAttachmentPreview();
+}
+
 $('new-chat-btn')?.addEventListener('click', () => {
   messages = [];
   currentSessionKey = null;
@@ -723,8 +789,14 @@ async function sendMessage() {
   const content = chatInput?.value.trim();
   if (!content || isLoading) return;
 
+  // Log any pending attachments (gateway attachment support coming soon)
+  if (_pendingAttachments.length > 0) {
+    console.log('[Chat] Pending attachments:', _pendingAttachments);
+  }
+
   addMessage({ role: 'user', content, timestamp: new Date() });
   if (chatInput) { chatInput.value = ''; chatInput.style.height = 'auto'; }
+  clearPendingAttachments();
   isLoading = true;
   if (chatSend) chatSend.disabled = true;
 

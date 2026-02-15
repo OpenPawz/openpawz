@@ -4217,6 +4217,89 @@ select.form-input {
 .chat-abort-btn:hover { background: var(--error); color: white; }
 .chat-abort-btn svg { width: 14px; height: 14px; }
 
+/* ─── Chat Attach Button ─── */
+.chat-attach-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.chat-attach-btn:hover {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+.chat-attach-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ─── Attachment Preview Strip ─── */
+.chat-attachment-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--text-muted);
+  border-bottom: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.attachment-chip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light, #e0e0e0);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  max-width: 180px;
+}
+.attachment-chip-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+.attachment-chip-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.attachment-chip-name {
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.attachment-chip-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.attachment-chip-remove:hover {
+  background: var(--error-subtle);
+  color: var(--error);
+}
+
 /* ─── Markdown in Chat Messages ─── */
 .message-content h2, .message-content h3, .message-content h4 {
   margin: 12px 0 4px;
