@@ -84,6 +84,14 @@ let _streamingResolve: ((text: string) => void) | null = null;  // resolves when
 let _streamingTimeout: ReturnType<typeof setTimeout> | null = null;
 let _pendingAttachments: File[] = [];
 
+// ── Token metering state ───────────────────────────────────────────────────
+let _sessionTokensUsed = 0;         // accumulated tokens for current session
+let _sessionInputTokens = 0;
+let _sessionOutputTokens = 0;
+let _modelContextLimit = 128_000;   // default context window (will be updated from models.list)
+const COMPACTION_WARN_THRESHOLD = 0.80; // warn at 80% context usage
+let _compactionDismissed = false;
+
 /** Extended Message type with optional attachments (gateway may include these) */
 interface ChatAttachmentLocal {
   name: string;
@@ -303,6 +311,8 @@ gateway.on('_connected', () => {
   statusDot?.classList.add('connected');
   statusDot?.classList.remove('error');
   if (statusText) statusText.textContent = 'Connected';
+  // Detect model context limit for token meter
+  detectModelContextLimit().catch(() => {});
 });
 gateway.on('_disconnected', () => {
   wsConnected = false;
@@ -699,6 +709,12 @@ chatSessionSelect?.addEventListener('change', () => {
   const key = chatSessionSelect?.value;
   if (key) {
     currentSessionKey = key;
+    // Reset token meter for new session
+    _sessionTokensUsed = 0;
+    _sessionInputTokens = 0;
+    _sessionOutputTokens = 0;
+    _compactionDismissed = false;
+    updateTokenMeter();
     loadChatHistory(key);
   }
 });
@@ -858,6 +874,12 @@ function clearPendingAttachments() {
 $('new-chat-btn')?.addEventListener('click', () => {
   messages = [];
   currentSessionKey = null;
+  // Reset token meter for new conversation
+  _sessionTokensUsed = 0;
+  _sessionInputTokens = 0;
+  _sessionOutputTokens = 0;
+  _compactionDismissed = false;
+  updateTokenMeter();
   renderMessages();
   if (chatSessionSelect) chatSessionSelect.value = '';
 });
@@ -924,9 +946,119 @@ $('session-compact-btn')?.addEventListener('click', async () => {
   try {
     const result = await gateway.sessionsCompact(currentSessionKey ?? undefined);
     showToast(`Compacted${result.removed ? ` — removed ${result.removed} entries` : ''}`, 'success');
+    // Reset token meter after compaction
+    _sessionTokensUsed = 0;
+    _sessionInputTokens = 0;
+    _sessionOutputTokens = 0;
+    _compactionDismissed = false;
+    updateTokenMeter();
   } catch (e) {
     showToast(`Compact failed: ${e instanceof Error ? e.message : e}`, 'error');
   }
+});
+
+// ── Token Meter ────────────────────────────────────────────────────────────
+
+/** Update the token meter bar + label in the chat header */
+function updateTokenMeter() {
+  const meter = $('token-meter');
+  const fill = $('token-meter-fill');
+  const label = $('token-meter-label');
+  if (!meter || !fill || !label) return;
+
+  if (_sessionTokensUsed <= 0) {
+    meter.style.display = 'none';
+    return;
+  }
+
+  meter.style.display = '';
+  const pct = Math.min((_sessionTokensUsed / _modelContextLimit) * 100, 100);
+  fill.style.width = `${pct}%`;
+
+  // Color coding: green < 60%, yellow 60-80%, red > 80%
+  if (pct >= 80) {
+    fill.className = 'token-meter-fill danger';
+  } else if (pct >= 60) {
+    fill.className = 'token-meter-fill warning';
+  } else {
+    fill.className = 'token-meter-fill';
+  }
+
+  // Label: "12.4k / 128k tokens"
+  const used = _sessionTokensUsed >= 1000 ? `${(_sessionTokensUsed / 1000).toFixed(1)}k` : `${_sessionTokensUsed}`;
+  const limit = _modelContextLimit >= 1000 ? `${(_modelContextLimit / 1000).toFixed(0)}k` : `${_modelContextLimit}`;
+  label.textContent = `${used} / ${limit} tokens`;
+  meter.title = `Session tokens: ${_sessionTokensUsed.toLocaleString()} / ${_modelContextLimit.toLocaleString()} (In: ${_sessionInputTokens.toLocaleString()} / Out: ${_sessionOutputTokens.toLocaleString()})`;
+
+  // Compaction warning
+  updateCompactionWarning(pct);
+}
+
+/** Show/hide compaction warning based on context fill percentage */
+function updateCompactionWarning(pct: number) {
+  const warning = $('compaction-warning');
+  if (!warning) return;
+
+  if (pct >= COMPACTION_WARN_THRESHOLD * 100 && !_compactionDismissed) {
+    warning.style.display = '';
+    const text = $('compaction-warning-text');
+    if (text) {
+      if (pct >= 95) {
+        text.textContent = `Context window ${pct.toFixed(0)}% full — messages will be compacted imminently`;
+      } else {
+        text.textContent = `Context window ${pct.toFixed(0)}% full — older messages may be compacted soon`;
+      }
+    }
+  } else {
+    warning.style.display = 'none';
+  }
+}
+
+/** Record token usage from a chat/agent event and update the meter */
+function recordTokenUsage(usage: Record<string, unknown> | undefined) {
+  if (!usage) return;
+  const totalTokens = (usage.totalTokens ?? usage.total_tokens ?? 0) as number;
+  const inputTokens = (usage.promptTokens ?? usage.prompt_tokens ?? usage.inputTokens ?? usage.input_tokens ?? 0) as number;
+  const outputTokens = (usage.completionTokens ?? usage.completion_tokens ?? usage.outputTokens ?? usage.output_tokens ?? 0) as number;
+
+  if (totalTokens > 0) {
+    _sessionInputTokens += inputTokens;
+    _sessionOutputTokens += outputTokens;
+    _sessionTokensUsed += totalTokens;
+  } else if (inputTokens > 0 || outputTokens > 0) {
+    _sessionInputTokens += inputTokens;
+    _sessionOutputTokens += outputTokens;
+    _sessionTokensUsed += inputTokens + outputTokens;
+  }
+  updateTokenMeter();
+}
+
+/** Try to detect model context limit from models.list or health data */
+async function detectModelContextLimit() {
+  try {
+    const result = await gateway.modelsList();
+    const models = (result as unknown as Record<string, unknown>).models as Array<Record<string, unknown>> | undefined;
+    if (models && models.length > 0) {
+      // Find the active/default model's context window
+      for (const m of models) {
+        const ctx = (m.contextWindow ?? m.context_window ?? m.maxTokens ?? m.max_tokens) as number | undefined;
+        if (ctx && ctx > 0) {
+          _modelContextLimit = ctx;
+          console.log(`[token-meter] Detected model context limit: ${ctx}`);
+          break;
+        }
+      }
+    }
+  } catch {
+    // Keep default
+  }
+}
+
+// Dismiss compaction warning
+$('compaction-warning-dismiss')?.addEventListener('click', () => {
+  _compactionDismissed = true;
+  const warning = $('compaction-warning');
+  if (warning) warning.style.display = 'none';
 });
 
 async function sendMessage() {
@@ -1305,6 +1437,9 @@ gateway.on('agent', (payload: unknown) => {
         console.log(`[main] Agent run started: ${runId}`);
       } else if (phase === 'end') {
         console.log(`[main] Agent run ended: ${runId}`);
+        // Capture usage from lifecycle end event
+        const agentUsage = data.usage as Record<string, unknown> | undefined;
+        recordTokenUsage(agentUsage);
         if (_streamingResolve) {
           _streamingResolve(_streamingContent);
           _streamingResolve = null;
@@ -1383,6 +1518,9 @@ gateway.on('chat', (payload: unknown) => {
           _streamingResolve = null;
         }
       }
+      // Track token usage from chat final event
+      const chatUsage = (msg.usage ?? evt.usage) as Record<string, unknown> | undefined;
+      recordTokenUsage(chatUsage);
     }
   } catch (e) {
     console.warn('[main] Chat event handler error:', e);

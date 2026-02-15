@@ -444,6 +444,13 @@
                 <div class="chat-title" id="chat-agent-name">Agent</div>
                 <div class="chat-subtitle" id="model-label">Connected</div>
               </div>
+              <!-- Token meter -->
+              <div class="token-meter" id="token-meter" style="display:none" title="Session token usage">
+                <div class="token-meter-bar">
+                  <div class="token-meter-fill" id="token-meter-fill"></div>
+                </div>
+                <span class="token-meter-label" id="token-meter-label">0 tokens</span>
+              </div>
             </div>
             <div style="display:flex;gap:6px;align-items:center">
               <select class="chat-mode-select" id="chat-mode-select" title="Agent mode">
@@ -468,6 +475,13 @@
                 </svg>
               </button>
             </div>
+          </div>
+
+          <!-- Compaction warning banner -->
+          <div class="compaction-warning" id="compaction-warning" style="display:none">
+            <svg class="icon-sm" viewBox="0 0 24 24"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span id="compaction-warning-text">Context window filling up — older messages may be compacted soon</span>
+            <button class="btn btn-ghost btn-sm" id="compaction-warning-dismiss" title="Dismiss">×</button>
           </div>
           
           <div class="chat-messages" id="chat-messages">
@@ -1139,6 +1153,9 @@
               <span class="palace-sidebar-title">Memory</span>
               <button class="btn-icon" id="palace-settings" title="Memory settings" style="display:none">
                 <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+              </button>
+              <button class="btn-icon" id="palace-export" title="Export all memories">
+                <svg class="icon-sm" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>
               </button>
               <button class="btn-icon" id="palace-refresh" title="Refresh memories">
                 <svg class="icon-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>

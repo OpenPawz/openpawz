@@ -778,6 +778,84 @@ body {
   color: var(--text-secondary);
 }
 
+/* ── Token Meter ────────────────────────────────────────────────────────── */
+
+.token-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+  min-width: 140px;
+}
+
+.token-meter-bar {
+  flex: 1;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 60px;
+}
+
+.token-meter-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s ease, background-color 0.3s ease;
+  width: 0%;
+}
+
+.token-meter-fill.warning {
+  background: #FDAB3D;
+}
+
+.token-meter-fill.danger {
+  background: #E44258;
+}
+
+.token-meter-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* ── Compaction Warning Banner ──────────────────────────────────────────── */
+
+.compaction-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: #FFF3CD;
+  border-bottom: 1px solid #FDAB3D;
+  color: #856404;
+  font-size: 13px;
+  animation: slideDown 200ms ease;
+}
+
+.compaction-warning svg {
+  flex-shrink: 0;
+  stroke: #856404;
+  width: 16px;
+  height: 16px;
+}
+
+.compaction-warning span {
+  flex: 1;
+}
+
+.compaction-warning .btn {
+  color: #856404;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-100%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;
