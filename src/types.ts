@@ -386,6 +386,31 @@ export interface AgentsFilesGetResult {
   content: string;
 }
 
+// ── Usage ──────────────────────────────────────────────────────────────────
+
+export interface UsageStatusResult {
+  ok: boolean;
+  total?: { requests: number; tokens: number; inputTokens?: number; outputTokens?: number };
+  byModel?: Record<string, { requests: number; tokens: number; inputTokens?: number; outputTokens?: number }>;
+  period?: string;
+  [key: string]: unknown;
+}
+
+export interface UsageCostResult {
+  ok: boolean;
+  totalCost?: number;
+  currency?: string;
+  byModel?: Record<string, { cost: number; requests: number }>;
+  period?: string;
+  [key: string]: unknown;
+}
+
+// ── Logs ───────────────────────────────────────────────────────────────────
+
+export interface LogsTailResult {
+  lines: string[];
+}
+
 // ── Install (Tauri-side) ───────────────────────────────────────────────────
 
 export interface InstallProgress {

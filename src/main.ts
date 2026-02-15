@@ -135,7 +135,7 @@ function switchView(viewName: string) {
       case 'memory': loadMemoryPalace(); loadMemory(); break;
       case 'build': loadSpaceCron('build'); break;
       case 'mail': loadSpaceCron('mail'); break;
-      case 'settings': syncSettingsForm(); loadGatewayConfig(); break;
+      case 'settings': syncSettingsForm(); loadGatewayConfig(); loadSettingsLogs(); loadSettingsUsage(); loadSettingsPresence(); break;
       default: break;
     }
   }
@@ -517,6 +517,8 @@ async function loadSessions() {
     }
     // Don't reload chat history if we're in the middle of streaming
     if (currentSessionKey && !isLoading) await loadChatHistory(currentSessionKey);
+    // Populate mode picker from local DB
+    populateModeSelect().catch(() => {});
   } catch (e) { console.warn('Sessions load failed:', e); }
 }
 
@@ -546,6 +548,20 @@ chatSessionSelect?.addEventListener('change', () => {
     loadChatHistory(key);
   }
 });
+
+/** Populate the mode picker dropdown in the chat header */
+async function populateModeSelect() {
+  const sel = $('chat-mode-select') as HTMLSelectElement | null;
+  if (!sel) return;
+  const modes = await listModes();
+  sel.innerHTML = '<option value="">Default</option>';
+  for (const m of modes) {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.name;
+    sel.appendChild(opt);
+  }
+}
 
 async function loadChatHistory(sessionKey: string) {
   if (!wsConnected) return;
@@ -607,6 +623,48 @@ $('new-chat-btn')?.addEventListener('click', () => {
   if (chatSessionSelect) chatSessionSelect.value = '';
 });
 
+// Abort running agent
+$('chat-abort-btn')?.addEventListener('click', async () => {
+  const key = currentSessionKey ?? 'default';
+  try {
+    await gateway.chatAbort(key, _streamingRunId ?? undefined);
+    showToast('Agent stopped', 'info');
+  } catch (e) {
+    console.warn('[main] Abort failed:', e);
+  }
+  // Let the lifecycle 'end' event or timeout finalize the stream
+});
+
+// Session rename
+$('session-rename-btn')?.addEventListener('click', async () => {
+  if (!currentSessionKey || !wsConnected) return;
+  const name = await promptModal('Rename session', 'New name…');
+  if (!name) return;
+  try {
+    await gateway.patchSession(currentSessionKey, { label: name });
+    showToast('Session renamed', 'success');
+    await loadSessions();
+  } catch (e) {
+    showToast(`Rename failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+});
+
+// Session delete
+$('session-delete-btn')?.addEventListener('click', async () => {
+  if (!currentSessionKey || !wsConnected) return;
+  if (!confirm('Delete this session? This cannot be undone.')) return;
+  try {
+    await gateway.deleteSession(currentSessionKey);
+    currentSessionKey = null;
+    messages = [];
+    renderMessages();
+    showToast('Session deleted', 'success');
+    await loadSessions();
+  } catch (e) {
+    showToast(`Delete failed: ${e instanceof Error ? e.message : e}`, 'error');
+  }
+});
+
 async function sendMessage() {
   const content = chatInput?.value.trim();
   if (!content || isLoading) return;
@@ -635,7 +693,23 @@ async function sendMessage() {
 
   try {
     const sessionKey = currentSessionKey ?? 'default';
-    const result = await gateway.chatSend(sessionKey, content);
+
+    // Read selected mode's overrides (model, system prompt, thinking level)
+    const modeSelect = $('chat-mode-select') as HTMLSelectElement | null;
+    const selectedModeId = modeSelect?.value;
+    let chatOpts: { model?: string; systemPrompt?: string; thinkingLevel?: string; temperature?: number } = {};
+    if (selectedModeId) {
+      const modes = await listModes();
+      const mode = modes.find(m => m.id === selectedModeId);
+      if (mode) {
+        if (mode.model) chatOpts.model = mode.model;
+        if (mode.system_prompt) chatOpts.systemPrompt = mode.system_prompt;
+        if (mode.thinking_level) chatOpts.thinkingLevel = mode.thinking_level;
+        if (mode.temperature > 0) chatOpts.temperature = mode.temperature;
+      }
+    }
+
+    const result = await gateway.chatSend(sessionKey, content, chatOpts);
     console.log('[main] chat.send ack:', JSON.stringify(result).slice(0, 300));
 
     // Store the runId so we can filter events precisely
@@ -680,6 +754,9 @@ function showStreamingMessage() {
   div.appendChild(time);
   chatMessages?.appendChild(div);
   _streamingEl = contentEl;
+  // Show abort button
+  const abortBtn = $('chat-abort-btn');
+  if (abortBtn) abortBtn.style.display = '';
   scrollToBottom();
 }
 
@@ -697,7 +774,8 @@ function scrollToBottom() {
 function appendStreamingDelta(text: string) {
   _streamingContent += text;
   if (_streamingEl) {
-    _streamingEl.textContent = _streamingContent;
+    // During streaming: render markdown so user gets formatted output live
+    _streamingEl.innerHTML = formatMarkdown(_streamingContent);
     scrollToBottom();
   }
 }
@@ -709,6 +787,9 @@ function finalizeStreaming(finalContent: string, toolCalls?: import('./types').T
   _streamingEl = null;
   _streamingRunId = null;
   _streamingContent = '';
+  // Hide abort button
+  const abortBtn = $('chat-abort-btn');
+  if (abortBtn) abortBtn.style.display = 'none';
 
   if (finalContent) {
     addMessage({ role: 'assistant', content: finalContent, timestamp: new Date(), toolCalls });
@@ -738,7 +819,12 @@ function renderMessages() {
     div.className = `message ${msg.role}`;
     const contentEl = document.createElement('div');
     contentEl.className = 'message-content';
-    contentEl.textContent = msg.content;
+    // Render markdown for assistant messages, plain text for user
+    if (msg.role === 'assistant' || msg.role === 'system') {
+      contentEl.innerHTML = formatMarkdown(msg.content);
+    } else {
+      contentEl.textContent = msg.content;
+    }
     const time = document.createElement('div');
     time.className = 'message-time';
     time.textContent = msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -797,6 +883,49 @@ gateway.on('agent', (payload: unknown) => {
         const error = (data.message ?? data.error ?? '') as string;
         if (error) appendResearchDelta(`\n\nError: ${error}`);
         if (_researchResolve) { _researchResolve(_researchContent); _researchResolve = null; }
+      }
+      return;
+    }
+
+    // Route paw-build-* events to the Build view
+    if (evtSession && evtSession.startsWith('paw-build')) {
+      if (!_buildStreaming) return;
+      if (_buildStreamRunId && runId && runId !== _buildStreamRunId) return;
+      if (stream === 'assistant' && data) {
+        const delta = data.delta as string | undefined;
+        if (delta) {
+          _buildStreamContent += delta;
+          const el = $('build-chat-messages');
+          const lastMsg = el?.querySelector('.message.assistant:last-child .message-content');
+          if (lastMsg) lastMsg.innerHTML = formatMarkdown(_buildStreamContent);
+        }
+      } else if (stream === 'lifecycle' && data) {
+        const phase = data.phase as string | undefined;
+        if (phase === 'start' && !_buildStreamRunId && runId) _buildStreamRunId = runId;
+        if (phase === 'end' && _buildStreamResolve) { _buildStreamResolve(_buildStreamContent); _buildStreamResolve = null; }
+      } else if (stream === 'error' && data) {
+        const error = (data.message ?? data.error ?? '') as string;
+        if (error) _buildStreamContent += `\n\nError: ${error}`;
+        if (_buildStreamResolve) { _buildStreamResolve(_buildStreamContent); _buildStreamResolve = null; }
+      }
+      return;
+    }
+
+    // Route paw-create-* events to the Content view
+    if (evtSession && evtSession.startsWith('paw-create-')) {
+      if (!_contentStreaming) return;
+      if (_contentStreamRunId && runId && runId !== _contentStreamRunId) return;
+      if (stream === 'assistant' && data) {
+        const delta = data.delta as string | undefined;
+        if (delta) _contentStreamContent += delta;
+      } else if (stream === 'lifecycle' && data) {
+        const phase = data.phase as string | undefined;
+        if (phase === 'start' && !_contentStreamRunId && runId) _contentStreamRunId = runId;
+        if (phase === 'end' && _contentStreamResolve) { _contentStreamResolve(_contentStreamContent); _contentStreamResolve = null; }
+      } else if (stream === 'error' && data) {
+        const error = (data.message ?? data.error ?? '') as string;
+        if (error) _contentStreamContent += `\n\nError: ${error}`;
+        if (_contentStreamResolve) { _contentStreamResolve(_contentStreamContent); _contentStreamResolve = null; }
       }
       return;
     }
@@ -890,7 +1019,7 @@ gateway.on('chat', (payload: unknown) => {
         // If streaming hasn't captured the full text, replace with final
         _streamingContent = text;
         if (_streamingEl) {
-          _streamingEl.textContent = text;
+          _streamingEl.innerHTML = formatMarkdown(text);
           scrollToBottom();
         }
         // Resolve the streaming promise since we have the final text
@@ -2793,18 +2922,37 @@ $('content-body')?.addEventListener('input', () => {
 });
 
 $('content-ai-improve')?.addEventListener('click', async () => {
-  if (!_activeDocId || !wsConnected) { alert('Connect to gateway first'); return; }
-  const body = ($('content-body') as HTMLTextAreaElement).value.trim();
+  if (!_activeDocId || !wsConnected) { showToast('Connect to gateway first', 'error'); return; }
+  const bodyEl = $('content-body') as HTMLTextAreaElement;
+  const body = bodyEl?.value.trim();
   if (!body) return;
   const sessionKey = 'paw-create-' + _activeDocId;
+
+  _contentStreaming = true;
+  _contentStreamContent = '';
+  _contentStreamRunId = null;
+  showToast('AI improving your text…', 'info');
+
+  const done = new Promise<string>((resolve) => {
+    _contentStreamResolve = resolve;
+    setTimeout(() => resolve(_contentStreamContent || '(Timed out)'), 120_000);
+  });
+
   try {
     const result = await gateway.chatSend(sessionKey, `Improve this text. Return only the improved version, no explanations:\n\n${body}`);
-    if (result.runId) {
-      // Wait for response via events — simplified
-      alert('AI improvement request sent. Check Chat for the response.');
+    if (result.runId) _contentStreamRunId = result.runId;
+
+    const finalText = await done;
+    if (finalText && bodyEl) {
+      bodyEl.value = finalText;
+      showToast('Text improved!', 'success');
     }
   } catch (e) {
-    alert(`Failed: ${e}`);
+    showToast(`Failed: ${e instanceof Error ? e.message : e}`, 'error');
+  } finally {
+    _contentStreaming = false;
+    _contentStreamRunId = null;
+    _contentStreamResolve = null;
   }
 });
 
@@ -2818,6 +2966,18 @@ $('content-delete-doc')?.addEventListener('click', async () => {
 
 // ── Research Notebook ──────────────────────────────────────────────────────
 let _activeResearchId: string | null = null;
+
+// ── Build — streaming state ────────────────────────────────────────────────
+let _buildStreaming = false;
+let _buildStreamContent = '';
+let _buildStreamRunId: string | null = null;
+let _buildStreamResolve: ((text: string) => void) | null = null;
+
+// ── Content — streaming state ──────────────────────────────────────────────
+let _contentStreaming = false;
+let _contentStreamContent = '';
+let _contentStreamRunId: string | null = null;
+let _contentStreamResolve: ((text: string) => void) | null = null;
 
 // ── Research — Agent-powered research ──────────────────────────────────────
 let _researchStreaming = false;
@@ -2901,6 +3061,32 @@ function renderFindingCard(doc: import('./db').ContentDoc): HTMLElement {
     if (_activeResearchId) loadResearchFindings(_activeResearchId);
   });
   return card;
+}
+
+/** Render markdown-like text to HTML (used for chat messages and research findings) */
+function formatMarkdown(text: string): string {
+  // Fenced code blocks first (before escaping)
+  let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
+    return `<pre class="code-block" data-lang="${escHtml(lang)}"><code>${escHtml(code.trimEnd())}</code></pre>`;
+  });
+  // Now escape everything else (except already-replaced code blocks)
+  // Split on code blocks, escape non-code parts, rejoin
+  const parts = html.split(/(<pre class="code-block"[\s\S]*?<\/pre>)/);
+  html = parts.map((part, i) => {
+    if (i % 2 === 1) return part; // code block — leave as is
+    return escHtml(part)
+      .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
+      .replace(/^# (.+)$/gm, '<h2>$1</h2>')
+      .replace(/^[-•] (.+)$/gm, '<div class="md-bullet">• $1</div>')
+      .replace(/^\d+\. (.+)$/gm, '<div class="md-bullet">$&</div>')
+      .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+      .replace(/\n/g, '<br>');
+  }).join('');
+  return html;
 }
 
 function formatResearchContent(text: string): string {
@@ -3200,7 +3386,7 @@ $('build-code-editor')?.addEventListener('input', () => {
 // Build chat — send to agent in build context
 $('build-chat-send')?.addEventListener('click', async () => {
   const input = $('build-chat-input') as HTMLTextAreaElement;
-  const messages = $('build-chat-messages');
+  const msgList = $('build-chat-messages');
   if (!input?.value.trim() || !wsConnected) return;
 
   const userMsg = input.value.trim();
@@ -3210,7 +3396,7 @@ $('build-chat-send')?.addEventListener('click', async () => {
   const userDiv = document.createElement('div');
   userDiv.className = 'message user';
   userDiv.innerHTML = `<div class="message-content">${escHtml(userMsg)}</div>`;
-  messages?.appendChild(userDiv);
+  msgList?.appendChild(userDiv);
 
   // Provide context about open files
   let context = userMsg;
@@ -3219,19 +3405,36 @@ $('build-chat-send')?.addEventListener('click', async () => {
     context = `[Build context]\nOpen files:\n${fileContext}\n\n[User instruction]: ${userMsg}`;
   }
 
+  // Show streaming assistant bubble
+  const agentDiv = document.createElement('div');
+  agentDiv.className = 'message assistant';
+  agentDiv.innerHTML = `<div class="message-content"><div class="loading-dots"><span></span><span></span><span></span></div></div>`;
+  msgList?.appendChild(agentDiv);
+
+  _buildStreaming = true;
+  _buildStreamContent = '';
+  _buildStreamRunId = null;
+
+  const done = new Promise<string>((resolve) => {
+    _buildStreamResolve = resolve;
+    setTimeout(() => resolve(_buildStreamContent || '(Timed out)'), 120_000);
+  });
+
   try {
     const sessionKey = _buildProjectId ? `paw-build-${_buildProjectId}` : 'paw-build';
-    await gateway.chatSend(sessionKey, context);
-    // Response will come via events
-    const agentDiv = document.createElement('div');
-    agentDiv.className = 'message assistant';
-    agentDiv.innerHTML = `<div class="message-content">Request sent — check Chat view for the full response.</div>`;
-    messages?.appendChild(agentDiv);
+    const result = await gateway.chatSend(sessionKey, context);
+    if (result.runId) _buildStreamRunId = result.runId;
+
+    const finalText = await done;
+    const contentEl = agentDiv.querySelector('.message-content');
+    if (contentEl) contentEl.innerHTML = formatMarkdown(finalText);
   } catch (e) {
-    const errDiv = document.createElement('div');
-    errDiv.className = 'message assistant';
-    errDiv.innerHTML = `<div class="message-content">Error: ${escHtml(e instanceof Error ? e.message : String(e))}</div>`;
-    messages?.appendChild(errDiv);
+    const contentEl = agentDiv.querySelector('.message-content');
+    if (contentEl) contentEl.innerHTML = `Error: ${escHtml(e instanceof Error ? e.message : String(e))}`;
+  } finally {
+    _buildStreaming = false;
+    _buildStreamRunId = null;
+    _buildStreamResolve = null;
   }
 });
 
@@ -3298,6 +3501,164 @@ function formatBytes(bytes: number): string {
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / 1048576).toFixed(1) + ' MB';
 }
+
+// ── Global Toast Notification ──────────────────────────────────────────────
+function showToast(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', durationMs = 3500) {
+  const container = $('global-toast');
+  if (!container) return;
+  container.textContent = message;
+  container.className = `global-toast toast-${type}`;
+  container.style.display = '';
+  container.style.opacity = '1';
+  // Auto dismiss
+  setTimeout(() => {
+    container.style.opacity = '0';
+    setTimeout(() => { container.style.display = 'none'; }, 300);
+  }, durationMs);
+}
+
+// ── Settings: Logs viewer ──────────────────────────────────────────────────
+async function loadSettingsLogs() {
+  if (!wsConnected) return;
+  const section = $('settings-logs-section');
+  const output = $('settings-logs-output');
+  const linesSelect = $('settings-logs-lines') as HTMLSelectElement | null;
+  try {
+    const lines = parseInt(linesSelect?.value ?? '100', 10);
+    const result = await gateway.logsTail(lines);
+    if (section) section.style.display = '';
+    if (output) output.textContent = (result.lines ?? []).join('\n') || '(no logs)';
+  } catch (e) {
+    console.warn('[settings] Logs load failed:', e);
+    if (section) section.style.display = 'none';
+  }
+}
+
+$('settings-refresh-logs')?.addEventListener('click', () => loadSettingsLogs());
+
+// ── Settings: Usage dashboard ──────────────────────────────────────────────
+async function loadSettingsUsage() {
+  if (!wsConnected) return;
+  const section = $('settings-usage-section');
+  const content = $('settings-usage-content');
+  try {
+    const [status, cost] = await Promise.all([
+      gateway.usageStatus().catch(() => null),
+      gateway.usageCost().catch(() => null),
+    ]);
+    if (!status && !cost) { if (section) section.style.display = 'none'; return; }
+    if (section) section.style.display = '';
+    let html = '';
+    if (status?.total) {
+      html += `<div class="usage-card">
+        <div class="usage-card-label">Requests</div>
+        <div class="usage-card-value">${status.total.requests?.toLocaleString() ?? '—'}</div>
+      </div>
+      <div class="usage-card">
+        <div class="usage-card-label">Tokens</div>
+        <div class="usage-card-value">${status.total.tokens?.toLocaleString() ?? '—'}</div>
+        <div class="usage-card-sub">In: ${(status.total.inputTokens ?? 0).toLocaleString()} / Out: ${(status.total.outputTokens ?? 0).toLocaleString()}</div>
+      </div>`;
+    }
+    if (cost?.totalCost != null) {
+      html += `<div class="usage-card">
+        <div class="usage-card-label">Cost</div>
+        <div class="usage-card-value">$${cost.totalCost.toFixed(4)} ${cost.currency ?? ''}</div>
+      </div>`;
+    }
+    if (status?.byModel) {
+      html += '<div class="usage-models"><h4>By Model</h4>';
+      for (const [model, data] of Object.entries(status.byModel)) {
+        const d = data as { requests?: number; tokens?: number };
+        html += `<div class="usage-model-row"><span class="usage-model-name">${escHtml(model)}</span><span>${(d.requests ?? 0).toLocaleString()} req / ${(d.tokens ?? 0).toLocaleString()} tok</span></div>`;
+      }
+      html += '</div>';
+    }
+    if (content) content.innerHTML = html || '<p style="color:var(--text-muted)">No usage data</p>';
+  } catch (e) {
+    console.warn('[settings] Usage load failed:', e);
+    if (section) section.style.display = 'none';
+  }
+}
+
+$('settings-refresh-usage')?.addEventListener('click', () => loadSettingsUsage());
+
+// ── Settings: System presence ──────────────────────────────────────────────
+async function loadSettingsPresence() {
+  if (!wsConnected) return;
+  const section = $('settings-presence-section');
+  const list = $('settings-presence-list');
+  try {
+    const result = await gateway.systemPresence();
+    const entries = result.entries ?? [];
+    if (!entries.length) { if (section) section.style.display = 'none'; return; }
+    if (section) section.style.display = '';
+    if (list) {
+      list.innerHTML = entries.map(e => {
+        const name = e.client?.id ?? e.connId ?? 'Unknown';
+        const platform = e.client?.platform ?? '';
+        const role = e.role ?? '';
+        return `
+          <div class="presence-entry">
+            <div class="presence-dot online"></div>
+            <div class="presence-info">
+              <div class="presence-name">${escHtml(name)}</div>
+              <div class="presence-meta">${escHtml(role)} · ${escHtml(platform)}${e.connectedAt ? ' · ' + new Date(e.connectedAt).toLocaleString() : ''}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+  } catch (e) {
+    console.warn('[settings] Presence load failed:', e);
+    if (section) section.style.display = 'none';
+  }
+}
+
+$('settings-refresh-presence')?.addEventListener('click', () => loadSettingsPresence());
+
+// ── Exec Approval event handler ────────────────────────────────────────────
+gateway.on('exec.approval.requested', (payload: unknown) => {
+  const evt = payload as Record<string, unknown>;
+  const id = (evt.id ?? evt.approvalId) as string | undefined;
+  const tool = (evt.tool ?? evt.name ?? '') as string;
+  const desc = (evt.description ?? evt.message ?? `The agent wants to use tool: ${tool}`) as string;
+  const args = evt.args as Record<string, unknown> | undefined;
+
+  const modal = $('approval-modal');
+  const descEl = $('approval-modal-desc');
+  const detailsEl = $('approval-modal-details');
+  if (!modal || !descEl) return;
+
+  descEl.textContent = desc;
+  if (detailsEl) {
+    detailsEl.innerHTML = args
+      ? `<pre class="code-block"><code>${escHtml(JSON.stringify(args, null, 2))}</code></pre>`
+      : '';
+  }
+  modal.style.display = 'flex';
+
+  // Resolve when user clicks Allow/Deny
+  const cleanup = () => {
+    modal.style.display = 'none';
+    $('approval-allow-btn')?.removeEventListener('click', onAllow);
+    $('approval-deny-btn')?.removeEventListener('click', onDeny);
+    $('approval-modal-close')?.removeEventListener('click', onDeny);
+  };
+  const onAllow = () => {
+    cleanup();
+    if (id) gateway.request('exec.approvals.resolve', { id, allowed: true }).catch(console.warn);
+    showToast('Tool approved', 'success');
+  };
+  const onDeny = () => {
+    cleanup();
+    if (id) gateway.request('exec.approvals.resolve', { id, allowed: false }).catch(console.warn);
+    showToast('Tool denied', 'warning');
+  };
+  $('approval-allow-btn')?.addEventListener('click', onAllow);
+  $('approval-deny-btn')?.addEventListener('click', onDeny);
+  $('approval-modal-close')?.addEventListener('click', onDeny);
+});
 
 // ── Initialize ─────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {

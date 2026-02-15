@@ -3291,3 +3291,268 @@ button:focus:not(:focus-visible) { outline: none; }
   gap: 8px;
   margin-bottom: 16px;
 }
+
+/* ══════════════════════════════════════════
+   New Components — Full UI Pass
+   ══════════════════════════════════════════ */
+
+/* ─── Nav Badge (muted / "Soon") ─── */
+.nav-item .nav-badge.muted {
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  font-size: 9px;
+}
+
+/* ─── Chat Mode Picker ─── */
+#chat-mode-select {
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  max-width: 140px;
+  cursor: pointer;
+}
+#chat-mode-select:focus { border-color: var(--border-focus); outline: none; }
+
+/* ─── Chat Session Buttons ─── */
+.session-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  font-size: 13px;
+  transition: all var(--transition-fast);
+}
+.session-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.session-btn.danger:hover { background: var(--error-subtle); color: var(--error); border-color: var(--error); }
+
+/* ─── Chat Abort Button ─── */
+.chat-abort-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px auto 0;
+  padding: 6px 16px;
+  border: 1px solid var(--error);
+  border-radius: var(--radius-pill);
+  background: var(--error-subtle);
+  color: var(--error);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+.chat-abort-btn:hover { background: var(--error); color: white; }
+.chat-abort-btn svg { width: 14px; height: 14px; }
+
+/* ─── Markdown in Chat Messages ─── */
+.message-content h2, .message-content h3, .message-content h4 {
+  margin: 12px 0 4px;
+  color: var(--text-primary);
+}
+.message-content h2 { font-size: 16px; }
+.message-content h3 { font-size: 15px; }
+.message-content h4 { font-size: 14px; font-weight: 600; }
+
+.message-content strong { font-weight: 600; }
+.message-content em { font-style: italic; }
+
+.message-content .md-bullet {
+  padding-left: 16px;
+  margin: 2px 0;
+  position: relative;
+}
+
+.message-content .inline-code {
+  background: var(--bg-hover);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--purple);
+}
+
+.message-content .code-block {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 8px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.message-content .code-block code {
+  background: none;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.message-content a {
+  color: var(--accent);
+  text-decoration: none;
+}
+.message-content a:hover { text-decoration: underline; }
+
+/* ─── Global Toast ─── */
+.global-toast {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 10px 24px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  z-index: 10000;
+  transition: opacity 0.3s ease;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+}
+.toast-info {
+  background: var(--accent);
+  color: white;
+}
+.toast-success {
+  background: var(--success);
+  color: white;
+}
+.toast-error {
+  background: var(--error);
+  color: white;
+}
+.toast-warning {
+  background: var(--warning);
+  color: #333;
+}
+
+/* ─── Settings: Usage Cards ─── */
+.usage-content {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.usage-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  min-width: 140px;
+  flex: 1;
+}
+.usage-card-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.usage-card-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.usage-card-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.usage-models {
+  width: 100%;
+  margin-top: 8px;
+}
+.usage-models h4 {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.usage-model-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.usage-model-name {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* ─── Settings: Logs Viewer ─── */
+.logs-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.logs-output {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 16px;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  max-height: 400px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ─── Settings: Presence ─── */
+.presence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.presence-entry {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.presence-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+}
+.presence-dot.online { background: var(--success); }
+.presence-info { flex: 1; }
+.presence-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.presence-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* ─── Approval Modal ─── */
+.approval-details {
+  max-height: 300px;
+  overflow: auto;
+}
+.approval-details .code-block {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+}

@@ -21,6 +21,9 @@ import type {
   ExecApprovalsSnapshot,
   AgentsFilesListResult,
   AgentsFilesGetResult,
+  UsageStatusResult,
+  UsageCostResult,
+  LogsTailResult,
 } from './types';
 
 const PROTOCOL_VERSION = 3;
@@ -450,13 +453,17 @@ class GatewayClient {
     return this.request<ChatHistoryResult>('chat.history', { sessionKey, limit });
   }
 
-  async chatSend(sessionKey: string, message: string, opts?: { thinking?: string; idempotencyKey?: string }): Promise<ChatSendResult> {
+  async chatSend(sessionKey: string, message: string, opts?: { thinking?: string; idempotencyKey?: string; model?: string; systemPrompt?: string; thinkingLevel?: string; temperature?: number }): Promise<ChatSendResult> {
     const idempotencyKey = opts?.idempotencyKey ?? crypto.randomUUID();
     return this.request<ChatSendResult>('chat.send', {
       sessionKey,
       message,
       idempotencyKey,
       ...(opts?.thinking ? { thinking: opts.thinking } : {}),
+      ...(opts?.model ? { model: opts.model } : {}),
+      ...(opts?.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
+      ...(opts?.thinkingLevel ? { thinkingLevel: opts.thinkingLevel } : {}),
+      ...(opts?.temperature != null ? { temperature: opts.temperature } : {}),
     }, 120_000); // chat can take a while
   }
 
@@ -565,8 +572,17 @@ class GatewayClient {
   }
 
   // Logs
-  async logsTail(lines = 100): Promise<{ lines: string[] }> {
-    return this.request('logs.tail', { lines });
+  async logsTail(lines = 100): Promise<LogsTailResult> {
+    return this.request<LogsTailResult>('logs.tail', { lines });
+  }
+
+  // Usage
+  async usageStatus(): Promise<UsageStatusResult> {
+    return this.request<UsageStatusResult>('usage.status', {});
+  }
+
+  async usageCost(): Promise<UsageCostResult> {
+    return this.request<UsageCostResult>('usage.cost', {});
   }
 
   // Send message (direct channel send)
