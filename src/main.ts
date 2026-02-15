@@ -855,6 +855,31 @@ function addMessage(message: Message) {
   renderMessages();
 }
 
+/** Find last index matching predicate */
+function findLastIndex<T>(arr: T[], pred: (item: T) => boolean): number {
+  for (let i = arr.length - 1; i >= 0; i--) {
+    if (pred(arr[i])) return i;
+  }
+  return -1;
+}
+
+/** Retry a message: remove everything from the retried user message onward and resend */
+function retryMessage(content: string) {
+  if (isLoading || !content) return;
+  // Remove last user message + any assistant reply after it
+  const lastUserIdx = findLastIndex(messages, m => m.role === 'user');
+  if (lastUserIdx >= 0) {
+    messages.splice(lastUserIdx);
+  }
+  renderMessages();
+  // Inject content into input and send
+  if (chatInput) {
+    chatInput.value = content;
+    chatInput.style.height = 'auto';
+  }
+  sendMessage();
+}
+
 function renderMessages() {
   if (!chatMessages) return;
   // Remove only non-streaming message elements
@@ -868,7 +893,10 @@ function renderMessages() {
 
   // Build all nodes in a fragment to avoid repeated reflows
   const frag = document.createDocumentFragment();
-  for (const msg of messages) {
+  const lastUserIdx = findLastIndex(messages, m => m.role === 'user');
+  const lastAssistantIdx = findLastIndex(messages, m => m.role === 'assistant');
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
     const div = document.createElement('div');
     div.className = `message ${msg.role}`;
     const contentEl = document.createElement('div');
@@ -890,6 +918,19 @@ function renderMessages() {
       badge.className = 'tool-calls-badge';
       badge.textContent = `${msg.toolCalls.length} tool call${msg.toolCalls.length > 1 ? 's' : ''}`;
       div.appendChild(badge);
+    }
+
+    // Retry button on the last user message, and on the last assistant message if it errored
+    const isLastUser = i === lastUserIdx;
+    const isErroredAssistant = i === lastAssistantIdx && msg.content.startsWith('Error:');
+    if ((isLastUser || isErroredAssistant) && !isLoading) {
+      const retryBtn = document.createElement('button');
+      retryBtn.className = 'message-retry-btn';
+      retryBtn.title = 'Retry';
+      retryBtn.innerHTML = '🔄 Retry';
+      const retryContent = isLastUser ? msg.content : (lastUserIdx >= 0 ? messages[lastUserIdx].content : '');
+      retryBtn.addEventListener('click', () => retryMessage(retryContent));
+      div.appendChild(retryBtn);
     }
 
     frag.appendChild(div);
