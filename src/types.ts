@@ -198,6 +198,22 @@ export type ContentBlock =
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: string | unknown };
 
+/** Attachment for chat messages (images, documents, etc.) */
+export interface ChatAttachment {
+  /** Unique ID for this attachment */
+  id?: string;
+  /** MIME type (e.g., 'image/png', 'application/pdf') */
+  mimeType: string;
+  /** Original filename */
+  filename?: string;
+  /** Base64-encoded content (for inline attachments) */
+  data?: string;
+  /** URL to fetch the attachment (alternative to data) */
+  url?: string;
+  /** File size in bytes */
+  size?: number;
+}
+
 export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -205,6 +221,8 @@ export interface ChatMessage {
   ts?: string | number;
   timestamp?: string | number;
   toolCalls?: ToolCall[];
+  /** Attachments (images, documents) */
+  attachments?: ChatAttachment[];
   [key: string]: unknown;
 }
 

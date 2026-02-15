@@ -465,7 +465,15 @@ class GatewayClient {
     return this.request<ChatHistoryResult>('chat.history', { sessionKey, limit });
   }
 
-  async chatSend(sessionKey: string, message: string, opts?: { thinking?: string; idempotencyKey?: string; model?: string; systemPrompt?: string; thinkingLevel?: string; temperature?: number }): Promise<ChatSendResult> {
+  async chatSend(sessionKey: string, message: string, opts?: {
+    thinking?: string;
+    idempotencyKey?: string;
+    model?: string;
+    systemPrompt?: string;
+    thinkingLevel?: string;
+    temperature?: number;
+    attachments?: import('./types').ChatAttachment[];
+  }): Promise<ChatSendResult> {
     const idempotencyKey = opts?.idempotencyKey ?? crypto.randomUUID();
     return this.request<ChatSendResult>('chat.send', {
       sessionKey,
@@ -476,6 +484,7 @@ class GatewayClient {
       ...(opts?.systemPrompt ? { systemPrompt: opts.systemPrompt } : {}),
       ...(opts?.thinkingLevel ? { thinkingLevel: opts.thinkingLevel } : {}),
       ...(opts?.temperature != null ? { temperature: opts.temperature } : {}),
+      ...(opts?.attachments?.length ? { attachments: opts.attachments } : {}),
     }, 120_000); // chat can take a while
   }
 
