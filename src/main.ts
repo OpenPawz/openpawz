@@ -838,18 +838,16 @@ async function sendMessage() {
   const content = chatInput?.value.trim();
   if (!content || isLoading) return;
 
-  // Convert pending File[] to ChatAttachment[] (base64 encoded)
-  const attachments: import('./types').ChatAttachment[] = [];
+  // Convert pending File[] to attachments (matching webchat format)
+  const attachments: Array<{ type: string; mimeType: string; content: string }> = [];
   if (_pendingAttachments.length > 0) {
     for (const file of _pendingAttachments) {
       try {
-        const data = await fileToBase64(file);
+        const base64 = await fileToBase64(file);
         attachments.push({
-          id: crypto.randomUUID(),
-          mimeType: file.type || 'application/octet-stream',
-          filename: file.name,
-          data,
-          size: file.size,
+          type: 'image',
+          mimeType: file.type || 'image/png',
+          content: base64,
         });
       } catch (e) {
         console.error('[Chat] Failed to encode attachment:', file.name, e);
