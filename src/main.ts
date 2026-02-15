@@ -1867,14 +1867,18 @@ function closeChannelSetup() {
 }
 
 async function saveChannelSetup() {
-  if (!_channelSetupType || !wsConnected) return;
-
-  // Mail IMAP setup is handled separately
+  console.log('[mail-debug] saveChannelSetup called, _channelSetupType=', _channelSetupType, 'mailType=', MailModule.getChannelSetupType(), 'wsConnected=', wsConnected);
+  // Mail IMAP setup is handled by the mail module — check BEFORE the null guard
+  // because openMailAccountSetup() sets mail.ts's _channelSetupType, not main.ts's.
   if (_channelSetupType === '__mail_imap__' || MailModule.getChannelSetupType() === '__mail_imap__') {
+    console.log('[mail-debug] Routing to MailModule.saveMailImapSetup()');
     await MailModule.saveMailImapSetup();
     MailModule.clearChannelSetupType();
+    _channelSetupType = null;
     return;
   }
+
+  if (!_channelSetupType || !wsConnected) return;
 
   const def = CHANNEL_SETUPS.find(c => c.id === _channelSetupType);
   if (!def) return;
@@ -1931,7 +1935,9 @@ async function saveChannelSetup() {
 // Wire up channel setup UI
 $('channel-setup-close')?.addEventListener('click', closeChannelSetup);
 $('channel-setup-cancel')?.addEventListener('click', closeChannelSetup);
-$('channel-setup-save')?.addEventListener('click', saveChannelSetup);
+const _saveBtn = $('channel-setup-save');
+console.log('[mail-debug] Binding save button, element found:', !!_saveBtn);
+_saveBtn?.addEventListener('click', saveChannelSetup);
 $('channel-setup-modal')?.addEventListener('click', (e) => {
   if ((e.target as HTMLElement).id === 'channel-setup-modal') closeChannelSetup();
 });

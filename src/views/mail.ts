@@ -125,7 +125,15 @@ function removeMailPermissions(accountName: string) {
 
 // ── Main loader ────────────────────────────────────────────────────────────
 export async function loadMail() {
-  if (!wsConnected) return;
+  if (!wsConnected) {
+    console.warn('[mail] loadMail skipped — gateway not connected');
+    // Still try to render local accounts so user sees their config
+    await renderMailAccounts(null, null);
+    if (_mailAccounts.length === 0) {
+      showMailEmpty(true);
+    }
+    return;
+  }
   try {
     const [cfgResult, skillsResult] = await Promise.all([
       gateway.configGet().catch(() => null),
@@ -172,6 +180,14 @@ async function renderMailAccounts(_gmail: Record<string, unknown> | null, himala
         }
       }
     } catch { /* no config yet */ }
+  } else {
+    // Fallback: read from localStorage when Tauri is unavailable
+    try {
+      const fallback = JSON.parse(localStorage.getItem('mail-accounts-fallback') ?? '[]') as { name: string; email: string }[];
+      for (const acct of fallback) {
+        _mailAccounts.push({ name: acct.name, email: acct.email });
+      }
+    } catch { /* ignore */ }
   }
 
   for (const acct of _mailAccounts) {
@@ -395,7 +411,14 @@ async function renderCredentialActivityLog() {
 async function loadMailInbox() {
   try {
     const result = await gateway.listSessions({ limit: 100, includeDerivedTitles: true, includeLastMessage: true });
-    const hookSessions = (result.sessions ?? []).filter(s => s.key.startsWith('hook:gmail:'));
+    // Include gmail hook sessions AND himalaya/mail-related sessions
+    const hookSessions = (result.sessions ?? []).filter(s =>
+      s.key.startsWith('hook:gmail:') ||
+      s.key.startsWith('hook:mail:') ||
+      s.key.startsWith('mail:') ||
+      (s.label ?? s.displayName ?? '').toLowerCase().includes('email') ||
+      (s.label ?? s.displayName ?? '').toLowerCase().includes('mail')
+    );
 
     _mailMessages = hookSessions.map(s => {
       const label = s.label ?? s.displayName ?? s.key;
@@ -738,8 +761,10 @@ function showMailAccountForm(providerId: string) {
 }
 
 export async function saveMailImapSetup() {
+  console.log('[mail-debug] saveMailImapSetup() called');
   const email = ($('ch-field-mail-email') as HTMLInputElement)?.value.trim();
   const password = ($('ch-field-mail-password') as HTMLInputElement)?.value.trim();
+  console.log('[mail-debug] email=', email, 'passwordLen=', password?.length, 'invoke available=', !!invoke);
   const displayName = ($('ch-field-mail-display') as HTMLInputElement)?.value.trim();
   const imapHost = ($('ch-field-mail-imap') as HTMLInputElement)?.value.trim();
   const imapPort = parseInt(($('ch-field-mail-imap-port') as HTMLInputElement)?.value ?? '993', 10);
@@ -769,7 +794,14 @@ export async function saveMailImapSetup() {
         password,
       });
     } else {
-      throw new Error('Tauri runtime not available — cannot write config');
+      // Fallback: store account info in localStorage when Tauri is not available
+      // (e.g. running in dev browser mode). The password is NOT stored in this case.
+      console.warn('[mail] Tauri runtime not available — storing account config in localStorage (no keychain)');
+      const existing = JSON.parse(localStorage.getItem('mail-accounts-fallback') ?? '[]') as { name: string; email: string; imapHost: string; imapPort: number; smtpHost: string; smtpPort: number; displayName: string }[];
+      const idx = existing.findIndex(a => a.name === accountName);
+      const entry = { name: accountName, email, imapHost, imapPort, smtpHost, smtpPort, displayName: displayName || email };
+      if (idx >= 0) existing[idx] = entry; else existing.push(entry);
+      localStorage.setItem('mail-accounts-fallback', JSON.stringify(existing));
     }
 
     const perms = {
