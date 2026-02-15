@@ -822,9 +822,23 @@ async function sendMessage() {
   const content = chatInput?.value.trim();
   if (!content || isLoading) return;
 
-  // Log any pending attachments (gateway attachment support coming soon)
+  // Convert pending File[] to ChatAttachment[] (base64 encoded)
+  const attachments: import('./types').ChatAttachment[] = [];
   if (_pendingAttachments.length > 0) {
-    console.log('[Chat] Pending attachments:', _pendingAttachments);
+    for (const file of _pendingAttachments) {
+      try {
+        const data = await fileToBase64(file);
+        attachments.push({
+          id: crypto.randomUUID(),
+          mimeType: file.type || 'application/octet-stream',
+          filename: file.name,
+          data,
+          size: file.size,
+        });
+      } catch (e) {
+        console.error('[Chat] Failed to encode attachment:', file.name, e);
+      }
+    }
   }
 
   addMessage({ role: 'user', content, timestamp: new Date() });
@@ -856,7 +870,7 @@ async function sendMessage() {
     // Read selected mode's overrides (model, system prompt, thinking level)
     const modeSelect = $('chat-mode-select') as HTMLSelectElement | null;
     const selectedModeId = modeSelect?.value;
-    let chatOpts: { model?: string; systemPrompt?: string; thinkingLevel?: string; temperature?: number } = {};
+    let chatOpts: { model?: string; systemPrompt?: string; thinkingLevel?: string; temperature?: number; attachments?: import('./types').ChatAttachment[] } = {};
     if (selectedModeId) {
       const modes = await listModes();
       const mode = modes.find(m => m.id === selectedModeId);
@@ -866,6 +880,11 @@ async function sendMessage() {
         if (mode.thinking_level) chatOpts.thinkingLevel = mode.thinking_level;
         if (mode.temperature > 0) chatOpts.temperature = mode.temperature;
       }
+    }
+
+    // Include attachments if any
+    if (attachments.length > 0) {
+      chatOpts.attachments = attachments;
     }
 
     const result = await gateway.chatSend(sessionKey, content, chatOpts);
@@ -2499,6 +2518,21 @@ function escHtml(s: string): string {
   const d = document.createElement('div');
   d.textContent = s;
   return d.innerHTML;
+}
+
+/** Convert a File to base64 data string */
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // Strip data URL prefix to get raw base64
+      const base64 = result.split(',')[1] || result;
+      resolve(base64);
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 function escAttr(s: string): string {
   return s.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
