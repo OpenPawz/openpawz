@@ -4689,7 +4689,7 @@ select.form-input {
    NODES VIEW — Device Management
    ═══════════════════════════════════════════════════════════════════════════ */
 
-.nodes-layout {
+.nodes-layout.active {
   display: grid;
   grid-template-columns: 260px 1fr;
   height: 100%;
