@@ -974,12 +974,12 @@ Based on OpenClaw community feedback — Reddit, Discord, GitHub issues. Maps re
 
 | What they need | Paw status | Gap |
 |----------------|:---:|-----|
-| Cron run history with errors | ✅ | Have `cron.runs` wired |
-| Job status dashboard with error highlighting | 🔶 | Basic list, no error-state visual treatment (red rows, error icons) |
+| Cron run history with errors | ✅ | **BUILT** — expandable error details, pre-formatted output |
+| Job status dashboard with error highlighting | ✅ | **BUILT** — red left-border + tinted bg for failed/timeout/error runs, X icon |
 | Sub-agent spawn UI | ⚪ | NOT BUILT — users manually configure sub-agent patterns |
-| Timeout visualization | ⚪ | NOT BUILT — no way to see which jobs are timing out or approaching limits |
-| Job editing (not just delete/recreate) | ⚪ | NOT BUILT — cron modal is create/delete only |
-| Test run with live output | ⚪ | Have "run now" button, but no live output stream — user can't see what happened |
+| Timeout visualization | ✅ | **BUILT** — duration bar (green/yellow/red), duration text, 5min reference |
+| Job editing (not just delete/recreate) | ✅ | **BUILT** — Edit button on cards, modal reused for create+edit, agent ID field |
+| Test run with live output | 🔶 | Have "run now" button, but no live output stream yet |
 
 ### 🔴 CRITICAL — Cost Visibility
 
