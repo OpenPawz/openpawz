@@ -407,6 +407,18 @@ class GatewayClient {
     return this.request<AgentIdentityResult>('agent.identity.get', agentId ? { agentId } : {});
   }
 
+  async createAgent(params: import('./types').AgentCreateParams): Promise<import('./types').AgentCreateResult> {
+    return this.request<import('./types').AgentCreateResult>('agents.create', params);
+  }
+
+  async updateAgent(params: import('./types').AgentUpdateParams): Promise<import('./types').AgentUpdateResult> {
+    return this.request<import('./types').AgentUpdateResult>('agents.update', params);
+  }
+
+  async deleteAgent(agentId: string, deleteFiles = false): Promise<import('./types').AgentDeleteResult> {
+    return this.request<import('./types').AgentDeleteResult>('agents.delete', { agentId, deleteFiles });
+  }
+
   // Channels
   async getChannelsStatus(probe = false, timeoutMs?: number): Promise<ChannelsStatusResult> {
     return this.request<ChannelsStatusResult>('channels.status', { probe, timeoutMs });

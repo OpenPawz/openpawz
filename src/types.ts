@@ -105,6 +105,46 @@ export interface AgentIdentityResult {
   avatarUrl?: string;
 }
 
+// ── Agent CRUD ─────────────────────────────────────────────────────────────
+
+export interface AgentCreateParams {
+  name: string;
+  workspace?: string;
+  emoji?: string;
+  avatar?: string;
+}
+
+export interface AgentCreateResult {
+  ok: boolean;
+  agentId: string;
+  name: string;
+  workspace: string;
+}
+
+export interface AgentUpdateParams {
+  agentId: string;
+  name?: string;
+  workspace?: string;
+  model?: string;
+  avatar?: string;
+}
+
+export interface AgentUpdateResult {
+  ok: boolean;
+  agentId: string;
+}
+
+export interface AgentDeleteParams {
+  agentId: string;
+  deleteFiles?: boolean;
+}
+
+export interface AgentDeleteResult {
+  ok: boolean;
+  agentId: string;
+  removedBindings?: number;
+}
+
 // ── Channels ───────────────────────────────────────────────────────────────
 
 export interface ChannelAccountStatus {

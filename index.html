@@ -1215,6 +1215,7 @@
           <div class="foundry-tabs">
             <button class="foundry-tab active" data-foundry-tab="models">Models</button>
             <button class="foundry-tab" data-foundry-tab="modes">Agent Modes</button>
+            <button class="foundry-tab" data-foundry-tab="agents">Agents</button>
           </div>
           <!-- Models Tab -->
           <div class="foundry-panel" id="foundry-models-panel">
@@ -1239,6 +1240,115 @@
             <div class="empty-state" id="modes-empty" style="display:none">
               <div class="empty-title">No modes yet</div>
               <div class="empty-subtitle">Create modes to quickly switch your agent's behavior</div>
+            </div>
+          </div>
+          <!-- Agents Tab -->
+          <div class="foundry-panel" id="foundry-agents-panel" style="display:none">
+            <!-- Agent List (default sub-view) -->
+            <div id="agents-list-view">
+              <div class="modes-header">
+                <p class="modes-description">Create specialized agents — each with their own persona, instructions, skills, and memory. Every agent gets their own workspace folder with .md files that shape how they think and behave.</p>
+                <button class="btn btn-primary btn-sm" id="agents-create-btn">
+                  <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  New Agent
+                </button>
+              </div>
+              <div class="agents-grid" id="agents-list"></div>
+              <div class="empty-state" id="agents-empty" style="display:none">
+                <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="8" r="5"/><path d="M20 21a8 8 0 0 0-16 0"/></svg></div>
+                <div class="empty-title">No agents yet</div>
+                <div class="empty-subtitle">Create your first agent to give it specialized skills, persona, and memory</div>
+              </div>
+              <div class="view-loading" id="agents-loading" style="display:none">Loading agents…</div>
+            </div>
+            <!-- Agent Detail (sub-view, hidden by default) -->
+            <div id="agent-detail-view" style="display:none">
+              <div class="agent-detail-header">
+                <button class="btn btn-ghost btn-sm" id="agent-detail-back">
+                  <svg class="icon-sm" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                  Back to Agents
+                </button>
+                <div class="agent-detail-identity">
+                  <span class="agent-detail-emoji" id="agent-detail-emoji">🤖</span>
+                  <h2 class="agent-detail-name" id="agent-detail-name">Agent</h2>
+                  <span class="agent-detail-id" id="agent-detail-id">main</span>
+                </div>
+                <div class="agent-detail-actions">
+                  <button class="btn btn-secondary btn-sm" id="agent-detail-edit">Edit</button>
+                  <button class="btn btn-error btn-sm" id="agent-detail-delete">Delete</button>
+                </div>
+              </div>
+              <div class="agent-detail-info">
+                <div class="agent-detail-stat">
+                  <span class="agent-detail-stat-label">Workspace</span>
+                  <span class="agent-detail-stat-value" id="agent-detail-workspace">—</span>
+                </div>
+              </div>
+              <!-- Agent Files Section -->
+              <div class="agent-files-section">
+                <div class="agent-files-header">
+                  <h3>Agent Files</h3>
+                  <div class="agent-files-actions">
+                    <button class="btn btn-ghost btn-sm" id="agent-files-refresh">Refresh</button>
+                    <button class="btn btn-primary btn-sm" id="agent-files-new">New File</button>
+                  </div>
+                </div>
+                <p class="agent-files-description">These markdown files shape your agent's personality, instructions, and memory. Edit them to customize how the agent thinks and behaves.</p>
+                <div class="agent-files-grid" id="agent-files-list">
+                  <div class="agent-file-hint">
+                    <strong>Standard files:</strong> AGENTS.md (instructions), SOUL.md (persona), USER.md (about you), IDENTITY.md (name/emoji), TOOLS.md (tool notes), HEARTBEAT.md (cron checklist)
+                  </div>
+                </div>
+              </div>
+              <!-- Agent File Editor (inline) -->
+              <div class="agent-file-editor" id="agent-file-editor" style="display:none">
+                <div class="agent-file-editor-header">
+                  <span class="agent-file-editor-path" id="agent-file-editor-path">—</span>
+                  <div>
+                    <button class="btn btn-secondary btn-sm" id="agent-file-editor-close">Close</button>
+                    <button class="btn btn-primary btn-sm" id="agent-file-editor-save">Save</button>
+                  </div>
+                </div>
+                <textarea class="form-input agent-file-editor-content" id="agent-file-editor-content" rows="20"></textarea>
+              </div>
+            </div>
+          </div>
+          <!-- Agent Create/Edit Modal -->
+          <div class="modal-overlay" id="agent-modal" style="display:none">
+            <div class="modal-card modal-lg">
+              <div class="modal-header">
+                <h2 class="modal-title" id="agent-modal-title">New Agent</h2>
+                <button class="btn-icon" id="agent-modal-close">✕</button>
+              </div>
+              <div class="modal-body">
+                <div class="form-row">
+                  <div class="form-group" style="flex:0 0 80px">
+                    <label class="form-label">Emoji</label>
+                    <input type="text" class="form-input form-input-icon" id="agent-form-emoji" value="🤖" maxlength="2" />
+                  </div>
+                  <div class="form-group" style="flex:1">
+                    <label class="form-label">Name</label>
+                    <input type="text" class="form-input" id="agent-form-name" placeholder="Research Assistant" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Workspace Path <span class="form-hint">(optional — leave blank for default)</span></label>
+                  <input type="text" class="form-input" id="agent-form-workspace" placeholder="~/my-agent-workspace" />
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Model <span class="form-hint">(optional — override primary model)</span></label>
+                  <select class="form-input" id="agent-form-model">
+                    <option value="">Default model</option>
+                  </select>
+                </div>
+                <div class="agent-modal-hint">
+                  <p>After creating the agent, you can edit its workspace files (AGENTS.md, SOUL.md, USER.md, etc.) to define its full persona, operating instructions, and specialized knowledge.</p>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-secondary" id="agent-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="agent-modal-save">Create Agent</button>
+              </div>
             </div>
           </div>
           <!-- Mode Editor Modal -->
