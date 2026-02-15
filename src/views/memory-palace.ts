@@ -857,6 +857,55 @@ async function renderPalaceGraph() {
   }
 }
 
+// ── Memory Export ───────────────────────────────────────────────────────────
+
+/** Export all memories as a JSON file download */
+async function exportMemories() {
+  if (!_palaceAvailable || !invoke) {
+    showToast('Memory not available — enable long-term memory first', 'warning');
+    return;
+  }
+
+  const btn = $('palace-export') as HTMLButtonElement | null;
+  if (btn) btn.disabled = true;
+
+  try {
+    // Fetch all memories (large limit)
+    const jsonText = await invoke<string>('memory_search', { query: '*', limit: 500 });
+    let memories: Array<Record<string, unknown>> = [];
+    try { memories = JSON.parse(jsonText); } catch { /* empty */ }
+
+    if (!memories.length) {
+      showToast('No memories to export', 'info');
+      return;
+    }
+
+    // Build export payload with metadata
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      source: 'Paw Desktop — OpenClaw Memory Export',
+      totalMemories: memories.length,
+      memories,
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `paw-memories-${new Date().toISOString().slice(0, 10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    showToast(`Exported ${memories.length} memories`, 'success');
+  } catch (e) {
+    showToast(`Export failed: ${e instanceof Error ? e.message : e}`, 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // ── UI event wiring ────────────────────────────────────────────────────────
 export function initPalaceEvents() {
   // Refresh button
@@ -864,6 +913,11 @@ export function initPalaceEvents() {
     _palaceInitialized = false;
     _palaceSkipped = false;
     await loadMemoryPalace();
+  });
+
+  // Export button
+  $('palace-export')?.addEventListener('click', () => {
+    exportMemories();
   });
 
   // Sidebar search filter (local filter of visible cards)
