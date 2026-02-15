@@ -864,7 +864,7 @@ async function sendMessage() {
   // Add user message with attachments to UI
   const userMsg: import('./types').Message = { role: 'user', content, timestamp: new Date() };
   if (attachments.length > 0) {
-    (userMsg as Record<string, unknown>).attachments = attachments.map(a => ({
+    (userMsg as unknown as Record<string, unknown>).attachments = attachments.map(a => ({
       mimeType: a.mimeType,
       data: a.content,
     }));
@@ -2663,6 +2663,22 @@ gateway.on('node.event', (payload: unknown) => {
   // Refresh node list (a node may have connected/disconnected)
   if (wsConnected && nodesView?.classList.contains('active')) {
     NodesModule.loadNodes();
+  }
+});
+
+// ── Device pairing events ──────────────────────────────────────────────────
+gateway.on('device.pair.requested', (payload: unknown) => {
+  console.log('[main] device.pair.requested:', payload);
+  // Refresh devices list if settings is open
+  if (wsConnected && settingsView?.classList.contains('active')) {
+    SettingsModule.loadSettingsDevices();
+  }
+  showToast('New device pairing request — check Settings', 'info');
+});
+gateway.on('device.pair.resolved', (payload: unknown) => {
+  console.log('[main] device.pair.resolved:', payload);
+  if (wsConnected && settingsView?.classList.contains('active')) {
+    SettingsModule.loadSettingsDevices();
   }
 });
 

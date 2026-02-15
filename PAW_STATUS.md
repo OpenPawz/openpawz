@@ -384,29 +384,29 @@ Wake word system for hands-free activation. Paw has **zero** coverage.
 
 ---
 
-### 18. Node Management ⚪ NOT BUILT
+### 18. Node Management ✅ WIRED
 | Component | Status | Details |
 |-----------|--------|--------|
-| List nodes | ⚪ | `node.list` typed in gateway.ts but **never called from UI** |
-| Describe node | ⚪ | `node.describe` — capabilities, commands |
-| Invoke node command | ⚪ | `node.invoke` — camera.snap, screen.record, location.get, etc. |
-| Node pairing flow | ⚪ | `node.pair.request/list/approve/reject/verify` |
-| Rename node | ⚪ | `node.rename` |
-| Node events | ⚪ | `node.pair.requested/resolved`, `node.invoke.request` events |
+| List nodes | ✅ | `node.list` → sidebar list with status indicators, auto-refresh |
+| Describe node | ✅ | `node.describe` → detail panel with capabilities, meta grid |
+| Invoke node command | ✅ | `node.invoke` → command button grid per capability |
+| Node pairing flow | ✅ | `node.pair.list/approve/reject` → pairing request cards in sidebar |
+| Rename node | ✅ | `node.rename` → inline rename from detail header |
+| Node events | ✅ | `node.pair.requested/resolved`, `node.invoke.result`, `node.event` — all consumed |
 
-iOS/Android nodes with camera, screen, location, voice capabilities. Paw has **zero** UI coverage (11 methods, 0 called).
+**Fully wired (2026-02-15)**: `src/views/nodes.ts` module + HTML + main.ts wiring + CSS. Sidebar list with node detail panel, capability badges, command buttons, pairing request cards, gateway event handlers.
 
 ---
 
-### 19. Device Pairing ⚪ NOT BUILT
+### 19. Device Pairing ✅ WIRED
 | Component | Status | Details |
 |-----------|--------|--------|
-| List devices | ⚪ | `device.pair.list` |
-| Approve/reject | ⚪ | `device.pair.approve/reject` |
-| Token management | ⚪ | `device.token.rotate/revoke` |
-| Device events | ⚪ | `device.pair.requested/resolved` events |
+| List devices | ✅ | `device.pair.list` → Settings section with device cards |
+| Approve/reject | ✅ | Settings receives `device.pair.requested` events, refreshes list |
+| Token management | ✅ | `device.token.rotate/revoke` — Rotate Token and Revoke buttons per device card |
+| Device events | ✅ | `device.pair.requested` + `device.pair.resolved` consumed → auto-refresh Settings |
 
-Secure device pairing for trusted clients. Paw has **zero** coverage.
+**Wired (2026-02-15)**: Device cards in Settings view with platform, paired date, rotate token, and revoke access actions.
 
 ---
 
@@ -418,10 +418,7 @@ Secure device pairing for trusted clients. Paw has **zero** coverage.
 | Mail permission enforcement | ✅ | Auto-denies email tools when Credential Vault permissions are disabled (read/send/delete/manage) |
 | Audit logging | ✅ | All approval decisions (and auto-blocks) logged to SQLite `credential_activity_log` |
 | Activity log viewer | ✅ | Collapsible log in mail sidebar showing allowed/blocked actions with timestamps |
-
-**What's missing**:
-- No approval config UI (`exec.approvals.get/set` — manage global allow/deny lists)
-- No node exec approvals (`exec.approvals.node.get/set`)
+| Approval config UI | ✅ | `exec.approvals.get/set` → Settings section with allow list, deny list, ask policy editor |
 
 ---
 
@@ -644,37 +641,35 @@ Source of truth: `openclaw/src/gateway/server-methods-list.ts`
 | `voicewake.get` | ✅ | ❌ | Typed, no UI |
 | `voicewake.set` | ✅ | ❌ | Typed, no UI |
 
-#### Node Management — MODULE READY, NEEDS UI WIRING
+#### Node Management — ✅ FULLY WIRED
 | Method | In gateway.ts | Called from UI | Notes |
 |--------|:---:|:---:|-------|
-| `node.list` | ✅ | 🔶 | `src/views/nodes.ts` ready, needs HTML/main.ts wiring |
-| `node.describe` | ✅ | 🔶 | In nodes.ts module |
-| `node.invoke` | ✅ | 🔶 | In nodes.ts module (camera.snap, location.get, etc.) |
-| `node.invoke.result` | ❌ | ❌ | Event handling — not yet wired |
-| `node.event` | ❌ | ❌ | Event handling — not yet wired |
-| `node.rename` | ✅ | 🔶 | In nodes.ts module |
+| `node.list` | ✅ | ✅ | Nodes sidebar list + auto-refresh |
+| `node.describe` | ✅ | ✅ | Detail panel with capabilities |
+| `node.invoke` | ✅ | ✅ | Command button grid |
+| `node.invoke.result` | ✅ | ✅ | Event consumed → refreshes node list |
+| `node.event` | ✅ | ✅ | Event consumed → refreshes node list |
+| `node.rename` | ✅ | ✅ | Inline rename from detail header |
 | `node.pair.request` | ❌ | ❌ | Client-side — not needed |
-| `node.pair.list` | ✅ | 🔶 | In nodes.ts module |
-| `node.pair.approve` | ✅ | 🔶 | In nodes.ts module |
-| `node.pair.reject` | ✅ | 🔶 | In nodes.ts module |
+| `node.pair.list` | ✅ | ✅ | Pairing request cards in sidebar |
+| `node.pair.approve` | ✅ | ✅ | Approve button on pairing cards |
+| `node.pair.reject` | ✅ | ✅ | Reject button on pairing cards |
 | `node.pair.verify` | ❌ | ❌ | NOT TYPED |
 
-**New (2026-02-15)**: `src/views/nodes.ts` created with full node management logic (436 lines). Needs HTML structure + main.ts wiring + styles.
-
-#### Device Pairing — TYPED IN GATEWAY, NO UI
+#### Device Pairing — ✅ WIRED IN SETTINGS
 | Method | In gateway.ts | Called from UI | Notes |
 |--------|:---:|:---:|-------|
-| `device.pair.list` | ✅ | ❌ | Typed, no UI |
-| `device.pair.approve` | ✅ | ❌ | Typed, no UI |
-| `device.pair.reject` | ✅ | ❌ | Typed, no UI |
-| `device.token.rotate` | ✅ | ❌ | Typed, no UI |
-| `device.token.revoke` | ✅ | ❌ | Typed, no UI |
+| `device.pair.list` | ✅ | ✅ | Settings → device cards list |
+| `device.pair.approve` | ✅ | ✅ | Via event-driven refresh |
+| `device.pair.reject` | ✅ | ✅ | Via event-driven refresh |
+| `device.token.rotate` | ✅ | ✅ | Rotate Token button per device card |
+| `device.token.revoke` | ✅ | ✅ | Revoke button per device card |
 
-#### Exec Approvals — PARTIALLY WIRED
+#### Exec Approvals — ✅ FULLY WIRED
 | Method | In gateway.ts | Called from UI | Notes |
 |--------|:---:|:---:|-------|
-| `exec.approvals.get` | ✅ | ❌ | Typed but not called (no config UI) |
-| `exec.approvals.set` | ✅ | ❌ | Typed but not called (no config UI) |
+| `exec.approvals.get` | ✅ | ✅ | Settings → loads allow/deny/askPolicy |
+| `exec.approvals.set` | ✅ | ✅ | Settings → saves approval rules |
 | `exec.approvals.node.get` | ❌ | ❌ | NOT TYPED |
 | `exec.approvals.node.set` | ❌ | ❌ | NOT TYPED |
 | `exec.approval.request` | ❌ | ❌ | NOT TYPED |
@@ -734,11 +729,11 @@ Source of truth: `openclaw/src/gateway/server-methods-list.ts`
 | `health` | ❌ | **Not consumed** — health snapshot pushes |
 | `heartbeat` | ❌ | **Not consumed** — heartbeat events |
 | `cron` | ❌ | **Not consumed** — cron job fired/completed |
-| `node.pair.requested` | ❌ | **Not consumed** — node wants to pair |
-| `node.pair.resolved` | ❌ | **Not consumed** — pairing approved/rejected |
-| `node.invoke.request` | ❌ | **Not consumed** — node invoke request |
-| `device.pair.requested` | ❌ | **Not consumed** — device pairing request |
-| `device.pair.resolved` | ❌ | **Not consumed** — device pairing resolved |
+| `node.pair.requested` | ✅ | Consumed → pairing request card in Nodes sidebar |
+| `node.pair.resolved` | ✅ | Consumed → refreshes pairing list |
+| `node.invoke.result` | ✅ | Consumed → refreshes node list |
+| `device.pair.requested` | ✅ | Consumed → refreshes Settings device list, shows toast |
+| `device.pair.resolved` | ✅ | Consumed → refreshes Settings device list |
 | `voicewake.changed` | ❌ | **Not consumed** — wake words updated |
 | `exec.approval.requested` | ✅ | Approval modal + mail permission auto-deny |
 | `exec.approval.resolved` | ❌ | **Not consumed** — approval resolved |
@@ -759,9 +754,9 @@ Source of truth: `openclaw/src/gateway/server-methods-list.ts`
 | TTS | 6 | 5 | 0 | 83% typed |
 | Talk | 2 | 2 | 0 | **100% typed** |
 | Voice Wake | 2 | 2 | 0 | **100% typed** |
-| Nodes | 11 | 8 | 0 | 73% typed (module ready) |
-| Devices | 5 | 5 | 0 | **100% typed** |
-| Exec Approvals | 7 | 3 | 1 | 14% |
+| Nodes | 11 | 10 | 9 | **91%** ✅ |
+| Devices | 5 | 5 | 5 | **100%** ✅ |
+| Exec Approvals | 7 | 3 | 3 | 43% |
 | Usage | 2 | 2 | 0 | **100% typed** |
 | System | 4 | 1 | 0 | 25% |
 | Wizard | 4 | 4 | 0 | **100% typed** |

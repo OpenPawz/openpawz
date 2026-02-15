@@ -4685,6 +4685,130 @@ select.form-input {
   overflow-x: auto;
 }
 
+/* ─── Settings: Section Description ─── */
+.settings-section-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.settings-subsection-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 16px 0 8px;
+}
+.settings-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+/* ─── Settings: Device Cards ─── */
+.device-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.device-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+  transition: var(--transition-fast);
+}
+.device-card:hover {
+  border-color: var(--accent);
+}
+.device-card-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.device-card-icon {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.device-card-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.device-card-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.device-card-meta {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.device-card-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ─── Settings: Exec Approvals Config ─── */
+.approvals-config {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.approvals-group {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg-secondary);
+}
+.approvals-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+.approvals-group-title .icon-sm {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+}
+.approvals-group-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  line-height: 1.5;
+}
+.approvals-textarea {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+  min-height: 60px;
+}
+
+/* btn-danger */
+.btn-danger {
+  background: var(--error);
+  color: #fff;
+  border: none;
+}
+.btn-danger:hover {
+  background: #c0392b;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    NODES VIEW — Device Management
    ═══════════════════════════════════════════════════════════════════════════ */

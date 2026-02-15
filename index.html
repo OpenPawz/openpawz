@@ -1543,6 +1543,65 @@
             <div id="settings-nodes-list" class="presence-list"></div>
             <button class="btn btn-ghost btn-sm" id="settings-refresh-nodes" style="margin-top:8px">Refresh</button>
           </div>
+
+          <!-- Device Pairing -->
+          <div class="settings-section" id="settings-devices-section" style="display:none">
+            <h2 class="settings-section-title">Paired Devices</h2>
+            <p class="settings-section-desc">Devices that have been paired with your gateway. Rotate tokens periodically for security, or revoke access to remove a device.</p>
+            <div id="settings-devices-list" class="device-list"></div>
+            <div id="settings-devices-empty" class="settings-empty" style="display:none">
+              <span>No paired devices</span>
+            </div>
+            <div id="settings-devices-pending" style="display:none">
+              <h3 class="settings-subsection-title">Pending Requests</h3>
+              <div id="settings-devices-pending-list" class="device-list"></div>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="settings-refresh-devices" style="margin-top:8px">Refresh</button>
+          </div>
+
+          <!-- Exec Approvals Config -->
+          <div class="settings-section" id="settings-approvals-section" style="display:none">
+            <h2 class="settings-section-title">Tool Approval Rules</h2>
+            <p class="settings-section-desc">Configure which tools your agent can use automatically and which require your approval each time.</p>
+            
+            <div class="approvals-config">
+              <div class="approvals-group">
+                <h3 class="approvals-group-title">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  Always Allow
+                </h3>
+                <p class="approvals-group-desc">Tools in this list run without asking. One tool name per line.</p>
+                <textarea class="form-input approvals-textarea" id="approvals-allow-list" rows="4" placeholder="e.g. brave_search&#10;read_file&#10;list_directory" spellcheck="false"></textarea>
+              </div>
+
+              <div class="approvals-group">
+                <h3 class="approvals-group-title">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                  Always Deny
+                </h3>
+                <p class="approvals-group-desc">Tools in this list are always blocked. One tool name per line.</p>
+                <textarea class="form-input approvals-textarea" id="approvals-deny-list" rows="4" placeholder="e.g. rm&#10;execute_command" spellcheck="false"></textarea>
+              </div>
+
+              <div class="approvals-group">
+                <h3 class="approvals-group-title">
+                  <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  Ask Policy
+                </h3>
+                <p class="approvals-group-desc">What happens for tools not in either list.</p>
+                <select class="form-input" id="approvals-ask-policy" style="width:auto">
+                  <option value="ask">Ask every time</option>
+                  <option value="allow">Allow automatically</option>
+                  <option value="deny">Deny automatically</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:16px">
+              <button class="btn btn-primary" id="settings-save-approvals">Save Approval Rules</button>
+              <button class="btn btn-ghost btn-sm" id="settings-refresh-approvals">Reload</button>
+            </div>
+          </div>
         </div>
       </main>
     </div>
