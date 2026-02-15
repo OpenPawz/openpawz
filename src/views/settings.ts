@@ -79,8 +79,16 @@ export async function loadSettingsUsage() {
       gateway.usageStatus().catch(() => null),
       gateway.usageCost().catch(() => null),
     ]);
-    if (!status && !cost) { if (section) section.style.display = 'none'; return; }
+    // Always show the section — even without gateway data, show helpful state
     if (section) section.style.display = '';
+    if (!status && !cost) {
+      const emptyHtml = `<div class="usage-empty-state">
+        <p style="color:var(--text-secondary);margin:0 0 8px">No usage data from gateway yet.</p>
+        <p style="color:var(--text-muted);margin:0;font-size:12px">Token tracking is active in chat — send a message to see per-session estimates in the chat header. Gateway-level usage data (total cost, by-model breakdown) requires OpenClaw's usage tracking to be enabled.</p>
+      </div>`;
+      if (content) content.innerHTML = emptyHtml;
+      return;
+    }
     let html = '';
     if (status?.total) {
       html += `<div class="usage-card">
@@ -132,7 +140,12 @@ export async function loadSettingsUsage() {
     if (content) content.innerHTML = html || '<p style="color:var(--text-muted)">No usage data</p>';
   } catch (e) {
     console.warn('[settings] Usage load failed:', e);
-    if (section) section.style.display = 'none';
+    // Don't hide the section — show a helpful message
+    if (section) section.style.display = '';
+    if (content) content.innerHTML = `<div class="usage-empty-state">
+      <p style="color:var(--text-secondary);margin:0 0 8px">Could not load usage data from gateway.</p>
+      <p style="color:var(--text-muted);margin:0;font-size:12px">Token tracking is still active in the chat header. Click Refresh to retry.</p>
+    </div>`;
   }
 }
 

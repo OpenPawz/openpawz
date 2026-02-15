@@ -92,6 +92,7 @@ let _sessionCost = 0;               // estimated session cost in USD
 let _modelContextLimit = 128_000;   // default context window (will be updated from models.list)
 const COMPACTION_WARN_THRESHOLD = 0.80; // warn at 80% context usage
 let _compactionDismissed = false;
+let _lastRecordedTotal = 0; // tracks last real usage recording to detect fallback need
 
 // Rough per-token cost estimates (USD) for common model families
 const _MODEL_COST_PER_TOKEN: Record<string, { input: number; output: number }> = {
@@ -333,6 +334,8 @@ gateway.on('_connected', () => {
   if (statusText) statusText.textContent = 'Connected';
   // Detect model context limit for token meter
   detectModelContextLimit().catch(() => {});
+  // Show token meter immediately (even at 0/128k) so users know tracking is on
+  updateTokenMeter();
 });
 gateway.on('_disconnected', () => {
   wsConnected = false;
@@ -734,6 +737,7 @@ chatSessionSelect?.addEventListener('change', () => {
     _sessionInputTokens = 0;
     _sessionOutputTokens = 0;
     _sessionCost = 0;
+    _lastRecordedTotal = 0;
     _compactionDismissed = false;
     updateTokenMeter();
     const ba1 = $('session-budget-alert');
@@ -902,6 +906,7 @@ $('new-chat-btn')?.addEventListener('click', () => {
   _sessionInputTokens = 0;
   _sessionOutputTokens = 0;
   _sessionCost = 0;
+  _lastRecordedTotal = 0;
   _compactionDismissed = false;
   updateTokenMeter();
   const ba2 = $('session-budget-alert');
@@ -977,6 +982,7 @@ $('session-compact-btn')?.addEventListener('click', async () => {
     _sessionInputTokens = 0;
     _sessionOutputTokens = 0;
     _sessionCost = 0;
+    _lastRecordedTotal = 0;
     _compactionDismissed = false;
     updateTokenMeter();
     const budgetAlert = $('session-budget-alert');
@@ -995,12 +1001,18 @@ function updateTokenMeter() {
   const label = $('token-meter-label');
   if (!meter || !fill || !label) return;
 
+  // Always show the meter so users know tracking is active
+  meter.style.display = '';
+
   if (_sessionTokensUsed <= 0) {
-    meter.style.display = 'none';
+    fill.style.width = '0%';
+    fill.className = 'token-meter-fill';
+    const limit = _modelContextLimit >= 1000 ? `${(_modelContextLimit / 1000).toFixed(0)}k` : `${_modelContextLimit}`;
+    label.textContent = `0 / ${limit} tokens`;
+    meter.title = 'Token tracking active — send a message to see usage';
     return;
   }
 
-  meter.style.display = '';
   const pct = Math.min((_sessionTokensUsed / _modelContextLimit) * 100, 100);
   fill.style.width = `${pct}%`;
 
@@ -1047,18 +1059,24 @@ function updateCompactionWarning(pct: number) {
 /** Record token usage from a chat/agent event and update the meter */
 function recordTokenUsage(usage: Record<string, unknown> | undefined) {
   if (!usage) return;
-  const totalTokens = (usage.totalTokens ?? usage.total_tokens ?? 0) as number;
-  const inputTokens = (usage.promptTokens ?? usage.prompt_tokens ?? usage.inputTokens ?? usage.input_tokens ?? 0) as number;
-  const outputTokens = (usage.completionTokens ?? usage.completion_tokens ?? usage.outputTokens ?? usage.output_tokens ?? 0) as number;
+  // Try multiple paths — different providers nest usage differently
+  const uAny = usage as Record<string, unknown>;
+  const nested = (uAny.response as Record<string, unknown> | undefined);
+  const inner = (uAny.usage ?? nested?.usage ?? usage) as Record<string, unknown>;
+  const totalTokens = (inner.totalTokens ?? inner.total_tokens ?? inner.totalTokenCount ?? 0) as number;
+  const inputTokens = (inner.promptTokens ?? inner.prompt_tokens ?? inner.inputTokens ?? inner.input_tokens ?? inner.prompt_token_count ?? 0) as number;
+  const outputTokens = (inner.completionTokens ?? inner.completion_tokens ?? inner.outputTokens ?? inner.output_tokens ?? inner.completion_token_count ?? 0) as number;
 
   if (totalTokens > 0) {
     _sessionInputTokens += inputTokens;
     _sessionOutputTokens += outputTokens;
     _sessionTokensUsed += totalTokens;
+    _lastRecordedTotal = _sessionTokensUsed;
   } else if (inputTokens > 0 || outputTokens > 0) {
     _sessionInputTokens += inputTokens;
     _sessionOutputTokens += outputTokens;
     _sessionTokensUsed += inputTokens + outputTokens;
+    _lastRecordedTotal = _sessionTokensUsed;
   }
 
   // Estimate cost from token counts
@@ -1205,6 +1223,10 @@ async function sendMessage() {
     if (result.runId) _streamingRunId = result.runId;
     if (result.sessionKey) currentSessionKey = result.sessionKey;
 
+    // Try to extract usage from the send response itself
+    const sendUsage = (result as unknown as Record<string, unknown>).usage as Record<string, unknown> | undefined;
+    if (sendUsage) recordTokenUsage(sendUsage);
+
     // Now wait for the agent events to deliver the full response
     const finalText = await responsePromise;
     finalizeStreaming(finalText);
@@ -1282,6 +1304,25 @@ function finalizeStreaming(finalContent: string, toolCalls?: import('./types').T
 
   if (finalContent) {
     addMessage({ role: 'assistant', content: finalContent, timestamp: new Date(), toolCalls });
+
+    // Fallback token estimation: if no real usage data came through events,
+    // estimate from character count (~4 chars per token is a rough average).
+    // This ensures the token meter always shows something useful.
+    if (_sessionTokensUsed === 0 || _lastRecordedTotal === _sessionTokensUsed) {
+      const userMsg = messages.filter(m => m.role === 'user').pop();
+      const userChars = userMsg?.content?.length ?? 0;
+      const assistantChars = finalContent.length;
+      const estInput = Math.ceil(userChars / 4);
+      const estOutput = Math.ceil(assistantChars / 4);
+      _sessionInputTokens += estInput;
+      _sessionOutputTokens += estOutput;
+      _sessionTokensUsed += estInput + estOutput;
+      // Estimate cost
+      const rate = _MODEL_COST_PER_TOKEN[_activeModelKey] ?? _MODEL_COST_PER_TOKEN['default'];
+      _sessionCost += estInput * rate.input + estOutput * rate.output;
+      console.log(`[token-meter] Fallback estimate: ~${estInput + estOutput} tokens (${userChars + assistantChars} chars)`);
+      updateTokenMeter();
+    }
   }
 }
 
@@ -1497,10 +1538,15 @@ gateway.on('agent', (payload: unknown) => {
         if (!_streamingRunId && runId) _streamingRunId = runId;
         console.log(`[main] Agent run started: ${runId}`);
       } else if (phase === 'end') {
-        console.log(`[main] Agent run ended: ${runId}`);
-        // Capture usage from lifecycle end event
-        const agentUsage = data.usage as Record<string, unknown> | undefined;
+        console.log(`[main] Agent run ended: ${runId}`, data ? JSON.stringify(data).slice(0, 500) : '(no data)');
+        // Capture usage from lifecycle end event — try multiple paths
+        const dAny = data as Record<string, unknown>;
+        const dNested = (dAny.response as Record<string, unknown> | undefined);
+        const agentUsage = (dAny.usage ?? dNested?.usage ?? data) as Record<string, unknown> | undefined;
         recordTokenUsage(agentUsage);
+        // Also try root-level usage on the event itself
+        const evtUsage = (evt as Record<string, unknown>).usage as Record<string, unknown> | undefined;
+        if (evtUsage) recordTokenUsage(evtUsage);
         if (_streamingResolve) {
           _streamingResolve(_streamingContent);
           _streamingResolve = null;
