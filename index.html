@@ -483,6 +483,13 @@
             <span id="compaction-warning-text">Context window filling up — older messages may be compacted soon</span>
             <button class="btn btn-ghost btn-sm" id="compaction-warning-dismiss" title="Dismiss">×</button>
           </div>
+
+          <!-- Session budget alert banner -->
+          <div class="compaction-warning budget-alert" id="session-budget-alert" style="display:none">
+            <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span id="session-budget-alert-text">Approaching budget limit</span>
+            <button class="btn btn-ghost btn-sm" onclick="this.parentElement.style.display='none'" title="Dismiss">×</button>
+          </div>
           
           <div class="chat-messages" id="chat-messages">
             <div class="empty-state" id="chat-empty">
@@ -1681,7 +1688,23 @@
           <!-- Usage -->
           <div class="settings-section" id="settings-usage-section" style="display:none">
             <h2 class="settings-section-title">Usage &amp; Cost</h2>
+            <!-- Budget alert banner -->
+            <div class="compaction-warning budget-alert" id="budget-alert" style="display:none">
+              <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              <span id="budget-alert-text">Approaching budget limit</span>
+            </div>
             <div id="settings-usage-content" class="usage-content"></div>
+            <!-- Budget limit input -->
+            <div class="budget-settings">
+              <label class="form-label" style="margin-bottom:4px">Budget Alert (USD)</label>
+              <div style="display:flex;gap:8px;align-items:center">
+                <span style="color:var(--text-muted)">$</span>
+                <input type="number" step="0.01" min="0" class="form-input" id="budget-limit-input" placeholder="e.g. 10.00" style="width:120px">
+                <button class="btn btn-primary btn-sm" id="budget-limit-save">Set</button>
+                <button class="btn btn-ghost btn-sm" id="budget-limit-clear">Clear</button>
+              </div>
+              <p class="form-hint" style="margin-top:4px;font-size:11px;color:var(--text-muted)">Get a warning when total API cost approaches this limit</p>
+            </div>
             <button class="btn btn-ghost btn-sm" id="settings-refresh-usage" style="margin-top:8px">Refresh</button>
           </div>
 

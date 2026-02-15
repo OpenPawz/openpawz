@@ -68,6 +68,8 @@ export async function loadSettingsLogs() {
 }
 
 // ── Usage Dashboard ────────────────────────────────────────────────────────
+let _usageRefreshInterval: ReturnType<typeof setInterval> | null = null;
+
 export async function loadSettingsUsage() {
   if (!wsConnected) return;
   const section = $('settings-usage-section');
@@ -93,15 +95,37 @@ export async function loadSettingsUsage() {
     }
     if (cost?.totalCost != null) {
       html += `<div class="usage-card">
-        <div class="usage-card-label">Cost</div>
+        <div class="usage-card-label">Total Cost</div>
         <div class="usage-card-value">$${cost.totalCost.toFixed(4)} ${cost.currency ?? ''}</div>
       </div>`;
+
+      // Budget check
+      checkBudgetAlert(cost.totalCost);
     }
-    if (status?.byModel) {
+    if (cost?.period) {
+      html += `<div class="usage-card">
+        <div class="usage-card-label">Period</div>
+        <div class="usage-card-value">${escHtml(String(cost.period))}</div>
+      </div>`;
+    }
+    // Per-model breakdown with cost
+    if (status?.byModel || cost?.byModel) {
       html += '<div class="usage-models"><h4>By Model</h4>';
-      for (const [model, data] of Object.entries(status.byModel)) {
-        const d = data as { requests?: number; tokens?: number };
-        html += `<div class="usage-model-row"><span class="usage-model-name">${escHtml(model)}</span><span>${(d.requests ?? 0).toLocaleString()} req / ${(d.tokens ?? 0).toLocaleString()} tok</span></div>`;
+      const allModels = new Set([
+        ...Object.keys(status?.byModel ?? {}),
+        ...Object.keys(cost?.byModel ?? {}),
+      ]);
+      for (const model of allModels) {
+        const s = (status?.byModel?.[model] ?? {}) as { requests?: number; tokens?: number; inputTokens?: number; outputTokens?: number };
+        const c = (cost?.byModel?.[model] ?? {}) as { cost?: number; requests?: number };
+        const costStr = c.cost != null ? `$${c.cost.toFixed(4)}` : '';
+        const tokStr = s.tokens ? `${s.tokens.toLocaleString()} tok` : '';
+        const reqStr = s.requests ? `${s.requests.toLocaleString()} req` : (c.requests ? `${c.requests.toLocaleString()} req` : '');
+        const parts = [reqStr, tokStr, costStr].filter(Boolean).join(' · ');
+        html += `<div class="usage-model-row">
+          <span class="usage-model-name">${escHtml(model)}</span>
+          <span>${parts}</span>
+        </div>`;
       }
       html += '</div>';
     }
@@ -110,6 +134,89 @@ export async function loadSettingsUsage() {
     console.warn('[settings] Usage load failed:', e);
     if (section) section.style.display = 'none';
   }
+}
+
+/** Start auto-refresh for usage dashboard (every 30s) */
+export function startUsageAutoRefresh() {
+  stopUsageAutoRefresh();
+  _usageRefreshInterval = setInterval(() => {
+    if (wsConnected) loadSettingsUsage().catch(() => {});
+  }, 30_000);
+}
+
+export function stopUsageAutoRefresh() {
+  if (_usageRefreshInterval) {
+    clearInterval(_usageRefreshInterval);
+    _usageRefreshInterval = null;
+  }
+}
+
+// ── Budget Alert ───────────────────────────────────────────────────────────
+const BUDGET_KEY = 'paw-budget-limit';
+
+export function getBudgetLimit(): number | null {
+  const saved = localStorage.getItem(BUDGET_KEY);
+  if (!saved) return null;
+  const n = parseFloat(saved);
+  return isNaN(n) || n <= 0 ? null : n;
+}
+
+export function setBudgetLimit(limit: number | null) {
+  if (limit == null || limit <= 0) {
+    localStorage.removeItem(BUDGET_KEY);
+  } else {
+    localStorage.setItem(BUDGET_KEY, String(limit));
+  }
+}
+
+function checkBudgetAlert(currentCost: number) {
+  const limit = getBudgetLimit();
+  if (limit == null) return;
+  const alertEl = $('budget-alert');
+  if (!alertEl) return;
+
+  if (currentCost >= limit) {
+    alertEl.style.display = '';
+    const text = $('budget-alert-text');
+    if (text) text.textContent = `Budget limit reached: $${currentCost.toFixed(4)} / $${limit.toFixed(2)} — consider switching to a cheaper model or pausing automations`;
+  } else if (currentCost >= limit * 0.8) {
+    alertEl.style.display = '';
+    const text = $('budget-alert-text');
+    if (text) text.textContent = `Approaching budget: $${currentCost.toFixed(4)} / $${limit.toFixed(2)} (${((currentCost / limit) * 100).toFixed(0)}%)`;
+  } else {
+    alertEl.style.display = 'none';
+  }
+}
+
+export function initBudgetSettings() {
+  const input = $('budget-limit-input') as HTMLInputElement | null;
+  const saveBtn = $('budget-limit-save');
+  const clearBtn = $('budget-limit-clear');
+
+  if (input) {
+    const current = getBudgetLimit();
+    if (current != null) input.value = current.toFixed(2);
+  }
+
+  saveBtn?.addEventListener('click', () => {
+    const val = parseFloat((input as HTMLInputElement)?.value ?? '');
+    if (isNaN(val) || val <= 0) {
+      showSettingsToast('Enter a valid budget amount', 'error');
+      return;
+    }
+    setBudgetLimit(val);
+    showSettingsToast(`Budget alert set at $${val.toFixed(2)}`, 'success');
+    // Re-check immediately
+    loadSettingsUsage().catch(() => {});
+  });
+
+  clearBtn?.addEventListener('click', () => {
+    setBudgetLimit(null);
+    if (input) (input as HTMLInputElement).value = '';
+    const alertEl = $('budget-alert');
+    if (alertEl) alertEl.style.display = 'none';
+    showSettingsToast('Budget alert cleared', 'info');
+  });
 }
 
 // ── System Presence ────────────────────────────────────────────────────────
@@ -615,6 +722,8 @@ export function initSettings() {
   $('settings-browser-start')?.addEventListener('click', () => startBrowser());
   $('settings-browser-stop')?.addEventListener('click', () => stopBrowser());
   $('settings-refresh-browser')?.addEventListener('click', () => loadSettingsBrowser());
+  // Budget
+  initBudgetSettings();
 }
 
 // ── Load all settings data ─────────────────────────────────────────────────

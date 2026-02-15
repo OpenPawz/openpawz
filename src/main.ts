@@ -88,9 +88,27 @@ let _pendingAttachments: File[] = [];
 let _sessionTokensUsed = 0;         // accumulated tokens for current session
 let _sessionInputTokens = 0;
 let _sessionOutputTokens = 0;
+let _sessionCost = 0;               // estimated session cost in USD
 let _modelContextLimit = 128_000;   // default context window (will be updated from models.list)
 const COMPACTION_WARN_THRESHOLD = 0.80; // warn at 80% context usage
 let _compactionDismissed = false;
+
+// Rough per-token cost estimates (USD) for common model families
+const _MODEL_COST_PER_TOKEN: Record<string, { input: number; output: number }> = {
+  'gpt-4o':       { input: 2.5e-6,  output: 10e-6 },
+  'gpt-4o-mini':  { input: 0.15e-6, output: 0.6e-6 },
+  'gpt-4-turbo':  { input: 10e-6,   output: 30e-6 },
+  'gpt-4':        { input: 30e-6,   output: 60e-6 },
+  'gpt-3.5':      { input: 0.5e-6,  output: 1.5e-6 },
+  'claude-3-opus':    { input: 15e-6,  output: 75e-6 },
+  'claude-3.5-sonnet': { input: 3e-6,   output: 15e-6 },
+  'claude-3-haiku':   { input: 0.25e-6, output: 1.25e-6 },
+  'claude-sonnet':    { input: 3e-6,   output: 15e-6 },
+  'claude-opus':      { input: 15e-6,  output: 75e-6 },
+  'claude-haiku':     { input: 0.25e-6, output: 1.25e-6 },
+  'default':          { input: 3e-6,   output: 15e-6 },
+};
+let _activeModelKey = 'default';
 
 /** Extended Message type with optional attachments (gateway may include these) */
 interface ChatAttachmentLocal {
@@ -184,10 +202,12 @@ function switchView(viewName: string) {
       case 'memory': MemoryPalaceModule.loadMemoryPalace(); loadMemory(); break;
       case 'build': loadBuildProjects(); loadSpaceCron('build'); break;
       case 'mail': MailModule.loadMail(); loadSpaceCron('mail'); break;
-      case 'settings': syncSettingsForm(); loadGatewayConfig(); SettingsModule.loadSettings(); break;
+      case 'settings': syncSettingsForm(); loadGatewayConfig(); SettingsModule.loadSettings(); SettingsModule.startUsageAutoRefresh(); break;
       default: break;
     }
   }
+  // Stop usage auto-refresh when leaving settings
+  if (viewName !== 'settings') SettingsModule.stopUsageAutoRefresh();
   // Local-only views (no gateway needed)
   switch (viewName) {
     case 'content': loadContentDocs(); if (wsConnected) loadSpaceCron('content'); break;
@@ -713,8 +733,11 @@ chatSessionSelect?.addEventListener('change', () => {
     _sessionTokensUsed = 0;
     _sessionInputTokens = 0;
     _sessionOutputTokens = 0;
+    _sessionCost = 0;
     _compactionDismissed = false;
     updateTokenMeter();
+    const ba1 = $('session-budget-alert');
+    if (ba1) ba1.style.display = 'none';
     loadChatHistory(key);
   }
 });
@@ -878,8 +901,11 @@ $('new-chat-btn')?.addEventListener('click', () => {
   _sessionTokensUsed = 0;
   _sessionInputTokens = 0;
   _sessionOutputTokens = 0;
+  _sessionCost = 0;
   _compactionDismissed = false;
   updateTokenMeter();
+  const ba2 = $('session-budget-alert');
+  if (ba2) ba2.style.display = 'none';
   renderMessages();
   if (chatSessionSelect) chatSessionSelect.value = '';
 });
@@ -950,8 +976,11 @@ $('session-compact-btn')?.addEventListener('click', async () => {
     _sessionTokensUsed = 0;
     _sessionInputTokens = 0;
     _sessionOutputTokens = 0;
+    _sessionCost = 0;
     _compactionDismissed = false;
     updateTokenMeter();
+    const budgetAlert = $('session-budget-alert');
+    if (budgetAlert) budgetAlert.style.display = 'none';
   } catch (e) {
     showToast(`Compact failed: ${e instanceof Error ? e.message : e}`, 'error');
   }
@@ -987,8 +1016,9 @@ function updateTokenMeter() {
   // Label: "12.4k / 128k tokens"
   const used = _sessionTokensUsed >= 1000 ? `${(_sessionTokensUsed / 1000).toFixed(1)}k` : `${_sessionTokensUsed}`;
   const limit = _modelContextLimit >= 1000 ? `${(_modelContextLimit / 1000).toFixed(0)}k` : `${_modelContextLimit}`;
-  label.textContent = `${used} / ${limit} tokens`;
-  meter.title = `Session tokens: ${_sessionTokensUsed.toLocaleString()} / ${_modelContextLimit.toLocaleString()} (In: ${_sessionInputTokens.toLocaleString()} / Out: ${_sessionOutputTokens.toLocaleString()})`;
+  const costStr = _sessionCost > 0 ? ` · $${_sessionCost.toFixed(4)}` : '';
+  label.textContent = `${used} / ${limit} tokens${costStr}`;
+  meter.title = `Session tokens: ${_sessionTokensUsed.toLocaleString()} / ${_modelContextLimit.toLocaleString()} (In: ${_sessionInputTokens.toLocaleString()} / Out: ${_sessionOutputTokens.toLocaleString()}) — Est. cost: $${_sessionCost.toFixed(4)}`;
 
   // Compaction warning
   updateCompactionWarning(pct);
@@ -1030,6 +1060,28 @@ function recordTokenUsage(usage: Record<string, unknown> | undefined) {
     _sessionOutputTokens += outputTokens;
     _sessionTokensUsed += inputTokens + outputTokens;
   }
+
+  // Estimate cost from token counts
+  const rate = _MODEL_COST_PER_TOKEN[_activeModelKey] ?? _MODEL_COST_PER_TOKEN['default'];
+  _sessionCost += inputTokens * rate.input + outputTokens * rate.output;
+
+  // Check budget after each usage recording
+  const budgetLimit = SettingsModule.getBudgetLimit();
+  if (budgetLimit != null && _sessionCost >= budgetLimit * 0.8) {
+    const budgetAlert = $('session-budget-alert');
+    if (budgetAlert) {
+      budgetAlert.style.display = '';
+      const alertText = $('session-budget-alert-text');
+      if (alertText) {
+        if (_sessionCost >= budgetLimit) {
+          alertText.textContent = `Session budget exceeded: $${_sessionCost.toFixed(4)} / $${budgetLimit.toFixed(2)}`;
+        } else {
+          alertText.textContent = `Nearing session budget: $${_sessionCost.toFixed(4)} / $${budgetLimit.toFixed(2)}`;
+        }
+      }
+    }
+  }
+
   updateTokenMeter();
 }
 
@@ -1045,6 +1097,15 @@ async function detectModelContextLimit() {
         if (ctx && ctx > 0) {
           _modelContextLimit = ctx;
           console.log(`[token-meter] Detected model context limit: ${ctx}`);
+          // Detect model key for cost estimation
+          const name = ((m.name ?? m.id ?? m.model ?? '') as string).toLowerCase();
+          for (const key of Object.keys(_MODEL_COST_PER_TOKEN)) {
+            if (key !== 'default' && name.includes(key)) {
+              _activeModelKey = key;
+              console.log(`[token-meter] Matched model cost key: ${key}`);
+              break;
+            }
+          }
           break;
         }
       }

@@ -856,6 +856,29 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 
+/* Budget alert (red-tinted variant of compaction-warning) */
+.budget-alert {
+  background: #f8d7da !important;
+  border-color: #f5c6cb !important;
+  color: #721c24 !important;
+}
+.budget-alert .btn {
+  color: #721c24 !important;
+}
+.budget-alert svg {
+  stroke: #721c24;
+  fill: none;
+}
+
+/* Budget settings in usage section */
+.budget-settings {
+  margin-top: 16px;
+  padding: 12px;
+  background: var(--bg-secondary, #f5f6f8);
+  border-radius: 8px;
+  border: 1px solid var(--border-light, #e6e9ef);
+}
+
 .chat-messages {
   flex: 1;
   overflow-y: auto;

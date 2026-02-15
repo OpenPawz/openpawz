@@ -1,6 +1,6 @@
 # Paw — Full Architecture, Status & Wiring Plan
 
-> Last updated: 2026-02-15 (Sprint 1 in progress — token meter + compaction warnings + memory export built)  
+> Last updated: 2026-02-15 (Sprint 1 COMPLETE — usage dashboard, token meter, compaction warnings, per-conversation cost, budget alerts, memory export)  
 > Cross-referenced against: [github.com/openclaw/openclaw](https://github.com/openclaw/openclaw) main branch
 
 ---
@@ -430,7 +430,7 @@ Wake word system for hands-free activation. Paw has **zero** coverage.
 | Usage status | ✅ | `usage.status` → Settings Usage section with requests, tokens, cost cards |
 | Cost breakdown | ✅ | `usage.cost` → per-model breakdown rows in Usage section |
 
-Fully wired. **Gap**: No per-conversation cost, no budget alerts, no cost-per-feature breakdown (see Community Gap Analysis).
+Fully wired. Per-model cost breakdown in dashboard, per-conversation cost in chat header, budget alerts with configurable spending limit. Auto-refreshes every 30s.
 
 ---
 
@@ -854,7 +854,7 @@ These are features that OpenClaw already exposes via gateway methods. Paw just n
 
 #### 4b. Usage & Billing — ✅ WIRED
 16. ~~**Usage dashboard** — Call `usage.status` + `usage.cost`, show token/cost breakdown~~ ✅ Wired in Settings
-    - **Gap**: No per-conversation cost, no budget alerts (see Sprint 1)
+    - ✅ Per-model cost breakdown, per-conversation cost, budget alerts — BUILT in Sprint 1
 
 #### 4c. TTS (Text-to-Speech)
 17. **TTS settings panel** — `tts.status`, `tts.providers`, enable/disable/setProvider
@@ -946,9 +946,9 @@ The gateway exposes its full API via WebSocket on `ws://127.0.0.1:{port}` (defau
 
 **What's missing entirely**: TTS UI (5 typed methods, no UI), Talk Mode UI (2 typed, no UI), Voice Wake UI (2 typed, no UI). That's **~9 gateway methods with zero UI**. Beyond gateway wiring, the Community Gap Analysis identifies **19 feature items** across 5 sprints that address real user pain (memory visibility, cost tracking, cron reliability, multi-agent routing).
 
-**Coverage reality**: Paw calls **~77 of ~90 gateway methods** (**~86% UI wired, ~98% typed**). 12 of 18 gateway events consumed. Every category except TTS/Talk/Voice Wake is at **100%**. Sprint 1 is in progress — token meter, compaction warnings, and memory export are now built. Users get real-time context visibility and data portability.
+**Coverage reality**: Paw calls **~77 of ~90 gateway methods** (**~86% UI wired, ~98% typed**). 12 of 18 gateway events consumed. Every category except TTS/Talk/Voice Wake is at **100%**. Sprint 1 COMPLETE — usage dashboard enhanced with per-model cost, per-conversation cost in chat header, budget alerts with configurable limits, token meter, compaction warnings, memory export.
 
-**Next up**: Sprint 1 remaining items (Usage Dashboard enhancement, per-conversation cost, budget alerts), then Sprint 2 (Cron Reliability). See Sprint Plan section for the full 19-item roadmap (3 of 19 complete).
+**Next up**: Sprint 2 (Cron Reliability — job editor, error highlighting, timeout visualization, test run output). See Sprint Plan section for the full 19-item roadmap (6 of 19 complete).
 
 ---
 
@@ -987,10 +987,10 @@ Based on OpenClaw community feedback — Reddit, Discord, GitHub issues. Maps re
 
 | What they need | Paw status | Gap |
 |----------------|:---:|-----|
-| Real-time token usage dashboard | ✅ | `usage.status` + `usage.cost` wired in Settings Usage section |
-| Per-conversation cost tracking | ⚪ | NOT BUILT — no way to see "this chat session cost $0.47" |
-| Model cost comparison | ⚪ | NOT BUILT — no side-by-side model pricing |
-| Budget alerts / spending limits | ⚪ | NOT BUILT — no "warn me at $X" or "stop at $Y" |
+| Real-time token usage dashboard | ✅ | **BUILT** — per-model cost cards, auto-refresh every 30s, period display |
+| Per-conversation cost tracking | ✅ | **BUILT** — estimated session cost shown in token meter, model-aware pricing |
+| Model cost comparison | 🔶 | Per-model cost shown in usage dashboard; no side-by-side comparison UI yet |
+| Budget alerts / spending limits | ✅ | **BUILT** — configurable USD limit in settings, warns at 80%, alerts at 100% |
 | Cost per feature breakdown | ⚪ | NOT BUILT — heartbeat vs chat vs research vs cron breakdown |
 
 ### 🟡 HIGH — Multi-User / Multi-Agent Routing
@@ -1060,11 +1060,11 @@ Priority order based on community pain severity + implementation feasibility.
 
 | # | Feature | Gateway methods | Effort | Details |
 |---|---------|----------------|--------|---------|
-| 1 | **Usage Dashboard enhancement** | `usage.status`, `usage.cost` | S | Already wired — add per-model cost cards, session-level breakdown, refresh timer |
+| 1 | ~~**Usage Dashboard enhancement**~~ | ~~`usage.status`, `usage.cost`~~ | ~~S~~ | ✅ **DONE** — Per-model cost cards, auto-refresh every 30s, period display |
 | 2 | ~~**Memory Context Meter**~~ | ~~`usage.status` (token counts)~~ | ~~M~~ | ✅ **DONE** — Progress bar in chat header, color-coded, auto-detect model context limit |
 | 3 | ~~**Compaction indicator**~~ | ~~Listen for compaction events~~ | ~~M~~ | ✅ **DONE** — Yellow banner at 80% capacity, escalates at 95%, dismissible |
-| 4 | **Per-conversation cost** | Track tokens per session locally | M | Accumulate `usage.status` deltas per session ID, show in chat header |
-| 5 | **Budget alert** | Local threshold check | S | Settings input for spending limit, warn when `usage.cost` exceeds it |
+| 4 | ~~**Per-conversation cost**~~ | ~~Track tokens per session locally~~ | ~~M~~ | ✅ **DONE** — Estimated session cost in token meter label, model-aware pricing |
+| 5 | ~~**Budget alert**~~ | ~~Local threshold check~~ | ~~S~~ | ✅ **DONE** — Configurable USD limit in settings, warns at 80%, alerts at 100%, inline banner in chat + settings |
 
 ### Sprint 2: Cron Reliability (silent failures → visible failures)
 
