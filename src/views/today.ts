@@ -48,13 +48,11 @@ async function fetchWeather() {
   if (!weatherEl) return;
   
   try {
-    // Use gateway to get weather via skill
-    const result = await gateway.rpc('tools.exec', {
-      command: 'curl -s "wttr.in/?format=%c+%t+%C"',
-      timeout: 5000,
-    });
-    if (result?.stdout) {
-      weatherEl.innerHTML = `<span class="today-weather-temp">${result.stdout.trim()}</span>`;
+    // Simple weather fetch
+    const response = await fetch('https://wttr.in/?format=%c+%t+%C');
+    const text = await response.text();
+    if (text) {
+      weatherEl.innerHTML = `<span class="today-weather-temp">${text.trim()}</span>`;
     }
   } catch {
     weatherEl.innerHTML = '<span class="today-weather-unavailable">Weather unavailable</span>';
@@ -265,7 +263,7 @@ function deleteTask(taskId: string) {
 async function triggerBriefing() {
   showToast('Starting morning briefing...');
   try {
-    await gateway.chatSend('Give me a morning briefing: weather, any calendar events today, and summarize my unread emails.');
+    await gateway.chatSend('main', 'Give me a morning briefing: weather, any calendar events today, and summarize my unread emails.');
   } catch {
     showToast('Failed to start briefing', 'error');
   }
@@ -274,7 +272,7 @@ async function triggerBriefing() {
 async function triggerInboxSummary() {
   showToast('Summarizing inbox...');
   try {
-    await gateway.chatSend('Check my email inbox and summarize the important unread messages.');
+    await gateway.chatSend('main', 'Check my email inbox and summarize the important unread messages.');
   } catch {
     showToast('Failed to summarize inbox', 'error');
   }
@@ -283,7 +281,7 @@ async function triggerInboxSummary() {
 async function triggerScheduleCheck() {
   showToast('Checking schedule...');
   try {
-    await gateway.chatSend('What do I have scheduled for today? Check my calendar.');
+    await gateway.chatSend('main', 'What do I have scheduled for today? Check my calendar.');
   } catch {
     showToast('Failed to check schedule', 'error');
   }

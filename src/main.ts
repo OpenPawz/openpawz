@@ -152,6 +152,7 @@ const foundryView = $('foundry-view');
 const settingsView = $('settings-view');
 const nodesView = $('nodes-view');
 const agentsView = $('agents-view');
+const todayView = $('today-view');
 const statusDot = $('status-dot');
 const statusText = $('status-text');
 const chatMessages = $('chat-messages');
@@ -166,7 +167,7 @@ const allViews = [
   dashboardView, setupView, manualSetupView, installView,
   chatView, buildView, codeView, contentView, mailView,
   automationsView, channelsView, researchView, memoryView,
-  skillsView, foundryView, settingsView, nodesView, agentsView,
+  skillsView, foundryView, settingsView, nodesView, agentsView, todayView,
 ].filter(Boolean);
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -190,7 +191,7 @@ function switchView(viewName: string) {
     content: contentView, mail: mailView, automations: automationsView,
     channels: channelsView, research: researchView, memory: memoryView,
     skills: skillsView, foundry: foundryView, settings: settingsView,
-    nodes: nodesView, agents: agentsView,
+    nodes: nodesView, agents: agentsView, today: todayView,
   };
   const target = viewMap[viewName];
   if (target) target.classList.add('active');
@@ -203,6 +204,7 @@ function switchView(viewName: string) {
       case 'channels': loadChannels(); break;
       case 'automations': AutomationsModule.loadCron(); break;
       case 'agents': AgentsModule.loadAgents(); break;
+      case 'today': TodayModule.loadToday(); break;
       case 'skills': SkillsModule.loadSkills(); break;
       case 'foundry': FoundryModule.loadModels(); FoundryModule.loadModes(); FoundryModule.loadAgents(); break;
       case 'nodes': NodesModule.loadNodes(); NodesModule.loadPairingRequests(); break;

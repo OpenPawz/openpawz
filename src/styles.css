@@ -2742,6 +2742,171 @@ button:focus:not(:focus-visible) { outline: none; }
   border-top: 1px solid var(--border);
 }
 
+/* ═══ Today View ═══ */
+.today-view {
+  padding: 32px;
+  overflow-y: auto;
+  height: 100%;
+  box-sizing: border-box;
+}
+.today-content { max-width: 1000px; }
+.today-header { margin-bottom: 24px; }
+.today-greeting {
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.today-date {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.today-grid {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 20px;
+}
+@media (max-width: 800px) {
+  .today-grid { grid-template-columns: 1fr; }
+}
+.today-main { display: flex; flex-direction: column; gap: 16px; }
+.today-sidebar { display: flex; flex-direction: column; gap: 16px; }
+.today-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.today-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.today-card-icon { font-size: 16px; }
+.today-card-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.today-card-count {
+  font-size: 12px;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  margin-left: auto;
+}
+.today-card-header .btn { margin-left: auto; }
+.today-card-body { padding: 16px; }
+.today-loading { color: var(--text-muted); font-size: 13px; }
+.today-section-empty { color: var(--text-muted); font-size: 13px; text-align: center; padding: 12px; }
+
+/* Tasks */
+.today-tasks { display: flex; flex-direction: column; gap: 8px; }
+.today-task {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}
+.today-task-check {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.today-task-text { flex: 1; font-size: 14px; color: var(--text-primary); }
+.today-task:has(.today-task-check:checked) .today-task-text {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+.today-task-delete {
+  opacity: 0;
+  background: none;
+  border: none;
+  font-size: 18px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: opacity var(--transition-fast);
+}
+.today-task:hover .today-task-delete { opacity: 1; }
+.today-task-delete:hover { color: var(--error); }
+.today-completed-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+/* Weather */
+.today-weather-temp { font-size: 18px; color: var(--text-primary); }
+.today-weather-unavailable { font-size: 13px; color: var(--text-muted); }
+
+/* Quick actions */
+.today-quick-action {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  margin-bottom: 8px;
+}
+.today-quick-action:last-child { margin-bottom: 0; }
+.today-quick-action:hover {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+}
+
+/* Today modal */
+.today-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.today-modal-dialog {
+  background: var(--bg-primary);
+  border-radius: var(--radius-lg);
+  width: 400px;
+  max-width: 90vw;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+}
+.today-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+.today-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.today-modal-body { padding: 20px; }
+.today-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+}
+
 /* ═══ Agents View ═══ */
 .agents-view {
   padding: 32px;
