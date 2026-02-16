@@ -1881,9 +1881,7 @@ fn repair_openclaw_config() -> Result<bool, String> {
                     }
                 },
                 "env": {
-                    "vars": {
-                        "GEMINI_API_KEY": ""
-                    }
+                    "vars": {}
                 }
             });
             fs::write(&config_path, serde_json::to_string_pretty(&fresh).unwrap())
@@ -2177,7 +2175,6 @@ fn repair_openclaw_config() -> Result<bool, String> {
                     if !providers.contains_key("google") {
                         providers.insert("google".to_string(), serde_json::json!({
                             "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
-                            "apiKey": "",
                             "api": "google-generative-ai",
                             "models": [
                                 {
@@ -2232,20 +2229,20 @@ fn repair_openclaw_config() -> Result<bool, String> {
                 }
             }
 
-            // Also inject GEMINI_API_KEY into env.vars as a fallback
-            if !obj.contains_key("env") {
-                obj.insert("env".to_string(), serde_json::json!({}));
-            }
-            if let Some(env_obj) = obj.get_mut("env").and_then(|e| e.as_object_mut()) {
-                if !env_obj.contains_key("vars") {
-                    env_obj.insert("vars".to_string(), serde_json::json!({}));
-                }
-                if let Some(vars) = env_obj.get_mut("vars").and_then(|v| v.as_object_mut()) {
-                    if !vars.contains_key("GEMINI_API_KEY") {
-                        vars.insert("GEMINI_API_KEY".to_string(),
-                            serde_json::json!(""));
+            // Remove empty GEMINI_API_KEY from env.vars if present.
+            // An empty env var overrides the provider's real apiKey because the
+            // gateway resolves env vars before provider config.  Users set the
+            // key on models.providers.google.apiKey via Settings instead.
+            if let Some(vars) = obj
+                .get_mut("env")
+                .and_then(|e| e.get_mut("vars"))
+                .and_then(|v| v.as_object_mut())
+            {
+                if let Some(val) = vars.get("GEMINI_API_KEY").and_then(|v| v.as_str()).map(|s| s.to_string()) {
+                    if val.is_empty() {
+                        vars.remove("GEMINI_API_KEY");
                         repaired = true;
-                        info!("Set GEMINI_API_KEY in env.vars (user must configure via Settings)");
+                        info!("Removed empty GEMINI_API_KEY from env.vars (was overriding provider apiKey)");
                     }
                 }
             }

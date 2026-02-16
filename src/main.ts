@@ -432,17 +432,26 @@ async function watchdogRestart(): Promise<void> {
 
   try {
     const port = getPortFromUrl(config.gateway.url);
-    await invoke('start_gateway', { port }).catch((e: unknown) => {
-      console.warn('[watchdog] start_gateway failed:', e);
-    });
 
-    // Wait for gateway to boot
-    await new Promise(r => setTimeout(r, 3000));
+    // Probe first — the gateway may still be alive (e.g. SIGUSR1 restart).
+    // Only attempt start_gateway if nothing is listening.
+    const alreadyRunning = await invoke<boolean>('check_gateway_health', { port }).catch(() => false);
+    if (!alreadyRunning) {
+      await invoke('start_gateway', { port }).catch((e: unknown) => {
+        console.warn('[watchdog] start_gateway failed:', e);
+      });
+      // Wait for gateway to boot
+      await new Promise(r => setTimeout(r, 3000));
+    } else {
+      // Gateway is still up — just wait for the restart to finish
+      console.log('[watchdog] Gateway still responding — waiting for restart to settle...');
+      await new Promise(r => setTimeout(r, 2000));
+    }
 
     // Verify it's alive
     const alive = await invoke<boolean>('check_gateway_health', { port }).catch(() => false);
     if (alive) {
-      console.log('[watchdog] Gateway restarted successfully, reconnecting...');
+      console.log('[watchdog] Gateway is up, reconnecting...');
       wsConnected = false;
       await connectGateway();
       if (wsConnected) {
