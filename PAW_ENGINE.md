@@ -1,89 +1,157 @@
-# Paw Agent Engine — Implementation Status
+# Pawz Agent Engine — Implementation Status
 
-> Last updated: 2026-02-18
+> Last updated: 2026-02-16
 
 ## What This Is
 
-Paw now has a **native Rust agent engine** embedded directly in the Tauri backend. It replaces the OpenClaw WebSocket gateway with direct AI API calls, eliminating all networking/JSON/auth issues between the two systems.
+Pawz is an **AI command center** with a native Rust agent engine embedded in the Tauri backend. It talks directly to AI APIs — no gateway, no middleware, no OpenClaw.
 
-**Old architecture:** Frontend → WebSocket → OpenClaw Gateway (Node.js) → AI APIs
-**New architecture:** Frontend → Tauri IPC (`invoke()`) → Rust Engine → AI APIs directly
+**Architecture:** Frontend → Tauri IPC (`invoke()`) → Rust Engine → AI APIs directly
 
-Zero network hop, zero open ports, zero auth tokens in engine mode.
+Zero network hop, zero open ports, zero auth tokens to manage.
 
 ---
 
-## Current Status: Phase 3 COMPLETE ✅
+## Current Status: Phase 5 COMPLETE ✅
 
-Phase 1 (core engine) completed 2026-02-16. Phase 2 (security, sessions, metering, errors, attachments) completed 2026-02-17. Phase 3 (soul + memory) completed 2026-02-18.
+### Phase Timeline
+- **Phase 1** (2026-02-16): Core engine — providers, streaming, tools, SQLite sessions
+- **Phase 2** (2026-02-17): Security (HIL approval), session management, token metering, error handling, attachments
+- **Phase 3** (2026-02-18): Soul system (agent personality files), Memory system (long-term semantic memory)
+- **Phase 4** (2026-02-18): Web browsing tools (search, read, screenshot, browse), Soul/Memory self-evolution tools
+- **Phase 5** (2026-02-16): Skill Vault (37 skills across 9 categories), credential encryption, instruction injection, advanced editing, Pawz rebrand
 
-### Phase 3 Features
+---
 
-#### Soul System — Agent Personality Files ✅
-- **SQLite table:** `agent_files(agent_id TEXT, file_name TEXT, content TEXT, updated_at TEXT)` — stores IDENTITY.md, SOUL.md, USER.md, AGENTS.md, TOOLS.md per agent
-- **Standard files:** `AGENT_STANDARD_FILES` constant defines the 5 canonical agent files with default empty content
-- **System prompt composition:** `compose_agent_context()` loads agent files in deterministic order (IDENTITY → SOUL → USER → AGENTS → TOOLS), joins with `\n\n---\n\n`, prepended to system prompt before each turn
+## Phase 5 Features
+
+### Skill Vault — 37 Skills Across 9 Categories ✅
+
+The skill system has two modes:
+- **Vault skills** have dedicated tool functions + encrypted credential storage. The agent calls specific tools like `email_send`, `github_api`, etc.
+- **Instruction skills** inject knowledge into the agent's system prompt. The agent uses existing `exec`/`fetch`/`read_file`/`write_file` tools to interact with CLIs and APIs.
+
+#### Skill Categories
+
+| Category | Skills | Type |
+|----------|--------|------|
+| **Vault** (🔐) | Email, Slack, GitHub, REST API, Webhooks, Discord, Notion, Trello | Credentials + tools/instructions |
+| **Communication** (💬) | WhatsApp, iMessage | CLI instruction |
+| **Productivity** (📋) | Apple Notes, Apple Reminders, Things 3, Obsidian, Bear Notes | CLI instruction |
+| **API** (🔌) | Google Workspace, Google Places | API instruction |
+| **Development** (🛠️) | tmux, Session Logs | CLI instruction |
+| **Media** (🎬) | Whisper (local), Whisper API, Image Generation (DALL-E), Video Frames (ffmpeg), ElevenLabs TTS, Spotify, GIF Search | Mixed |
+| **Smart Home** (🏠) | Philips Hue, Sonos, Eight Sleep, Camera Capture | CLI instruction |
+| **CLI** (⌨️) | Weather, Blog Watcher, Summarize | Instruction |
+| **System** (🖥️) | 1Password, Peekaboo (macOS UI), Security Audit | CLI instruction |
+
+#### Credential Injection ✅
+When a skill has stored credentials and is enabled, `get_enabled_skill_instructions()` decrypts the credentials and appends them to the instruction text:
+```
+Credentials (use these values directly — do NOT ask the user for them):
+- DISCORD_BOT_TOKEN = MTIz...
+- DISCORD_DEFAULT_CHANNEL = 1234567890
+```
+This means instruction-based skills with credentials (Discord, Notion, Trello, etc.) actually work — the agent gets the real token values in its system prompt and uses `fetch` to call the APIs.
+
+#### Custom Instruction Editing (Advanced) ✅
+- **SQLite table:** `skill_custom_instructions(skill_id TEXT PRIMARY KEY, instructions TEXT, updated_at TEXT)`
+- Users can edit any skill's agent instructions via the Advanced section in the Skills UI
+- Custom instructions override defaults. "Reset to Default" clears the custom version.
+- **Tauri commands:** `engine_skill_get_instructions`, `engine_skill_set_instructions`
+
+#### Encrypted Credential Vault ✅
+- **XOR encryption** with 32-byte random key stored in **OS keychain** (`keyring` crate v3, service: `paw-skill-vault`)
+- Credentials stored as base64-encoded encrypted blobs in SQLite `skill_credentials` table
+- Never logged or exposed to frontend — only decrypted at tool execution time or for instruction injection
+- Per-skill revoke-all support
+
+#### Binary & Environment Detection ✅
+- `get_all_skill_status()` checks `which <binary>` for each required binary
+- Missing binaries shown with install hints (e.g., `brew install tmux`)
+- Missing env vars checked via `std::env::var()`
+- Skill is "Ready" only when: enabled + all required credentials set + all binaries on PATH + all env vars present
+
+#### Skills UI ✅ (`settings-skills.ts`)
+- **Category grouping** with filter tabs (All, Enabled, per-category)
+- **Summary bar**: total skills, ready count, enabled count
+- **Skill cards**: icon, name, status badge (🟢 Ready / 🔴 Missing binary / 🟡 Missing creds / ⚫ Disabled), enable/disable toggle
+- **Badges**: 📖 Instruction, 🔧 Tools, 🔑 Vault
+- **Binary/env status**: warning boxes with install commands
+- **Credential inputs**: password-masked fields with Set/Update/Delete per key
+- **Advanced section**: expandable editor for agent instructions, save/reset to default
+
+### Pawz Rebrand ✅
+- All OpenClaw references removed
+- Welcome page: "Welcome to Pawz — Your AI command center — Pawz are safer than Claws"
+- Always engine mode (no gateway toggle)
+- Settings cleaned of gateway sections
+- Skills moved from settings to sidebar view
+
+---
+
+## Phase 4 Features
+
+### Web Browsing Tools ✅ (`web.rs`, 538 LOC)
+- **`web_search`** — DuckDuckGo HTML scraping (no API key). Returns title, URL, snippet for each result.
+- **`web_read`** — Fetch URL + extract readable text via `scraper` crate. Supports CSS selectors for targeted extraction. Auto-detects `<article>`, `<main>`, `<body>`.
+- **`web_screenshot`** — Headless Chrome screenshot via `headless_chrome` crate. Saves PNG to temp dir, also extracts visible text.
+- **`web_browse`** — Full interactive headless browser with persistent session. Actions: navigate, click, type, press, extract, javascript, scroll, links, info. Lazy `OnceLock` singleton for Chrome instance.
+
+### Soul & Memory Self-Evolution Tools ✅
+- **`soul_read`** / **`soul_write`** / **`soul_list`** — Agent can read/write its own personality files (IDENTITY.md, SOUL.md, USER.md, AGENTS.md, TOOLS.md)
+- **`memory_store`** / **`memory_search`** — Agent can store and search its own long-term memories
+
+---
+
+## Phase 3 Features
+
+### Soul System — Agent Personality Files ✅
+- **SQLite table:** `agent_files(agent_id TEXT, file_name TEXT, content TEXT, updated_at TEXT)`
+- **5 standard files:** IDENTITY.md, SOUL.md, USER.md, AGENTS.md, TOOLS.md per agent
+- **System prompt composition:** `compose_agent_context()` loads files in order, joins with `\n\n---\n\n`, prepended to system prompt
 - **Tauri commands:** `engine_agent_file_list`, `engine_agent_file_get`, `engine_agent_file_set`, `engine_agent_file_delete`
-- **Frontend Foundry wiring:** `loadAgents()` shows "Default Agent" card in engine mode. `loadAgentFiles()`, `openAgentFileEditor()`, save handler all route to `pawEngine.agentFileList/Get/Set()` in engine mode
+- **Frontend Foundry:** Agent cards, file editor, all wired to engine IPC
 
-#### Memory System — Long-Term Semantic Memory ✅
+### Memory System — Long-Term Semantic Memory ✅
 - **SQLite table:** `memories(id TEXT PRIMARY KEY, content TEXT, category TEXT, importance INTEGER, embedding BLOB, created_at TEXT)`
-- **Ollama embeddings:** `EmbeddingClient` calls local Ollama at `http://localhost:11434/api/embeddings` with `nomic-embed-text` model (768 dimensions). Falls back to OpenAI-compatible `/v1/embeddings` format for any provider
-- **Vector search:** `search_memories_by_embedding()` — cosine similarity in pure Rust over SQLite BLOBs, filtered by threshold (default 0.3)
-- **Keyword fallback:** `search_memories_keyword()` — SQL LIKE search when embeddings unavailable
-- **Auto-recall:** Before each agent turn in `engine_chat_send`, searches memory for context relevant to the user's message. Injects matching memories as `## Relevant Memories` section in system prompt
-- **Auto-capture:** After each agent turn, `extract_memorable_facts()` applies heuristic pattern matching (preference/fact/instruction patterns like "I like", "my project", "always remember") to extract and store new memories with embeddings
-- **Memory config:** `MemoryConfig` with configurable `embedding_url`, `embedding_model`, `embedding_dims`, `auto_recall`, `auto_capture`, `recall_limit` (default 5), `recall_threshold` (default 0.3)
+- **Ollama embeddings:** `EmbeddingClient` calls local Ollama at `http://localhost:11434/api/embeddings` with `nomic-embed-text` (768 dims). Falls back to OpenAI-compatible format.
+- **Vector search:** Cosine similarity in pure Rust over SQLite BLOBs
+- **Keyword fallback:** SQL LIKE search when embeddings unavailable
+- **Auto-recall:** Before each turn, searches memory for relevant context → injects as `## Relevant Memories`
+- **Auto-capture:** After each turn, heuristic pattern matching extracts memorable facts
+- **Memory config:** `MemoryConfig` with `embedding_url`, `embedding_model`, `embedding_dims`, `auto_recall`, `auto_capture`, `recall_limit`, `recall_threshold`
 - **Tauri commands:** `engine_memory_store`, `engine_memory_search`, `engine_memory_stats`, `engine_memory_delete`, `engine_memory_list`, `engine_get_memory_config`, `engine_set_memory_config`, `engine_test_embedding`
-- **Frontend Memory Palace wiring:** All views (sidebar, recall search, recall by ID, remember form, graph visualization, export) route to `pawEngine.memorySearch/Store/List/Stats()` in engine mode
 
-### Phase 2 Features
+---
 
-#### P1: Human-in-the-Loop (HIL) Tool Approval ✅
-- **Rust:** `PendingApprovals` map with `tokio::sync::oneshot` channels in `EngineState`. Agent loop emits `ToolRequest` event and pauses until frontend resolves via `engine_approve_tool` command. Configurable timeout (`tool_timeout_secs`, default 120s).
-- **Frontend:** `onEngineToolApproval()` / `resolveEngineToolApproval()` in engine-bridge.ts. Full security pipeline in main.ts mirrors gateway approval flow: risk classification (critical/high/medium/low), allowlist/denylist checks, auto-deny for privilege escalation & critical commands, read-only project mode enforcement, session-level overrides, network audit for fetch calls.
-- **UX:** Reuses existing approval modal (`#approval-modal`) with same Allow/Deny/Always Allow UI.
+## Phase 2 Features
 
-#### P2: Session Management (Dual-Mode) ✅
-- `loadSessions()` routes to `pawEngine.sessionsList()` in engine mode
-- `loadChatHistory()` routes to `pawEngine.chatHistory()` in engine mode
-- Session rename → `pawEngine.sessionRename()` in engine mode
-- Session delete → `pawEngine.sessionDelete()` in engine mode
+### P1: Human-in-the-Loop (HIL) Tool Approval ✅
+- `PendingApprovals` map with `tokio::sync::oneshot` channels. Agent emits `ToolRequest` and pauses until frontend resolves via `engine_approve_tool`.
+- Frontend security pipeline: risk classification, allowlist/denylist, auto-deny privilege escalation, read-only project mode, session overrides.
 
-#### P3: Token Metering ✅
-- **Rust:** `TokenUsage` struct (`input_tokens`, `output_tokens`, `total_tokens`) added to `StreamChunk` and `EngineEvent::Complete`
-- **OpenAI:** Parsed from `usage.prompt_tokens` / `usage.completion_tokens` in final SSE chunk (enabled via `stream_options.include_usage`)
-- **Anthropic:** Parsed from `message_start` (`input_tokens`) and `message_delta` (`output_tokens`) events
-- **Google:** Parsed from `usageMetadata.promptTokenCount` / `candidatesTokenCount`
-- **Accumulation:** Agent loop sums usage across all chunks per turn, forwards total in `Complete` event
-- **Frontend:** Usage data forwarded through bridge in lifecycle end event
+### P2: Session Management ✅
+- `loadSessions()`, `loadChatHistory()`, session rename/delete all route to engine in engine mode
 
-#### P4: Error Handling & Retry ✅
-- **Exponential backoff** for all 3 providers: max 3 retries, delays 1s → 2s → 4s
-- **Retryable status codes:** 429 (rate limit), 500, 502, 503, 529
-- **Non-retryable errors** (401, 403, 404, etc.) fail immediately with clear error messages
-- **Provider-level** retry wraps the HTTP request + SSE stream setup
+### P3: Token Metering ✅
+- `TokenUsage` parsed per provider: OpenAI (`stream_options.include_usage`), Anthropic (`message_start`/`message_delta`), Google (`usageMetadata`)
+- Accumulated across agent loop turns, forwarded in `Complete` event
 
-#### P5: Attachment Support ✅
-- **Rust:** `ChatAttachment` struct (mime_type, content) added to `ChatRequest`
-- **OpenAI format:** Attachments converted to `image_url` content blocks with `data:{mime};base64,{content}` URIs in `format_messages()`
-- **Bridge:** `engineChatSend()` passes attachments through from frontend chat options
-- **Commands:** `engine_chat_send` parses attachment objects from frontend and prepends as `ContentBlock::ImageUrl` blocks
+### P4: Error Handling & Retry ✅
+- Exponential backoff: 3 retries, delays 1s→2s→4s. Retryable: 429, 500, 502, 503, 529. Non-retryable fail immediately.
 
-### Phase 1 Features (Baseline)
-- **Dual-mode switching** — Settings → General → Runtime Mode → Engine/Gateway
-- **Google Gemini** — tested and working (gemini-2.0-flash confirmed)
-- **OpenAI-compatible** — OpenAI, OpenRouter, Ollama, Custom endpoints
-- **Anthropic** — Claude models
-- **SSE streaming** — Real-time token streaming to chat UI
-- **Tool definitions** — exec, fetch, read_file, write_file tools sent to model
-- **Tool execution** — Shell commands, HTTP requests, file I/O
-- **SQLite sessions** — Conversation history stored in `~/.paw/engine.db`
-- **Engine settings UI** — Provider selection, API key, model, base URL config
+### P5: Attachment Support ✅
+- OpenAI format: `image_url` content blocks with `data:{mime};base64,{content}` URIs
 
-### Bugs Fixed (Phase 1)
-1. **Gemini schema error** — `additionalProperties` not supported by Google; added `sanitize_schema()` recursive stripper
-2. **Events silently dropped** — Engine sessions used `paw-{uuid}` which hit the `paw-*` background session filter in main.ts; changed to `eng-{uuid}`
+---
+
+## Phase 1 Features (Baseline)
+- **6 AI providers:** Anthropic, OpenAI, Google Gemini, OpenRouter, Ollama, Custom
+- **SSE streaming** to chat UI
+- **13 built-in tools:** exec, fetch, read_file, write_file, soul_read, soul_write, soul_list, memory_store, memory_search, web_search, web_read, web_screenshot, web_browse
+- **7 vault skill tools:** email_send, email_read, slack_send, slack_read, github_api, rest_api_call, webhook_send
+- **SQLite sessions** in `~/.paw/engine.db` (WAL mode)
 
 ---
 
@@ -93,37 +161,47 @@ Phase 1 (core engine) completed 2026-02-16. Phase 2 (security, sessions, meterin
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `mod.rs` | 10 | Module declarations |
-| `types.rs` | ~420 | All data structures: Message, Role, ToolCall, ToolDefinition, EngineEvent, Session, StoredMessage, ChatRequest/Response, EngineConfig, ProviderConfig, ProviderKind, StreamChunk, **TokenUsage**, **ChatAttachment**, **AgentFile**, **Memory**, **MemoryConfig**, **MemoryStats** |
-| `providers.rs` | ~780 | AI provider HTTP clients with SSE streaming. `OpenAiProvider`, `AnthropicProvider`, `GoogleProvider`. `AnyProvider` enum. **Exponential backoff retry** (3 retries on 429/500/502/503/529). **Token usage parsing** per provider. **Attachment content block formatting** (OpenAI) |
-| `agent_loop.rs` | ~250 | Core agentic loop: call model → accumulate chunks → if tool calls → **HIL approval wait** → execute → loop back. **Token usage accumulation** across chunks. Emits `engine-event` Tauri events |
-| `tool_executor.rs` | ~190 | Tool execution: `exec` (sh -c), `fetch` (reqwest), `read_file`, `write_file`. Output truncation (50KB exec, 50KB fetch, 100KB read) |
-| `sessions.rs` | ~450 | SQLite session/message/agent-file/memory storage via rusqlite. DB at `~/.paw/engine.db` with WAL mode. Tables: sessions, messages, engine_config, **agent_files**, **memories**. **`compose_agent_context()`** composes agent files into system prompt section. **Memory CRUD** + `search_memories_by_embedding()` (cosine similarity) + `search_memories_keyword()` (LIKE fallback). Utilities: `f32_vec_to_bytes`, `bytes_to_f32_vec`, `cosine_similarity` |
-| `memory.rs` | ~200 | **NEW** — `EmbeddingClient` (Ollama + OpenAI-compatible format). `store_memory()` (embed + store, graceful fallback). `search_memories()` (semantic + keyword fallback). `extract_memorable_facts()` (heuristic pattern matching for auto-capture) |
-| `commands.rs` | ~600 | 23 Tauri `#[tauri::command]` handlers + `EngineState` struct with **`PendingApprovals`** map, **`MemoryConfig`**. System prompt composition (base + agent context + memory). **Auto-recall** before agent turns, **auto-capture** after. 12 new commands for agent files (4) and memory (8) |
+| `mod.rs` | 13 | Module declarations (commands, types, providers, agent_loop, tool_executor, sessions, memory, skills, web) |
+| `types.rs` | 841 | All data types + **22 tool definitions** (13 builtins in `builtins()` + 7 skill tools in `skill_tools()` + 2 factory methods). Message, Role, ToolCall, ToolDefinition, EngineEvent, Session, ChatRequest, EngineConfig, ProviderConfig, TokenUsage, ChatAttachment, etc. |
+| `providers.rs` | 860 | AI provider HTTP clients. `OpenAiProvider`, `AnthropicProvider`, `GoogleProvider`, `AnyProvider`. SSE streaming, exponential retry, token usage parsing, attachment formatting |
+| `agent_loop.rs` | 258 | Core agentic loop: call model → accumulate → tool calls → HIL approval → execute → loop. Token usage accumulation |
+| `tool_executor.rs` | 753 | All tool handlers: exec (sh -c), fetch (reqwest), read_file, write_file, soul_read/write/list, memory_store/search, web_search/read/screenshot/browse, + 7 skill tool handlers (email SMTP/IMAP, Slack API, GitHub API, REST, webhook) |
+| `sessions.rs` | 657 | SQLite storage: sessions, messages, engine_config, agent_files, memories tables. `compose_agent_context()`. Memory CRUD + vector search (cosine similarity) + keyword fallback |
+| `skills.rs` | 1072 | **37 skill definitions** across 9 categories. `SkillCategory` enum, `SkillDefinition`/`SkillStatus` structs. Encrypted credential vault (keyring + XOR + base64). Binary/env detection. `get_enabled_skill_instructions()` with credential injection + custom instruction support. DB methods for skill_credentials, skill_state, skill_custom_instructions tables |
+| `web.rs` | 538 | Web tools: DuckDuckGo search (HTML scraping), URL reader (scraper crate), headless Chrome screenshots, interactive browser (persistent OnceLock session) |
+| `memory.rs` | 245 | `EmbeddingClient` (Ollama + OpenAI-compatible). `store_memory()`, `search_memories()`, `extract_memorable_facts()` (heuristic auto-capture) |
+| `commands.rs` | 741 | **31 Tauri commands** + `EngineState` struct with `PendingApprovals`, `MemoryConfig`. System prompt composition (base + agent context + memory + skill instructions). Auto-recall/capture |
 
 ### TypeScript Frontend (`src/`)
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `engine.ts` | ~320 | `PawEngineClient` class — Tauri `invoke()` wrappers for all 23 commands. **`approveTool()`** method. **10 new methods** for agent files (list/get/set/delete) and memory (store/search/stats/delete/list + config). Event listener system. Exported singleton `pawEngine` |
-| `engine-bridge.ts` | ~175 | Translates engine events → gateway-style agent events. `isEngineMode()`, `startEngineBridge()`, `onEngineAgent()`, `engineChatSend()`. **`onEngineToolApproval()`** / **`resolveEngineToolApproval()`** for HIL. **Attachment passthrough**. **Usage data forwarding**. Filters intermediate Complete events |
-| `views/settings-engine.ts` | ~124 | Engine settings UI: mode toggle, provider kind, API key, model, base URL, save button |
+| `engine.ts` | 364 | `PawEngineClient` class — 32 methods wrapping `invoke()` for all 31 commands + event listener. Skills, memory, agent files, sessions, config, chat |
+| `engine-bridge.ts` | 223 | Engine → gateway-style event translation. HIL approval handlers. Attachment passthrough. Usage forwarding |
+| `views/settings-skills.ts` | 414 | Skills UI: category tabs, filter, skill cards, credential inputs, binary/env status, Advanced instruction editor, save/reset |
+| `views/settings-engine.ts` | 125 | Engine settings: provider, model, API key, base URL |
 
 ### Modified Files
 
 | File | Changes |
 |------|---------|
-| `src-tauri/Cargo.toml` | Added: reqwest 0.12 (json+stream+rustls-tls), tokio 1 (full), tokio-stream 0.1, futures 0.3, uuid 1 (v4), rusqlite 0.31 (bundled) |
-| `src-tauri/src/lib.rs` | Added `pub mod engine;`, `EngineState` init with `PendingApprovals`, `.manage(engine_state)`, **23 engine commands** in `invoke_handler` (was 11, +12 for soul/memory) |
-| `src/main.ts` | Engine-bridge imports, dual-mode `connectGateway()`, `handleAgentEvent()`, dual-mode `sendMessage()`. **Phase 2:** dual-mode `loadSessions()`, `loadChatHistory()`, session rename/delete. **HIL approval handler** (~150 lines) via `onEngineToolApproval()` with full security pipeline. Attachment type handling |
-| `src/views/foundry.ts` | **Phase 3:** `loadAgents()` shows Default Agent card in engine mode. `loadAgentFiles()`, `openAgentFileEditor()`, save handler all route to `pawEngine` in engine mode |
-| `src/views/memory-palace.ts` | **Phase 3:** All memory views (sidebar, recall, remember, graph, export) route to `pawEngine.memorySearch/Store/List/Stats()` in engine mode. `loadMemoryPalace()` initializes with `pawEngine.memoryStats()` check |
-| `index.html` | Runtime Mode section in Settings → General with engine config panel |
+| `src-tauri/Cargo.toml` | reqwest, tokio, tokio-stream, futures, uuid, rusqlite, headless_chrome, scraper, url, keyring, rand, base64, chrono, dirs, ed25519-dalek, sha2 |
+| `src-tauri/src/lib.rs` | `pub mod engine;`, `EngineState` init, `.manage(engine_state)`, **31 engine commands** registered |
+| `src/main.ts` | Engine-bridge imports, dual-mode send/sessions/history, HIL approval handler, attachment handling |
+| `src/views/foundry.ts` | Agent file editor wired to `pawEngine` |
+| `src/views/memory-palace.ts` | All memory views wired to `pawEngine` |
+| `index.html` | Pawz branding, Skills view in sidebar, engine settings panel |
 
 ---
 
 ## Architecture Details
+
+### System Prompt Composition
+The full system prompt is assembled from 4 sources (in order, joined by `\n\n---\n\n`):
+1. **Base prompt** — user's system prompt or default from `EngineConfig`
+2. **Agent context** — Soul files (IDENTITY.md, SOUL.md, USER.md, AGENTS.md, TOOLS.md)
+3. **Memory context** — Auto-recalled relevant memories (`## Relevant Memories`)
+4. **Skill instructions** — All enabled skills' instructions with credential injection (`# Enabled Skills`)
 
 ### Event Flow (Engine Mode)
 ```
@@ -133,81 +211,69 @@ User types message
       → pawEngine.chatSend() [engine.ts]
         → invoke('engine_chat_send') [Tauri IPC]
           → Rust engine_chat_send [commands.rs]
+            → compose system prompt (base + soul + memory + skills)
             → spawns async agent_loop::run_agent_turn
               → provider.chat_stream() [SSE to AI API]
               → emits engine-event (Delta/ToolRequest/ToolResult/Complete/Error)
               → on ToolRequest: PAUSES on oneshot channel
             → stores messages in SQLite
-  
+
   engine-event Tauri events
     → PawEngineClient listener [engine.ts]
-      → wildcard dispatch
-        → translateEngineEvent() [engine-bridge.ts]
-          → handleAgentEvent() [main.ts] — chat UI updates
-        → onEngineToolApproval handler [main.ts] — for tool_request events
-          → security classification [security.ts]
-          → approval modal / auto-approve/deny
-          → resolveEngineToolApproval() → pawEngine.approveTool()
-            → invoke('engine_approve_tool') → oneshot channel resolves
-              → agent_loop resumes execution
+      → translateEngineEvent() [engine-bridge.ts]
+        → handleAgentEvent() [main.ts] — chat UI updates
+      → onEngineToolApproval handler [main.ts]
+        → security classification → approval modal / auto-approve
+        → resolveEngineToolApproval() → oneshot channel resolves
+          → agent_loop resumes
 ```
 
 ### Session ID Conventions
 - `eng-{uuid}` — Engine chat sessions (MUST NOT start with `paw-`)
-- `paw-research-*` — Research module background sessions (routed separately)
-- `paw-build-*` — Build module sessions (routed separately)
-- `paw-*` — Other background sessions (filtered/dropped in main chat handler)
+- `paw-research-*`, `paw-build-*`, `paw-*` — Background sessions (filtered in main chat)
 
-### Provider Resolution (commands.rs)
-When no `provider_id` is specified, the engine resolves by model name prefix:
-- `claude*` / `anthropic*` → Anthropic provider
-- `gemini*` / `google*` → Google provider
-- `gpt*` / `o1*` / `o3*` → OpenAI provider
-- Fallback → default provider → first configured provider
+### Provider Resolution
+From model name prefix: `claude*`→Anthropic, `gemini*`→Google, `gpt*`/`o1*`/`o3*`→OpenAI. Fallback→default→first configured.
 
-### EngineConfig (persisted in SQLite)
-```json
-{
-  "providers": [{ "id": "google", "kind": "google", "api_key": "...", "base_url": null, "default_model": "gemini-2.0-flash" }],
-  "default_provider": "google",
-  "default_model": "gemini-2.0-flash",
-  "default_system_prompt": "You are a helpful AI assistant...",
-  "max_tool_rounds": 20,
-  "tool_timeout_secs": 120
-}
-```
+### Database Schema (8 tables in `~/.paw/engine.db`)
+| Table | Purpose |
+|-------|---------|
+| `sessions` | Session metadata (id, model, system_prompt, timestamps) |
+| `messages` | Conversation messages (role, content, tool_calls, tool_results) |
+| `engine_config` | Serialized EngineConfig JSON |
+| `agent_files` | Soul/personality files per agent |
+| `memories` | Long-term memories with embeddings |
+| `skill_credentials` | Encrypted credential key-value pairs per skill |
+| `skill_state` | Enabled/disabled state per skill |
+| `skill_custom_instructions` | User-edited skill instructions |
+
+### 31 Tauri Commands
+**Chat:** `engine_chat_send`, `engine_chat_history`
+**Sessions:** `engine_sessions_list`, `engine_session_rename`, `engine_session_delete`, `engine_session_clear`
+**Config:** `engine_get_config`, `engine_set_config`, `engine_upsert_provider`, `engine_remove_provider`, `engine_status`
+**Approval:** `engine_approve_tool`
+**Agent Files:** `engine_agent_file_list`, `engine_agent_file_get`, `engine_agent_file_set`, `engine_agent_file_delete`
+**Memory:** `engine_memory_store`, `engine_memory_search`, `engine_memory_stats`, `engine_memory_delete`, `engine_memory_list`, `engine_get_memory_config`, `engine_set_memory_config`, `engine_test_embedding`
+**Skills:** `engine_skills_list`, `engine_skill_set_enabled`, `engine_skill_set_credential`, `engine_skill_delete_credential`, `engine_skill_revoke_all`, `engine_skill_get_instructions`, `engine_skill_set_instructions`
 
 ---
 
-## Phase 4 — What's Needed Next
+## What's Needed Next
 
 ### Priority 1: Multi-Provider Testing
-- Test with Anthropic API key (Claude models)
-- Test with OpenAI API key (GPT-4o, etc.)
-- Test with OpenRouter
-- Test with local Ollama (both chat and embeddings)
-- Verify HIL approval flow works for each provider
-- Verify token metering reports correct values per provider
-- Verify auto-recall/capture memory flow
+- Test with Anthropic, OpenAI, OpenRouter, Ollama API keys
+- Verify HIL, metering, memory flow per provider
 
 ### Priority 2: Attachment Support — Additional Providers
-- Anthropic: base64 image content blocks (`type: "image"`)
-- Google: inline data parts (`inlineData: { mimeType, data }`)
-- Currently only OpenAI format is implemented
+- Anthropic: `type: "image"` content blocks
+- Google: `inlineData: { mimeType, data }` parts
 
-### Priority 3: Memory Settings UI
-- Expose `MemoryConfig` in Settings → Memory tab
-- Toggle auto-recall, auto-capture
-- Configure embedding endpoint URL and model
-- Test embedding connection button
+### Priority 3: API Key Validation
+- Test API key on save in settings (lightweight test call)
+- Show success/error feedback
 
-### Priority 4: API Key Validation
-- Test API key on save in engine settings (lightweight test call)
-- Show success/error feedback in settings UI
-
-### Priority 5: Extended Error Surfacing
-- Ensure all error states (auth, rate limit, model not found) display clearly in chat UI
-- Consider a dedicated error toast for non-recoverable errors
+### Priority 4: Extended Error Surfacing
+- Ensure all error states display clearly in chat UI
 
 ---
 
@@ -217,25 +283,25 @@ When no `provider_id` is specified, the engine resolves by model name prefix:
 # On Mac (development)
 cd ~/Desktop/paw
 git pull origin main
-npm run tauri dev          # First build takes 5-10 min (Rust compilation)
+npm run tauri dev          # First build takes 5-10 min
 
 # On Codespaces (code changes)
 cd /workspaces/paw
-cargo check                # Verify Rust compiles (in src-tauri/)
-npx tsc --noEmit           # Verify TypeScript compiles
+cargo check --manifest-path src-tauri/Cargo.toml  # Rust
+npx tsc --noEmit                                   # TypeScript
 git add -A && git commit -m "..." && git push
 
-# Logs
-# Rust logs appear in the terminal running `npm run tauri dev`
-# Frontend logs: Cmd+Option+I → Console tab in the Tauri webview
+# Logs: Rust → terminal. Frontend → Cmd+Option+I → Console
 ```
 
 ## Key Technical Notes
 
-- **Tauri lib name:** `paw_temp_lib` (set in Cargo.toml)
-- **Engine DB path:** `~/.paw/engine.db` (SQLite with WAL mode, 5 tables: sessions, messages, engine_config, agent_files, memories)
-- **Tauri event name:** `engine-event` (all engine events flow through this single channel)
-- **Runtime mode storage:** `localStorage.getItem('paw-runtime-mode')` — `'engine'` or `'gateway'`
-- **Google Gemini quirk:** Rejects `additionalProperties`, `$schema`, `$ref` in tool schemas — `sanitize_schema()` strips these
-- **Session ID prefix:** `eng-` not `paw-` (paw-* gets filtered by background session handler)
-- **Existing lib.rs is ~2,660 lines** — all the OpenClaw gateway commands (check_node, install_openclaw, start_gateway, etc.) remain intact for gateway mode
+- **Tauri lib name:** `paw_temp_lib` (Cargo.toml)
+- **Engine DB:** `~/.paw/engine.db` (SQLite WAL, 8 tables)
+- **Event channel:** `engine-event` (single Tauri event for all engine events)
+- **Session prefix:** `eng-` (not `paw-`, which gets filtered)
+- **Google quirk:** Rejects `additionalProperties`/`$schema`/`$ref` — `sanitize_schema()` strips these
+- **Vault encryption:** XOR with 32-byte random key in OS keychain (`paw-skill-vault` service)
+- **Web browsing:** headless_chrome v1 with OnceLock singleton browser instance
+- **Total engine Rust LOC:** ~5,168 across 9 files
+- **Total engine TS LOC:** ~1,126 across 4 files

@@ -150,6 +150,10 @@ export interface EngineSkillStatus {
   has_instructions: boolean;
   is_ready: boolean;
   tool_names: string[];
+  /** Default instructions from builtin definition */
+  default_instructions: string;
+  /** Custom user-edited instructions (empty = using defaults) */
+  custom_instructions: string;
 }
 
 // ── Engine Client ──────────────────────────────────────────────────────
@@ -346,6 +350,14 @@ class PawEngineClient {
 
   async skillRevokeAll(skillId: string): Promise<void> {
     return invoke('engine_skill_revoke_all', { skillId });
+  }
+
+  async skillGetInstructions(skillId: string): Promise<string | null> {
+    return invoke<string | null>('engine_skill_get_instructions', { skillId });
+  }
+
+  async skillSetInstructions(skillId: string, instructions: string): Promise<void> {
+    return invoke('engine_skill_set_instructions', { skillId, instructions });
   }
 }
 

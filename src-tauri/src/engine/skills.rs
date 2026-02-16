@@ -99,6 +99,10 @@ pub struct SkillStatus {
     pub is_ready: bool,
     pub tool_names: Vec<String>,
     pub has_instructions: bool,
+    /// Default agent instructions (from builtin definition).
+    pub default_instructions: String,
+    /// Custom user-edited instructions (if any). Empty string = using defaults.
+    pub custom_instructions: String,
 }
 
 // ── Built-in Skill Definitions ─────────────────────────────────────────
@@ -731,6 +735,12 @@ impl SessionStore {
                 enabled INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS skill_custom_instructions (
+                skill_id TEXT PRIMARY KEY,
+                instructions TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
         ").map_err(|e| format!("Failed to create skill tables: {}", e))?;
         Ok(())
     }
@@ -820,6 +830,41 @@ impl SessionStore {
             Err(e) => Err(format!("Query error: {}", e)),
         }
     }
+
+    /// Get custom instructions for a skill (if any).
+    pub fn get_skill_custom_instructions(&self, skill_id: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let result = conn.query_row(
+            "SELECT instructions FROM skill_custom_instructions WHERE skill_id = ?1",
+            rusqlite::params![skill_id],
+            |row: &rusqlite::Row| row.get::<_, String>(0),
+        );
+        match result {
+            Ok(val) => Ok(Some(val)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
+    /// Set custom instructions for a skill.
+    /// Pass empty string to clear (falls back to defaults).
+    pub fn set_skill_custom_instructions(&self, skill_id: &str, instructions: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        if instructions.is_empty() {
+            conn.execute(
+                "DELETE FROM skill_custom_instructions WHERE skill_id = ?1",
+                rusqlite::params![skill_id],
+            ).map_err(|e| format!("Delete error: {}", e))?;
+        } else {
+            conn.execute(
+                "INSERT INTO skill_custom_instructions (skill_id, instructions, updated_at)
+                 VALUES (?1, ?2, datetime('now'))
+                 ON CONFLICT(skill_id) DO UPDATE SET instructions = ?2, updated_at = datetime('now')",
+                rusqlite::params![skill_id, instructions],
+            ).map_err(|e| format!("Set instructions error: {}", e))?;
+        }
+        Ok(())
+    }
 }
 
 // ── Encryption helpers ─────────────────────────────────────────────────
@@ -907,6 +952,8 @@ pub fn get_all_skill_status(store: &SessionStore) -> Result<Vec<SkillStatus>, St
 
         let is_ready = enabled && missing_creds.is_empty() && missing_bins.is_empty() && missing_envs.is_empty();
 
+        let custom_instr = store.get_skill_custom_instructions(&def.id)?.unwrap_or_default();
+
         statuses.push(SkillStatus {
             id: def.id.clone(),
             name: def.name.clone(),
@@ -922,9 +969,11 @@ pub fn get_all_skill_status(store: &SessionStore) -> Result<Vec<SkillStatus>, St
             required_env_vars: def.required_env_vars.clone(),
             missing_env_vars: missing_envs,
             install_hint: def.install_hint.clone(),
-            has_instructions: !def.agent_instructions.is_empty(),
+            has_instructions: !def.agent_instructions.is_empty() || !custom_instr.is_empty(),
             is_ready,
             tool_names: def.tool_names.clone(),
+            default_instructions: def.agent_instructions.clone(),
+            custom_instructions: custom_instr,
         });
     }
 
@@ -952,17 +1001,31 @@ pub fn get_skill_credentials(store: &SessionStore, skill_id: &str) -> Result<std
 }
 /// Collect agent instructions from all enabled skills.
 /// Returns a combined string to be injected into the system prompt.
+/// - Prefers custom instructions over defaults (if user edited them).
+/// - For skills with credentials, injects actual decrypted values into placeholders.
 pub fn get_enabled_skill_instructions(store: &SessionStore) -> Result<String, String> {
     let definitions = builtin_skills();
     let mut sections: Vec<String> = Vec::new();
 
     for def in &definitions {
-        if def.agent_instructions.is_empty() { continue; }
         if !store.is_skill_enabled(&def.id)? { continue; }
+
+        // Use custom instructions if set, otherwise fall back to defaults
+        let base_instructions = store.get_skill_custom_instructions(&def.id)?
+            .unwrap_or_else(|| def.agent_instructions.clone());
+
+        if base_instructions.is_empty() { continue; }
+
+        // For skills with credentials, inject actual values into the instructions
+        let instructions = if !def.required_credentials.is_empty() {
+            inject_credentials_into_instructions(store, &def.id, &def.required_credentials, &base_instructions)
+        } else {
+            base_instructions
+        };
 
         sections.push(format!(
             "## {} Skill ({})\n{}",
-            def.name, def.id, def.agent_instructions
+            def.name, def.id, instructions
         ));
     }
 
@@ -974,4 +1037,37 @@ pub fn get_enabled_skill_instructions(store: &SessionStore) -> Result<String, St
         "\n\n# Enabled Skills\nYou have the following skills available. Use exec, fetch, read_file, write_file, and other built-in tools to leverage them.\n\n{}\n",
         sections.join("\n\n")
     ))
+}
+
+/// Inject decrypted credential values into instruction text.
+/// Adds a "Credentials available:" block at the end of the instructions
+/// so the agent knows the actual API keys/tokens to use.
+fn inject_credentials_into_instructions(
+    store: &SessionStore,
+    skill_id: &str,
+    required_credentials: &[CredentialField],
+    instructions: &str,
+) -> String {
+    match get_skill_credentials(store, skill_id) {
+        Ok(creds) if !creds.is_empty() => {
+            let cred_lines: Vec<String> = required_credentials.iter()
+                .filter_map(|field| {
+                    creds.get(&field.key).map(|val| {
+                        format!("- {} = {}", field.key, val)
+                    })
+                })
+                .collect();
+
+            if cred_lines.is_empty() {
+                return instructions.to_string();
+            }
+
+            format!(
+                "{}\n\nCredentials (use these values directly — do NOT ask the user for them):\n{}",
+                instructions,
+                cred_lines.join("\n")
+            )
+        }
+        _ => instructions.to_string(),
+    }
 }

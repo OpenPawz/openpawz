@@ -187,6 +187,7 @@ function renderSkillCard(s: EngineSkillStatus): string {
     ${renderBinaryStatus(s)}
     ${renderEnvVarStatus(s)}
     ${renderCredentialFields(s)}
+    ${renderAdvancedSection(s)}
   </div>`;
 }
 
@@ -251,6 +252,39 @@ function renderCredentialFields(skill: EngineSkillStatus): string {
   return `<div style="border-top:1px solid var(--border-color); padding-top:8px; margin-top:6px;">
     <div style="font-size:11px; font-weight:600; color:var(--text-secondary); margin-bottom:6px;">🔑 Credentials</div>
     ${rows}
+  </div>`;
+}
+
+function renderAdvancedSection(s: EngineSkillStatus): string {
+  const hasCustom = s.custom_instructions.length > 0;
+  const currentText = hasCustom ? s.custom_instructions : s.default_instructions;
+
+  if (!s.default_instructions && !hasCustom) return '';
+
+  return `<div style="border-top:1px solid var(--border-color); padding-top:8px; margin-top:6px;">
+    <details class="skill-advanced-toggle" data-skill="${escHtml(s.id)}">
+      <summary style="font-size:11px; font-weight:600; color:var(--text-secondary); cursor:pointer; user-select:none; margin-bottom:6px;">
+        ⚙️ Advanced — Agent Instructions
+        ${hasCustom ? '<span style="color:var(--accent-color, #7c3aed); font-size:10px; margin-left:6px;">customized</span>' : ''}
+      </summary>
+      <p style="font-size:10px; color:var(--text-muted); margin:0 0 6px 0;">
+        These instructions are injected into the agent's system prompt when this skill is enabled. Edit to customize how the agent uses this skill.
+      </p>
+      <textarea
+        class="form-input skill-instructions-editor"
+        data-skill="${escHtml(s.id)}"
+        style="width:100%; min-height:120px; font-size:11px; font-family:monospace; resize:vertical; line-height:1.5; background:var(--bg-tertiary); border:1px solid var(--border-color); border-radius:6px; padding:8px;"
+        spellcheck="false"
+      >${escHtml(currentText)}</textarea>
+      <div style="display:flex; gap:6px; margin-top:6px;">
+        <button class="btn btn-sm btn-primary skill-instructions-save" data-skill="${escHtml(s.id)}" style="font-size:11px; padding:4px 12px;">
+          Save Instructions
+        </button>
+        ${hasCustom ? `<button class="btn btn-sm btn-ghost skill-instructions-reset" data-skill="${escHtml(s.id)}" style="font-size:11px; padding:4px 12px; color:var(--text-muted);">
+          Reset to Default
+        </button>` : ''}
+      </div>
+    </details>
   </div>`;
 }
 
@@ -335,6 +369,42 @@ function bindSkillEvents(_skills: EngineSkillStatus[]): void {
       try {
         await pawEngine.skillRevokeAll(skillId);
         showVaultToast(`All ${skillId} credentials revoked`, 'success');
+        await loadSkillsSettings();
+      } catch (err) {
+        showVaultToast(`Failed: ${err}`, 'error');
+      }
+    });
+  });
+
+  // Save custom instructions
+  document.querySelectorAll('.skill-instructions-save').forEach(el => {
+    el.addEventListener('click', async () => {
+      const btn = el as HTMLButtonElement;
+      const skillId = btn.dataset.skill!;
+      const textarea = document.querySelector(`.skill-instructions-editor[data-skill="${skillId}"]`) as HTMLTextAreaElement;
+      const value = textarea?.value ?? '';
+
+      try {
+        await pawEngine.skillSetInstructions(skillId, value);
+        showVaultToast(`Instructions saved for ${skillId}`, 'success');
+        await loadSkillsSettings();
+      } catch (err) {
+        showVaultToast(`Failed: ${err}`, 'error');
+      }
+    });
+  });
+
+  // Reset instructions to default
+  document.querySelectorAll('.skill-instructions-reset').forEach(el => {
+    el.addEventListener('click', async () => {
+      const btn = el as HTMLButtonElement;
+      const skillId = btn.dataset.skill!;
+
+      if (!confirm('Reset to default instructions? Your customizations will be lost.')) return;
+
+      try {
+        await pawEngine.skillSetInstructions(skillId, '');
+        showVaultToast(`Instructions reset for ${skillId}`, 'success');
         await loadSkillsSettings();
       } catch (err) {
         showVaultToast(`Failed: ${err}`, 'error');

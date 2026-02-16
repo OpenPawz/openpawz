@@ -2656,6 +2656,8 @@ pub fn run() {
             engine::commands::engine_skill_set_credential,
             engine::commands::engine_skill_delete_credential,
             engine::commands::engine_skill_revoke_all,
+            engine::commands::engine_skill_get_instructions,
+            engine::commands::engine_skill_set_instructions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -721,3 +721,21 @@ pub fn engine_skill_revoke_all(
     state.store.delete_all_skill_credentials(&skill_id)?;
     state.store.set_skill_enabled(&skill_id, false)
 }
+
+#[tauri::command]
+pub fn engine_skill_get_instructions(
+    state: State<'_, EngineState>,
+    skill_id: String,
+) -> Result<Option<String>, String> {
+    state.store.get_skill_custom_instructions(&skill_id)
+}
+
+#[tauri::command]
+pub fn engine_skill_set_instructions(
+    state: State<'_, EngineState>,
+    skill_id: String,
+    instructions: String,
+) -> Result<(), String> {
+    info!("[engine] Setting custom instructions for skill {} ({} chars)", skill_id, instructions.len());
+    state.store.set_skill_custom_instructions(&skill_id, &instructions)
+}
