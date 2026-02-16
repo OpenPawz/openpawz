@@ -35,7 +35,7 @@ import * as NodesModule from './views/nodes';
 import * as ProjectsModule from './views/projects';
 import * as AgentsModule from './views/agents';
 import * as TodayModule from './views/today';
-import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, type RiskClassification } from './security';
+import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, getSessionOverrideRemaining, isFilesystemWriteTool, activateSessionOverride, type RiskClassification } from './security';
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -3190,6 +3190,31 @@ gateway.on('exec.approval.requested', (payload: unknown) => {
     });
   }
 
+  // ── Session override: "Allow all for this session" (C3) ──
+  const overrideRemaining = getSessionOverrideRemaining();
+  if (overrideRemaining > 0) {
+    // Session override is active — auto-approve (but still deny critical privilege escalation)
+    if (!(secSettings.autoDenyPrivilegeEscalation && isPrivilegeEscalation(tool, args))) {
+      if (id) gateway.execApprovalResolve(id, true).catch(console.warn);
+      const minsLeft = Math.ceil(overrideRemaining / 60000);
+      logCredentialActivity({ action: 'approved', toolName: tool, detail: `Session override active (${minsLeft}min remaining): ${tool}`, sessionKey, wasAllowed: true });
+      logSecurityEvent({ eventType: 'session_override', riskLevel: risk?.level ?? null, toolName: tool, command: cmdStr, detail: `Session override auto-approved (${minsLeft}min remaining)`, sessionKey, wasAllowed: true, matchedPattern: 'session_override' });
+      return;
+    }
+  }
+
+  // ── Read-only project mode: block filesystem writes (H3) ──
+  if (secSettings.readOnlyProjects) {
+    const writeCheck = isFilesystemWriteTool(tool, args);
+    if (writeCheck.isWrite) {
+      if (id) gateway.execApprovalResolve(id, false).catch(console.warn);
+      logCredentialActivity({ action: 'blocked', toolName: tool, detail: `Blocked: filesystem write tool in read-only mode${writeCheck.targetPath ? ` → ${writeCheck.targetPath}` : ''}`, sessionKey, wasAllowed: false });
+      logSecurityEvent({ eventType: 'auto_deny', riskLevel: 'medium', toolName: tool, command: cmdStr, detail: `Read-only mode: filesystem write blocked${writeCheck.targetPath ? ` → ${writeCheck.targetPath}` : ''}`, sessionKey, wasAllowed: false, matchedPattern: 'read_only_mode' });
+      showToast('Blocked: filesystem writes are disabled (read-only project mode)', 'warning');
+      return;
+    }
+  }
+
   // ── Auto-deny: privilege escalation ──
   if (secSettings.autoDenyPrivilegeEscalation && isPrivilegeEscalation(tool, args)) {
     if (id) gateway.execApprovalResolve(id, false).catch(console.warn);
@@ -3328,6 +3353,30 @@ gateway.on('exec.approval.requested', (payload: unknown) => {
   $('approval-allow-btn')?.addEventListener('click', onAllow);
   $('approval-deny-btn')?.addEventListener('click', onDeny);
   $('approval-modal-close')?.addEventListener('click', onDeny);
+
+  // ── Session override dropdown (C3) ──
+  const overrideBtn = $('session-override-btn');
+  const overrideMenu = $('session-override-menu');
+  if (overrideBtn && overrideMenu) {
+    const toggleMenu = (e: Event) => {
+      e.stopPropagation();
+      overrideMenu.style.display = overrideMenu.style.display === 'none' ? 'flex' : 'none';
+    };
+    overrideBtn.addEventListener('click', toggleMenu);
+    overrideMenu.querySelectorAll('.session-override-opt').forEach(opt => {
+      opt.addEventListener('click', () => {
+        const mins = parseInt((opt as HTMLElement).dataset.minutes ?? '30', 10);
+        activateSessionOverride(mins);
+        overrideMenu.style.display = 'none';
+        // Auto-approve this request too
+        cleanup();
+        if (id) gateway.execApprovalResolve(id, true).catch(console.warn);
+        logCredentialActivity({ action: 'approved', toolName: tool, detail: `Session override activated (${mins}min): ${tool}`, sessionKey, wasAllowed: true });
+        logSecurityEvent({ eventType: 'session_override', riskLevel: risk?.level ?? null, toolName: tool, command: cmdStr, detail: `Session override activated (${mins}min)`, sessionKey, wasAllowed: true, matchedPattern: 'session_override' });
+        showToast(`Session override active for ${mins} minutes — all tool requests auto-approved`, 'info');
+      });
+    });
+  }
 });
 
 // ── Additional gateway events ──────────────────────────────────────────────

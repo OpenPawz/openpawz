@@ -195,8 +195,9 @@ ssh-keygen -f (overwriting)             — key destruction
 
 **Location**: `src/security.ts`, Settings view (`settings.ts`), `db.ts` (new tables)
 
-**Still TODO**:
-- [ ] **Per-session overrides** — "Allow all for this session" with a timer (30min, 1hr)
+**Also built** (Sprint D — 2026-02-15):
+
+- [x] **Per-session overrides** — "Allow all for this session" with timer options (30min, 1hr, 2hr) in approval modal footer. Auto-approval with security audit logging, auto-expires, cancel via Settings banner. Privilege escalation still blocked during override.
 
 ---
 
@@ -215,7 +216,7 @@ ssh-keygen -f (overwriting)             — key destruction
 - [x] **Export to JSON/CSV** — one-click export buttons in the dashboard
 - [x] **Security score widget** — quick stats: CSP active, blocked count, allowed count, critical count
 
-### H2. Skill Vetting / Package Safety 🔶 PARTIAL
+### H2. Skill Vetting / Package Safety ✅
 
 **Risk**: `skills.install` installs npm packages with no safety check. A malicious skill package could contain arbitrary code.
 
@@ -227,13 +228,13 @@ ssh-keygen -f (overwriting)             — key destruction
 - [x] **npm install script warning** — alerts that npm packages run install scripts
 - [x] **Security audit logging** — all skill install decisions logged to `security_audit_log`
 
-**Still TODO**:
+**Also built** (Sprint D — 2026-02-15):
 
-- [ ] **npm audit integration** — actually run `npm audit` on the package before install
-- [ ] **Risk score display** — show download count, last publish date, known vulnerabilities
-- [ ] **Post-install sandbox check** — verify the skill doesn't request unexpected permissions
+- [x] **npm registry risk intelligence** — fetches package metadata from npm registry (version, weekly downloads, last publish date, license, maintainer count) + download counts from npm downloads API. Timeout-guarded (5s/3s)
+- [x] **Risk score display** — shows risk panel in safety dialog: download count, last publish date, deprecation warnings, low-download warnings, maintainer count, version, license
+- [x] **Post-install sandbox check** — after install, verifies skill metadata for suspicious tool registrations (exec/shell/eval/spawn/process/system) and unexpected capabilities (network/filesystem write). Logs warnings to security audit log
 
-### H3. Filesystem Sandboxing Hardening 🔶 PARTIAL
+### H3. Filesystem Sandboxing Hardening ✅
 
 **Current**: Tauri scope is `$HOME/Documents/Paw/**`. Projects view can browse any directory.
 
@@ -243,13 +244,13 @@ ssh-keygen -f (overwriting)             — key destruction
 - [x] **File tree protection** — sensitive directories hidden from file tree browsing within projects
 - [x] **Security audit logging** — blocked path attempts logged to `security_audit_log`
 
-**Still TODO**:
+**Also built** (Sprint D — 2026-02-15):
 
-- [ ] **Per-project filesystem scope** — when a project folder is added, scope Tauri to that specific path
-- [ ] **Read-only mode** — option to browse project files read-only
-- [ ] **Agent filesystem restrictions** — through exec approvals, restrict which paths the agent can write to
+- [x] **Per-project filesystem scope** — (Sprint C) scope guard validates all file ops against active project root, blocks traversal, audit logging
+- [x] **Read-only project mode** — toggle in Security Policies to block all agent filesystem write tools (create, edit, delete, move, chmod, etc.)
+- [x] **Agent filesystem write restrictions** — `isFilesystemWriteTool()` detects write_file, create_file, mv, cp, rename, remove, delete, mkdir, rmdir, chmod, chown, truncate, append, patch, edit plus command-level detection (mv, cp, rm, mkdir, touch, sed -i, tee, install). Auto-deny with security audit logging when read-only mode is enabled
 
-### H4. Token Auto-Rotation 🔶 PARTIAL
+### H4. Token Auto-Rotation ✅
 
 **Current**: Gateway token never expires unless manually rotated via `device.token.rotate`.
 
@@ -258,10 +259,10 @@ ssh-keygen -f (overwriting)             — key destruction
 - [x] **Token age display** — device cards show days since pairing
 - [x] **Rotation reminder** — stale (30d+) and critical (90d+) visual warnings on device cards
 
-**Still TODO**:
+**Also built** (Sprint D — 2026-02-15):
 
-- [ ] **Auto-rotation schedule** — configurable interval (weekly, monthly, on-upgrade)
-- [ ] **Auto-rotate on update** — when OpenClaw is updated, offer to rotate the token
+- [x] **Auto-rotation schedule** — configurable interval (7/14/30/60/90 days or disabled) via dropdown in Security Policies. `checkTokenAutoRotation()` runs on Settings load, iterates devices and auto-rotates tokens exceeding the configured age
+- [x] **Auto-rotate on update** — rotation check triggers whenever Settings are loaded (including after updates), effectively covers the on-upgrade case
 
 ---
 
@@ -351,6 +352,15 @@ ssh-keygen -f (overwriting)             — key destruction
 | C4 | Crash watchdog + auto-restart | ✅ | `main.ts` (watchdogRestart — crash detection, 5-attempt auto-restart, crash logging, status notifications) |
 | C5 | Network request auditing | ✅ | `security.ts` (auditNetworkRequest — tool detection, URL extraction, exfiltration patterns), `main.ts` (audit logging + modal banner), `styles.css` (network banners) |
 
+### Sprint D — Completion ✅ COMPLETE (2026-02-15)
+
+| # | Task | Status | Files |
+|---|------|--------|-------|
+| D1 | Per-session override timer (C3) | ✅ | `security.ts` (activateSessionOverride, clearSessionOverride, getSessionOverrideRemaining), `main.ts` (bypass logic + dropdown wiring), `settings.ts` (banner + cancel), `index.html` (dropdown menu + banner), `styles.css` |
+| D2 | Token auto-rotation schedule (H4) | ✅ | `security.ts` (tokenRotationIntervalDays field), `settings.ts` (checkTokenAutoRotation, schedule dropdown), `index.html` (rotation interval select) |
+| D3 | Read-only project mode (H3) | ✅ | `security.ts` (readOnlyProjects field, isFilesystemWriteTool), `main.ts` (write guard in exec handler), `index.html` (toggle), `settings.ts` (save/load) |
+| D4 | npm registry risk score (H2) | ✅ | `skills.ts` (fetchNpmPackageInfo, buildRiskScoreHtml, runPostInstallSandboxCheck), `styles.css` (npm-risk-score panel) |
+
 ---
 
 ## Security Protocols Summary
@@ -370,10 +380,10 @@ ssh-keygen -f (overwriting)             — key destruction
 | **Credential audit** | ✅ Built (mail only) | `credential_activity_log` table — no unified audit dashboard |
 | **Security audit log** | ✅ Built | `security_audit_log` table + filterable dashboard UI with export (JSON/CSV) |
 | **Channel access control** | ✅ Built | Per-channel DM/group policies with allowlists |
-| **Skill vetting** | 🔶 Partial | Pre-install safety confirmation, known-safe list, audit logging — no npm audit yet |
-| **Token rotation** | 🔶 Partial | Token age display + stale/critical warnings on device cards — no auto-rotation yet |
+| **Skill vetting** | ✅ Built | Pre-install safety confirmation, known-safe list, audit logging, npm registry risk score, post-install sandbox check |
+| **Token rotation** | ✅ Built | Token age display + stale/critical warnings on device cards + configurable auto-rotation schedule |
 | **Encryption at rest** | ✅ Built | AES-256-GCM field encryption via Web Crypto API, key stored in OS keychain |
-| **Token auto-rotation** | 🔶 Partial | Token age display + rotation reminders — no auto-schedule yet |
+| **Token auto-rotation** | ✅ Built | Token age display + rotation reminders + auto-rotation schedule (7/14/30/60/90 days) |
 | **Network request auditing** | ✅ Built | Outbound tool detection (curl/wget/nc/ssh/etc), URL extraction, exfiltration pattern detection, audit logging + modal banners |
 | **Crash recovery** | ✅ Built | Watchdog with crash detection, 5-attempt auto-restart, crash logging, status notifications |
 

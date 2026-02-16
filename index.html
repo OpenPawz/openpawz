@@ -1936,6 +1936,15 @@
             </h2>
             <p class="settings-section-desc">Controls how Paw handles dangerous commands from the agent.</p>
 
+            <!-- Session override banner -->
+            <div class="session-override-banner" id="session-override-banner" style="display:none">
+              <div class="session-override-banner-text">
+                <span class="session-override-banner-icon">⏱</span>
+                <span id="session-override-banner-label">Session override active</span>
+              </div>
+              <button class="btn btn-ghost btn-sm" id="session-override-cancel">Cancel Override</button>
+            </div>
+
             <div class="security-toggles">
               <label class="security-toggle-row">
                 <input type="checkbox" id="sec-auto-deny-priv" />
@@ -1958,6 +1967,27 @@
                   <div class="security-toggle-desc">Instead of clicking a button, you must type ALLOW to approve dangerous commands</div>
                 </div>
               </label>
+              <label class="security-toggle-row">
+                <input type="checkbox" id="sec-read-only-projects" />
+                <div class="security-toggle-info">
+                  <div class="security-toggle-label">Read-only project mode</div>
+                  <div class="security-toggle-desc">Block agent filesystem write tools (create, edit, delete, move) — the agent can only read files</div>
+                </div>
+              </label>
+            </div>
+
+            <h3 class="settings-subsection-title" style="margin-top:20px">Token Auto-Rotation</h3>
+            <p class="settings-section-desc">Automatically rotate device tokens after a set number of days. Set to 0 to disable.</p>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+              <select class="form-input" id="sec-token-rotation-interval" style="width:200px">
+                <option value="0">Disabled</option>
+                <option value="7">Every 7 days</option>
+                <option value="14">Every 14 days</option>
+                <option value="30">Every 30 days</option>
+                <option value="60">Every 60 days</option>
+                <option value="90">Every 90 days</option>
+              </select>
+              <span class="settings-section-desc" id="sec-token-rotation-status" style="margin:0"></span>
             </div>
 
             <h3 class="settings-subsection-title" style="margin-top:20px">Command Allowlist</h3>
@@ -2002,6 +2032,15 @@
           <div id="approval-modal-details" class="approval-details"></div>
         </div>
         <div class="modal-footer" id="approval-modal-footer">
+          <!-- Session override dropdown -->
+          <div class="session-override-group" id="session-override-group">
+            <button class="btn btn-ghost btn-sm" id="session-override-btn" title="Approve all requests for a limited time">⏱ Allow all…</button>
+            <div class="session-override-menu" id="session-override-menu" style="display:none">
+              <button class="session-override-opt" data-minutes="30">30 minutes</button>
+              <button class="session-override-opt" data-minutes="60">1 hour</button>
+              <button class="session-override-opt" data-minutes="120">2 hours</button>
+            </div>
+          </div>
           <button class="btn btn-secondary" id="approval-deny-btn">Deny</button>
           <!-- Type-to-confirm container (hidden by default, shown for critical commands) -->
           <div class="approval-type-confirm" id="approval-type-confirm" style="display:none">

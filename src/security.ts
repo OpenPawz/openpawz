@@ -154,6 +154,9 @@ export interface SecuritySettings {
   requireTypeToCritical: boolean;        // Require "ALLOW" to approve critical commands
   commandAllowlist: string[];            // Regex patterns for auto-approved commands
   commandDenylist: string[];             // Regex patterns for auto-denied commands
+  sessionOverrideUntil: number | null;   // Unix timestamp: auto-approve all until this time
+  tokenRotationIntervalDays: number;     // Auto-rotation schedule: 0 = disabled
+  readOnlyProjects: boolean;             // Block agent filesystem write tools in project paths
 }
 
 const DEFAULT_SETTINGS: SecuritySettings = {
@@ -188,6 +191,9 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '\\bcurl\\b.*\\|\\s*(ba)?sh',
     '\\bwget\\b.*\\|\\s*(ba)?sh',
   ],
+  sessionOverrideUntil: null,
+  tokenRotationIntervalDays: 0,
+  readOnlyProjects: false,
 };
 
 export function loadSecuritySettings(): SecuritySettings {
@@ -300,6 +306,68 @@ export function auditNetworkRequest(
       result.exfiltrationReason = ep.source;
       break;
     }
+  }
+
+  return result;
+}
+
+// ── Session override helpers ───────────────────────────────────────────────
+
+/** Activate "allow all" override for a given duration in minutes. */
+export function activateSessionOverride(durationMinutes: number): void {
+  const settings = loadSecuritySettings();
+  settings.sessionOverrideUntil = Date.now() + durationMinutes * 60 * 1000;
+  saveSecuritySettings(settings);
+}
+
+/** Clear the session override. */
+export function clearSessionOverride(): void {
+  const settings = loadSecuritySettings();
+  settings.sessionOverrideUntil = null;
+  saveSecuritySettings(settings);
+}
+
+/** Check if session override is currently active. Returns remaining ms or 0. */
+export function getSessionOverrideRemaining(): number {
+  const settings = loadSecuritySettings();
+  if (!settings.sessionOverrideUntil) return 0;
+  const remaining = settings.sessionOverrideUntil - Date.now();
+  if (remaining <= 0) {
+    // Expired — auto-clear
+    settings.sessionOverrideUntil = null;
+    saveSecuritySettings(settings);
+    return 0;
+  }
+  return remaining;
+}
+
+// ── Filesystem write tool detection (H3) ───────────────────────────────────
+
+const WRITE_TOOLS = /\b(write_file|create_file|mv|cp|rename|remove|delete|mkdir|rmdir|chmod|chown|truncate|append|patch|edit)\b/i;
+const WRITE_COMMANDS = /\b(mv|cp|rm|mkdir|rmdir|touch|chmod|chown|truncate|tee|sed\s+-i|install)\b/;
+
+export function isFilesystemWriteTool(tool: string, args?: Record<string, unknown>): { isWrite: boolean; targetPath: string | null } {
+  const result = { isWrite: false, targetPath: null as string | null };
+
+  if (WRITE_TOOLS.test(tool)) {
+    result.isWrite = true;
+    // Try to extract target path from args
+    if (args) {
+      const pathKeys = ['path', 'filePath', 'file', 'destination', 'dest', 'target', 'directory'];
+      for (const key of pathKeys) {
+        if (typeof args[key] === 'string') {
+          result.targetPath = args[key] as string;
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  // Check command string for write commands
+  const cmdStr = buildSearchString(tool, args);
+  if (WRITE_COMMANDS.test(cmdStr)) {
+    result.isWrite = true;
   }
 
   return result;

@@ -144,6 +144,152 @@ export async function loadSkills() {
 
 // ── B2: Skill Safety Confirmation ──────────────────────────────────────────
 
+// ── H2: npm registry risk intelligence ─────────────────────────────────────
+
+interface NpmPackageInfo {
+  name: string;
+  weeklyDownloads: number | null;
+  lastPublishDate: string | null;
+  lastPublishDays: number | null;
+  deprecated: string | null;
+  license: string | null;
+  version: string | null;
+  maintainerCount: number;
+  hasTypes: boolean;
+}
+
+async function fetchNpmPackageInfo(packageName: string): Promise<NpmPackageInfo | null> {
+  try {
+    // Fetch package metadata from npm registry
+    const resp = await fetch(`https://registry.npmjs.org/${encodeURIComponent(packageName)}`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+
+    const latest = data['dist-tags']?.latest;
+    const latestVersion = latest ? data.versions?.[latest] : null;
+    const time = data.time ?? {};
+    const lastPublishDate = time[latest] ?? time.modified ?? null;
+
+    let lastPublishDays: number | null = null;
+    if (lastPublishDate) {
+      lastPublishDays = Math.floor((Date.now() - new Date(lastPublishDate).getTime()) / 86400000);
+    }
+
+    const info: NpmPackageInfo = {
+      name: data.name ?? packageName,
+      weeklyDownloads: null,
+      lastPublishDate,
+      lastPublishDays,
+      deprecated: latestVersion?.deprecated ?? null,
+      license: latestVersion?.license ?? data.license ?? null,
+      version: latest ?? null,
+      maintainerCount: (data.maintainers ?? []).length,
+      hasTypes: !!(latestVersion?.types || latestVersion?.typings),
+    };
+
+    // Fetch download counts (separate API)
+    try {
+      const dlResp = await fetch(`https://api.npmjs.org/downloads/point/last-week/${encodeURIComponent(packageName)}`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (dlResp.ok) {
+        const dlData = await dlResp.json();
+        info.weeklyDownloads = dlData.downloads ?? null;
+      }
+    } catch { /* non-critical — skip download count */ }
+
+    return info;
+  } catch (e) {
+    console.warn('[skills] npm registry fetch failed:', e);
+    return null;
+  }
+}
+
+function buildRiskScoreHtml(info: NpmPackageInfo): string {
+  const rows: string[] = [];
+
+  if (info.version) {
+    rows.push(`<span class="npm-risk-item">📦 v${escHtml(info.version)}</span>`);
+  }
+  if (info.weeklyDownloads !== null) {
+    const fmt = info.weeklyDownloads >= 1000
+      ? `${(info.weeklyDownloads / 1000).toFixed(info.weeklyDownloads >= 10000 ? 0 : 1)}k`
+      : String(info.weeklyDownloads);
+    rows.push(`<span class="npm-risk-item">📈 ${fmt}/week</span>`);
+  }
+  if (info.lastPublishDays !== null) {
+    const label = info.lastPublishDays > 365
+      ? `${Math.floor(info.lastPublishDays / 365)}y ago`
+      : `${info.lastPublishDays}d ago`;
+    rows.push(`<span class="npm-risk-item">📅 ${label}</span>`);
+  }
+  if (info.license) {
+    rows.push(`<span class="npm-risk-item">⚖ ${escHtml(info.license)}</span>`);
+  }
+  if (info.maintainerCount > 0) {
+    rows.push(`<span class="npm-risk-item">👤 ${info.maintainerCount} maintainer${info.maintainerCount > 1 ? 's' : ''}</span>`);
+  }
+
+  if (!rows.length) return '';
+  return `<div class="npm-risk-score">${rows.join('')}</div>`;
+}
+
+/** H2: Post-install sandbox check — verify the skill after installation */
+async function runPostInstallSandboxCheck(skillName: string): Promise<void> {
+  try {
+    const status = await gateway.skillsStatus();
+    const skills = status.skills ?? [];
+    const installed = skills.find((s: Record<string, unknown>) =>
+      (s.name as string)?.toLowerCase() === skillName.toLowerCase() ||
+      (s.skillKey as string)?.toLowerCase() === skillName.toLowerCase()
+    );
+    if (!installed) return;
+
+    const warnings: string[] = [];
+
+    // Check for suspicious tool registrations
+    const tools = (installed.tools ?? installed.capabilities ?? []) as string[];
+    const dangerousTools = ['exec', 'shell', 'eval', 'spawn', 'process', 'system'];
+    for (const t of tools) {
+      const tStr = typeof t === 'string' ? t : JSON.stringify(t);
+      for (const dt of dangerousTools) {
+        if (tStr.toLowerCase().includes(dt)) {
+          warnings.push(`Registers tool with suspicious name: "${tStr}"`);
+          break;
+        }
+      }
+    }
+
+    // Check for network/filesystem capabilities
+    const caps = (installed.requiredCapabilities ?? installed.permissions ?? []) as string[];
+    for (const c of caps) {
+      const cStr = typeof c === 'string' ? c : JSON.stringify(c);
+      if (/network|http|fetch|socket/i.test(cStr)) {
+        warnings.push(`Requests network access: ${cStr}`);
+      }
+      if (/filesystem|write|disk|file/i.test(cStr)) {
+        warnings.push(`Requests filesystem write access: ${cStr}`);
+      }
+    }
+
+    if (warnings.length > 0) {
+      showSkillsToast(`⚠ Post-install check for ${skillName}: ${warnings[0]}`, 'error');
+      logSecurityEvent({
+        eventType: 'skill_sandbox_check',
+        riskLevel: 'medium',
+        toolName: skillName,
+        command: `skills.sandbox_check ${skillName}`,
+        detail: `Post-install warnings: ${warnings.join('; ')}`,
+        wasAllowed: true,
+      }).catch(() => {});
+    }
+  } catch {
+    // Non-critical — skill may not expose this metadata
+  }
+}
+
 /** Known safe / trusted skill packages (community-vetted) */
 const KNOWN_SAFE_SKILLS = new Set([
   'web-search', 'web-browse', 'web-scrape',
@@ -180,6 +326,30 @@ async function showSkillSafetyConfirm(skillName: string, installId: string): Pro
 
   checks.push({ label: 'Will have access to agent tool calls', status: 'warn' });
 
+  // ── H2: npm registry risk score ──
+  let riskScoreHtml = '';
+  if (isNpmPkg) {
+    const npmInfo = await fetchNpmPackageInfo(installId.replace(/^@/, ''));
+    if (npmInfo) {
+      if (npmInfo.deprecated) {
+        checks.unshift({ label: `⚠ DEPRECATED: ${npmInfo.deprecated}`, status: 'fail' });
+      }
+      if (npmInfo.weeklyDownloads !== null && npmInfo.weeklyDownloads < 100) {
+        checks.push({ label: `Low download count (${npmInfo.weeklyDownloads}/week)`, status: 'warn' });
+      } else if (npmInfo.weeklyDownloads !== null && npmInfo.weeklyDownloads > 10000) {
+        checks.push({ label: `Popular (${(npmInfo.weeklyDownloads / 1000).toFixed(0)}k downloads/week)`, status: 'pass' });
+      }
+      if (npmInfo.lastPublishDays !== null) {
+        if (npmInfo.lastPublishDays > 365) {
+          checks.push({ label: `Last published ${Math.floor(npmInfo.lastPublishDays / 365)}y ago — may be unmaintained`, status: 'warn' });
+        } else {
+          checks.push({ label: `Last published ${npmInfo.lastPublishDays}d ago`, status: 'pass' });
+        }
+      }
+      riskScoreHtml = buildRiskScoreHtml(npmInfo);
+    }
+  }
+
   const checksHtml = checks.map(c => {
     const icon = c.status === 'pass' ? '✓' : c.status === 'warn' ? '⚠' : '✕';
     return `<div class="skill-safety-check"><span class="check-${c.status}">${icon}</span> ${escHtml(c.label)}</div>`;
@@ -213,6 +383,7 @@ async function showSkillSafetyConfirm(skillName: string, installId: string): Pro
           <strong>Skill Safety Review</strong>
           <p style="margin:4px 0 0">This will download and install <strong>${escHtml(skillName)}</strong> on your machine. Skills can execute code and access system resources.</p>
           <div class="skill-safety-checks">${checksHtml}</div>
+          ${riskScoreHtml}
         </div>
       </div>
       <p style="font-size:12px;color:var(--text-muted);margin-top:12px">Only install skills from sources you trust. If unsure, review the skill's documentation first.</p>
@@ -279,6 +450,10 @@ function wireSkillActions() {
           detail: `Skill installed: ${name}`,
           wasAllowed: true,
         }).catch(() => {});
+
+        // ── H2: Post-install sandbox check ──
+        runPostInstallSandboxCheck(name).catch(() => {});
+
         await loadSkills();
       } catch (e) {
         showSkillsToast(`Install failed for ${name}: ${e}`, 'error');

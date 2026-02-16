@@ -2,7 +2,7 @@
 // Extracted from main.ts for maintainability
 
 import { gateway } from '../gateway';
-import { loadSecuritySettings, saveSecuritySettings, type SecuritySettings } from '../security';
+import { loadSecuritySettings, saveSecuritySettings, getSessionOverrideRemaining, clearSessionOverride, type SecuritySettings } from '../security';
 import { getSecurityAuditLog, isEncryptionReady } from '../db';
 
 const $ = (id: string) => document.getElementById(id);
@@ -854,22 +854,39 @@ export function loadSecurityPolicies() {
   const autoDenyPriv = $('sec-auto-deny-priv') as HTMLInputElement | null;
   const autoDenyCritical = $('sec-auto-deny-critical') as HTMLInputElement | null;
   const requireType = $('sec-require-type') as HTMLInputElement | null;
+  const readOnlyProjects = $('sec-read-only-projects') as HTMLInputElement | null;
   const allowlistEl = $('sec-allowlist') as HTMLTextAreaElement | null;
   const denylistEl = $('sec-denylist') as HTMLTextAreaElement | null;
+  const rotationInterval = $('sec-token-rotation-interval') as HTMLSelectElement | null;
+  const rotationStatus = $('sec-token-rotation-status');
 
   if (autoDenyPriv) autoDenyPriv.checked = settings.autoDenyPrivilegeEscalation;
   if (autoDenyCritical) autoDenyCritical.checked = settings.autoDenyCritical;
   if (requireType) requireType.checked = settings.requireTypeToCritical;
+  if (readOnlyProjects) readOnlyProjects.checked = settings.readOnlyProjects;
   if (allowlistEl) allowlistEl.value = settings.commandAllowlist.join('\n');
   if (denylistEl) denylistEl.value = settings.commandDenylist.join('\n');
+  if (rotationInterval) rotationInterval.value = String(settings.tokenRotationIntervalDays);
+  if (rotationStatus) {
+    if (settings.tokenRotationIntervalDays > 0) {
+      rotationStatus.textContent = `Tokens older than ${settings.tokenRotationIntervalDays} days will be auto-rotated`;
+    } else {
+      rotationStatus.textContent = '';
+    }
+  }
+
+  // Session override banner
+  updateSessionOverrideBanner();
 }
 
 function saveSecurityPolicies() {
   const autoDenyPriv = ($('sec-auto-deny-priv') as HTMLInputElement | null)?.checked ?? false;
   const autoDenyCritical = ($('sec-auto-deny-critical') as HTMLInputElement | null)?.checked ?? false;
   const requireType = ($('sec-require-type') as HTMLInputElement | null)?.checked ?? true;
+  const readOnlyProjects = ($('sec-read-only-projects') as HTMLInputElement | null)?.checked ?? false;
   const allowlistRaw = ($('sec-allowlist') as HTMLTextAreaElement | null)?.value ?? '';
   const denylistRaw = ($('sec-denylist') as HTMLTextAreaElement | null)?.value ?? '';
+  const tokenRotationIntervalDays = parseInt(($('sec-token-rotation-interval') as HTMLSelectElement | null)?.value ?? '0', 10);
 
   const commandAllowlist = allowlistRaw.split('\n').map(l => l.trim()).filter(Boolean);
   const commandDenylist = denylistRaw.split('\n').map(l => l.trim()).filter(Boolean);
@@ -883,12 +900,18 @@ function saveSecurityPolicies() {
     }
   }
 
+  // Preserve session override from current settings
+  const existing = loadSecuritySettings();
+
   const settings: SecuritySettings = {
     autoDenyPrivilegeEscalation: autoDenyPriv,
     autoDenyCritical: autoDenyCritical,
     requireTypeToCritical: requireType,
     commandAllowlist,
     commandDenylist,
+    sessionOverrideUntil: existing.sessionOverrideUntil,
+    tokenRotationIntervalDays,
+    readOnlyProjects,
   };
   saveSecuritySettings(settings);
   showSettingsToast('Security policies saved', 'success');
@@ -898,6 +921,69 @@ function resetSecurityPolicies() {
   localStorage.removeItem('paw_security_settings');
   loadSecurityPolicies();
   showSettingsToast('Security policies reset to defaults', 'info');
+}
+
+// ── Session override banner management ─────────────────────────────────────
+
+let _overrideBannerInterval: ReturnType<typeof setInterval> | null = null;
+
+export function updateSessionOverrideBanner(): void {
+  const banner = $('session-override-banner');
+  const label = $('session-override-banner-label');
+  if (!banner) return;
+
+  const remaining = getSessionOverrideRemaining();
+  if (remaining > 0) {
+    const mins = Math.ceil(remaining / 60000);
+    banner.style.display = 'flex';
+    if (label) label.textContent = `Session override active — auto-approving all tools for ${mins} minute${mins !== 1 ? 's' : ''}`;
+
+    // Start periodic update if not already running
+    if (!_overrideBannerInterval) {
+      _overrideBannerInterval = setInterval(() => {
+        const r = getSessionOverrideRemaining();
+        if (r <= 0) {
+          if (banner) banner.style.display = 'none';
+          if (_overrideBannerInterval) { clearInterval(_overrideBannerInterval); _overrideBannerInterval = null; }
+          return;
+        }
+        const m = Math.ceil(r / 60000);
+        if (label) label.textContent = `Session override active — auto-approving all tools for ${m} minute${m !== 1 ? 's' : ''}`;
+      }, 30000); // Update every 30 seconds
+    }
+  } else {
+    banner.style.display = 'none';
+    if (_overrideBannerInterval) { clearInterval(_overrideBannerInterval); _overrideBannerInterval = null; }
+  }
+}
+
+// ── Token auto-rotation check (H4) ────────────────────────────────────────
+
+export async function checkTokenAutoRotation(): Promise<void> {
+  const settings = loadSecuritySettings();
+  if (settings.tokenRotationIntervalDays <= 0) return;
+
+  try {
+    const result = await gateway.devicePairList();
+    const devices = result.devices ?? [];
+    const maxMs = settings.tokenRotationIntervalDays * 24 * 60 * 60 * 1000;
+
+    for (const d of devices) {
+      if (!d.pairedAt) continue;
+      const ageMs = Date.now() - d.pairedAt;
+      if (ageMs > maxMs) {
+        try {
+          await gateway.deviceTokenRotate(d.id);
+          console.log(`[security] Auto-rotated token for device ${d.name || d.id} (${Math.floor(ageMs / 86400000)}d old)`);
+          showSettingsToast(`Auto-rotated token for ${d.name || d.id} (exceeded ${settings.tokenRotationIntervalDays}d)`, 'info');
+        } catch (e) {
+          console.warn(`[security] Auto-rotation failed for device ${d.name || d.id}:`, e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[security] Token auto-rotation check failed:', e);
+  }
 }
 
 // ── Settings toast (inline) ────────────────────────────────────────────────
@@ -943,6 +1029,12 @@ export function initSettings() {
   // Security policies
   $('settings-save-security')?.addEventListener('click', () => saveSecurityPolicies());
   $('settings-reset-security')?.addEventListener('click', () => resetSecurityPolicies());
+  // Session override cancel
+  $('session-override-cancel')?.addEventListener('click', () => {
+    clearSessionOverride();
+    updateSessionOverrideBanner();
+    showSettingsToast('Session override cancelled — approval modal restored', 'info');
+  });
   // Budget
   initBudgetSettings();
 }
@@ -962,4 +1054,6 @@ export async function loadSettings() {
     loadSettingsWizard(),
     loadSettingsBrowser(),
   ]);
+  // H4: Check for token auto-rotation after devices are loaded
+  checkTokenAutoRotation().catch(() => {});
 }
