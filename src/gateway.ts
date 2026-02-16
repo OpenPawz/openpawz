@@ -618,7 +618,7 @@ class GatewayClient {
       idempotencyKey,
       ...(opts?.thinking ? { thinking: opts.thinking } : {}),
       ...(opts?.model ? { model: opts.model } : {}),
-      ...(finalSystemPrompt ? { systemPrompt: finalSystemPrompt } : {}),
+      ...(finalSystemPrompt ? { system: finalSystemPrompt } : {}),
       ...(opts?.thinkingLevel ? { thinkingLevel: opts.thinkingLevel } : {}),
       ...(opts?.temperature != null ? { temperature: opts.temperature } : {}),
       ...(opts?.attachments?.length ? { attachments: opts.attachments } : {}),
