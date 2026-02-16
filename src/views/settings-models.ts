@@ -1,11 +1,11 @@
 // Settings: Models & Providers
 // CRUD for AI model providers + model definitions + default model selection
-// ~250 lines — focused on models.providers config path
+// Uses inline forms instead of window.prompt/confirm (blocked in Tauri WebView)
 
 import { gateway } from '../gateway';
 import { showToast } from '../components/toast';
 import {
-  getConfig, patchConfig, getVal, isConnected,
+  getConfig, patchConfig, deleteConfigKey, getVal, isConnected,
   esc, formRow, selectInput, textInput, toggleSwitch, saveReloadButtons
 } from './settings-config';
 
@@ -93,6 +93,12 @@ export async function loadModelsSettings() {
     const renderAliasRows = () => {
       aliasTableBody.innerHTML = '';
       const entries = Object.entries(aliasModels);
+      if (entries.length === 0) {
+        const hint = document.createElement('p');
+        hint.style.cssText = 'color:var(--text-muted);font-size:12px;margin:4px 0';
+        hint.textContent = 'No aliases configured yet.';
+        aliasTableBody.appendChild(hint);
+      }
       for (const [modelId, val] of entries) {
         const alias = (val && typeof val === 'object') ? (val as Record<string, unknown>).alias ?? '' : '';
         const row = document.createElement('div');
@@ -118,16 +124,27 @@ export async function loadModelsSettings() {
     renderAliasRows();
     aliasSection.appendChild(aliasTableBody);
 
+    // Inline add-alias form (no window.prompt)
+    const addAliasRow = document.createElement('div');
+    addAliasRow.style.cssText = 'display:flex;gap:8px;align-items:center;margin-top:8px';
+    const addAliasModelInp = textInput('', 'anthropic/claude-haiku-4-5');
+    addAliasModelInp.style.flex = '1';
     const addAliasBtn = document.createElement('button');
     addAliasBtn.className = 'btn btn-ghost btn-sm';
-    addAliasBtn.textContent = '+ Add Alias';
+    addAliasBtn.textContent = '+ Add';
     addAliasBtn.onclick = () => {
-      const modelId = window.prompt?.('Full model ID (e.g. anthropic/claude-haiku-4-5):')?.trim();
-      if (!modelId) return;
+      const modelId = addAliasModelInp.value.trim();
+      if (!modelId) {
+        showToast('Enter a model ID first', 'error');
+        return;
+      }
       aliasModels[modelId] = { alias: '' };
+      addAliasModelInp.value = '';
       renderAliasRows();
     };
-    aliasSection.appendChild(addAliasBtn);
+    addAliasRow.appendChild(addAliasModelInp);
+    addAliasRow.appendChild(addAliasBtn);
+    aliasSection.appendChild(addAliasRow);
 
     aliasSection.appendChild(saveReloadButtons(
       async () => {
@@ -194,15 +211,88 @@ export async function loadModelsSettings() {
     const addBtn = document.createElement('button');
     addBtn.className = 'btn btn-primary btn-sm';
     addBtn.textContent = '+ Add Provider';
-    addBtn.addEventListener('click', () => addProvider(container));
+    addBtn.addEventListener('click', () => toggleAddProviderForm(container));
     provHeader.appendChild(addBtn);
     container.appendChild(provHeader);
+
+    // Inline add-provider form (hidden by default)
+    const addForm = document.createElement('div');
+    addForm.id = 'add-provider-form';
+    addForm.style.cssText = 'display:none;margin-top:12px;padding:16px;border:1px solid var(--accent);border-radius:8px;background:var(--bg-secondary, rgba(255,255,255,0.03))';
+    addForm.innerHTML = `<h4 style="margin:0 0 12px 0;font-size:14px">New Provider</h4>`;
+
+    const nameRow = formRow('Provider Name', 'Lowercase identifier (e.g. google, openai, ollama)');
+    const nameInp = textInput('', 'ollama');
+    nameInp.style.maxWidth = '240px';
+    nameInp.id = 'add-provider-name';
+    nameRow.appendChild(nameInp);
+    addForm.appendChild(nameRow);
+
+    const newUrlRow = formRow('Base URL');
+    const newUrlInp = textInput('', 'http://127.0.0.1:11434');
+    newUrlInp.style.maxWidth = '400px';
+    newUrlInp.id = 'add-provider-url';
+    newUrlRow.appendChild(newUrlInp);
+    addForm.appendChild(newUrlRow);
+
+    const newKeyRow = formRow('API Key', 'Leave blank for local providers like Ollama');
+    const newKeyInp = textInput('', 'sk-…', 'password');
+    newKeyInp.style.maxWidth = '320px';
+    newKeyInp.id = 'add-provider-key';
+    newKeyRow.appendChild(newKeyInp);
+    addForm.appendChild(newKeyRow);
+
+    const newApiRow = formRow('API Type');
+    const newApiSel = selectInput(
+      [{ value: '', label: '— select —' }, ...API_TYPES],
+      ''
+    );
+    newApiSel.style.maxWidth = '260px';
+    newApiSel.id = 'add-provider-api';
+    newApiRow.appendChild(newApiSel);
+    addForm.appendChild(newApiRow);
+
+    const formBtns = document.createElement('div');
+    formBtns.style.cssText = 'display:flex;gap:8px;margin-top:16px';
+    const createBtn = document.createElement('button');
+    createBtn.className = 'btn btn-primary';
+    createBtn.textContent = 'Create Provider';
+    createBtn.addEventListener('click', async () => {
+      const name = nameInp.value.trim();
+      if (!name) {
+        showToast('Enter a provider name', 'error');
+        return;
+      }
+      if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(name)) {
+        showToast('Name must start with a letter (letters, numbers, hyphens only)', 'error');
+        return;
+      }
+      const provObj: Record<string, unknown> = {};
+      if (newUrlInp.value.trim()) provObj.baseUrl = newUrlInp.value.trim();
+      if (newKeyInp.value.trim()) provObj.apiKey = newKeyInp.value.trim();
+      if (newApiSel.value) provObj.api = newApiSel.value;
+      const ok = await patchConfig({
+        models: { providers: { [name]: provObj } }
+      });
+      if (ok) {
+        showToast(`Provider "${name}" added`, 'success');
+        loadModelsSettings();
+      }
+    });
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-ghost';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => { addForm.style.display = 'none'; });
+    formBtns.appendChild(createBtn);
+    formBtns.appendChild(cancelBtn);
+    addForm.appendChild(formBtns);
+    container.appendChild(addForm);
 
     const providerNames = Object.keys(providers);
     if (providerNames.length === 0) {
       const empty = document.createElement('p');
       empty.style.cssText = 'color:var(--text-muted);padding:12px 0';
-      empty.textContent = 'No providers configured. Click "Add Provider" to get started.';
+      empty.textContent = 'No providers configured. Click "+ Add Provider" to get started.';
       container.appendChild(empty);
     }
 
@@ -214,6 +304,24 @@ export async function loadModelsSettings() {
 
   } catch (e) {
     container.innerHTML = `<p style="color:var(--danger)">Failed to load: ${esc(String(e))}</p>`;
+  }
+}
+
+function toggleAddProviderForm(_container: HTMLElement) {
+  const form = document.getElementById('add-provider-form');
+  if (!form) return;
+  const visible = form.style.display !== 'none';
+  form.style.display = visible ? 'none' : 'block';
+  if (!visible) {
+    // Clear + focus name field
+    const nameInp = document.getElementById('add-provider-name') as HTMLInputElement | null;
+    if (nameInp) { nameInp.value = ''; nameInp.focus(); }
+    const urlInp = document.getElementById('add-provider-url') as HTMLInputElement | null;
+    if (urlInp) urlInp.value = '';
+    const keyInp = document.getElementById('add-provider-key') as HTMLInputElement | null;
+    if (keyInp) keyInp.value = '';
+    const apiSel = document.getElementById('add-provider-api') as HTMLSelectElement | null;
+    if (apiSel) apiSel.value = '';
   }
 }
 
@@ -235,10 +343,35 @@ function renderProviderCard(name: string, prov: Record<string, unknown>): HTMLDi
   const delBtn = document.createElement('button');
   delBtn.className = 'btn btn-danger btn-sm';
   delBtn.textContent = 'Remove';
+  let confirmPending = false;
   delBtn.addEventListener('click', async () => {
-    if (!confirm(`Remove provider "${name}"? This will delete all its models.`)) return;
-    await patchConfig({ models: { providers: { [name]: null } } });
-    loadModelsSettings();
+    if (!confirmPending) {
+      // First click: change to confirm state
+      confirmPending = true;
+      delBtn.textContent = 'Confirm Remove?';
+      delBtn.style.fontWeight = 'bold';
+      // Auto-reset after 4 seconds
+      setTimeout(() => {
+        if (confirmPending) {
+          confirmPending = false;
+          delBtn.textContent = 'Remove';
+          delBtn.style.fontWeight = '';
+        }
+      }, 4000);
+      return;
+    }
+    // Second click: actually delete
+    confirmPending = false;
+    delBtn.textContent = 'Removing…';
+    delBtn.disabled = true;
+    const ok = await deleteConfigKey(`models.providers.${name}`);
+    if (ok) {
+      showToast(`Provider "${name}" removed`, 'success');
+      loadModelsSettings();
+    } else {
+      delBtn.textContent = 'Remove';
+      delBtn.disabled = false;
+    }
   });
   actions.appendChild(delBtn);
   header.appendChild(actions);
@@ -282,29 +415,14 @@ function renderProviderCard(name: string, prov: Record<string, unknown>): HTMLDi
       if (baseUrlInp.value) patch.baseUrl = baseUrlInp.value;
       if (apiKeyInp.value) patch.apiKey = apiKeyInp.value;
       if (apiSel.value) patch.api = apiSel.value;
+      // Preserve models array from original
+      if (models.length) patch.models = models;
       await patchConfig({ models: { providers: { [name]: patch } } });
     },
     () => loadModelsSettings()
   ));
 
   return card;
-}
-
-async function addProvider(_container: HTMLElement) {
-  // Simple prompt for provider name
-  const name = window.prompt?.('Provider name (e.g. google, openai, anthropic):')?.trim();
-  if (!name) return;
-  if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(name)) {
-    showToast('Provider name must start with a letter and contain only letters, numbers, hyphens, underscores', 'error');
-    return;
-  }
-  const ok = await patchConfig({
-    models: { providers: { [name]: { baseUrl: '', models: [] } } }
-  }, true);
-  if (ok) {
-    showToast(`Provider "${name}" added`, 'success');
-    loadModelsSettings();
-  }
 }
 
 // ── Init ────────────────────────────────────────────────────────────────────

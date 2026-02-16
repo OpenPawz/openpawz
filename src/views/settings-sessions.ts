@@ -237,8 +237,15 @@ function buildSessionCard(sess: Session): HTMLElement {
   resetBtn.className = 'btn btn-sm';
   resetBtn.textContent = 'Reset';
   resetBtn.style.color = 'var(--warning)';
+  let resetPending = false;
   resetBtn.onclick = async () => {
-    if (!confirm(`Reset session "${label}"? This clears history but keeps the session.`)) return;
+    if (!resetPending) {
+      resetPending = true;
+      resetBtn.textContent = 'Confirm Reset?';
+      setTimeout(() => { if (resetPending) { resetPending = false; resetBtn.textContent = 'Reset'; } }, 4000);
+      return;
+    }
+    resetPending = false;
     try {
       await gateway.resetSession(sess.key);
       showToast(`Session "${label}" reset`, 'success');
@@ -251,8 +258,16 @@ function buildSessionCard(sess: Session): HTMLElement {
   deleteBtn.className = 'btn btn-sm';
   deleteBtn.textContent = 'Delete';
   deleteBtn.style.color = 'var(--danger)';
+  let deletePending = false;
   deleteBtn.onclick = async () => {
-    if (!confirm(`Delete session "${label}"? This is permanent.`)) return;
+    if (!deletePending) {
+      deletePending = true;
+      deleteBtn.textContent = 'Confirm Delete?';
+      deleteBtn.style.fontWeight = 'bold';
+      setTimeout(() => { if (deletePending) { deletePending = false; deleteBtn.textContent = 'Delete'; deleteBtn.style.fontWeight = ''; } }, 4000);
+      return;
+    }
+    deletePending = false;
     try {
       await gateway.deleteSession(sess.key);
       showToast(`Session "${label}" deleted`, 'success');

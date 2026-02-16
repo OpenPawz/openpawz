@@ -95,6 +95,38 @@ export async function patchValue(path: string, value: unknown, silent = false): 
   return patchConfig(buildPatch(path, value), silent);
 }
 
+/** Delete a config key by dot path (e.g. 'models.providers.google').
+ *  Reads full config, clones, removes the key, then applies the full config.
+ *  This avoids sending null values to the gateway.
+ */
+export async function deleteConfigKey(path: string, silent = false): Promise<boolean> {
+  try {
+    const current = await getConfig();
+    const merged = JSON.parse(JSON.stringify(current));
+    const keys = path.split('.');
+    let obj: Record<string, unknown> = merged;
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') return true; // path doesn't exist, nothing to delete
+      obj = obj[keys[i]] as Record<string, unknown>;
+    }
+    delete obj[keys[keys.length - 1]];
+
+    const result = await gateway.configApply(merged);
+    _configCache = null;
+    if (!result.ok && result.errors?.length) {
+      showToast(`Config error: ${result.errors.join(', ')}`, 'error');
+      return false;
+    }
+    if (!silent) {
+      showToast(result.restarted ? 'Saved — gateway restarting' : 'Removed', 'success');
+    }
+    return true;
+  } catch (e) {
+    showToast(`Delete failed: ${e instanceof Error ? e.message : e}`, 'error');
+    return false;
+  }
+}
+
 /** Invalidate cache (call after external config changes or on reconnect) */
 export function invalidateConfigCache(): void {
   _configCache = null;
