@@ -1729,9 +1729,80 @@ fn repair_openclaw_config() -> Result<bool, String> {
     let content = fs::read_to_string(&config_path)
         .map_err(|e| format!("Failed to read config: {}", e))?;
 
+    // If the file is empty or contains only whitespace, write a fresh default
+    // config.  This handles the case where the file was created but never
+    // populated (e.g. a previous crash or manual touch).
     let sanitized = sanitize_json5(&content);
-    let mut config: serde_json::Value = serde_json::from_str(&sanitized)
-        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    let mut config: serde_json::Value = match serde_json::from_str(&sanitized) {
+        Ok(v) => v,
+        Err(_) if content.trim().is_empty() || content.trim().len() < 2 => {
+            info!("Config file is empty or corrupt — writing fresh default config");
+            // Generate a new gateway token
+            let token: String = (0..48)
+                .map(|_| {
+                    let idx = rand::random::<usize>() % 36;
+                    if idx < 10 { (b'0' + idx as u8) as char } else { (b'a' + (idx - 10) as u8) as char }
+                })
+                .collect();
+            let fresh = serde_json::json!({
+                "meta": {
+                    "lastTouchedVersion": "2026.2.0",
+                    "lastTouchedAt": chrono::Utc::now().to_rfc3339()
+                },
+                "gateway": {
+                    "mode": "local",
+                    "auth": {
+                        "mode": "token",
+                        "token": token
+                    }
+                },
+                "models": {
+                    "providers": {
+                        "google": {
+                            "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+                            "apiKey": "",
+                            "api": "google-generative-ai",
+                            "models": [
+                                {
+                                    "id": "gemini-2.5-pro",
+                                    "name": "Gemini 2.5 Pro",
+                                    "reasoning": true,
+                                    "input": ["text", "image"],
+                                    "contextWindow": 1048576,
+                                    "maxTokens": 65536
+                                },
+                                {
+                                    "id": "gemini-2.5-flash",
+                                    "name": "Gemini 2.5 Flash",
+                                    "reasoning": true,
+                                    "input": ["text", "image"],
+                                    "contextWindow": 1048576,
+                                    "maxTokens": 65536
+                                }
+                            ]
+                        }
+                    }
+                },
+                "agents": {
+                    "defaults": {
+                        "maxConcurrent": 4,
+                        "model": {
+                            "primary": "google/gemini-2.5-pro"
+                        }
+                    }
+                },
+                "env": {
+                    "vars": {
+                        "GEMINI_API_KEY": ""
+                    }
+                }
+            });
+            fs::write(&config_path, serde_json::to_string_pretty(&fresh).unwrap())
+                .map_err(|e| format!("Failed to write fresh config: {}", e))?;
+            return Ok(true);
+        }
+        Err(e) => return Err(format!("Failed to parse config: {}", e)),
+    };
 
     let mut repaired = false;
     if let Some(obj) = config.as_object_mut() {
