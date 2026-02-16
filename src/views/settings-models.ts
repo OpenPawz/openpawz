@@ -6,7 +6,7 @@ import { gateway } from '../gateway';
 import { showToast } from '../components/toast';
 import {
   getConfig, patchConfig, getVal, isConnected,
-  esc, formRow, selectInput, textInput, saveReloadButtons
+  esc, formRow, selectInput, textInput, toggleSwitch, saveReloadButtons
 } from './settings-config';
 
 const $ = (id: string) => document.getElementById(id);
@@ -80,6 +80,112 @@ export async function loadModelsSettings() {
       () => loadModelsSettings()
     ));
     container.appendChild(defaultSection);
+
+    // ── Model Aliases ────────────────────────────────────────────────────
+    const aliasSection = document.createElement('div');
+    aliasSection.style.marginTop = '20px';
+    aliasSection.innerHTML = `<h3 class="settings-subsection-title">Model Aliases</h3>
+      <p class="settings-section-desc">Short names to reference models in prompts (e.g. "use sonnet"). One model ID per alias.</p>`;
+
+    const aliasModels = (getVal(config, 'agents.defaults.models') ?? {}) as Record<string, any>;
+    const aliasTableBody = document.createElement('div');
+
+    const renderAliasRows = () => {
+      aliasTableBody.innerHTML = '';
+      const entries = Object.entries(aliasModels);
+      for (const [modelId, val] of entries) {
+        const alias = (val && typeof val === 'object') ? (val as Record<string, unknown>).alias ?? '' : '';
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:6px';
+        const modelInp = textInput(modelId, 'anthropic/claude-sonnet-4-5');
+        modelInp.style.flex = '1';
+        modelInp.readOnly = true;
+        modelInp.style.opacity = '0.7';
+        const aliasInp = textInput(String(alias), 'sonnet');
+        aliasInp.style.maxWidth = '140px';
+        aliasInp.dataset.model = modelId;
+        const rmBtn = document.createElement('button');
+        rmBtn.className = 'btn btn-ghost btn-sm';
+        rmBtn.textContent = '✕';
+        rmBtn.style.color = 'var(--danger)';
+        rmBtn.onclick = () => { delete aliasModels[modelId]; renderAliasRows(); };
+        row.appendChild(modelInp);
+        row.appendChild(aliasInp);
+        row.appendChild(rmBtn);
+        aliasTableBody.appendChild(row);
+      }
+    };
+    renderAliasRows();
+    aliasSection.appendChild(aliasTableBody);
+
+    const addAliasBtn = document.createElement('button');
+    addAliasBtn.className = 'btn btn-ghost btn-sm';
+    addAliasBtn.textContent = '+ Add Alias';
+    addAliasBtn.onclick = () => {
+      const modelId = window.prompt?.('Full model ID (e.g. anthropic/claude-haiku-4-5):')?.trim();
+      if (!modelId) return;
+      aliasModels[modelId] = { alias: '' };
+      renderAliasRows();
+    };
+    aliasSection.appendChild(addAliasBtn);
+
+    aliasSection.appendChild(saveReloadButtons(
+      async () => {
+        // Read aliases from rendered inputs
+        const modelsMap: Record<string, unknown> = {};
+        aliasTableBody.querySelectorAll('input[data-model]').forEach((inp) => {
+          const el = inp as HTMLInputElement;
+          const modelId = el.dataset.model!;
+          modelsMap[modelId] = { alias: el.value.trim() || undefined };
+        });
+        await patchConfig({ agents: { defaults: { models: modelsMap } } });
+      },
+      () => loadModelsSettings()
+    ));
+    container.appendChild(aliasSection);
+
+    // ── Prompt Caching ───────────────────────────────────────────────────
+    const cacheSection = document.createElement('div');
+    cacheSection.style.marginTop = '20px';
+    cacheSection.innerHTML = `<h3 class="settings-subsection-title">Prompt Caching</h3>
+      <p class="settings-section-desc">Cache system prompts and stable context for up to 90% token discount on reuse (Claude 3.5+ Sonnet).</p>`;
+
+    const cacheConf = (getVal(config, 'agents.defaults.cache') ?? {}) as Record<string, any>;
+
+    const { container: cacheToggle, checkbox: cacheCb } = toggleSwitch(
+      cacheConf.enabled === true,
+      'Enable Prompt Caching'
+    );
+    cacheSection.appendChild(cacheToggle);
+
+    const ttlRow = formRow('Cache TTL', 'How long cached prompts stay valid (e.g. 5m, 30m, 24h)');
+    const ttlInp = textInput(cacheConf.ttl ?? '', '5m');
+    ttlInp.style.maxWidth = '120px';
+    ttlRow.appendChild(ttlInp);
+    cacheSection.appendChild(ttlRow);
+
+    const cachePrioRow = formRow('Priority');
+    const cachePrioSel = selectInput(
+      [{ value: 'high', label: 'High (maximize caching)' }, { value: 'low', label: 'Low (balance cost/speed)' }],
+      cacheConf.priority ?? 'high'
+    );
+    cachePrioSel.style.maxWidth = '260px';
+    cachePrioRow.appendChild(cachePrioSel);
+    cacheSection.appendChild(cachePrioRow);
+
+    cacheSection.appendChild(saveReloadButtons(
+      async () => {
+        await patchConfig({
+          agents: { defaults: { cache: {
+            enabled: cacheCb.checked,
+            ttl: ttlInp.value || undefined,
+            priority: cachePrioSel.value,
+          } } }
+        });
+      },
+      () => loadModelsSettings()
+    ));
+    container.appendChild(cacheSection);
 
     // ── Provider Cards ───────────────────────────────────────────────────
     const provHeader = document.createElement('div');

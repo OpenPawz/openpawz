@@ -46,13 +46,35 @@ export function buildPatch(path: string, value: unknown): Record<string, unknown
   return patch;
 }
 
-/** Patch config via configApply (validates + writes + optionally restarts).
+/** Deep-merge source into target (mutates target). Arrays are replaced, not merged. */
+function deepMerge(target: Record<string, unknown>, source: Record<string, unknown>): Record<string, unknown> {
+  for (const key of Object.keys(source)) {
+    const sv = source[key];
+    const tv = target[key];
+    if (sv && typeof sv === 'object' && !Array.isArray(sv) && tv && typeof tv === 'object' && !Array.isArray(tv)) {
+      deepMerge(tv as Record<string, unknown>, sv as Record<string, unknown>);
+    } else {
+      target[key] = sv;
+    }
+  }
+  return target;
+}
+
+/** Patch config via read → deep-merge → configApply (validates + writes + optionally restarts).
+ *  This ensures partial patches don't wipe the rest of the config.
  *  Invalidates cache on success. Shows toast on error.
  *  Returns true on success, false on error.
  */
 export async function patchConfig(patch: Record<string, unknown>, silent = false): Promise<boolean> {
   try {
-    const result = await gateway.configApply(patch);
+    // Read current full config
+    const current = await getConfig();
+    // Deep-clone current config to avoid mutating cache
+    const merged = JSON.parse(JSON.stringify(current));
+    // Deep-merge patch into clone
+    deepMerge(merged, patch);
+    // Apply the full merged config (validates + writes + restarts if needed)
+    const result = await gateway.configApply(merged);
     _configCache = null; // invalidate
     if (!result.ok && result.errors?.length) {
       showToast(`Config error: ${result.errors.join(', ')}`, 'error');

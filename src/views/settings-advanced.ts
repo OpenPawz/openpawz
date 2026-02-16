@@ -170,6 +170,66 @@ export async function loadAdvancedSettings() {
 
     container.appendChild(hookSection);
 
+    // ── Heartbeat ────────────────────────────────────────────────────────
+    const hbSection = document.createElement('div');
+    hbSection.innerHTML = '<h3 class="settings-subsection-title" style="margin-top:20px">Heartbeat</h3>';
+    const hb = (getVal(config, 'heartbeat') ?? {}) as Record<string, any>;
+
+    const hbEveryRow = formRow('Interval', 'How often the heartbeat runs (e.g. 1h, 30m, 5m)');
+    const hbEveryInp = textInput(hb.every ?? '', '1h');
+    hbEveryInp.style.maxWidth = '120px';
+    hbEveryRow.appendChild(hbEveryInp);
+    hbSection.appendChild(hbEveryRow);
+
+    const hbModelRow = formRow('Model', 'Route heartbeats to a cheap/local model (e.g. ollama/llama3.2:3b)');
+    const hbModelInp = textInput(hb.model ?? '', 'ollama/llama3.2:3b');
+    hbModelRow.appendChild(hbModelInp);
+    hbSection.appendChild(hbModelRow);
+
+    const hbSessionRow = formRow('Session', 'Session key for heartbeats');
+    const hbSessionInp = textInput(hb.session ?? '', 'main');
+    hbSessionInp.style.maxWidth = '180px';
+    hbSessionRow.appendChild(hbSessionInp);
+    hbSection.appendChild(hbSessionRow);
+
+    const hbTargetRow = formRow('Target', 'Channel to send heartbeat results to (e.g. slack, discord)');
+    const hbTargetInp = textInput(hb.target ?? '', 'slack');
+    hbTargetInp.style.maxWidth = '180px';
+    hbTargetRow.appendChild(hbTargetInp);
+    hbSection.appendChild(hbTargetRow);
+
+    const hbPromptRow = formRow('Prompt', 'What the heartbeat asks the agent');
+    const hbPromptInp = textInput(hb.prompt ?? '', 'Check: Any blockers, opportunities, or progress updates needed?');
+    hbPromptRow.appendChild(hbPromptInp);
+    hbSection.appendChild(hbPromptRow);
+
+    container.appendChild(hbSection);
+
+    // ── Budget Controls ──────────────────────────────────────────────────
+    const budgetSection = document.createElement('div');
+    budgetSection.innerHTML = '<h3 class="settings-subsection-title" style="margin-top:20px">Budget Controls</h3>';
+    const budget = (getVal(config, 'budget') ?? {}) as Record<string, any>;
+
+    const dailyRow = formRow('Daily Budget ($)', 'Max daily API spend');
+    const dailyInp = numberInput(budget.daily, { min: 0, step: 0.5, placeholder: '5.00' });
+    dailyInp.style.maxWidth = '120px';
+    dailyRow.appendChild(dailyInp);
+    budgetSection.appendChild(dailyRow);
+
+    const monthlyRow = formRow('Monthly Budget ($)', 'Max monthly API spend');
+    const monthlyInp = numberInput(budget.monthly, { min: 0, step: 1, placeholder: '200' });
+    monthlyInp.style.maxWidth = '120px';
+    monthlyRow.appendChild(monthlyInp);
+    budgetSection.appendChild(monthlyRow);
+
+    const warnRow = formRow('Warning Threshold (%)', 'Show warning at this percentage of budget');
+    const warnInp = numberInput(budget.warningPercent ?? 75, { min: 0, max: 100, step: 5, placeholder: '75' });
+    warnInp.style.maxWidth = '100px';
+    warnRow.appendChild(warnInp);
+    budgetSection.appendChild(warnRow);
+
+    container.appendChild(budgetSection);
+
     // ── Save all ─────────────────────────────────────────────────────────
     container.appendChild(saveReloadButtons(
       async () => {
@@ -203,6 +263,18 @@ export async function loadAdvancedSettings() {
           hooks: {
             url: whInp.value || undefined,
             secret: secretInp.value || undefined,
+          },
+          heartbeat: {
+            every: hbEveryInp.value || undefined,
+            model: hbModelInp.value || undefined,
+            session: hbSessionInp.value || undefined,
+            target: hbTargetInp.value || undefined,
+            prompt: hbPromptInp.value || undefined,
+          },
+          budget: {
+            daily: parseFloat(dailyInp.value) || undefined,
+            monthly: parseFloat(monthlyInp.value) || undefined,
+            warningPercent: parseInt(warnInp.value) || undefined,
           },
         };
         await patchConfig(patch);
