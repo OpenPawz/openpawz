@@ -739,3 +739,344 @@ pub fn engine_skill_set_instructions(
     info!("[engine] Setting custom instructions for skill {} ({} chars)", skill_id, instructions.len());
     state.store.set_skill_custom_instructions(&skill_id, &instructions)
 }
+
+// ── Task commands ──────────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn engine_tasks_list(
+    state: State<'_, EngineState>,
+) -> Result<Vec<Task>, String> {
+    state.store.list_tasks()
+}
+
+#[tauri::command]
+pub fn engine_task_create(
+    state: State<'_, EngineState>,
+    task: Task,
+) -> Result<(), String> {
+    info!("[engine] Creating task: {} ({})", task.title, task.id);
+    state.store.create_task(&task)?;
+    // Log activity
+    let aid = uuid::Uuid::new_v4().to_string();
+    state.store.add_task_activity(&aid, &task.id, "created", None, &format!("Task created: {}", task.title))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn engine_task_update(
+    state: State<'_, EngineState>,
+    task: Task,
+) -> Result<(), String> {
+    info!("[engine] Updating task: {} status={}", task.id, task.status);
+    state.store.update_task(&task)
+}
+
+#[tauri::command]
+pub fn engine_task_delete(
+    state: State<'_, EngineState>,
+    task_id: String,
+) -> Result<(), String> {
+    info!("[engine] Deleting task: {}", task_id);
+    state.store.delete_task(&task_id)
+}
+
+#[tauri::command]
+pub fn engine_task_move(
+    state: State<'_, EngineState>,
+    task_id: String,
+    new_status: String,
+) -> Result<(), String> {
+    info!("[engine] Moving task {} → {}", task_id, new_status);
+    // Load, update status, save
+    let tasks = state.store.list_tasks()?;
+    if let Some(mut task) = tasks.into_iter().find(|t| t.id == task_id) {
+        let old_status = task.status.clone();
+        task.status = new_status.clone();
+        state.store.update_task(&task)?;
+        // Log activity
+        let aid = uuid::Uuid::new_v4().to_string();
+        state.store.add_task_activity(
+            &aid, &task_id, "status_change", None,
+            &format!("Moved from {} to {}", old_status, new_status),
+        )?;
+        Ok(())
+    } else {
+        Err(format!("Task not found: {}", task_id))
+    }
+}
+
+#[tauri::command]
+pub fn engine_task_activity(
+    state: State<'_, EngineState>,
+    task_id: Option<String>,
+    limit: Option<u32>,
+) -> Result<Vec<TaskActivity>, String> {
+    let limit = limit.unwrap_or(50);
+    match task_id {
+        Some(id) => state.store.list_task_activity(&id, limit),
+        None => state.store.list_all_activity(limit),
+    }
+}
+
+/// Run a task: send it to an agent and stream the result.
+/// Creates a dedicated session for the task and kicks off the agent loop.
+#[tauri::command]
+pub async fn engine_task_run(
+    app_handle: tauri::AppHandle,
+    state: State<'_, EngineState>,
+    task_id: String,
+) -> Result<String, String> {
+    let run_id = uuid::Uuid::new_v4().to_string();
+
+    // Load the task
+    let tasks = state.store.list_tasks()?;
+    let task = tasks.into_iter().find(|t| t.id == task_id)
+        .ok_or_else(|| format!("Task not found: {}", task_id))?;
+
+    // Resolve provider + model
+    let (provider_config, model) = {
+        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
+        let provider = cfg.providers.iter()
+            .find(|p| {
+                if model.starts_with("claude") || model.starts_with("anthropic") {
+                    p.kind == ProviderKind::Anthropic
+                } else if model.starts_with("gemini") || model.starts_with("google") {
+                    p.kind == ProviderKind::Google
+                } else if model.starts_with("gpt") || model.starts_with("o1") || model.starts_with("o3") {
+                    p.kind == ProviderKind::OpenAI
+                } else {
+                    false
+                }
+            })
+            .or_else(|| {
+                cfg.default_provider.as_ref()
+                    .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp))
+            })
+            .or_else(|| cfg.providers.first())
+            .cloned();
+        match provider {
+            Some(p) => (p, model),
+            None => return Err("No AI provider configured".into()),
+        }
+    };
+
+    // Create or reuse a session for this task
+    let session_id = task.session_id.clone().unwrap_or_else(|| format!("eng-task-{}", task.id));
+    if state.store.get_session(&session_id).ok().flatten().is_none() {
+        state.store.create_session(&session_id, &model, None)?;
+    }
+
+    // Update task status to in_progress
+    {
+        let mut t = task.clone();
+        t.status = "in_progress".to_string();
+        t.session_id = Some(session_id.clone());
+        state.store.update_task(&t)?;
+    }
+
+    // Log activity
+    let aid = uuid::Uuid::new_v4().to_string();
+    let agent_name = task.assigned_agent.clone().unwrap_or_else(|| "default".to_string());
+    state.store.add_task_activity(
+        &aid, &task_id, "agent_started", Some(&agent_name),
+        &format!("Agent {} started working on: {}", agent_name, task.title),
+    )?;
+
+    // Compose prompt from task
+    let task_prompt = if task.description.is_empty() {
+        task.title.clone()
+    } else {
+        format!("{}\n\n{}", task.title, task.description)
+    };
+
+    // Compose system prompt (same logic as chat)
+    let system_prompt = {
+        let cfg = state.config.lock().ok();
+        cfg.and_then(|c| c.default_system_prompt.clone())
+    };
+    let agent_id = agent_name.clone();
+    let agent_context = state.store.compose_agent_context(&agent_id).unwrap_or(None);
+
+    // Get skill instructions
+    let skill_instructions = skills::get_enabled_skill_instructions(&state.store).unwrap_or_default();
+
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(sp) = &system_prompt { parts.push(sp.clone()); }
+    if let Some(ac) = agent_context { parts.push(ac); }
+    if !skill_instructions.is_empty() { parts.push(skill_instructions); }
+    parts.push(format!("## Current Task\nYou are working on a task from the task board.\n- **Title:** {}\n- **Priority:** {}\n\nComplete this task thoroughly. When done, summarize what you accomplished.", task.title, task.priority));
+
+    let full_system_prompt = parts.join("\n\n---\n\n");
+
+    // Store user message (the task prompt)
+    let user_msg = StoredMessage {
+        id: uuid::Uuid::new_v4().to_string(),
+        session_id: session_id.clone(),
+        role: "user".into(),
+        content: task_prompt,
+        tool_calls_json: None,
+        tool_call_id: None,
+        name: None,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    };
+    state.store.add_message(&user_msg)?;
+
+    // Load conversation with full system prompt composition
+    let mut messages = state.store.load_conversation(&session_id, Some(&full_system_prompt))?;
+
+    // Build tools
+    let mut all_tools = ToolDefinition::builtins();
+    let enabled_ids: Vec<String> = skills::builtin_skills().iter()
+        .filter(|s| state.store.is_skill_enabled(&s.id).unwrap_or(false))
+        .map(|s| s.id.clone())
+        .collect();
+    if !enabled_ids.is_empty() {
+        all_tools.extend(ToolDefinition::skill_tools(&enabled_ids));
+    }
+
+    let max_rounds = {
+        let cfg = state.config.lock().ok();
+        cfg.map(|c| c.max_tool_rounds).unwrap_or(20)
+    };
+    let tool_timeout = {
+        let cfg = state.config.lock().ok();
+        cfg.map(|c| c.tool_timeout_secs).unwrap_or(120)
+    };
+
+    let provider = AnyProvider::from_config(&provider_config);
+    let pending = state.pending_approvals.clone();
+    let task_id_clone = task_id.clone();
+    let store_path = crate::engine::sessions::engine_db_path();
+    let run_id_clone = run_id.clone();
+    let session_id_clone = session_id.clone();
+
+    // Spawn the agent work in background
+    tauri::async_runtime::spawn(async move {
+        let result = agent_loop::run_agent_turn(
+            &app_handle,
+            &provider,
+            &model,
+            &mut messages,
+            &all_tools,
+            &session_id_clone,
+            &run_id_clone,
+            max_rounds,
+            None,
+            &pending,
+            tool_timeout,
+        ).await;
+
+        // Store the final assistant message + update task status
+        if let Ok(conn) = rusqlite::Connection::open(&store_path) {
+            match &result {
+                Ok(text) => {
+                    // Store assistant message
+                    let msg_id = uuid::Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT INTO messages (id, session_id, role, content) VALUES (?1, ?2, 'assistant', ?3)",
+                        rusqlite::params![msg_id, session_id_clone, text],
+                    ).ok();
+                    // Move task to review
+                    conn.execute(
+                        "UPDATE tasks SET status = 'review', updated_at = datetime('now') WHERE id = ?1",
+                        rusqlite::params![task_id_clone],
+                    ).ok();
+                    // Activity log
+                    let aid = uuid::Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT INTO task_activity (id, task_id, kind, agent, content) VALUES (?1, ?2, 'agent_completed', ?3, ?4)",
+                        rusqlite::params![aid, task_id_clone, "default", format!("Task completed. Summary: {}", &text[..text.len().min(200)])],
+                    ).ok();
+                }
+                Err(err) => {
+                    // Move task to blocked
+                    conn.execute(
+                        "UPDATE tasks SET status = 'blocked', updated_at = datetime('now') WHERE id = ?1",
+                        rusqlite::params![task_id_clone],
+                    ).ok();
+                    let aid = uuid::Uuid::new_v4().to_string();
+                    conn.execute(
+                        "INSERT INTO task_activity (id, task_id, kind, agent, content) VALUES (?1, ?2, 'agent_error', ?3, ?4)",
+                        rusqlite::params![aid, task_id_clone, "default", format!("Agent error: {}", err)],
+                    ).ok();
+                }
+            }
+        }
+
+        // Emit task-updated event so frontend refreshes
+        app_handle.emit("task-updated", serde_json::json!({
+            "task_id": task_id_clone,
+            "status": if result.is_ok() { "review" } else { "blocked" },
+        })).ok();
+    });
+
+    Ok(run_id)
+}
+
+/// Check for due cron tasks and process them.
+/// Returns the IDs of tasks that were due and triggered.
+#[tauri::command]
+pub fn engine_tasks_cron_tick(
+    state: State<'_, EngineState>,
+) -> Result<Vec<String>, String> {
+    let due = state.store.get_due_cron_tasks()?;
+    let mut triggered_ids = Vec::new();
+
+    for task in due {
+        info!("[engine] Cron task due: {} ({})", task.title, task.id);
+
+        // Update last_run_at and compute next_run_at
+        let now = chrono::Utc::now();
+        let next = compute_next_run(&task.cron_schedule, &now);
+        state.store.update_task_cron_run(&task.id, &now.to_rfc3339(), next.as_deref())?;
+
+        // Log activity
+        let aid = uuid::Uuid::new_v4().to_string();
+        state.store.add_task_activity(
+            &aid, &task.id, "cron_triggered", None,
+            &format!("Cron triggered: {}", task.cron_schedule.as_deref().unwrap_or("unknown")),
+        )?;
+
+        triggered_ids.push(task.id);
+    }
+
+    Ok(triggered_ids)
+}
+
+/// Simple schedule parser: "every Xm", "every Xh", "daily HH:MM"
+fn compute_next_run(schedule: &Option<String>, from: &chrono::DateTime<chrono::Utc>) -> Option<String> {
+    let s = schedule.as_deref()?;
+    let s = s.trim().to_lowercase();
+
+    if s.starts_with("every ") {
+        let rest = s.strip_prefix("every ")?.trim();
+        if rest.ends_with('m') {
+            let mins: i64 = rest.trim_end_matches('m').trim().parse().ok()?;
+            return Some((*from + chrono::Duration::minutes(mins)).to_rfc3339());
+        } else if rest.ends_with('h') {
+            let hours: i64 = rest.trim_end_matches('h').trim().parse().ok()?;
+            return Some((*from + chrono::Duration::hours(hours)).to_rfc3339());
+        }
+    } else if s.starts_with("daily ") {
+        let time_str = s.strip_prefix("daily ")?.trim();
+        let parts: Vec<&str> = time_str.split(':').collect();
+        if parts.len() == 2 {
+            let hour: u32 = parts[0].parse().ok()?;
+            let minute: u32 = parts[1].parse().ok()?;
+            let today = from.date_naive();
+            let target_time = today.and_hms_opt(hour, minute, 0)?;
+            let target = target_time.and_utc();
+            if target > *from {
+                return Some(target.to_rfc3339());
+            } else {
+                let tomorrow = today.succ_opt()?;
+                let next = tomorrow.and_hms_opt(hour, minute, 0)?.and_utc();
+                return Some(next.to_rfc3339());
+            }
+        }
+    }
+
+    // Default: 1 hour from now
+    Some((*from + chrono::Duration::hours(1)).to_rfc3339())
+}

@@ -58,13 +58,13 @@
 
           <div class="nav-section">
             <div class="nav-section-label">Create</div>
-            <div class="nav-item" data-view="build">
+            <div class="nav-item" data-view="tasks">
               <svg class="icon" viewBox="0 0 24 24">
-                <polyline points="16 18 22 12 16 6"/>
-                <polyline points="8 6 2 12 8 18"/>
-                <line x1="14" y1="4" x2="10" y2="20"/>
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+                <path d="M9 11l2 2 4-4"/>
+                <line x1="3" y1="9" x2="21" y2="9"/>
               </svg>
-              <span>Build</span>
+              <span>Tasks</span>
               <span class="nav-badge">New</span>
             </div>
             <div class="nav-item" data-view="code">
@@ -179,9 +179,9 @@
               <svg class="icon" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
               New Chat
             </button>
-            <button class="quick-action" data-view="build">
-              <svg class="icon" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-              Build App
+            <button class="quick-action" data-view="tasks">
+              <svg class="icon" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 11l2 2 4-4"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+              Tasks
             </button>
             <button class="quick-action" data-view="mail">
               <svg class="icon" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
@@ -205,12 +205,12 @@
                 <div class="feature-card-desc">Talk to your agent — ask anything, get answers, run tasks</div>
               </button>
 
-              <button class="feature-card" data-view="build">
+              <button class="feature-card" data-view="tasks">
                 <div class="feature-card-icon blue">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/><line x1="14" y1="4" x2="10" y2="20"/></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 11l2 2 4-4"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
                 </div>
-                <div class="feature-card-title">Build</div>
-                <div class="feature-card-desc">Describe an app and watch it get built — frontend, backend, deployed</div>
+                <div class="feature-card-title">Tasks</div>
+                <div class="feature-card-desc">Kanban board — assign tasks to agents and watch them work</div>
                 <span class="feature-card-tag new">New</span>
               </button>
 
@@ -553,77 +553,159 @@
           </div>
         </div>
 
-        <!-- ═══ Build View — IDE Layout ═══ -->
-        <div class="view ide-view" id="build-view">
-          <div class="ide-toolbar">
-            <div class="ide-toolbar-left">
-              <select class="ide-project-select" id="build-project-select" title="Select project">
-                <option value="">No project</option>
-              </select>
-              <button class="btn btn-ghost btn-sm" id="build-new-project">
-                <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                New Project
-              </button>
+        <!-- ═══ Tasks Hub — Kanban Board ═══ -->
+        <div class="view tasks-view" id="tasks-view">
+          <div class="tasks-header">
+            <div class="tasks-header-left">
+              <h1 class="view-title">Tasks</h1>
+              <p class="view-subtitle">Manage tasks across your agent workforce</p>
             </div>
-            <div class="ide-toolbar-right">
-              <button class="btn btn-ghost btn-sm" id="build-run-btn" title="Run">
-                <svg class="icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Run
+            <div class="tasks-header-right">
+              <div class="tasks-stats">
+                <span class="tasks-stat" id="tasks-stat-total">0 tasks</span>
+                <span class="tasks-stat-sep">·</span>
+                <span class="tasks-stat" id="tasks-stat-active">0 active</span>
+                <span class="tasks-stat-sep">·</span>
+                <span class="tasks-stat" id="tasks-stat-cron">0 scheduled</span>
+              </div>
+              <button class="btn btn-primary btn-sm" id="tasks-add-btn">
+                <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Task
               </button>
             </div>
           </div>
-          <div class="ide-body">
-            <div class="ide-sidebar" id="build-file-tree">
-              <div class="ide-sidebar-header">
-                <span>Files</span>
-                <button class="btn-icon" id="build-add-file" title="New file">
-                  <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>
+
+          <div class="tasks-body">
+            <!-- Kanban columns -->
+            <div class="tasks-board" id="tasks-board">
+              <div class="tasks-column" data-status="inbox">
+                <div class="tasks-column-header">
+                  <span class="tasks-column-icon">📥</span>
+                  <span class="tasks-column-title">Inbox</span>
+                  <span class="tasks-column-count" id="tasks-count-inbox">0</span>
+                  <button class="tasks-column-add" data-status="inbox" title="Add task">+</button>
+                </div>
+                <div class="tasks-column-cards" id="tasks-cards-inbox" data-status="inbox"></div>
               </div>
-              <div class="ide-file-list" id="build-file-list">
-                <div class="ide-file-empty">No files yet</div>
+
+              <div class="tasks-column" data-status="assigned">
+                <div class="tasks-column-header">
+                  <span class="tasks-column-icon">👤</span>
+                  <span class="tasks-column-title">Assigned</span>
+                  <span class="tasks-column-count" id="tasks-count-assigned">0</span>
+                </div>
+                <div class="tasks-column-cards" id="tasks-cards-assigned" data-status="assigned"></div>
+              </div>
+
+              <div class="tasks-column" data-status="in_progress">
+                <div class="tasks-column-header">
+                  <span class="tasks-column-icon">⚡</span>
+                  <span class="tasks-column-title">In Progress</span>
+                  <span class="tasks-column-count" id="tasks-count-in_progress">0</span>
+                </div>
+                <div class="tasks-column-cards" id="tasks-cards-in_progress" data-status="in_progress"></div>
+              </div>
+
+              <div class="tasks-column" data-status="review">
+                <div class="tasks-column-header">
+                  <span class="tasks-column-icon">🔍</span>
+                  <span class="tasks-column-title">Review</span>
+                  <span class="tasks-column-count" id="tasks-count-review">0</span>
+                </div>
+                <div class="tasks-column-cards" id="tasks-cards-review" data-status="review"></div>
+              </div>
+
+              <div class="tasks-column" data-status="blocked">
+                <div class="tasks-column-header">
+                  <span class="tasks-column-icon">🚫</span>
+                  <span class="tasks-column-title">Blocked</span>
+                  <span class="tasks-column-count" id="tasks-count-blocked">0</span>
+                </div>
+                <div class="tasks-column-cards" id="tasks-cards-blocked" data-status="blocked"></div>
+              </div>
+
+              <div class="tasks-column tasks-column-done" data-status="done">
+                <div class="tasks-column-header">
+                  <span class="tasks-column-icon">✅</span>
+                  <span class="tasks-column-title">Done</span>
+                  <span class="tasks-column-count" id="tasks-count-done">0</span>
+                </div>
+                <div class="tasks-column-cards" id="tasks-cards-done" data-status="done"></div>
               </div>
             </div>
-            <div class="ide-editor-area">
-              <div class="ide-tabs" id="build-tabs"></div>
-              <div class="ide-editor" id="build-editor-container">
-                <div class="empty-state" id="build-empty">
-                  <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
-                  <div class="empty-title">Start building</div>
-                  <div class="empty-subtitle">Create a new project or open an existing one</div>
+
+            <!-- Live feed sidebar -->
+            <div class="tasks-feed" id="tasks-feed">
+              <div class="tasks-feed-header">
+                <span class="tasks-feed-title">Live Feed</span>
+                <div class="tasks-feed-tabs">
+                  <button class="tasks-feed-tab active" data-feed="all">All</button>
+                  <button class="tasks-feed-tab" data-feed="tasks">Tasks</button>
+                  <button class="tasks-feed-tab" data-feed="status">Status</button>
                 </div>
-                <textarea class="ide-code-editor" id="build-code-editor" style="display:none" spellcheck="false"></textarea>
               </div>
-              <div class="ide-terminal" id="build-terminal" style="display:none">
-                <div class="ide-terminal-header">
-                  <span>Output</span>
-                  <button class="btn-icon" id="build-terminal-close">✕</button>
-                </div>
-                <pre class="ide-terminal-content" id="build-terminal-content"></pre>
+              <div class="tasks-feed-list" id="tasks-feed-list">
+                <div class="tasks-feed-empty">No activity yet</div>
               </div>
             </div>
-            <div class="ide-chat-sidebar" id="build-chat-panel">
-              <div class="ide-chat-header">
-                <span>Agent</span>
-                <button class="btn-icon" id="build-chat-toggle" title="Toggle chat">
-                  <svg class="icon-sm" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                </button>
+          </div>
+
+          <!-- Task detail modal (hidden by default) -->
+          <div class="tasks-modal-overlay" id="tasks-detail-modal" style="display:none">
+            <div class="tasks-modal">
+              <div class="tasks-modal-header">
+                <h2 class="tasks-modal-title" id="tasks-modal-title">Task</h2>
+                <button class="btn-icon" id="tasks-modal-close">✕</button>
               </div>
-              <div class="ide-chat-messages" id="build-chat-messages">
-                <div class="ide-chat-hint">Describe what you want to build and the agent will write the code.</div>
-              </div>
-              <div class="ide-chat-input-area">
-                <textarea class="ide-chat-input" id="build-chat-input" placeholder="Describe what to build..." rows="2"></textarea>
-                <button class="btn btn-primary btn-sm" id="build-chat-send">Send</button>
-              </div>
-              <!-- Build scheduled tasks -->
-              <div class="space-cron-widget" id="build-cron-widget" style="display:none">
-                <div class="space-cron-header">
-                  <svg class="icon-sm" viewBox="0 0 24 24"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
-                  <span>Scheduled</span>
-                  <span class="space-cron-count" id="build-cron-count">0</span>
+              <div class="tasks-modal-body">
+                <div class="tasks-modal-field">
+                  <label>Title</label>
+                  <input type="text" id="tasks-modal-input-title" class="input" placeholder="Task title">
                 </div>
-                <div class="space-cron-items" id="build-cron-items"></div>
+                <div class="tasks-modal-field">
+                  <label>Description</label>
+                  <textarea id="tasks-modal-input-desc" class="input" rows="4" placeholder="Describe what needs to be done..."></textarea>
+                </div>
+                <div class="tasks-modal-row">
+                  <div class="tasks-modal-field">
+                    <label>Priority</label>
+                    <select id="tasks-modal-input-priority" class="input">
+                      <option value="low">🟢 Low</option>
+                      <option value="medium" selected>🟡 Medium</option>
+                      <option value="high">🟠 High</option>
+                      <option value="urgent">🔴 Urgent</option>
+                    </select>
+                  </div>
+                  <div class="tasks-modal-field">
+                    <label>Assign Agent</label>
+                    <select id="tasks-modal-input-agent" class="input">
+                      <option value="">Unassigned</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="tasks-modal-field">
+                  <label>Schedule (Cron)</label>
+                  <div class="tasks-modal-cron-row">
+                    <input type="text" id="tasks-modal-input-cron" class="input" placeholder="e.g. every 1h, daily 09:00">
+                    <label class="tasks-modal-cron-toggle">
+                      <input type="checkbox" id="tasks-modal-input-cron-enabled">
+                      <span>Enabled</span>
+                    </label>
+                  </div>
+                </div>
+                <div class="tasks-modal-field" id="tasks-modal-activity-section" style="display:none">
+                  <label>Activity</label>
+                  <div class="tasks-modal-activity" id="tasks-modal-activity"></div>
+                </div>
+              </div>
+              <div class="tasks-modal-footer">
+                <button class="btn btn-ghost btn-sm" id="tasks-modal-delete" style="display:none">Delete</button>
+                <div style="flex:1"></div>
+                <button class="btn btn-ghost btn-sm" id="tasks-modal-run" style="display:none" title="Send task to agent now">
+                  <svg class="icon-sm" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  Run Now
+                </button>
+                <button class="btn btn-primary btn-sm" id="tasks-modal-save">Save</button>
               </div>
             </div>
           </div>

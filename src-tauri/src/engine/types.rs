@@ -839,3 +839,32 @@ impl Default for EngineConfig {
         }
     }
 }
+
+// ── Tasks ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Task {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub status: String,         // inbox, assigned, in_progress, review, blocked, done
+    pub priority: String,       // low, medium, high, urgent
+    pub assigned_agent: Option<String>,
+    pub session_id: Option<String>,
+    pub cron_schedule: Option<String>,  // e.g. "every 1h", "daily 09:00", cron expression
+    pub cron_enabled: bool,
+    pub last_run_at: Option<String>,
+    pub next_run_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskActivity {
+    pub id: String,
+    pub task_id: String,
+    pub kind: String,           // created, assigned, status_change, comment, agent_started, agent_completed, agent_error, cron_triggered
+    pub agent: Option<String>,
+    pub content: String,
+    pub created_at: String,
+}

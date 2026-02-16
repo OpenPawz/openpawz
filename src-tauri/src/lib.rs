@@ -2658,6 +2658,15 @@ pub fn run() {
             engine::commands::engine_skill_revoke_all,
             engine::commands::engine_skill_get_instructions,
             engine::commands::engine_skill_set_instructions,
+            // ── Tasks (Kanban Board) ──
+            engine::commands::engine_tasks_list,
+            engine::commands::engine_task_create,
+            engine::commands::engine_task_update,
+            engine::commands::engine_task_delete,
+            engine::commands::engine_task_move,
+            engine::commands::engine_task_activity,
+            engine::commands::engine_task_run,
+            engine::commands::engine_tasks_cron_tick,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

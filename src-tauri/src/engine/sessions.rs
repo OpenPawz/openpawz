@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use std::sync::Mutex;
 
 /// Get the path to the engine's SQLite database.
-fn engine_db_path() -> PathBuf {
+pub fn engine_db_path() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_default();
     let dir = home.join(".paw");
     std::fs::create_dir_all(&dir).ok();
@@ -85,6 +85,37 @@ impl SessionStore {
 
             CREATE INDEX IF NOT EXISTS idx_memories_category
                 ON memories(category);
+
+            CREATE TABLE IF NOT EXISTS tasks (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'inbox',
+                priority TEXT NOT NULL DEFAULT 'medium',
+                assigned_agent TEXT,
+                session_id TEXT,
+                cron_schedule TEXT,
+                cron_enabled INTEGER NOT NULL DEFAULT 0,
+                last_run_at TEXT,
+                next_run_at TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+            CREATE INDEX IF NOT EXISTS idx_tasks_agent ON tasks(assigned_agent);
+
+            CREATE TABLE IF NOT EXISTS task_activity (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                agent TEXT,
+                content TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_task_activity_task ON task_activity(task_id, created_at DESC);
         ").map_err(|e| format!("Failed to create tables: {}", e))?;
 
         // One-time dedup: remove duplicate messages caused by a bug that
@@ -616,6 +647,188 @@ impl SessionStore {
         .collect();
 
         Ok(memories)
+    }
+}
+
+// ── Task CRUD ──────────────────────────────────────────────────────────
+
+impl SessionStore {
+    /// List all tasks, ordered by updated_at DESC.
+    pub fn list_tasks(&self) -> Result<Vec<Task>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, title, description, status, priority, assigned_agent, session_id,
+                    cron_schedule, cron_enabled, last_run_at, next_run_at, created_at, updated_at
+             FROM tasks ORDER BY updated_at DESC"
+        ).map_err(|e| e.to_string())?;
+
+        let tasks = stmt.query_map([], |row| {
+            Ok(Task {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                description: row.get(2)?,
+                status: row.get(3)?,
+                priority: row.get(4)?,
+                assigned_agent: row.get(5)?,
+                session_id: row.get(6)?,
+                cron_schedule: row.get(7)?,
+                cron_enabled: row.get::<_, i32>(8)? != 0,
+                last_run_at: row.get(9)?,
+                next_run_at: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(tasks)
+    }
+
+    /// Create a new task.
+    pub fn create_task(&self, task: &Task) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT INTO tasks (id, title, description, status, priority, assigned_agent, session_id,
+                               cron_schedule, cron_enabled, last_run_at, next_run_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+            params![
+                task.id, task.title, task.description, task.status, task.priority,
+                task.assigned_agent, task.session_id, task.cron_schedule,
+                task.cron_enabled as i32, task.last_run_at, task.next_run_at,
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Update a task (all mutable fields).
+    pub fn update_task(&self, task: &Task) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE tasks SET title=?2, description=?3, status=?4, priority=?5,
+                    assigned_agent=?6, session_id=?7, cron_schedule=?8, cron_enabled=?9,
+                    last_run_at=?10, next_run_at=?11, updated_at=datetime('now')
+             WHERE id=?1",
+            params![
+                task.id, task.title, task.description, task.status, task.priority,
+                task.assigned_agent, task.session_id, task.cron_schedule,
+                task.cron_enabled as i32, task.last_run_at, task.next_run_at,
+            ],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Delete a task and its activity.
+    pub fn delete_task(&self, task_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute("DELETE FROM task_activity WHERE task_id = ?1", params![task_id])
+            .map_err(|e| e.to_string())?;
+        conn.execute("DELETE FROM tasks WHERE id = ?1", params![task_id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Add an activity entry for a task.
+    pub fn add_task_activity(&self, id: &str, task_id: &str, kind: &str, agent: Option<&str>, content: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT INTO task_activity (id, task_id, kind, agent, content)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, task_id, kind, agent, content],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// List activity for a task (most recent first).
+    pub fn list_task_activity(&self, task_id: &str, limit: u32) -> Result<Vec<TaskActivity>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, task_id, kind, agent, content, created_at
+             FROM task_activity WHERE task_id = ?1
+             ORDER BY created_at DESC LIMIT ?2"
+        ).map_err(|e| e.to_string())?;
+
+        let entries = stmt.query_map(params![task_id, limit], |row| {
+            Ok(TaskActivity {
+                id: row.get(0)?,
+                task_id: row.get(1)?,
+                kind: row.get(2)?,
+                agent: row.get(3)?,
+                content: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(entries)
+    }
+
+    /// Get all activity across all tasks for the live feed, most recent first.
+    pub fn list_all_activity(&self, limit: u32) -> Result<Vec<TaskActivity>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, task_id, kind, agent, content, created_at
+             FROM task_activity ORDER BY created_at DESC LIMIT ?1"
+        ).map_err(|e| e.to_string())?;
+
+        let entries = stmt.query_map(params![limit], |row| {
+            Ok(TaskActivity {
+                id: row.get(0)?,
+                task_id: row.get(1)?,
+                kind: row.get(2)?,
+                agent: row.get(3)?,
+                content: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(entries)
+    }
+
+    /// Get due cron tasks (cron_enabled=1 and next_run_at <= now).
+    pub fn get_due_cron_tasks(&self) -> Result<Vec<Task>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let now = chrono::Utc::now().to_rfc3339();
+        let mut stmt = conn.prepare(
+            "SELECT id, title, description, status, priority, assigned_agent, session_id,
+                    cron_schedule, cron_enabled, last_run_at, next_run_at, created_at, updated_at
+             FROM tasks WHERE cron_enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?1"
+        ).map_err(|e| e.to_string())?;
+
+        let tasks = stmt.query_map(params![now], |row| {
+            Ok(Task {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                description: row.get(2)?,
+                status: row.get(3)?,
+                priority: row.get(4)?,
+                assigned_agent: row.get(5)?,
+                session_id: row.get(6)?,
+                cron_schedule: row.get(7)?,
+                cron_enabled: row.get::<_, i32>(8)? != 0,
+                last_run_at: row.get(9)?,
+                next_run_at: row.get(10)?,
+                created_at: row.get(11)?,
+                updated_at: row.get(12)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(tasks)
+    }
+
+    /// Update a task's cron run timestamps.
+    pub fn update_task_cron_run(&self, task_id: &str, last_run: &str, next_run: Option<&str>) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE tasks SET last_run_at = ?2, next_run_at = ?3, updated_at = datetime('now') WHERE id = ?1",
+            params![task_id, last_run, next_run],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
     }
 }
 

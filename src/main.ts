@@ -24,7 +24,7 @@ function icon(name: string, cls = ''): string {
   const inner = _icons[name] || '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${cls ? ` class="${cls}"` : ''}>${inner}</svg>`;
 }
-import { initDb, initDbEncryption, listModes, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, listProjectFiles, saveProjectFile, deleteProjectFile, logCredentialActivity, logSecurityEvent } from './db';
+import { initDb, initDbEncryption, listModes, listDocs, saveDoc, getDoc, deleteDoc, logCredentialActivity, logSecurityEvent } from './db';
 import * as SettingsModule from './views/settings';
 import { initEngineSettings } from './views/settings-engine';
 import * as ModelsSettings from './views/settings-models';
@@ -46,6 +46,7 @@ import * as NodesModule from './views/nodes';
 import * as ProjectsModule from './views/projects';
 import * as AgentsModule from './views/agents';
 import * as TodayModule from './views/today';
+import * as TasksModule from './views/tasks';
 import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, getSessionOverrideRemaining, isFilesystemWriteTool, activateSessionOverride, type RiskClassification } from './security';
 
 // ── Global error handlers ──────────────────────────────────────────────────
@@ -150,7 +151,7 @@ const setupView = $('setup-view');
 const manualSetupView = $('manual-setup-view');
 const installView = $('install-view');
 const chatView = $('chat-view');
-const buildView = $('build-view');
+const tasksView = $('tasks-view');
 const codeView = $('code-view');
 const contentView = $('content-view');
 const mailView = $('mail-view');
@@ -176,7 +177,7 @@ const modelLabel = $('model-label');
 
 const allViews = [
   dashboardView, setupView, manualSetupView, installView,
-  chatView, buildView, codeView, contentView, mailView,
+  chatView, tasksView, codeView, contentView, mailView,
   automationsView, channelsView, researchView, memoryView,
   skillsView, foundryView, settingsView, nodesView, agentsView, todayView,
 ].filter(Boolean);
@@ -198,7 +199,7 @@ function switchView(viewName: string) {
   allViews.forEach((v) => v?.classList.remove('active'));
 
   const viewMap: Record<string, HTMLElement | null> = {
-    dashboard: dashboardView, chat: chatView, build: buildView, code: codeView,
+    dashboard: dashboardView, chat: chatView, tasks: tasksView, code: codeView,
     content: contentView, mail: mailView, automations: automationsView,
     channels: channelsView, research: researchView, memory: memoryView,
     skills: skillsView, foundry: foundryView, settings: settingsView,
@@ -220,7 +221,7 @@ function switchView(viewName: string) {
       case 'foundry': FoundryModule.loadModels(); FoundryModule.loadModes(); FoundryModule.loadAgents(); break;
       case 'nodes': NodesModule.loadNodes(); NodesModule.loadPairingRequests(); break;
       case 'memory': MemoryPalaceModule.loadMemoryPalace(); loadMemory(); break;
-      case 'build': loadBuildProjects(); loadSpaceCron('build'); break;
+      case 'tasks': TasksModule.loadTasks(); break;
       case 'mail': MailModule.loadMail(); loadSpaceCron('mail'); break;
       case 'settings': syncSettingsForm(); loadGatewayConfig(); SettingsModule.loadSettings(); SettingsModule.startUsageAutoRefresh(); loadActiveSettingsTab(); break;
       default: break;
@@ -258,6 +259,15 @@ async function connectGateway(): Promise<boolean> {
     if (statusText) statusText.textContent = 'Engine';
     if (modelLabel) modelLabel.textContent = 'Paw Engine';
     if (chatAgentName) chatAgentName.textContent = '🐾 Paw';
+
+    // Start Tasks cron timer & listen for task-updated events
+    TasksModule.startCronTimer();
+    if (listen) {
+      listen<{ task_id: string; status: string }>('task-updated', (event) => {
+        TasksModule.onTaskUpdated(event.payload);
+      });
+    }
+
     return true;
   }
 
@@ -1823,27 +1833,9 @@ function handleAgentEvent(payload: unknown): void {
       return;
     }
 
-    // Route paw-build-* events to the Build view
-    if (evtSession && evtSession.startsWith('paw-build')) {
-      if (!_buildStreaming) return;
-      if (_buildStreamRunId && runId && runId !== _buildStreamRunId) return;
-      if (stream === 'assistant' && data) {
-        const delta = data.delta as string | undefined;
-        if (delta) {
-          _buildStreamContent += delta;
-          const el = $('build-chat-messages');
-          const lastMsg = el?.querySelector('.message.assistant:last-child .message-content');
-          if (lastMsg) lastMsg.innerHTML = formatMarkdown(_buildStreamContent);
-        }
-      } else if (stream === 'lifecycle' && data) {
-        const phase = data.phase as string | undefined;
-        if (phase === 'start' && !_buildStreamRunId && runId) _buildStreamRunId = runId;
-        if (phase === 'end' && _buildStreamResolve) { _buildStreamResolve(_buildStreamContent); _buildStreamResolve = null; }
-      } else if (stream === 'error' && data) {
-        const error = (data.message ?? data.error ?? '') as string;
-        if (error) _buildStreamContent += `\n\nError: ${error}`;
-        if (_buildStreamResolve) { _buildStreamResolve(_buildStreamContent); _buildStreamResolve = null; }
-      }
+    // Route paw-task-* events to the Tasks view (agent working on tasks)
+    if (evtSession && evtSession.startsWith('eng-task-')) {
+      // Refresh task board when a task agent completes
       return;
     }
 
@@ -2805,7 +2797,7 @@ async function loadSpaceCron(space: string) {
 
     // Filter jobs contextually by space keywords
     const keywords: Record<string, string[]> = {
-      build: ['build', 'deploy', 'compile', 'test', 'ci', 'lint'],
+      tasks: ['task', 'build', 'deploy', 'compile', 'test', 'ci', 'lint'],
       content: ['content', 'write', 'publish', 'draft', 'blog', 'post', 'article'],
       mail: ['mail', 'email', 'send', 'newsletter', 'digest', 'notify', 'inbox'],
       research: ['research', 'scrape', 'crawl', 'monitor', 'fetch', 'analyze', 'report'],
@@ -2969,247 +2961,6 @@ $('content-delete-doc')?.addEventListener('click', async () => {
 
 // ── Research Notebook ──────────────────────────────────────────────────────
 
-// ── Build — streaming state ────────────────────────────────────────────────
-let _buildStreaming = false;
-let _buildStreamContent = '';
-let _buildStreamRunId: string | null = null;
-let _buildStreamResolve: ((text: string) => void) | null = null;
-
-// ── Build IDE ──────────────────────────────────────────────────────────────
-let _buildProjectId: string | null = null;
-let _buildOpenFiles: { id: string; path: string; content: string }[] = [];
-let _buildActiveFile: string | null = null;
-let _buildSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-$('build-new-project')?.addEventListener('click', async () => {
-  const name = await promptModal('Project name:', 'My project');
-  if (!name) return;
-  const id = crypto.randomUUID();
-  await saveProject({ id, name, space: 'build' });
-  _buildProjectId = id;
-  _buildOpenFiles = [];
-  _buildActiveFile = null;
-  await loadBuildProjects();
-  loadBuildProject();
-});
-
-async function loadBuildProjects() {
-  const sel = $('build-project-select') as HTMLSelectElement | null;
-  if (!sel) return;
-  const projects = await listProjects('build');
-  sel.innerHTML = '<option value="">No project</option>';
-  for (const p of projects) {
-    const opt = document.createElement('option');
-    opt.value = p.id;
-    opt.textContent = p.name;
-    if (p.id === _buildProjectId) opt.selected = true;
-    sel.appendChild(opt);
-  }
-  // Auto-select first project if none selected
-  if (!_buildProjectId && projects.length) {
-    _buildProjectId = projects[0].id;
-    sel.value = projects[0].id;
-    await loadBuildProject();
-  }
-}
-
-$('build-project-select')?.addEventListener('change', async () => {
-  const sel = $('build-project-select') as HTMLSelectElement;
-  _buildProjectId = sel?.value || null;
-  _buildOpenFiles = [];
-  _buildActiveFile = null;
-  if (_buildProjectId) {
-    await loadBuildProject();
-  } else {
-    const empty = $('build-empty');
-    if (empty) empty.style.display = 'flex';
-    const editor = $('build-code-editor') as HTMLTextAreaElement;
-    if (editor) editor.style.display = 'none';
-    updateBuildTabs();
-    updateBuildFileList();
-  }
-});
-
-async function loadBuildProject() {
-  if (!_buildProjectId) return;
-  const empty = $('build-empty');
-
-  // Load files from SQLite
-  const dbFiles = await listProjectFiles(_buildProjectId);
-  _buildOpenFiles = dbFiles.map(f => ({ id: f.id, path: f.path, content: f.content ?? '' }));
-  _buildActiveFile = _buildOpenFiles[0]?.path ?? null;
-
-  if (!_buildOpenFiles.length) {
-    if (empty) empty.style.display = 'flex';
-    const editor = $('build-code-editor') as HTMLTextAreaElement;
-    if (editor) editor.style.display = 'none';
-  } else {
-    if (empty) empty.style.display = 'none';
-    const editor = $('build-code-editor') as HTMLTextAreaElement;
-    if (editor && _buildActiveFile) {
-      editor.style.display = '';
-      editor.value = _buildOpenFiles[0]?.content ?? '';
-    }
-  }
-
-  updateBuildTabs();
-  updateBuildFileList();
-}
-
-$('build-add-file')?.addEventListener('click', async () => {
-  if (!_buildProjectId) { showToast('Create a project first', 'warning'); return; }
-  const filename = await promptModal('File name', 'e.g. index.html');
-  if (!filename) return;
-
-  // Check for duplicate
-  if (_buildOpenFiles.some(f => f.path === filename)) {
-    showToast('File already exists', 'warning');
-    return;
-  }
-
-  const fileId = crypto.randomUUID();
-  // Persist immediately
-  await saveProjectFile({ id: fileId, project_id: _buildProjectId, path: filename, content: '' });
-
-  _buildOpenFiles.push({ id: fileId, path: filename, content: '' });
-  _buildActiveFile = filename;
-
-  const empty = $('build-empty');
-  const editor = $('build-code-editor') as HTMLTextAreaElement;
-  if (empty) empty.style.display = 'none';
-  if (editor) { editor.style.display = ''; editor.value = ''; }
-
-  updateBuildTabs();
-  updateBuildFileList();
-  showToast(`Created ${filename}`, 'success');
-});
-
-function updateBuildTabs() {
-  const tabs = $('build-tabs');
-  if (!tabs) return;
-  tabs.innerHTML = '';
-  for (const f of _buildOpenFiles) {
-    const tab = document.createElement('div');
-    tab.className = `ide-tab${f.path === _buildActiveFile ? ' active' : ''}`;
-    tab.innerHTML = `<span>${escHtml(f.path)}</span><span class="ide-tab-close">✕</span>`;
-    tab.querySelector('span:first-child')?.addEventListener('click', () => {
-      _buildActiveFile = f.path;
-      const editor = $('build-code-editor') as HTMLTextAreaElement;
-      if (editor) editor.value = f.content;
-      updateBuildTabs();
-    });
-    tab.querySelector('.ide-tab-close')?.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      // Delete from DB
-      await deleteProjectFile(f.id);
-      _buildOpenFiles = _buildOpenFiles.filter(x => x.path !== f.path);
-      if (_buildActiveFile === f.path) {
-        _buildActiveFile = _buildOpenFiles[0]?.path ?? null;
-        const editor = $('build-code-editor') as HTMLTextAreaElement;
-        if (editor) editor.value = _buildActiveFile ? _buildOpenFiles[0].content : '';
-        if (!_buildActiveFile) { editor.style.display = 'none'; const empty = $('build-empty'); if (empty) empty.style.display = 'flex'; }
-      }
-      updateBuildTabs();
-      updateBuildFileList();
-    });
-    tabs.appendChild(tab);
-  }
-}
-
-function updateBuildFileList() {
-  const fileList = $('build-file-list');
-  if (!fileList) return;
-  fileList.innerHTML = '';
-  for (const f of _buildOpenFiles) {
-    const item = document.createElement('div');
-    item.className = `ide-file-item${f.path === _buildActiveFile ? ' active' : ''}`;
-    item.textContent = f.path;
-    item.addEventListener('click', () => {
-      _buildActiveFile = f.path;
-      const editor = $('build-code-editor') as HTMLTextAreaElement;
-      if (editor) { editor.style.display = ''; editor.value = f.content; }
-      updateBuildTabs();
-      updateBuildFileList();
-    });
-    fileList.appendChild(item);
-  }
-  if (!_buildOpenFiles.length) {
-    fileList.innerHTML = '<div class="ide-file-empty">No files yet</div>';
-  }
-}
-
-// Auto-save file content as user types (debounced 500ms)
-$('build-code-editor')?.addEventListener('input', () => {
-  if (!_buildActiveFile || !_buildProjectId) return;
-  const editor = $('build-code-editor') as HTMLTextAreaElement;
-  const file = _buildOpenFiles.find(f => f.path === _buildActiveFile);
-  if (file && editor) {
-    file.content = editor.value;
-    // Debounce save to SQLite
-    if (_buildSaveTimer) clearTimeout(_buildSaveTimer);
-    _buildSaveTimer = setTimeout(() => {
-      saveProjectFile({ id: file.id, project_id: _buildProjectId!, path: file.path, content: file.content })
-        .catch(e => console.warn('[build] Auto-save failed:', e));
-    }, 500);
-  }
-});
-
-// Build chat — send to agent in build context
-$('build-chat-send')?.addEventListener('click', async () => {
-  const input = $('build-chat-input') as HTMLTextAreaElement;
-  const msgList = $('build-chat-messages');
-  if (!input?.value.trim() || !wsConnected) return;
-
-  const userMsg = input.value.trim();
-  input.value = '';
-
-  // Show user message
-  const userDiv = document.createElement('div');
-  userDiv.className = 'message user';
-  userDiv.innerHTML = `<div class="message-content">${escHtml(userMsg)}</div>`;
-  msgList?.appendChild(userDiv);
-
-  // Provide context about open files
-  let context = userMsg;
-  if (_buildOpenFiles.length) {
-    const fileContext = _buildOpenFiles.map(f => `--- ${f.path} ---\n${f.content}`).join('\n\n');
-    context = `[Build context]\nOpen files:\n${fileContext}\n\n[User instruction]: ${userMsg}`;
-  }
-
-  // Show streaming assistant bubble
-  const agentDiv = document.createElement('div');
-  agentDiv.className = 'message assistant';
-  agentDiv.innerHTML = `<div class="message-content"><div class="loading-dots"><span></span><span></span><span></span></div></div>`;
-  msgList?.appendChild(agentDiv);
-
-  _buildStreaming = true;
-  _buildStreamContent = '';
-  _buildStreamRunId = null;
-
-  const done = new Promise<string>((resolve) => {
-    _buildStreamResolve = resolve;
-    setTimeout(() => resolve(_buildStreamContent || '(Timed out)'), 120_000);
-  });
-
-  try {
-    const sessionKey = _buildProjectId ? `paw-build-${_buildProjectId}` : 'paw-build';
-    const result = await gateway.chatSend(sessionKey, context);
-    if (result.runId) _buildStreamRunId = result.runId;
-
-    const finalText = await done;
-    const contentEl = agentDiv.querySelector('.message-content');
-    if (contentEl) contentEl.innerHTML = formatMarkdown(finalText);
-  } catch (e) {
-    const contentEl = agentDiv.querySelector('.message-content');
-    if (contentEl) contentEl.innerHTML = `Error: ${escHtml(e instanceof Error ? e.message : String(e))}`;
-  } finally {
-    _buildStreaming = false;
-    _buildStreamRunId = null;
-    _buildStreamResolve = null;
-  }
-});
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 // Tauri 2 WKWebView (macOS) does not support window.prompt() — it returns null.
 // This custom modal replaces all prompt() usage in the app.
@@ -4009,6 +3760,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize Projects module events
     ProjectsModule.bindEvents();
+
+    // Initialize Tasks module events
+    TasksModule.bindTaskEvents();
 
     // ── Pawz: Always engine mode — no gateway needed ──
     // Force engine mode in localStorage so isEngineMode() returns true everywhere

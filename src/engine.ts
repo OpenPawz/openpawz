@@ -156,6 +156,36 @@ export interface EngineSkillStatus {
   custom_instructions: string;
 }
 
+// ── Tasks ──────────────────────────────────────────────────────────────
+
+export type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'blocked' | 'done';
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export interface EngineTask {
+  id: string;
+  title: string;
+  description: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigned_agent?: string;
+  session_id?: string;
+  cron_schedule?: string;
+  cron_enabled: boolean;
+  last_run_at?: string;
+  next_run_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EngineTaskActivity {
+  id: string;
+  task_id: string;
+  kind: string;
+  agent?: string;
+  content: string;
+  created_at: string;
+}
+
 // ── Engine Client ──────────────────────────────────────────────────────
 
 class PawEngineClient {
@@ -358,6 +388,40 @@ class PawEngineClient {
 
   async skillSetInstructions(skillId: string, instructions: string): Promise<void> {
     return invoke('engine_skill_set_instructions', { skillId, instructions });
+  }
+
+  // ── Tasks (Kanban Board) ─────────────────────────────────────────────
+
+  async tasksList(): Promise<EngineTask[]> {
+    return invoke<EngineTask[]>('engine_tasks_list');
+  }
+
+  async taskCreate(task: EngineTask): Promise<void> {
+    return invoke('engine_task_create', { task });
+  }
+
+  async taskUpdate(task: EngineTask): Promise<void> {
+    return invoke('engine_task_update', { task });
+  }
+
+  async taskDelete(taskId: string): Promise<void> {
+    return invoke('engine_task_delete', { taskId });
+  }
+
+  async taskMove(taskId: string, newStatus: string): Promise<void> {
+    return invoke('engine_task_move', { taskId, newStatus });
+  }
+
+  async taskActivity(taskId?: string, limit?: number): Promise<EngineTaskActivity[]> {
+    return invoke<EngineTaskActivity[]>('engine_task_activity', { taskId, limit });
+  }
+
+  async taskRun(taskId: string): Promise<string> {
+    return invoke<string>('engine_task_run', { taskId });
+  }
+
+  async tasksCronTick(): Promise<string[]> {
+    return invoke<string[]>('engine_tasks_cron_tick');
   }
 }
 

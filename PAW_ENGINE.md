@@ -12,7 +12,7 @@ Zero network hop, zero open ports, zero auth tokens to manage.
 
 ---
 
-## Current Status: Phase 5 COMPLETE ✅
+## Current Status: Phase 6 COMPLETE ✅
 
 ### Phase Timeline
 - **Phase 1** (2026-02-16): Core engine — providers, streaming, tools, SQLite sessions
@@ -20,6 +20,51 @@ Zero network hop, zero open ports, zero auth tokens to manage.
 - **Phase 3** (2026-02-18): Soul system (agent personality files), Memory system (long-term semantic memory)
 - **Phase 4** (2026-02-18): Web browsing tools (search, read, screenshot, browse), Soul/Memory self-evolution tools
 - **Phase 5** (2026-02-16): Skill Vault (37 skills across 9 categories), credential encryption, instruction injection, advanced editing, Pawz rebrand
+- **Phase 6** (2026-02-16): Tasks Hub — Kanban board, agent auto-work, cron scheduling, live activity feed
+
+---
+
+## Phase 6 Features
+
+### Tasks Hub — Kanban Board with Agent Auto-Work ✅
+
+Replaces the old Build IDE view with a full Kanban task board. Agents autonomously execute tasks, move them through status columns, and report results.
+
+#### Kanban Board ✅
+- **6 columns:** Inbox → Assigned → In Progress → Review → Blocked → Done
+- **Drag-and-drop:** HTML5 drag API moves tasks between columns with activity logging
+- **Task cards:** Priority dot (urgent/high/medium/low), agent badge, cron indicator, time stamp
+- **Task detail modal:** Title, description, priority picker, agent assignment, cron schedule, activity log
+- **Stats bar:** Total tasks, active tasks, scheduled (cron) tasks
+
+#### Agent Auto-Work ✅
+- **`engine_task_run` command:** Spawns full agent loop for a task in background
+  - Creates/reuses dedicated session per task (`task-{id}`)
+  - Composes system prompt: base + soul files + skill instructions + task context
+  - Stores user message with task title + description
+  - Loads full conversation history via `load_conversation()`
+  - Runs `agent_loop::run_agent_turn()` asynchronously
+  - On completion: moves task → "review", logs `agent_completed` activity
+  - On error: moves task → "blocked", logs `agent_error` activity
+  - Emits `task-updated` Tauri event for real-time UI updates
+
+#### Cron Scheduling ✅
+- **Schedule formats:** `every Xm` (minutes), `every Xh` (hours), `daily HH:MM`
+- **`compute_next_run()` helper:** Parses schedule → calculates next UTC datetime
+- **`engine_tasks_cron_tick` command:** Finds due tasks, updates timestamps, logs `cron_triggered` activity, returns triggered IDs
+- **Frontend timer:** 30-second interval checks for due tasks, auto-runs them via `taskRun()`
+- **Per-task toggle:** `cron_enabled` flag so schedules can be paused without deletion
+
+#### Live Activity Feed ✅
+- **Feed sidebar:** Real-time activity log alongside the board
+- **Activity types:** `created`, `status_change`, `agent_started`, `agent_completed`, `agent_error`, `cron_triggered`, `comment`
+- **Color-coded dots:** Green (completed), blue (created/started), orange (cron), red (error)
+- **Filter tabs:** All / Tasks / Status — filter activity by type
+- **Relative timestamps:** "2m ago", "1h ago", "3d ago"
+
+#### Database Tables ✅
+- **`tasks`** (13 columns): id, title, description, status, priority, assigned_agent, session_id, cron_schedule, cron_enabled, last_run_at, next_run_at, created_at, updated_at
+- **`task_activity`** (6 columns): id, task_id, kind, agent, content, created_at
 
 ---
 
@@ -162,22 +207,23 @@ This means instruction-based skills with credentials (Discord, Notion, Trello, e
 | File | LOC | Purpose |
 |------|-----|---------|
 | `mod.rs` | 13 | Module declarations (commands, types, providers, agent_loop, tool_executor, sessions, memory, skills, web) |
-| `types.rs` | 841 | All data types + **22 tool definitions** (13 builtins in `builtins()` + 7 skill tools in `skill_tools()` + 2 factory methods). Message, Role, ToolCall, ToolDefinition, EngineEvent, Session, ChatRequest, EngineConfig, ProviderConfig, TokenUsage, ChatAttachment, etc. |
+| `types.rs` | 891 | All data types + **22 tool definitions** (13 builtins in `builtins()` + 7 skill tools in `skill_tools()` + 2 factory methods). Message, Role, ToolCall, ToolDefinition, EngineEvent, Session, ChatRequest, EngineConfig, ProviderConfig, TokenUsage, ChatAttachment, Task, TaskActivity, etc. |
 | `providers.rs` | 860 | AI provider HTTP clients. `OpenAiProvider`, `AnthropicProvider`, `GoogleProvider`, `AnyProvider`. SSE streaming, exponential retry, token usage parsing, attachment formatting |
 | `agent_loop.rs` | 258 | Core agentic loop: call model → accumulate → tool calls → HIL approval → execute → loop. Token usage accumulation |
 | `tool_executor.rs` | 753 | All tool handlers: exec (sh -c), fetch (reqwest), read_file, write_file, soul_read/write/list, memory_store/search, web_search/read/screenshot/browse, + 7 skill tool handlers (email SMTP/IMAP, Slack API, GitHub API, REST, webhook) |
-| `sessions.rs` | 657 | SQLite storage: sessions, messages, engine_config, agent_files, memories tables. `compose_agent_context()`. Memory CRUD + vector search (cosine similarity) + keyword fallback |
+| `sessions.rs` | 870 | SQLite storage: sessions, messages, engine_config, agent_files, memories, tasks, task_activity tables. `compose_agent_context()`. Memory CRUD + vector search (cosine similarity) + keyword fallback. Full tasks CRUD + activity logging + cron helpers |
 | `skills.rs` | 1072 | **37 skill definitions** across 9 categories. `SkillCategory` enum, `SkillDefinition`/`SkillStatus` structs. Encrypted credential vault (keyring + XOR + base64). Binary/env detection. `get_enabled_skill_instructions()` with credential injection + custom instruction support. DB methods for skill_credentials, skill_state, skill_custom_instructions tables |
 | `web.rs` | 538 | Web tools: DuckDuckGo search (HTML scraping), URL reader (scraper crate), headless Chrome screenshots, interactive browser (persistent OnceLock session) |
 | `memory.rs` | 245 | `EmbeddingClient` (Ollama + OpenAI-compatible). `store_memory()`, `search_memories()`, `extract_memorable_facts()` (heuristic auto-capture) |
-| `commands.rs` | 741 | **31 Tauri commands** + `EngineState` struct with `PendingApprovals`, `MemoryConfig`. System prompt composition (base + agent context + memory + skill instructions). Auto-recall/capture |
+| `commands.rs` | 1101 | **39 Tauri commands** + `EngineState` struct with `PendingApprovals`, `MemoryConfig`. System prompt composition (base + agent context + memory + skill instructions). Auto-recall/capture. Task auto-work + cron scheduling |
 
 ### TypeScript Frontend (`src/`)
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `engine.ts` | 364 | `PawEngineClient` class — 32 methods wrapping `invoke()` for all 31 commands + event listener. Skills, memory, agent files, sessions, config, chat |
+| `engine.ts` | 430 | `PawEngineClient` class — 40 methods wrapping `invoke()` for all 39 commands + event listener. Skills, memory, agent files, sessions, config, chat, tasks |
 | `engine-bridge.ts` | 223 | Engine → gateway-style event translation. HIL approval handlers. Attachment passthrough. Usage forwarding |
+| `views/tasks.ts` | 477 | Tasks Hub: Kanban board, drag-and-drop, live activity feed, task modal, cron timer, agent auto-work |
 | `views/settings-skills.ts` | 414 | Skills UI: category tabs, filter, skill cards, credential inputs, binary/env status, Advanced instruction editor, save/reset |
 | `views/settings-engine.ts` | 125 | Engine settings: provider, model, API key, base URL |
 
@@ -186,8 +232,8 @@ This means instruction-based skills with credentials (Discord, Notion, Trello, e
 | File | Changes |
 |------|---------|
 | `src-tauri/Cargo.toml` | reqwest, tokio, tokio-stream, futures, uuid, rusqlite, headless_chrome, scraper, url, keyring, rand, base64, chrono, dirs, ed25519-dalek, sha2 |
-| `src-tauri/src/lib.rs` | `pub mod engine;`, `EngineState` init, `.manage(engine_state)`, **31 engine commands** registered |
-| `src/main.ts` | Engine-bridge imports, dual-mode send/sessions/history, HIL approval handler, attachment handling |
+| `src-tauri/src/lib.rs` | `pub mod engine;`, `EngineState` init, `.manage(engine_state)`, **39 engine commands** registered |
+| `src/main.ts` | Engine-bridge imports, dual-mode send/sessions/history, HIL approval handler, attachment handling, Tasks module wiring (bind events, cron timer, task-updated listener) |
 | `src/views/foundry.ts` | Agent file editor wired to `pawEngine` |
 | `src/views/memory-palace.ts` | All memory views wired to `pawEngine` |
 | `index.html` | Pawz branding, Skills view in sidebar, engine settings panel |
@@ -235,7 +281,7 @@ User types message
 ### Provider Resolution
 From model name prefix: `claude*`→Anthropic, `gemini*`→Google, `gpt*`/`o1*`/`o3*`→OpenAI. Fallback→default→first configured.
 
-### Database Schema (8 tables in `~/.paw/engine.db`)
+### Database Schema (10 tables in `~/.paw/engine.db`)
 | Table | Purpose |
 |-------|---------|
 | `sessions` | Session metadata (id, model, system_prompt, timestamps) |
@@ -246,8 +292,10 @@ From model name prefix: `claude*`→Anthropic, `gemini*`→Google, `gpt*`/`o1*`/
 | `skill_credentials` | Encrypted credential key-value pairs per skill |
 | `skill_state` | Enabled/disabled state per skill |
 | `skill_custom_instructions` | User-edited skill instructions |
+| `tasks` | Kanban tasks (title, description, status, priority, agent, cron schedule, timestamps) |
+| `task_activity` | Activity log entries per task (kind, agent, content, timestamp) |
 
-### 31 Tauri Commands
+### 39 Tauri Commands
 **Chat:** `engine_chat_send`, `engine_chat_history`
 **Sessions:** `engine_sessions_list`, `engine_session_rename`, `engine_session_delete`, `engine_session_clear`
 **Config:** `engine_get_config`, `engine_set_config`, `engine_upsert_provider`, `engine_remove_provider`, `engine_status`
@@ -255,6 +303,7 @@ From model name prefix: `claude*`→Anthropic, `gemini*`→Google, `gpt*`/`o1*`/
 **Agent Files:** `engine_agent_file_list`, `engine_agent_file_get`, `engine_agent_file_set`, `engine_agent_file_delete`
 **Memory:** `engine_memory_store`, `engine_memory_search`, `engine_memory_stats`, `engine_memory_delete`, `engine_memory_list`, `engine_get_memory_config`, `engine_set_memory_config`, `engine_test_embedding`
 **Skills:** `engine_skills_list`, `engine_skill_set_enabled`, `engine_skill_set_credential`, `engine_skill_delete_credential`, `engine_skill_revoke_all`, `engine_skill_get_instructions`, `engine_skill_set_instructions`
+**Tasks:** `engine_tasks_list`, `engine_task_create`, `engine_task_update`, `engine_task_delete`, `engine_task_move`, `engine_task_activity`, `engine_task_run`, `engine_tasks_cron_tick`
 
 ---
 
@@ -297,11 +346,11 @@ git add -A && git commit -m "..." && git push
 ## Key Technical Notes
 
 - **Tauri lib name:** `paw_temp_lib` (Cargo.toml)
-- **Engine DB:** `~/.paw/engine.db` (SQLite WAL, 8 tables)
+- **Engine DB:** `~/.paw/engine.db` (SQLite WAL, 10 tables)
 - **Event channel:** `engine-event` (single Tauri event for all engine events)
 - **Session prefix:** `eng-` (not `paw-`, which gets filtered)
 - **Google quirk:** Rejects `additionalProperties`/`$schema`/`$ref` — `sanitize_schema()` strips these
 - **Vault encryption:** XOR with 32-byte random key in OS keychain (`paw-skill-vault` service)
 - **Web browsing:** headless_chrome v1 with OnceLock singleton browser instance
-- **Total engine Rust LOC:** ~5,168 across 9 files
-- **Total engine TS LOC:** ~1,126 across 4 files
+- **Total engine Rust LOC:** ~5,768 across 9 files
+- **Total engine TS LOC:** ~1,648 across 5 files
