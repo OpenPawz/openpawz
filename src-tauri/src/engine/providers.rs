@@ -500,12 +500,31 @@ impl GoogleProvider {
         (system_instruction, contents)
     }
 
+    /// Strip schema fields that Gemini doesn't support (additionalProperties, etc.)
+    fn sanitize_schema(val: &Value) -> Value {
+        match val {
+            Value::Object(map) => {
+                let mut clean = serde_json::Map::new();
+                for (k, v) in map {
+                    // Gemini rejects these OpenAPI fields
+                    if k == "additionalProperties" || k == "$schema" || k == "$ref" {
+                        continue;
+                    }
+                    clean.insert(k.clone(), Self::sanitize_schema(v));
+                }
+                Value::Object(clean)
+            }
+            Value::Array(arr) => Value::Array(arr.iter().map(|v| Self::sanitize_schema(v)).collect()),
+            other => other.clone(),
+        }
+    }
+
     fn format_tools(tools: &[ToolDefinition]) -> Value {
         let function_declarations: Vec<Value> = tools.iter().map(|t| {
             json!({
                 "name": t.function.name,
                 "description": t.function.description,
-                "parameters": t.function.parameters,
+                "parameters": Self::sanitize_schema(&t.function.parameters),
             })
         }).collect();
 

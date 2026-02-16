@@ -175,8 +175,7 @@ impl ToolDefinition {
                         },
                         "headers": {
                             "type": "object",
-                            "description": "HTTP headers as key-value pairs",
-                            "additionalProperties": { "type": "string" }
+                            "description": "HTTP headers as key-value pairs"
                         },
                         "body": {
                             "type": "string",
