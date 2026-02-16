@@ -1761,6 +1761,21 @@ fn patch_openclaw_config(patch_json: String) -> Result<String, String> {
     // Deep-merge patch into config
     deep_merge_json(&mut config, &patch);
 
+    // Ensure every provider has "models": [] (gateway schema requires it)
+    if let Some(providers) = config
+        .get_mut("models")
+        .and_then(|m| m.get_mut("providers"))
+        .and_then(|p| p.as_object_mut())
+    {
+        for (_prov_name, prov_val) in providers.iter_mut() {
+            if let Some(prov_obj) = prov_val.as_object_mut() {
+                if !prov_obj.contains_key("models") {
+                    prov_obj.insert("models".to_string(), serde_json::json!([]));
+                }
+            }
+        }
+    }
+
     // Write back
     let output = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
@@ -1891,6 +1906,24 @@ fn repair_openclaw_config() -> Result<bool, String> {
             obj.remove("_paw");
             repaired = true;
             info!("Removed invalid '_paw' key from openclaw.json");
+        }
+
+        // Fix: ensure every provider under models.providers has a "models" array.
+        // OpenClaw schema requires it — gateway refuses to start without it.
+        if let Some(providers) = obj
+            .get_mut("models")
+            .and_then(|m| m.get_mut("providers"))
+            .and_then(|p| p.as_object_mut())
+        {
+            for (prov_name, prov_val) in providers.iter_mut() {
+                if let Some(prov_obj) = prov_val.as_object_mut() {
+                    if !prov_obj.contains_key("models") {
+                        prov_obj.insert("models".to_string(), serde_json::json!([]));
+                        repaired = true;
+                        info!("Added missing 'models': [] to provider '{}'", prov_name);
+                    }
+                }
+            }
         }
 
         // Fix memory-lancedb embedding config — strict schema only allows apiKey + model.
