@@ -2245,7 +2245,7 @@ fn repair_openclaw_config() -> Result<bool, String> {
                         vars.insert("GEMINI_API_KEY".to_string(),
                             serde_json::json!(""));
                         repaired = true;
-                        info!("Set GEMINI_API_KEY in env.vars");
+                        info!("Set GEMINI_API_KEY in env.vars (user must configure via Settings)");
                     }
                 }
             }
