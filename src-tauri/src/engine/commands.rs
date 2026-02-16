@@ -51,7 +51,7 @@ pub async fn engine_chat_send(
     let session_id = match &request.session_id {
         Some(id) if !id.is_empty() => id.clone(),
         _ => {
-            let new_id = format!("paw-{}", uuid::Uuid::new_v4());
+            let new_id = format!("eng-{}", uuid::Uuid::new_v4());
             let model = request.model.clone().unwrap_or_else(|| {
                 let cfg = state.config.lock().unwrap();
                 cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string())

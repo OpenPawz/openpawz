@@ -64,7 +64,7 @@ export async function engineChatSend(
 ): Promise<{ runId: string; sessionKey: string; status: string }> {
 
   const request: EngineChatRequest = {
-    session_id: sessionKey === 'default' ? undefined : sessionKey,
+    session_id: (sessionKey === 'default' || !sessionKey) ? undefined : sessionKey,
     message: content,
     model: opts.model ?? opts.agentProfile?.model,
     system_prompt: opts.agentProfile?.systemPrompt,
