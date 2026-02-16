@@ -85,7 +85,7 @@ export async function engineChatSend(
   opts: {
     model?: string;
     temperature?: number;
-    agentProfile?: { systemPrompt?: string; model?: string };
+    agentProfile?: { name?: string; bio?: string; systemPrompt?: string; model?: string; personality?: { tone?: string; initiative?: string; detail?: string }; boundaries?: string[] };
     attachments?: Array<{ type?: string; mimeType: string; content: string }>;
   } = {},
 ): Promise<{ runId: string; sessionKey: string; status: string }> {
@@ -94,11 +94,45 @@ export async function engineChatSend(
   const rawModel = opts.model ?? opts.agentProfile?.model;
   const resolvedModel = (rawModel && rawModel !== 'default' && rawModel !== 'Default') ? rawModel : undefined;
 
+  // Build a system prompt from the full agent profile (matching what gateway.ts does)
+  let agentSystemPrompt: string | undefined;
+  if (opts.agentProfile) {
+    const profile = opts.agentProfile;
+    const parts: string[] = [];
+
+    if (profile.name) {
+      parts.push(`You are ${profile.name}.`);
+    }
+    if (profile.bio) {
+      parts.push(profile.bio);
+    }
+    if (profile.personality) {
+      const p = profile.personality;
+      const personalityDesc: string[] = [];
+      if (p.tone) personalityDesc.push(`your tone is ${p.tone}`);
+      if (p.initiative) personalityDesc.push(`you are ${p.initiative} in your initiative`);
+      if (p.detail) personalityDesc.push(`you are ${p.detail} in your responses`);
+      if (personalityDesc.length > 0) {
+        parts.push(`Your personality is defined as follows: ${personalityDesc.join(', ')}.`);
+      }
+    }
+    if (profile.boundaries && profile.boundaries.length > 0) {
+      parts.push(`You must strictly follow these rules:\n${profile.boundaries.map(b => `- ${b}`).join('\n')}`);
+    }
+    if (profile.systemPrompt) {
+      parts.push(profile.systemPrompt);
+    }
+
+    if (parts.length > 0) {
+      agentSystemPrompt = parts.join(' ');
+    }
+  }
+
   const request: EngineChatRequest = {
     session_id: (sessionKey === 'default' || !sessionKey) ? undefined : sessionKey,
     message: content,
     model: resolvedModel,
-    system_prompt: opts.agentProfile?.systemPrompt,
+    system_prompt: agentSystemPrompt,
     temperature: opts.temperature,
     tools_enabled: true,
     attachments: opts.attachments?.map(a => ({

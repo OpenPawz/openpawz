@@ -156,6 +156,11 @@ pub async fn engine_chat_send(
     // Compose agent context (soul files) into the system prompt
     let agent_id = "default"; // TODO: support multi-agent selection from frontend
     let agent_context = state.store.compose_agent_context(agent_id).unwrap_or(None);
+    if let Some(ref ac) = agent_context {
+        info!("[engine] Agent context loaded ({} chars) for agent '{}'", ac.len(), agent_id);
+    } else {
+        info!("[engine] No agent context files found for agent '{}'", agent_id);
+    }
 
     // Auto-recall: search memory for context relevant to the user's message
     let (auto_recall_on, auto_capture_on, recall_limit, recall_threshold) = {
@@ -204,6 +209,10 @@ pub async fn engine_chat_send(
         }
         if parts.is_empty() { None } else { Some(parts.join("\n\n---\n\n")) }
     };
+
+    info!("[engine] System prompt: {} parts, total {} chars",
+        [&system_prompt, &agent_context, &memory_context].iter().filter(|p| p.is_some()).count(),
+        full_system_prompt.as_ref().map(|s| s.len()).unwrap_or(0));
 
     let mut messages = state.store.load_conversation(
         &session_id,
