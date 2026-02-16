@@ -16,6 +16,85 @@ export function getDb(): Database | null {
   return db;
 }
 
+// ── Field-level encryption (C2) ────────────────────────────────────────────
+// Uses Web Crypto API with AES-GCM for encrypting sensitive fields before
+// storing in SQLite. The 256-bit key is derived from the OS keychain via
+// the Rust get_db_encryption_key command.
+
+let _cryptoKey: CryptoKey | null = null;
+const ENC_PREFIX = 'enc:';  // marker prefix for encrypted values
+
+/**
+ * Initialise the encryption key from the OS keychain (via Tauri invoke).
+ * Call once after Tauri is ready. No-op in browser mode.
+ */
+export async function initDbEncryption(): Promise<boolean> {
+  try {
+    const invoke = (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__
+      ? (await import('@tauri-apps/api/core')).invoke
+      : null;
+    if (!invoke) return false;
+
+    const hexKey = await invoke<string>('get_db_encryption_key');
+    if (!hexKey || hexKey.length < 32) return false;
+
+    // Convert hex string to raw bytes
+    const keyBytes = new Uint8Array(hexKey.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
+    _cryptoKey = await crypto.subtle.importKey(
+      'raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']
+    );
+    console.log('[db] Encryption key loaded from OS keychain');
+    return true;
+  } catch (e) {
+    console.warn('[db] Failed to init encryption key:', e);
+    return false;
+  }
+}
+
+/**
+ * Encrypt a plaintext string. Returns "enc:<base64(iv+ciphertext)>".
+ * Falls back to plaintext if encryption isn't initialised.
+ */
+export async function encryptField(plaintext: string): Promise<string> {
+  if (!_cryptoKey) return plaintext;
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = new TextEncoder().encode(plaintext);
+    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, _cryptoKey, encoded);
+    // Concatenate IV + ciphertext and base64-encode
+    const combined = new Uint8Array(iv.length + cipher.byteLength);
+    combined.set(iv);
+    combined.set(new Uint8Array(cipher), iv.length);
+    return ENC_PREFIX + btoa(String.fromCharCode(...combined));
+  } catch (e) {
+    console.warn('[db] Encryption failed, storing plaintext:', e);
+    return plaintext;
+  }
+}
+
+/**
+ * Decrypt a value. If it starts with "enc:", decrypt it. Otherwise return as-is.
+ */
+export async function decryptField(stored: string): Promise<string> {
+  if (!stored.startsWith(ENC_PREFIX) || !_cryptoKey) return stored;
+  try {
+    const b64 = stored.slice(ENC_PREFIX.length);
+    const combined = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+    const iv = combined.slice(0, 12);
+    const ciphertext = combined.slice(12);
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _cryptoKey, ciphertext);
+    return new TextDecoder().decode(decrypted);
+  } catch (e) {
+    console.warn('[db] Decryption failed:', e);
+    return stored; // return raw value if decryption fails
+  }
+}
+
+/** Check if encryption is available (key loaded). */
+export function isEncryptionReady(): boolean {
+  return _cryptoKey !== null;
+}
+
 async function runMigrations(db: Database) {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS agent_modes (

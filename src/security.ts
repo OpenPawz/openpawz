@@ -223,3 +223,84 @@ export function matchesDenylist(command: string, patterns: string[]): boolean {
     catch { return false; }
   });
 }
+
+// ── Network Request Auditing (Sprint C5) ──────────────────────────────────
+
+/** Tools/commands that perform outbound network requests. */
+const NETWORK_TOOLS = /\b(curl|wget|fetch|http|nc|ncat|netcat|nmap|ssh|scp|rsync|ftp|sftp|telnet|socat|lynx|aria2c|axel)\b/i;
+
+/** Patterns that suggest data exfiltration (piping data TO a remote host). */
+const EXFILTRATION_PATTERNS = [
+  /\bcat\b.*\|\s*(curl|wget|nc|ncat)/i,          // cat secret | curl
+  /\bcurl\b.*-d\s+@/i,                            // curl -d @file (upload file)
+  /\bcurl\b.*--data-binary\s+@/i,                 // curl --data-binary @file
+  /\bcurl\b.*-T\s+/i,                             // curl -T (upload)
+  /\bcurl\b.*--upload-file/i,                      // curl --upload-file
+  /\bwget\b.*--post-file/i,                        // wget --post-file
+  /\bnc\b.*<\s*\//i,                              // nc host < /file
+  /\bscp\b.*:\s*$/i,                              // scp file host: (outbound)
+  /\brsync\b.*[^@]+@[^:]+:/i,                     // rsync to remote
+  />\s*\/dev\/tcp\//i,                             // bash /dev/tcp redirect
+];
+
+/** Known-safe localhost / loopback destinations. */
+const SAFE_HOSTS = /\b(localhost|127\.0\.0\.1|0\.0\.0\.0|\[?::1\]?)\b/i;
+
+/** Extract all URLs and hostnames from a command string. */
+export function extractNetworkTargets(command: string): string[] {
+  const targets: string[] = [];
+  // Match full URLs
+  const urlRe = /https?:\/\/[^\s'"]+/gi;
+  let m: RegExpExecArray | null;
+  while ((m = urlRe.exec(command)) !== null) targets.push(m[0]);
+  // Match host:port patterns (e.g. nc example.com 443)
+  const hostPortRe = /(?:^|\s)(?:nc|ncat|netcat|ssh|scp|telnet|socat|ftp|sftp)\s+([a-z0-9._-]+)\s+(\d+)/gi;
+  while ((m = hostPortRe.exec(command)) !== null) targets.push(`${m[1]}:${m[2]}`);
+  return targets;
+}
+
+export interface NetworkAuditResult {
+  isNetworkRequest: boolean;
+  targets: string[];
+  isExfiltration: boolean;
+  exfiltrationReason: string | null;
+  allTargetsLocal: boolean;
+}
+
+/**
+ * Analyse a tool invocation for outbound network activity.
+ * Returns audit metadata for logging regardless of allow/deny decision.
+ */
+export function auditNetworkRequest(
+  toolName: string,
+  args?: Record<string, unknown>
+): NetworkAuditResult {
+  const searchStr = buildSearchString(toolName, args);
+
+  const result: NetworkAuditResult = {
+    isNetworkRequest: false,
+    targets: [],
+    isExfiltration: false,
+    exfiltrationReason: null,
+    allTargetsLocal: true,
+  };
+
+  if (!NETWORK_TOOLS.test(searchStr)) return result;
+
+  result.isNetworkRequest = true;
+  result.targets = extractNetworkTargets(searchStr);
+
+  // Check if any target is non-local
+  result.allTargetsLocal = result.targets.length === 0 || result.targets.every(t => SAFE_HOSTS.test(t));
+
+  // Check for exfiltration patterns
+  for (const ep of EXFILTRATION_PATTERNS) {
+    if (ep.test(searchStr)) {
+      result.isExfiltration = true;
+      result.exfiltrationReason = ep.source;
+      break;
+    }
+  }
+
+  return result;
+}

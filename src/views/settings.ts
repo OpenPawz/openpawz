@@ -3,7 +3,7 @@
 
 import { gateway } from '../gateway';
 import { loadSecuritySettings, saveSecuritySettings, type SecuritySettings } from '../security';
-import { getSecurityAuditLog } from '../db';
+import { getSecurityAuditLog, isEncryptionReady } from '../db';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -725,6 +725,18 @@ async function saveSettingsApprovals() {
 
 // ── Security Audit Dashboard ───────────────────────────────────────────────
 
+function updateEncryptionStatus() {
+  const bar = $('encryption-status-bar');
+  const text = $('encryption-status-text');
+  if (!bar || !text) return;
+
+  const ready = isEncryptionReady();
+  bar.className = `encryption-status-bar ${ready ? 'enc-active' : 'enc-inactive'}`;
+  text.textContent = ready
+    ? '🔒 Database encryption active — sensitive fields encrypted with OS keychain key'
+    : '⚠ Encryption unavailable — sensitive fields stored as plaintext';
+}
+
 export async function loadSecurityAudit() {
   const section = $('settings-audit-section');
   const tbody = $('audit-log-body');
@@ -733,6 +745,9 @@ export async function loadSecurityAudit() {
   if (!section || !tbody) return;
 
   section.style.display = '';
+
+  // C2: Update encryption status indicator
+  updateEncryptionStatus();
 
   const filterType = ($('audit-filter-type') as HTMLSelectElement | null)?.value || undefined;
   const filterRisk = ($('audit-filter-risk') as HTMLSelectElement | null)?.value || '';

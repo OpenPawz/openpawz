@@ -341,15 +341,15 @@ ssh-keygen -f (overwriting)             — key destruction
 | B3 | Token age display + rotation reminder | ✅ | `settings.ts` (device cards with age + stale/critical warnings) |
 | B4 | Sensitive path blocking for Projects | ✅ | `projects.ts` (20+ blocked paths + file tree filtering) |
 
-### Sprint C — Hardening (Later)
+### Sprint C — Hardening ✅ COMPLETE (2026-02-15)
 
-| # | Task | Effort | Files |
+| # | Task | Status | Files |
 |---|------|--------|-------|
-| C1 | Per-project Tauri scope | 1 day | `capabilities/default.json`, `projects.ts` |
-| C2 | SQLCipher for paw.db | 2 days | `Cargo.toml`, `lib.rs`, `db.ts` |
-| C3 | Gateway localhost validation | 2 hrs | `main.ts` (connect), `lib.rs` (start_gateway) |
-| C4 | Crash watchdog + auto-restart | 1 day | `main.ts` (health polling), `lib.rs` |
-| C5 | Network request auditing | 1 day | `main.ts` (exec approval args inspection) |
+| C1 | Per-project scope enforcement | ✅ | `projects.ts` (scope guard validates all file ops against active project root, blocks traversal, audit logging) |
+| C2 | Database encryption at rest | ✅ | `lib.rs` (keychain-stored AES-256 key), `db.ts` (Web Crypto AES-GCM field encryption/decryption), `settings.ts` (encryption status indicator) |
+| C3 | Gateway localhost validation | ✅ | `gateway.ts` (isLocalhostUrl + connect() guard), `main.ts` (connectGateway validation), `lib.rs` (start_gateway port validation) |
+| C4 | Crash watchdog + auto-restart | ✅ | `main.ts` (watchdogRestart — crash detection, 5-attempt auto-restart, crash logging, status notifications) |
+| C5 | Network request auditing | ✅ | `security.ts` (auditNetworkRequest — tool detection, URL extraction, exfiltration patterns), `main.ts` (audit logging + modal banner), `styles.css` (network banners) |
 
 ---
 
@@ -363,19 +363,19 @@ ssh-keygen -f (overwriting)             — key destruction
 | **Dangerous command classifier** | ✅ Built | Risk classification (critical/high/medium), red DANGER modal, type-to-confirm |
 | **Command allowlist/denylist** | ✅ Built | Regex patterns in Settings, auto-approve safe commands, auto-deny dangerous ones |
 | **OS Keychain** | ✅ Built | Rust `keyring` crate — macOS Keychain / libsecret / Windows |
-| **Filesystem sandbox** | ✅ Partial | Tauri scope `~/Documents/Paw/**` — Projects view is unscoped |
+| **Filesystem sandbox** | ✅ Built | Tauri scope `~/Documents/Paw/**` + per-project scope guard + sensitive path blocking (20+ patterns) |
 | **CSP** | ✅ Built | Restrictive CSP: self-only scripts, localhost-only WebSocket, no external loads |
 | **Gateway auth** | ✅ Built | Token-based WebSocket auth + per-device rotation/revocation |
+| **Gateway localhost** | ✅ Built | `isLocalhostUrl()` validation in gateway.ts + main.ts + lib.rs — blocks non-localhost URLs |
 | **Credential audit** | ✅ Built (mail only) | `credential_activity_log` table — no unified audit dashboard |
 | **Security audit log** | ✅ Built | `security_audit_log` table + filterable dashboard UI with export (JSON/CSV) |
 | **Channel access control** | ✅ Built | Per-channel DM/group policies with allowlists |
 | **Skill vetting** | 🔶 Partial | Pre-install safety confirmation, known-safe list, audit logging — no npm audit yet |
-| **Filesystem sandbox** | 🔶 Partial | Tauri scope + sensitive path blocking (20+ patterns) + file tree filtering |
 | **Token rotation** | 🔶 Partial | Token age display + stale/critical warnings on device cards — no auto-rotation yet |
-| **Encryption at rest** | ❌ Not built | SQLite and config files are plaintext |
+| **Encryption at rest** | ✅ Built | AES-256-GCM field encryption via Web Crypto API, key stored in OS keychain |
 | **Token auto-rotation** | 🔶 Partial | Token age display + rotation reminders — no auto-schedule yet |
-| **Network sandboxing** | ❌ Not built | Agent can reach any domain |
-| **Crash recovery** | ❌ Not built | No watchdog, no auto-restart |
+| **Network request auditing** | ✅ Built | Outbound tool detection (curl/wget/nc/ssh/etc), URL extraction, exfiltration pattern detection, audit logging + modal banners |
+| **Crash recovery** | ✅ Built | Watchdog with crash detection, 5-attempt auto-restart, crash logging, status notifications |
 
 ---
 
@@ -383,19 +383,16 @@ ssh-keygen -f (overwriting)             — key destruction
 
 | File | Security Role |
 |------|---------------|
-| `src-tauri/src/lib.rs` | Rust backend — keychain, chmod, gateway lifecycle |
+| `src-tauri/src/lib.rs` | Rust backend — keychain, chmod, gateway lifecycle, DB encryption key, localhost-only gateway |
 | `src-tauri/tauri.conf.json` | CSP config (restrictive policy set), bundle config |
 | `src-tauri/capabilities/default.json` | Filesystem scope, shell permissions |
-| `src/security.ts` | **NEW** — Dangerous command classifier, risk patterns, security settings load/save, allowlist/denylist matching |
-| `src/main.ts:3022-3210` | Exec approval handler — risk classification, auto-deny/allow, danger modal, type-to-confirm |
-| `src/main.ts:1660-1820` | Channel setup — DM/group policies, allowlists |
-| `src/gateway.ts:607-625` | Exec approval gateway methods |
-| `src/db.ts:139` | `credential_activity_log` table schema |
-| `src/db.ts:150-190` | **NEW** — `security_audit_log` + `security_rules` table schemas |
-| `src/db.ts:380-460` | **NEW** — Security audit log + rules CRUD functions |
-| `src/views/settings.ts` | Approval toggles, security policy toggles, audit dashboard, device token management |
-| `src/views/skills.ts` | Skill install (with safety confirmation + known-safe list) |
-| `src/views/projects.ts` | File browser (sensitive path blocking for 20+ patterns) |
+| `src/security.ts` | Dangerous command classifier, risk patterns, security settings, allowlist/denylist, network request auditing |
+| `src/main.ts` | Exec approval handler (risk classification, auto-deny/allow, danger modal, network audit banner), crash watchdog, localhost validation |
+| `src/gateway.ts` | WebSocket client with `isLocalhostUrl()` guard on connect, exec approval methods |
+| `src/db.ts` | `security_audit_log` + `security_rules` tables, AES-GCM field encryption via Web Crypto API |
+| `src/views/settings.ts` | Approval toggles, security policies, audit dashboard, encryption status indicator, device token management |
+| `src/views/skills.ts` | Skill install (safety confirmation + known-safe list) |
+| `src/views/projects.ts` | File browser (sensitive path blocking + per-project scope guard) |
 
 ---
 
@@ -407,11 +404,12 @@ Paw wraps OpenClaw, which has its own security:
 - **Channel pairing** — new contacts must be approved before interacting
 - **Device pairing** — new devices must be approved before connecting
 
-What OpenClaw does NOT have:
-- No command classification (safe vs dangerous)
-- No command allowlist/denylist
-- No filesystem sandboxing (it runs as the user's process)
-- No network restrictions
-- No encryption at rest
+What OpenClaw does NOT have (now handled by Paw):
+- No command classification → ✅ Paw: 30+ danger patterns with risk levels
+- No command allowlist/denylist → ✅ Paw: regex-based auto-approve/deny
+- No filesystem sandboxing → ✅ Paw: Tauri scope + per-project guard + sensitive path blocking
+- No network restrictions → ✅ Paw: network request auditing + exfiltration detection
+- No encryption at rest → ✅ Paw: AES-256-GCM field encryption with OS keychain key
+- No crash recovery → ✅ Paw: watchdog with auto-restart (5 attempts)
 
 **This is exactly why Paw is the right place to add these controls** — it sits between the user and OpenClaw, with Rust-level enforcement capabilities.

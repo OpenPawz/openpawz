@@ -5808,6 +5808,31 @@ select.form-input {
 .approval-risk-banner.risk-medium .approval-risk-label { color: #eab308; }
 .approval-risk-banner.risk-medium .approval-risk-icon { color: #eab308; }
 
+/* ── Network audit banner (C5) ── */
+.network-banner {
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 1.5;
+  border-radius: 6px;
+  margin: 0 16px 8px 16px;
+}
+.network-banner.network-exfiltration {
+  background: rgba(239, 68, 68, 0.10);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+}
+.network-banner.network-external {
+  background: rgba(234, 179, 8, 0.08);
+  border: 1px solid rgba(234, 179, 8, 0.25);
+  color: #b45309;
+}
+.network-banner.network-local {
+  background: rgba(34, 197, 94, 0.08);
+  border: 1px solid rgba(34, 197, 94, 0.20);
+  color: #15803d;
+}
+.network-banner strong { display: block; margin-bottom: 2px; }
+
 /* Type-to-confirm for critical commands */
 .approval-type-confirm {
   flex: 1;
@@ -5906,6 +5931,27 @@ select.form-input {
 }
 
 /* ─── Security Audit Dashboard ─── */
+/* ── Encryption status indicator (C2) ── */
+.encryption-status-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-hover);
+}
+.encryption-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.encryption-status-bar.enc-active .encryption-status-dot { background: #22c55e; }
+.encryption-status-bar.enc-inactive .encryption-status-dot { background: #eab308; }
+
 .audit-controls {
   display: flex;
   flex-wrap: wrap;

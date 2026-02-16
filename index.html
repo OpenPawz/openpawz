@@ -1853,6 +1853,12 @@
             </h2>
             <p class="settings-section-desc">All security-relevant events — exec approvals, auto-denies, auto-allows, and policy changes.</p>
 
+            <!-- Encryption status indicator (C2) -->
+            <div class="encryption-status-bar" id="encryption-status-bar">
+              <span class="encryption-status-dot" id="encryption-status-dot"></span>
+              <span id="encryption-status-text">Checking encryption...</span>
+            </div>
+
             <div class="audit-controls">
               <select class="form-input audit-filter-select" id="audit-filter-type">
                 <option value="">All events</option>
@@ -1861,6 +1867,9 @@
                 <option value="auto_allow">Auto-allowed</option>
                 <option value="credential_access">Credential access</option>
                 <option value="security_policy">Policy changes</option>
+                <option value="network_request">Network requests</option>
+                <option value="gateway_crash">Gateway crashes</option>
+                <option value="scope_violation">Scope violations</option>
               </select>
               <select class="form-input audit-filter-select" id="audit-filter-risk">
                 <option value="">All risk levels</option>
@@ -1986,6 +1995,8 @@
             <div class="approval-risk-reason" id="approval-risk-reason"></div>
           </div>
         </div>
+        <!-- Network request audit banner (C5) -->
+        <div id="approval-network-banner" class="network-banner" style="display:none"></div>
         <div class="modal-body">
           <p id="approval-modal-desc" style="color:var(--text-secondary);margin-bottom:12px"></p>
           <div id="approval-modal-details" class="approval-details"></div>

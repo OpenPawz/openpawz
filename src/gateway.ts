@@ -47,6 +47,30 @@ function detectPlatform(): string {
   return 'unknown';
 }
 
+// ── Security: Localhost-only gateway validation ────────────────────────────
+const LOCALHOST_HOSTS = new Set([
+  'localhost',
+  '127.0.0.1',
+  '::1',
+  '[::1]',
+  '0.0.0.0',
+]);
+
+/**
+ * Validates that a WebSocket URL points to a localhost address only.
+ * Prevents token leakage to remote hosts via SSRF or config tampering.
+ */
+export function isLocalhostUrl(url: string): boolean {
+  try {
+    // Normalise ws:// → http:// so URL parser accepts it
+    const normalised = url.replace(/^ws(s?):\/\//, 'http$1://');
+    const parsed = new URL(normalised);
+    return LOCALHOST_HOSTS.has(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
 let _requestId = 0;
 function nextId(): string {
   return `paw-${++_requestId}`;
@@ -76,6 +100,12 @@ class GatewayClient {
     if (this._connecting) {
       console.warn('[gateway] Connection already in progress, skipping');
       throw new Error('Connection already in progress');
+    }
+
+    // ── Security: block non-localhost gateway URLs ──
+    if (!isLocalhostUrl(config.url)) {
+      console.error(`[gateway] BLOCKED: non-localhost gateway URL "${config.url}"`);
+      throw new Error('Security: gateway URL must be localhost (127.0.0.1, ::1, or localhost)');
     }
 
     this.config = config;

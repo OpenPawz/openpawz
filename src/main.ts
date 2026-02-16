@@ -3,7 +3,7 @@
 
 import type { AppConfig, Message, InstallProgress, ChatMessage, Session } from './types';
 import { setGatewayConfig, probeHealth } from './api';
-import { gateway } from './gateway';
+import { gateway, isLocalhostUrl } from './gateway';
 // ── Inline Lucide-style SVG icons (avoids broken lucide package) ─────────────
 const _icons: Record<string, string> = {
   'paperclip': '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
@@ -22,7 +22,7 @@ function icon(name: string, cls = ''): string {
   const inner = _icons[name] || '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${cls ? ` class="${cls}"` : ''}>${inner}</svg>`;
 }
-import { initDb, listModes, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, listProjectFiles, saveProjectFile, deleteProjectFile, logCredentialActivity, logSecurityEvent } from './db';
+import { initDb, initDbEncryption, listModes, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, listProjectFiles, saveProjectFile, deleteProjectFile, logCredentialActivity, logSecurityEvent } from './db';
 import * as SettingsModule from './views/settings';
 import * as AutomationsModule from './views/automations';
 import * as MemoryPalaceModule from './views/memory-palace';
@@ -35,7 +35,7 @@ import * as NodesModule from './views/nodes';
 import * as ProjectsModule from './views/projects';
 import * as AgentsModule from './views/agents';
 import * as TodayModule from './views/today';
-import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, type RiskClassification } from './security';
+import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, type RiskClassification } from './security';
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -260,6 +260,13 @@ async function connectGateway(): Promise<boolean> {
       return false;
     }
 
+    // ── Security: block non-localhost gateway URLs ──
+    if (!isLocalhostUrl(wsUrl)) {
+      console.error(`[main] BLOCKED: non-localhost gateway URL "${wsUrl}"`);
+      showToast('Security: gateway URL must be localhost. Connection blocked.', 'error');
+      return false;
+    }
+
     const hello = await gateway.connect({ url: wsUrl, token: config.gateway.token });
     wsConnected = true;
     console.log('[main] Gateway connected:', hello);
@@ -371,12 +378,94 @@ gateway.on('_disconnected', () => {
 
 gateway.on('_reconnect_exhausted', () => {
   if (statusText) statusText.textContent = 'Connection lost';
-  console.error('[main] Gateway reconnect exhausted — giving up. Refresh to retry.');
+  console.error('[main] Gateway reconnect exhausted — attempting watchdog restart...');
+  watchdogRestart();
 });
 
+// ── Crash Watchdog (C4) ────────────────────────────────────────────────────
+let _watchdogCrashCount = 0;
+let _watchdogLastCrash = 0;
+let _watchdogRestartInProgress = false;
+const WATCHDOG_MAX_RESTARTS = 5;        // max consecutive restarts before giving up
+const WATCHDOG_RESET_WINDOW = 120_000;  // reset crash count after 2 min of stability
+
+/** Attempt to restart the gateway after a crash. */
+async function watchdogRestart(): Promise<void> {
+  if (_watchdogRestartInProgress || !invoke) return;
+  _watchdogRestartInProgress = true;
+
+  const now = Date.now();
+  // Reset crash counter if it's been stable for a while
+  if (now - _watchdogLastCrash > WATCHDOG_RESET_WINDOW) _watchdogCrashCount = 0;
+  _watchdogCrashCount++;
+  _watchdogLastCrash = now;
+
+  console.warn(`[watchdog] Crash detected (#${_watchdogCrashCount}/${WATCHDOG_MAX_RESTARTS})`);
+
+  // Log crash to security audit
+  logSecurityEvent({
+    eventType: 'gateway_crash',
+    riskLevel: _watchdogCrashCount >= WATCHDOG_MAX_RESTARTS ? 'critical' : 'medium',
+    detail: `Gateway crash #${_watchdogCrashCount} — ${_watchdogCrashCount >= WATCHDOG_MAX_RESTARTS ? 'max restarts exceeded' : 'attempting auto-restart'}`,
+  });
+
+  if (_watchdogCrashCount > WATCHDOG_MAX_RESTARTS) {
+    showToast(`Gateway crashed ${_watchdogCrashCount} times. Please restart Paw manually.`, 'error');
+    if (statusText) statusText.textContent = 'Gateway crashed';
+    _watchdogRestartInProgress = false;
+    return;
+  }
+
+  showToast(`Gateway stopped unexpectedly. Restarting... (attempt ${_watchdogCrashCount}/${WATCHDOG_MAX_RESTARTS})`, 'warning');
+  if (statusText) statusText.textContent = 'Restarting gateway...';
+
+  try {
+    const port = getPortFromUrl(config.gateway.url);
+    await invoke('start_gateway', { port }).catch((e: unknown) => {
+      console.warn('[watchdog] start_gateway failed:', e);
+    });
+
+    // Wait for gateway to boot
+    await new Promise(r => setTimeout(r, 3000));
+
+    // Verify it's alive
+    const alive = await invoke<boolean>('check_gateway_health', { port }).catch(() => false);
+    if (alive) {
+      console.log('[watchdog] Gateway restarted successfully, reconnecting...');
+      wsConnected = false;
+      await connectGateway();
+      if (wsConnected) {
+        showToast('Gateway recovered and reconnected', 'success');
+      }
+    } else {
+      console.error('[watchdog] Gateway restart failed — not responding on port', port);
+      if (statusText) statusText.textContent = 'Restart failed';
+    }
+  } catch (e) {
+    console.error('[watchdog] Restart error:', e);
+  } finally {
+    _watchdogRestartInProgress = false;
+  }
+}
+
 // ── Status check (fallback for polling) ────────────────────────────────────
+let _wasConnected = false;  // track state transition for crash detection
+
 async function checkGatewayStatus() {
-  if (wsConnected || _connectInProgress || gateway.isConnecting) return;
+  if (_connectInProgress || gateway.isConnecting) return;
+
+  // If we were connected and now we're not, it's a crash/disconnect
+  if (_wasConnected && !wsConnected) {
+    console.warn('[watchdog] Detected gateway disconnect during poll — triggering restart');
+    _wasConnected = false;
+    watchdogRestart();
+    return;
+  }
+
+  // Track connection state for next poll
+  _wasConnected = wsConnected;
+
+  if (wsConnected) return;
   try {
     const ok = await probeHealth();
     if (ok && !wsConnected && !_connectInProgress) {
@@ -3085,6 +3174,22 @@ gateway.on('exec.approval.requested', (payload: unknown) => {
     ? Object.values(args).filter(v => typeof v === 'string').join(' ')
     : tool;
 
+  // ── Network request auditing (C5) ──
+  const netAudit = auditNetworkRequest(tool, args);
+  if (netAudit.isNetworkRequest) {
+    const targetStr = netAudit.targets.length > 0 ? netAudit.targets.join(', ') : '(unknown destination)';
+    logSecurityEvent({
+      eventType: 'network_request',
+      riskLevel: netAudit.isExfiltration ? 'critical' : (netAudit.allTargetsLocal ? null : 'medium'),
+      toolName: tool,
+      command: cmdStr,
+      detail: `Outbound request → ${targetStr}${netAudit.isExfiltration ? ' [EXFILTRATION SUSPECTED]' : ''}${netAudit.allTargetsLocal ? ' (localhost)' : ''}`,
+      sessionKey,
+      wasAllowed: true, // will be updated by allow/deny below
+      matchedPattern: netAudit.isExfiltration ? `exfiltration:${netAudit.exfiltrationReason}` : 'network_tool',
+    });
+  }
+
   // ── Auto-deny: privilege escalation ──
   if (secSettings.autoDenyPrivilegeEscalation && isPrivilegeEscalation(tool, args)) {
     if (id) gateway.execApprovalResolve(id, false).catch(console.warn);
@@ -3166,6 +3271,25 @@ gateway.on('exec.approval.requested', (payload: unknown) => {
   }
 
   descEl.textContent = desc;
+
+  // ── Network audit banner (C5) ──
+  const netBanner = $('approval-network-banner');
+  if (netBanner) netBanner.style.display = 'none';
+  if (netAudit.isNetworkRequest && netBanner) {
+    netBanner.style.display = 'block';
+    const targetStr = netAudit.targets.length > 0 ? netAudit.targets.join(', ') : 'unknown destination';
+    if (netAudit.isExfiltration) {
+      netBanner.className = 'network-banner network-exfiltration';
+      netBanner.innerHTML = `<strong>⚠ Possible Data Exfiltration</strong><br>Outbound data transfer detected → ${escHtml(targetStr)}`;
+    } else if (!netAudit.allTargetsLocal) {
+      netBanner.className = 'network-banner network-external';
+      netBanner.innerHTML = `<strong>🌐 External Network Request</strong><br>Destination: ${escHtml(targetStr)}`;
+    } else {
+      netBanner.className = 'network-banner network-local';
+      netBanner.innerHTML = `<strong>🔒 Localhost Request</strong><br>Destination: ${escHtml(targetStr)}`;
+    }
+  }
+
   if (detailsEl) {
     detailsEl.innerHTML = args
       ? `<pre class="code-block"><code>${escHtml(JSON.stringify(args, null, 2))}</code></pre>`
@@ -3266,6 +3390,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialise local SQLite database
     await initDb().catch(e => console.warn('[main] DB init failed:', e));
+
+    // C2: Initialise field-level encryption key from OS keychain
+    await initDbEncryption().catch(e => console.warn('[main] DB encryption init failed:', e));
 
     // Initialize Memory Palace module events
     MemoryPalaceModule.initPalaceEvents();

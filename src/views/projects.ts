@@ -113,6 +113,32 @@ function isSensitivePath(pathStr: string): string | null {
   return null;
 }
 
+// ── Per-project scope guard (C1) ───────────────────────────────────────────
+let _activeProjectRoot: string | null = null;
+
+/**
+ * Validate that a file path is within the active project scope.
+ * Prevents directory traversal and access to paths outside the project root.
+ * Returns null if valid, or an error string if out-of-scope.
+ */
+function isOutOfProjectScope(filePath: string): string | null {
+  if (!_activeProjectRoot) return null; // no project selected — no scope to enforce
+  const normFile = filePath.replace(/\\/g, '/').replace(/\/+$/, '');
+  const normRoot = _activeProjectRoot.replace(/\\/g, '/').replace(/\/+$/, '');
+
+  // Must start with project root
+  if (!normFile.startsWith(normRoot + '/') && normFile !== normRoot) {
+    return `Path "${filePath}" is outside the active project scope "${_activeProjectRoot}"`;
+  }
+
+  // Block traversal sequences even within the path
+  if (/\/\.\.\//g.test(normFile) || normFile.endsWith('/..')) {
+    return `Path contains directory traversal: "${filePath}"`;
+  }
+
+  return null;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────
 
 export async function loadProjects(): Promise<void> {
@@ -181,6 +207,22 @@ export async function removeProject(path: string): Promise<void> {
 async function loadDirectoryContents(dirPath: string): Promise<FileEntry[]> {
   if (!_tauriAvailable || !_readDir) return [];
 
+  // C1: Enforce per-project scope
+  const scopeErr = isOutOfProjectScope(dirPath);
+  if (scopeErr) {
+    console.warn(`[projects] Scope violation: ${scopeErr}`);
+    logSecurityEvent({
+      eventType: 'scope_violation',
+      riskLevel: 'high',
+      toolName: 'projects.readDir',
+      command: dirPath,
+      detail: scopeErr,
+      wasAllowed: false,
+      matchedPattern: 'project_scope',
+    }).catch(() => {});
+    return [];
+  }
+
   try {
     const entries = await _readDir(dirPath);
     const result: FileEntry[] = [];
@@ -219,6 +261,23 @@ async function loadDirectoryContents(dirPath: string): Promise<FileEntry[]> {
 
 async function loadFileContent(filePath: string): Promise<string | null> {
   if (!_tauriAvailable || !_readTextFile) return null;
+
+  // C1: Enforce per-project scope
+  const scopeErr = isOutOfProjectScope(filePath);
+  if (scopeErr) {
+    console.warn(`[projects] Scope violation: ${scopeErr}`);
+    logSecurityEvent({
+      eventType: 'scope_violation',
+      riskLevel: 'high',
+      toolName: 'projects.readFile',
+      command: filePath,
+      detail: scopeErr,
+      wasAllowed: false,
+      matchedPattern: 'project_scope',
+    }).catch(() => {});
+    showToast('Access blocked: file is outside the active project scope', 'error');
+    return null;
+  }
 
   try {
     return await _readTextFile(filePath);
@@ -279,6 +338,9 @@ function renderProjectsSidebar(): void {
 }
 
 async function selectProject(project: ProjectFolder): Promise<void> {
+  // C1: Set per-project scope
+  _activeProjectRoot = project.path;
+
   const treeContainer = $('projects-file-tree');
   const viewer = $('projects-file-viewer');
   const empty = $('projects-empty');

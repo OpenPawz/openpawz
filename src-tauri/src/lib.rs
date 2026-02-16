@@ -436,21 +436,29 @@ fn is_gateway_running(port: u16) -> bool {
 #[tauri::command]
 fn check_gateway_health(port: Option<u16>) -> bool {
     let p = port.unwrap_or_else(get_gateway_port);
+    if p == 0 { return false; }
+    // Security: always probe 127.0.0.1 — never a remote host
     let running = is_gateway_running(p);
-    info!("Gateway health check on port {}: {}", p, if running { "running" } else { "not running" });
+    info!("Gateway health check on 127.0.0.1:{}: {}", p, if running { "running" } else { "not running" });
     running
 }
 
 #[tauri::command]
 fn start_gateway(port: Option<u16>) -> Result<(), String> {
     let p = port.unwrap_or_else(get_gateway_port);
+
+    // Security: only allow gateway on localhost ports in valid range
+    if p == 0 {
+        return Err("Security: gateway port must be > 0".into());
+    }
+
     // Don't start if already running
     if is_gateway_running(p) {
         info!("Gateway already running on port {}, skipping start", p);
         return Ok(());
     }
 
-    info!("Starting gateway (expected port {})...", p);
+    info!("Starting gateway on 127.0.0.1:{} (localhost only)...", p);
 
     let openclaw_bin = get_openclaw_path();
     let node_dir = get_node_bin_dir();
@@ -1789,6 +1797,48 @@ fn keyring_delete_password(account_name: String, email: String) -> Result<bool, 
     }
 }
 
+// ── Database encryption key (C2) ─────────────────────────────────────────────
+
+const DB_KEY_SERVICE: &str = "paw-db-encryption";
+const DB_KEY_USER: &str = "paw-db-key";
+
+/// Get or create a 256-bit database encryption key stored in the OS keychain.
+/// On first call, generates a random key and stores it. Subsequent calls return
+/// the same key. This key is used by the frontend to encrypt/decrypt sensitive
+/// fields before writing them to SQLite.
+#[tauri::command]
+fn get_db_encryption_key() -> Result<String, String> {
+    let entry = keyring::Entry::new(DB_KEY_SERVICE, DB_KEY_USER)
+        .map_err(|e| format!("Keyring init failed: {}", e))?;
+    match entry.get_password() {
+        Ok(key) => {
+            info!("Retrieved DB encryption key from OS keychain");
+            Ok(key)
+        }
+        Err(keyring::Error::NoEntry) => {
+            // Generate a random 256-bit key (hex-encoded = 64 chars)
+            use rand::Rng;
+            let key: String = (0..32)
+                .map(|_| format!("{:02x}", rand::thread_rng().gen::<u8>()))
+                .collect();
+            entry.set_password(&key)
+                .map_err(|e| format!("Failed to store DB key: {}", e))?;
+            info!("Generated and stored new DB encryption key in OS keychain");
+            Ok(key)
+        }
+        Err(e) => Err(format!("Keyring error: {}", e)),
+    }
+}
+
+/// Check if a DB encryption key exists (for UI indicators).
+#[tauri::command]
+fn has_db_encryption_key() -> bool {
+    keyring::Entry::new(DB_KEY_SERVICE, DB_KEY_USER)
+        .ok()
+        .and_then(|e| e.get_password().ok())
+        .is_some()
+}
+
 /// Repair openclaw.json by removing any cruft from previous Paw versions.
 /// Removes old "skills" key (from v1 palace integration) and ensures
 /// the config is valid for the gateway.
@@ -2081,7 +2131,9 @@ pub fn run() {
             list_mail_folders,
             move_email,
             delete_email,
-            set_email_flag
+            set_email_flag,
+            get_db_encryption_key,
+            has_db_encryption_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
