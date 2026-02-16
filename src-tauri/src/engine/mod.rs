@@ -10,3 +10,4 @@ pub mod sessions;
 pub mod commands;
 pub mod memory;
 pub mod skills;
+pub mod web;

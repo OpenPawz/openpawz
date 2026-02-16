@@ -6,6 +6,7 @@ use crate::engine::types::*;
 use crate::engine::commands::EngineState;
 use crate::engine::memory;
 use crate::engine::skills;
+use crate::engine::web;
 use log::{info, warn, error};
 use std::process::Command as ProcessCommand;
 use std::time::Duration;
@@ -31,6 +32,11 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
         "soul_list" => execute_soul_list(app_handle).await,
         "memory_store" => execute_memory_store(&args, app_handle).await,
         "memory_search" => execute_memory_search(&args, app_handle).await,
+        // ── Web tools ──
+        "web_search" => web::execute_web_search(&args).await,
+        "web_read" => web::execute_web_read(&args).await,
+        "web_screenshot" => web::execute_web_screenshot(&args).await,
+        "web_browse" => web::execute_web_browse(&args).await,
         // ── Skill tools ──
         "email_send" => execute_skill_tool("email", "email_send", &args, app_handle).await,
         "email_read" => execute_skill_tool("email", "email_read", &args, app_handle).await,
