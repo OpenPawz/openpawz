@@ -386,6 +386,82 @@ pub struct TokenUsage {
     pub total_tokens: u64,
 }
 
+// ── Agent Files (Soul / Persona) ───────────────────────────────────────
+
+/// An agent personality file (SOUL.md, AGENTS.md, USER.md, etc.)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentFile {
+    pub agent_id: String,
+    pub file_name: String,
+    pub content: String,
+    pub updated_at: String,
+}
+
+/// Standard agent files that define soul / persona.
+pub const AGENT_STANDARD_FILES: &[(&str, &str, &str)] = &[
+    ("AGENTS.md",    "Instructions",  "Operating rules, priorities, memory usage guide"),
+    ("SOUL.md",      "Persona",       "Personality, tone, communication style, boundaries"),
+    ("USER.md",      "About User",    "Who the user is, how to address them, preferences"),
+    ("IDENTITY.md",  "Identity",      "Agent name, emoji, vibe/creature, avatar"),
+    ("TOOLS.md",     "Tool Notes",    "Notes about local tools and conventions"),
+];
+
+// ── Memory (Long-term Semantic) ────────────────────────────────────────
+
+/// A single memory entry stored with its embedding vector.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Memory {
+    pub id: String,
+    pub content: String,
+    pub category: String,
+    pub importance: u8,
+    pub created_at: String,
+    /// Cosine similarity score — only present in search results.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub score: Option<f64>,
+}
+
+/// Memory configuration (embedding provider settings).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryConfig {
+    /// Base URL for embedding API (Ollama: http://localhost:11434)
+    pub embedding_base_url: String,
+    /// Embedding model name (e.g., "nomic-embed-text", "all-minilm")
+    pub embedding_model: String,
+    /// Embedding dimensions (e.g., 768 for nomic-embed-text, 384 for all-minilm)
+    pub embedding_dims: usize,
+    /// Whether to auto-recall relevant memories before each turn
+    pub auto_recall: bool,
+    /// Whether to auto-capture facts from conversations
+    pub auto_capture: bool,
+    /// Max memories to inject via auto-recall
+    pub recall_limit: usize,
+    /// Minimum similarity score for auto-recall (0.0–1.0)
+    pub recall_threshold: f64,
+}
+
+impl Default for MemoryConfig {
+    fn default() -> Self {
+        MemoryConfig {
+            embedding_base_url: "http://localhost:11434".into(),
+            embedding_model: "nomic-embed-text".into(),
+            embedding_dims: 768,
+            auto_recall: true,
+            auto_capture: true,
+            recall_limit: 5,
+            recall_threshold: 0.3,
+        }
+    }
+}
+
+/// Statistics about the memory store.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryStats {
+    pub total_memories: i64,
+    pub categories: Vec<(String, i64)>,
+    pub has_embeddings: bool,
+}
+
 // ── Engine State ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

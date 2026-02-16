@@ -8,3 +8,4 @@ pub mod agent_loop;
 pub mod tool_executor;
 pub mod sessions;
 pub mod commands;
+pub mod memory;

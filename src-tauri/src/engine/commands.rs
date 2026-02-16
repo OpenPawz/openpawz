@@ -6,6 +6,7 @@ use crate::engine::types::*;
 use crate::engine::providers::AnyProvider;
 use crate::engine::sessions::SessionStore;
 use crate::engine::agent_loop;
+use crate::engine::memory::{self, EmbeddingClient};
 use log::{info, warn, error};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -21,6 +22,7 @@ pub type PendingApprovals = Arc<Mutex<HashMap<String, tokio::sync::oneshot::Send
 pub struct EngineState {
     pub store: SessionStore,
     pub config: Mutex<EngineConfig>,
+    pub memory_config: Mutex<MemoryConfig>,
     pub pending_approvals: PendingApprovals,
 }
 
@@ -36,11 +38,29 @@ impl EngineState {
             _ => EngineConfig::default(),
         };
 
+        // Load memory config from DB or use defaults
+        let memory_config = match store.get_config("memory_config") {
+            Ok(Some(json)) => {
+                serde_json::from_str::<MemoryConfig>(&json).unwrap_or_default()
+            }
+            _ => MemoryConfig::default(),
+        };
+
         Ok(EngineState {
             store,
             config: Mutex::new(config),
+            memory_config: Mutex::new(memory_config),
             pending_approvals: Arc::new(Mutex::new(HashMap::new())),
         })
+    }
+
+    /// Get an EmbeddingClient from the current memory config, if configured.
+    pub fn embedding_client(&self) -> Option<EmbeddingClient> {
+        let cfg = self.memory_config.lock().ok()?;
+        if cfg.embedding_base_url.is_empty() || cfg.embedding_model.is_empty() {
+            return None;
+        }
+        Some(EmbeddingClient::new(&cfg))
     }
 }
 
@@ -126,9 +146,61 @@ pub async fn engine_chat_send(
         cfg.default_system_prompt.clone()
     });
 
+    // Compose agent context (soul files) into the system prompt
+    let agent_id = "default"; // TODO: support multi-agent selection from frontend
+    let agent_context = state.store.compose_agent_context(agent_id).unwrap_or(None);
+
+    // Auto-recall: search memory for context relevant to the user's message
+    let (auto_recall_on, auto_capture_on, recall_limit, recall_threshold) = {
+        let mcfg = state.memory_config.lock().ok();
+        (
+            mcfg.as_ref().map(|c| c.auto_recall).unwrap_or(false),
+            mcfg.as_ref().map(|c| c.auto_capture).unwrap_or(false),
+            mcfg.as_ref().map(|c| c.recall_limit).unwrap_or(5),
+            mcfg.as_ref().map(|c| c.recall_threshold).unwrap_or(0.3),
+        )
+    };
+
+    let memory_context = if auto_recall_on {
+        let emb_client = state.embedding_client();
+        match memory::search_memories(
+            &state.store, &request.message, recall_limit, recall_threshold, emb_client.as_ref()
+        ).await {
+            Ok(mems) if !mems.is_empty() => {
+                let ctx: Vec<String> = mems.iter().map(|m| {
+                    format!("- [{}] {}", m.category, m.content)
+                }).collect();
+                info!("[engine] Auto-recall: {} memories injected", mems.len());
+                Some(format!("## Relevant Memories\n{}", ctx.join("\n")))
+            }
+            Ok(_) => None,
+            Err(e) => {
+                warn!("[engine] Auto-recall failed: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    // Compose the full system prompt: base + agent context + memory context
+    let full_system_prompt = {
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(sp) = &system_prompt {
+            parts.push(sp.clone());
+        }
+        if let Some(ac) = &agent_context {
+            parts.push(ac.clone());
+        }
+        if let Some(mc) = &memory_context {
+            parts.push(mc.clone());
+        }
+        if parts.is_empty() { None } else { Some(parts.join("\n\n---\n\n")) }
+    };
+
     let mut messages = state.store.load_conversation(
         &session_id,
-        system_prompt.as_deref(),
+        full_system_prompt.as_deref(),
     )?;
 
     // If the user message has attachments, replace the last (user) message with
@@ -174,6 +246,8 @@ pub async fn engine_chat_send(
         let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
         cfg.tool_timeout_secs
     };
+    let user_message_for_capture = request.message.clone();
+    let _memory_cfg_for_capture = state.memory_config.lock().ok().map(|c| c.clone());
 
     // Spawn the agent loop in a background task
     let app = app_handle.clone();
@@ -197,8 +271,6 @@ pub async fn engine_chat_send(
                 info!("[engine] Agent turn complete: {} chars", final_text.len());
 
                 // Store assistant messages from the conversation
-                // (the loop may have added multiple assistant + tool messages)
-                // We store the final text as the main response
                 if let Some(engine_state) = app.try_state::<EngineState>() {
                     for msg in &messages {
                         if msg.role == Role::Assistant || msg.role == Role::Tool {
@@ -219,6 +291,22 @@ pub async fn engine_chat_send(
                             };
                             if let Err(e) = engine_state.store.add_message(&stored) {
                                 error!("[engine] Failed to store message: {}", e);
+                            }
+                        }
+                    }
+
+                    // Auto-capture: extract memorable facts and store them
+                    if auto_capture_on && !final_text.is_empty() {
+                        let facts = memory::extract_memorable_facts(&user_message_for_capture, &final_text);
+                        if !facts.is_empty() {
+                            let emb_client = engine_state.embedding_client();
+                            for (content, category) in &facts {
+                                match memory::store_memory(
+                                    &engine_state.store, content, category, 5, emb_client.as_ref()
+                                ).await {
+                                    Ok(id) => info!("[engine] Auto-captured memory: {}", &id[..8]),
+                                    Err(e) => warn!("[engine] Auto-capture failed: {}", e),
+                                }
                             }
                         }
                     }
@@ -397,4 +485,133 @@ pub fn engine_approve_tool(
         warn!("[engine] No pending approval found for tool_call_id={}", tool_call_id);
         Err(format!("No pending approval for {}", tool_call_id))
     }
+}
+
+// ── Agent Files (Soul / Persona) commands ──────────────────────────────
+
+#[tauri::command]
+pub fn engine_agent_file_list(
+    state: State<'_, EngineState>,
+    agent_id: Option<String>,
+) -> Result<Vec<AgentFile>, String> {
+    let aid = agent_id.unwrap_or_else(|| "default".into());
+    state.store.list_agent_files(&aid)
+}
+
+#[tauri::command]
+pub fn engine_agent_file_get(
+    state: State<'_, EngineState>,
+    agent_id: Option<String>,
+    file_name: String,
+) -> Result<Option<AgentFile>, String> {
+    let aid = agent_id.unwrap_or_else(|| "default".into());
+    state.store.get_agent_file(&aid, &file_name)
+}
+
+#[tauri::command]
+pub fn engine_agent_file_set(
+    state: State<'_, EngineState>,
+    agent_id: Option<String>,
+    file_name: String,
+    content: String,
+) -> Result<(), String> {
+    let aid = agent_id.unwrap_or_else(|| "default".into());
+    info!("[engine] Setting agent file {}/{} ({} bytes)", aid, file_name, content.len());
+    state.store.set_agent_file(&aid, &file_name, &content)
+}
+
+#[tauri::command]
+pub fn engine_agent_file_delete(
+    state: State<'_, EngineState>,
+    agent_id: Option<String>,
+    file_name: String,
+) -> Result<(), String> {
+    let aid = agent_id.unwrap_or_else(|| "default".into());
+    state.store.delete_agent_file(&aid, &file_name)
+}
+
+// ── Memory commands ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn engine_memory_store(
+    state: State<'_, EngineState>,
+    content: String,
+    category: Option<String>,
+    importance: Option<u8>,
+) -> Result<String, String> {
+    let cat = category.unwrap_or_else(|| "general".into());
+    let imp = importance.unwrap_or(5);
+    let emb_client = state.embedding_client();
+    memory::store_memory(&state.store, &content, &cat, imp, emb_client.as_ref()).await
+}
+
+#[tauri::command]
+pub async fn engine_memory_search(
+    state: State<'_, EngineState>,
+    query: String,
+    limit: Option<usize>,
+) -> Result<Vec<Memory>, String> {
+    let lim = limit.unwrap_or(10);
+    let threshold = {
+        let mcfg = state.memory_config.lock().ok();
+        mcfg.map(|c| c.recall_threshold).unwrap_or(0.3)
+    };
+    let emb_client = state.embedding_client();
+    memory::search_memories(&state.store, &query, lim, threshold, emb_client.as_ref()).await
+}
+
+#[tauri::command]
+pub fn engine_memory_stats(
+    state: State<'_, EngineState>,
+) -> Result<MemoryStats, String> {
+    state.store.memory_stats()
+}
+
+#[tauri::command]
+pub fn engine_memory_delete(
+    state: State<'_, EngineState>,
+    id: String,
+) -> Result<(), String> {
+    state.store.delete_memory(&id)
+}
+
+#[tauri::command]
+pub fn engine_memory_list(
+    state: State<'_, EngineState>,
+    limit: Option<usize>,
+) -> Result<Vec<Memory>, String> {
+    state.store.list_memories(limit.unwrap_or(100))
+}
+
+#[tauri::command]
+pub fn engine_get_memory_config(
+    state: State<'_, EngineState>,
+) -> Result<MemoryConfig, String> {
+    let cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    Ok(cfg.clone())
+}
+
+#[tauri::command]
+pub fn engine_set_memory_config(
+    state: State<'_, EngineState>,
+    config: MemoryConfig,
+) -> Result<(), String> {
+    let json = serde_json::to_string(&config)
+        .map_err(|e| format!("Serialize error: {}", e))?;
+    state.store.set_config("memory_config", &json)?;
+    let mut cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    *cfg = config;
+    info!("[engine] Memory config updated");
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn engine_test_embedding(
+    state: State<'_, EngineState>,
+) -> Result<usize, String> {
+    let client = state.embedding_client()
+        .ok_or_else(|| "No embedding configuration — set base URL and model in memory settings".to_string())?;
+    let dims = client.test_connection().await?;
+    info!("[engine] Embedding test passed: {} dimensions", dims);
+    Ok(dims)
 }

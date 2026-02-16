@@ -65,6 +65,26 @@ impl SessionStore {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS agent_files (
+                agent_id TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                content TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (agent_id, file_name)
+            );
+
+            CREATE TABLE IF NOT EXISTS memories (
+                id TEXT PRIMARY KEY,
+                content TEXT NOT NULL,
+                category TEXT NOT NULL DEFAULT 'general',
+                importance INTEGER NOT NULL DEFAULT 5,
+                embedding BLOB,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_memories_category
+                ON memories(category);
         ").map_err(|e| format!("Failed to create tables: {}", e))?;
 
         Ok(SessionStore { conn: Mutex::new(conn) })
@@ -281,5 +301,267 @@ impl SessionStore {
             params![key, value],
         ).map_err(|e| format!("Config write error: {}", e))?;
         Ok(())
+    }
+
+    // ── Agent Files (Soul / Persona) ───────────────────────────────────
+
+    pub fn list_agent_files(&self, agent_id: &str) -> Result<Vec<AgentFile>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT agent_id, file_name, content, updated_at FROM agent_files WHERE agent_id = ?1 ORDER BY file_name"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let files = stmt.query_map(params![agent_id], |row| {
+            Ok(AgentFile {
+                agent_id: row.get(0)?,
+                file_name: row.get(1)?,
+                content: row.get(2)?,
+                updated_at: row.get(3)?,
+            })
+        }).map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(files)
+    }
+
+    pub fn get_agent_file(&self, agent_id: &str, file_name: &str) -> Result<Option<AgentFile>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let result = conn.query_row(
+            "SELECT agent_id, file_name, content, updated_at FROM agent_files WHERE agent_id = ?1 AND file_name = ?2",
+            params![agent_id, file_name],
+            |row| Ok(AgentFile {
+                agent_id: row.get(0)?,
+                file_name: row.get(1)?,
+                content: row.get(2)?,
+                updated_at: row.get(3)?,
+            }),
+        );
+        match result {
+            Ok(f) => Ok(Some(f)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(format!("Query error: {}", e)),
+        }
+    }
+
+    pub fn set_agent_file(&self, agent_id: &str, file_name: &str, content: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO agent_files (agent_id, file_name, content, updated_at)
+             VALUES (?1, ?2, ?3, datetime('now'))",
+            params![agent_id, file_name, content],
+        ).map_err(|e| format!("Write error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn delete_agent_file(&self, agent_id: &str, file_name: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "DELETE FROM agent_files WHERE agent_id = ?1 AND file_name = ?2",
+            params![agent_id, file_name],
+        ).map_err(|e| format!("Delete error: {}", e))?;
+        Ok(())
+    }
+
+    /// Load all agent files for a given agent and compose them into a single system prompt block.
+    /// Returns None if no agent files exist.
+    pub fn compose_agent_context(&self, agent_id: &str) -> Result<Option<String>, String> {
+        let files = self.list_agent_files(agent_id)?;
+        if files.is_empty() {
+            return Ok(None);
+        }
+        // Compose in a specific order: IDENTITY → SOUL → USER → AGENTS → TOOLS
+        let order = ["IDENTITY.md", "SOUL.md", "USER.md", "AGENTS.md", "TOOLS.md"];
+        let mut sections = Vec::new();
+        for name in &order {
+            if let Some(f) = files.iter().find(|f| f.file_name == *name) {
+                if !f.content.trim().is_empty() {
+                    sections.push(f.content.clone());
+                }
+            }
+        }
+        // Also include any non-standard files
+        for f in &files {
+            if !order.contains(&f.file_name.as_str()) && !f.content.trim().is_empty() {
+                sections.push(f.content.clone());
+            }
+        }
+        if sections.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(sections.join("\n\n---\n\n")))
+    }
+
+    // ── Memory CRUD ────────────────────────────────────────────────────
+
+    pub fn store_memory(&self, id: &str, content: &str, category: &str, importance: u8, embedding: Option<&[u8]>) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO memories (id, content, category, importance, embedding)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, content, category, importance as i32, embedding],
+        ).map_err(|e| format!("Memory store error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn delete_memory(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
+            .map_err(|e| format!("Memory delete error: {}", e))?;
+        Ok(())
+    }
+
+    pub fn memory_stats(&self) -> Result<MemoryStats, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let total: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
+            .map_err(|e| format!("Count error: {}", e))?;
+
+        let has_embeddings: bool = conn.query_row(
+            "SELECT COUNT(*) > 0 FROM memories WHERE embedding IS NOT NULL", [], |r| r.get(0)
+        ).unwrap_or(false);
+
+        let mut stmt = conn.prepare(
+            "SELECT category, COUNT(*) FROM memories GROUP BY category ORDER BY COUNT(*) DESC"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let categories: Vec<(String, i64)> = stmt.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        }).map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(MemoryStats { total_memories: total, categories, has_embeddings })
+    }
+
+    /// Search memories by cosine similarity against a query embedding.
+    /// Falls back to keyword search if no embeddings are stored.
+    pub fn search_memories_by_embedding(&self, query_embedding: &[f32], limit: usize, threshold: f64) -> Result<Vec<Memory>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, content, category, importance, embedding, created_at FROM memories WHERE embedding IS NOT NULL"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let mut scored: Vec<(Memory, f64)> = stmt.query_map([], |row| {
+            let id: String = row.get(0)?;
+            let content: String = row.get(1)?;
+            let category: String = row.get(2)?;
+            let importance: i32 = row.get(3)?;
+            let embedding_blob: Vec<u8> = row.get(4)?;
+            let created_at: String = row.get(5)?;
+            Ok((id, content, category, importance as u8, embedding_blob, created_at))
+        }).map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .filter_map(|(id, content, category, importance, blob, created_at)| {
+            let stored_emb = bytes_to_f32_vec(&blob);
+            let score = cosine_similarity(query_embedding, &stored_emb);
+            if score >= threshold {
+                Some((Memory { id, content, category, importance, created_at, score: Some(score) }, score))
+            } else {
+                None
+            }
+        })
+        .collect();
+
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(limit);
+
+        Ok(scored.into_iter().map(|(m, _)| m).collect())
+    }
+
+    /// Keyword-based fallback search (no embeddings needed).
+    pub fn search_memories_keyword(&self, query: &str, limit: usize) -> Result<Vec<Memory>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        let pattern = format!("%{}%", query.to_lowercase());
+        let mut stmt = conn.prepare(
+            "SELECT id, content, category, importance, created_at FROM memories
+             WHERE LOWER(content) LIKE ?1
+             ORDER BY importance DESC, created_at DESC
+             LIMIT ?2"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let memories = stmt.query_map(params![pattern, limit as i64], |row| {
+            Ok(Memory {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                category: row.get(2)?,
+                importance: {
+                    let i: i32 = row.get(3)?;
+                    i as u8
+                },
+                created_at: row.get(4)?,
+                score: None,
+            })
+        }).map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(memories)
+    }
+
+    /// Get all memories (for export / listing), newest first.
+    pub fn list_memories(&self, limit: usize) -> Result<Vec<Memory>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, content, category, importance, created_at FROM memories
+             ORDER BY created_at DESC LIMIT ?1"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let memories = stmt.query_map(params![limit as i64], |row| {
+            Ok(Memory {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                category: row.get(2)?,
+                importance: {
+                    let i: i32 = row.get(3)?;
+                    i as u8
+                },
+                created_at: row.get(4)?,
+                score: None,
+            })
+        }).map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(memories)
+    }
+}
+
+// ── Vector math utilities ──────────────────────────────────────────────
+
+/// Convert a byte slice (from SQLite BLOB) to a Vec<f32>.
+fn bytes_to_f32_vec(bytes: &[u8]) -> Vec<f32> {
+    bytes.chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
+}
+
+/// Convert a Vec<f32> to bytes for SQLite BLOB storage.
+pub fn f32_vec_to_bytes(vec: &[f32]) -> Vec<u8> {
+    vec.iter().flat_map(|f| f.to_le_bytes()).collect()
+}
+
+/// Cosine similarity between two vectors. Returns 0.0 if either is zero-length.
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+    let mut dot = 0.0f64;
+    let mut norm_a = 0.0f64;
+    let mut norm_b = 0.0f64;
+    for (x, y) in a.iter().zip(b.iter()) {
+        let x = *x as f64;
+        let y = *y as f64;
+        dot += x * y;
+        norm_a += x * x;
+        norm_b += y * y;
+    }
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    if denom < 1e-12 {
+        0.0
+    } else {
+        dot / denom
     }
 }

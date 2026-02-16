@@ -2,6 +2,8 @@
 // Extracted from main.ts for maintainability
 
 import { gateway } from '../gateway';
+import { isEngineMode } from '../engine-bridge';
+import { pawEngine } from '../engine';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -70,49 +72,64 @@ function showToast(message: string, type: 'info' | 'success' | 'error' | 'warnin
 export async function loadMemoryPalace() {
   if (!wsConnected) return;
 
-  // Check if memory-lancedb plugin is active in the gateway
+  // Check if memory is available
   if (!_palaceInitialized) {
     _palaceInitialized = true;
 
-    // memory-lancedb is a plugin, not a skill, so it won't appear in skillsStatus().
-    // Instead, check if the config is written AND the gateway is running — if both
-    // are true, the plugin is active (it registers on gateway startup).
-    let configWritten = false;
-    if (invoke) {
+    if (isEngineMode()) {
+      // Engine mode: memory is always available (SQLite-backed)
+      // Check if embedding is configured for semantic search
       try {
-        configWritten = await invoke<boolean>('check_memory_configured');
-      } catch { /* ignore */ }
-    }
+        const stats = await pawEngine.memoryStats();
+        _palaceAvailable = true;
+        console.log('[memory] Engine mode — memory available, total:', stats.total_memories);
+      } catch (e) {
+        console.warn('[memory] Engine mode — memory check failed:', e);
+        _palaceAvailable = true; // Still available, just might not have embeddings
+      }
+    } else {
+      // Gateway mode: check if memory-lancedb plugin is active
+      let configWritten = false;
+      if (invoke) {
+        try {
+          configWritten = await invoke<boolean>('check_memory_configured');
+        } catch { /* ignore */ }
+      }
 
-    if (configWritten) {
-      // Config is present — check if gateway is actually running
-      try {
-        const healthy = invoke ? await invoke<boolean>('check_gateway_health', { port: null }) : false;
-        if (healthy) {
-          _palaceAvailable = true;
-          console.log('[memory] Memory plugin configured and gateway is running');
-        } else {
-          console.log('[memory] Config written but gateway not running');
+      if (configWritten) {
+        try {
+          const healthy = invoke ? await invoke<boolean>('check_gateway_health', { port: null }) : false;
+          if (healthy) {
+            _palaceAvailable = true;
+            console.log('[memory] Memory plugin configured and gateway is running');
+          } else {
+            console.log('[memory] Config written but gateway not running');
+          }
+        } catch {
+          _palaceAvailable = false;
         }
-      } catch {
-        // If health check fails, still try — gateway might be starting up
-        _palaceAvailable = false;
       }
     }
+  }
 
-    initPalaceTabs();
-    initPalaceRecall();
-    initPalaceRemember();
-    initPalaceGraph();
-    initPalaceInstall();
+  initPalaceTabs();
+  initPalaceRecall();
+  initPalaceRemember();
+  initPalaceGraph();
+  initPalaceInstall();
 
-    const banner = $('palace-install-banner');
-    const filesDivider = $('palace-files-divider');
+  const banner = $('palace-install-banner');
+  const filesDivider = $('palace-files-divider');
+  // configWritten only relevant in gateway mode
+  let configWritten = false;
+  if (!isEngineMode() && invoke) {
+    try { configWritten = await invoke<boolean>('check_memory_configured'); } catch { /* ignore */ }
+  }
 
-    if (!_palaceAvailable && !_palaceSkipped) {
-      // Show setup banner
-      if (banner) banner.style.display = 'flex';
-      if (configWritten) {
+  if (!_palaceAvailable && !_palaceSkipped) {
+    // Show setup banner
+    if (banner) banner.style.display = 'flex';
+    if (configWritten) {
         // Config is written but gateway hasn't picked it up or plugin failed
         // Show the form so users can update their settings, plus a restart note
         console.log('[memory] Config written but plugin not active — show form + restart option');
@@ -164,7 +181,6 @@ export async function loadMemoryPalace() {
       const settingsBtn = $('palace-settings');
       if (settingsBtn) settingsBtn.style.display = '';
     }
-  }
 
   // Only load stats + sidebar when memory is actually available
   // (don't call CLI commands when plugin is misconfigured — they can hang)
@@ -450,6 +466,23 @@ async function loadPalaceStats() {
   const edgesEl = $('palace-graph-edges');
   if (!totalEl) return;
 
+  if (isEngineMode()) {
+    try {
+      const stats = await pawEngine.memoryStats();
+      totalEl.textContent = String(stats.total_memories);
+      if (typesEl) typesEl.textContent = stats.categories.length > 0
+        ? stats.categories.map(([c, n]) => `${c}: ${n}`).join(', ')
+        : 'memories';
+      if (edgesEl) edgesEl.textContent = stats.has_embeddings ? 'semantic' : 'keyword';
+    } catch (e) {
+      console.warn('[memory] Engine stats failed:', e);
+      totalEl.textContent = '—';
+      if (typesEl) typesEl.textContent = '—';
+      if (edgesEl) edgesEl.textContent = '—';
+    }
+    return;
+  }
+
   if (!_palaceAvailable || !invoke) {
     // Show agent file count as fallback stats
     try {
@@ -492,6 +525,32 @@ async function loadPalaceSidebar() {
   if (!list) return;
 
   list.innerHTML = '';
+
+  if (isEngineMode()) {
+    // Engine mode: load from native memory store
+    try {
+      const memories = await pawEngine.memoryList(20);
+      if (!memories.length) {
+        list.innerHTML = '<div class="palace-list-empty">No memories yet</div>';
+        return;
+      }
+      for (const mem of memories) {
+        const card = document.createElement('div');
+        card.className = 'palace-memory-card';
+        card.innerHTML = `
+          <span class="palace-memory-type">${escHtml(mem.category)}</span>
+          <div class="palace-memory-subject">${escHtml(mem.content.slice(0, 60))}${mem.content.length > 60 ? '…' : ''}</div>
+          <div class="palace-memory-preview">${mem.score != null ? `${(mem.score * 100).toFixed(0)}% match` : `importance: ${mem.importance}`}</div>
+        `;
+        card.addEventListener('click', () => palaceRecallById(mem.id));
+        list.appendChild(card);
+      }
+    } catch (e) {
+      console.warn('[memory] Engine sidebar failed:', e);
+      list.innerHTML = '<div class="palace-list-empty">Could not load memories</div>';
+    }
+    return;
+  }
 
   if (!_palaceAvailable || !invoke) {
     // Fall back to showing agent files
@@ -572,6 +631,21 @@ async function palaceRecallById(memoryId: string) {
 
   resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text-secondary)">Loading…</div>';
   if (emptyEl) emptyEl.style.display = 'none';
+
+  if (isEngineMode()) {
+    try {
+      const memories = await pawEngine.memorySearch(memoryId, 1);
+      resultsEl.innerHTML = '';
+      if (memories.length) {
+        resultsEl.appendChild(renderRecallCard({ id: memories[0].id, text: memories[0].content, category: memories[0].category, importance: memories[0].importance, score: memories[0].score }));
+      } else {
+        resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text-secondary)">Memory not found</div>';
+      }
+    } catch (e) {
+      resultsEl.innerHTML = `<div style="padding:1rem;color:var(--danger)">Error: ${escHtml(String(e))}</div>`;
+    }
+    return;
+  }
 
   if (!invoke) {
     resultsEl.innerHTML = '<div style="padding:1rem;color:var(--danger)">Memory not available</div>';
@@ -658,6 +732,23 @@ async function palaceRecallSearch() {
   resultsEl.innerHTML = '<div style="padding:1rem;color:var(--text-secondary)">Searching…</div>';
   if (emptyEl) emptyEl.style.display = 'none';
 
+  if (isEngineMode()) {
+    try {
+      const memories = await pawEngine.memorySearch(query, 10);
+      resultsEl.innerHTML = '';
+      if (!memories.length) {
+        if (emptyEl) emptyEl.style.display = 'flex';
+        return;
+      }
+      for (const mem of memories) {
+        resultsEl.appendChild(renderRecallCard({ id: mem.id, text: mem.content, category: mem.category, importance: mem.importance, score: mem.score }));
+      }
+    } catch (e) {
+      resultsEl.innerHTML = `<div style="padding:1rem;color:var(--danger)">Recall failed: ${escHtml(String(e))}</div>`;
+    }
+    return;
+  }
+
   if (!_palaceAvailable || !invoke) {
     resultsEl.innerHTML = `<div class="empty-state" style="padding:1rem;">
       <div class="empty-title">Memory not enabled</div>
@@ -701,7 +792,7 @@ function initPalaceRemember() {
       return;
     }
 
-    if (!_palaceAvailable) {
+    if (!isEngineMode() && !_palaceAvailable) {
       alert('Memory not enabled. Enable long-term memory in the Memory tab first.');
       return;
     }
@@ -710,8 +801,10 @@ function initPalaceRemember() {
     (btn as HTMLButtonElement).disabled = true;
 
     try {
-      // Call the Tauri command directly for reliable storage
-      if (invoke) {
+      if (isEngineMode()) {
+        await pawEngine.memoryStore(content, category, importance);
+      } else if (invoke) {
+        // Call the Tauri command directly for reliable storage
         await invoke('memory_store', {
           content,
           category,
@@ -755,7 +848,7 @@ async function renderPalaceGraph() {
   const emptyEl = $('palace-graph-empty');
   if (!canvas) return;
 
-  if (!_palaceAvailable) {
+  if (!isEngineMode() && !_palaceAvailable) {
     if (emptyEl) {
       emptyEl.style.display = 'flex';
       emptyEl.innerHTML = `
@@ -768,100 +861,113 @@ async function renderPalaceGraph() {
 
   if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Loading memory map…'; }
 
-  if (!invoke) {
-    if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Memory not available.'; }
-    return;
-  }
+  let memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = [];
 
-  try {
-    // Use openclaw ltm search via Rust command
-    const jsonText = await invoke<string>('memory_search', { query: '*', limit: 50 });
-    let memories: { id?: string; text?: string; category?: string; importance?: number; score?: number }[] = [];
-    try { memories = JSON.parse(jsonText); } catch { /* empty */ }
-
-    if (!memories.length) {
-      if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'No memories to visualize.'; }
+  if (isEngineMode()) {
+    try {
+      const engineMems = await pawEngine.memoryList(50);
+      memories = engineMems.map(m => ({ id: m.id, text: m.content, category: m.category, importance: m.importance, score: m.score }));
+    } catch (e) {
+      console.warn('Engine graph load failed:', e);
+      if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Failed to load memory map.'; }
+      return;
+    }
+  } else {
+    if (!invoke) {
+      if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Memory not available.'; }
       return;
     }
 
-    if (emptyEl) emptyEl.style.display = 'none';
-
-    // Render bubble chart grouped by category
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const rect = canvas.parentElement?.getBoundingClientRect();
-    canvas.width = rect?.width ?? 600;
-    canvas.height = rect?.height ?? 400;
-
-    const categoryColors: Record<string, string> = {
-      other: '#676879', preference: '#0073EA', fact: '#00CA72',
-      decision: '#FDAB3D', procedure: '#E44258', concept: '#A25DDC',
-      code: '#579BFC', person: '#FF642E', project: '#CAB641',
-    };
-
-    // Group by category, place category clusters
-    const groups = new Map<string, typeof memories>();
-    for (const mem of memories) {
-      const cat = mem.category ?? 'other';
-      if (!groups.has(cat)) groups.set(cat, []);
-      groups.get(cat)!.push(mem);
+    try {
+      // Use openclaw ltm search via Rust command
+      const jsonText = await invoke<string>('memory_search', { query: '*', limit: 50 });
+      try { memories = JSON.parse(jsonText); } catch { /* empty */ }
+    } catch (e) {
+      console.warn('Graph render failed:', e);
+      if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Failed to load memory map.'; }
+      return;
     }
-
-    // Layout: distribute category centers in a circle
-    const categories = Array.from(groups.entries());
-    const cx = canvas.width / 2, cy = canvas.height / 2;
-    const radius = Math.min(cx, cy) * 0.55;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-    categories.forEach(([cat, mems], i) => {
-      const angle = (i / categories.length) * Math.PI * 2 - Math.PI / 2;
-      const groupX = cx + Math.cos(angle) * radius;
-      const groupY = cy + Math.sin(angle) * radius;
-
-      // Draw category label
-      ctx.fillStyle = '#676879';
-      ctx.font = 'bold 12px Figtree, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(cat.toUpperCase(), groupX, groupY - 30 - mems.length * 2);
-
-      // Draw bubbles for each memory
-      mems.forEach((mem, j) => {
-        const innerAngle = (j / mems.length) * Math.PI * 2;
-        const spread = Math.min(25 + mems.length * 4, 60);
-        const mx = groupX + Math.cos(innerAngle) * spread * (0.3 + Math.random() * 0.7);
-        const my = groupY + Math.sin(innerAngle) * spread * (0.3 + Math.random() * 0.7);
-        const size = 4 + (mem.importance ?? 5) * 0.8;
-        const color = categoryColors[cat] ?? '#676879';
-
-        ctx.beginPath();
-        ctx.arc(mx, my, size, 0, Math.PI * 2);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = 0.7;
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = '#fff';
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      });
-
-      // Count label
-      ctx.fillStyle = categoryColors[cat] ?? '#676879';
-      ctx.font = '11px Figtree, sans-serif';
-      ctx.fillText(`${mems.length}`, groupX, groupY + 35 + mems.length * 2);
-    });
-  } catch (e) {
-    console.warn('Graph render failed:', e);
-    if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'Failed to load memory map.'; }
   }
+
+  if (!memories.length) {
+    if (emptyEl) { emptyEl.style.display = 'flex'; emptyEl.textContent = 'No memories to visualize.'; }
+    return;
+  }
+
+  if (emptyEl) emptyEl.style.display = 'none';
+
+  // Render bubble chart grouped by category
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  const rect = canvas.parentElement?.getBoundingClientRect();
+  canvas.width = rect?.width ?? 600;
+  canvas.height = rect?.height ?? 400;
+
+  const categoryColors: Record<string, string> = {
+    other: '#676879', preference: '#0073EA', fact: '#00CA72',
+    decision: '#FDAB3D', procedure: '#E44258', concept: '#A25DDC',
+    code: '#579BFC', person: '#FF642E', project: '#CAB641',
+  };
+
+  // Group by category, place category clusters
+  const groups = new Map<string, typeof memories>();
+  for (const mem of memories) {
+    const cat = mem.category ?? 'other';
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(mem);
+  }
+
+  // Layout: distribute category centers in a circle
+  const categories = Array.from(groups.entries());
+  const cx = canvas.width / 2, cy = canvas.height / 2;
+  const radius = Math.min(cx, cy) * 0.55;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  categories.forEach(([cat, mems], i) => {
+    const angle = (i / categories.length) * Math.PI * 2 - Math.PI / 2;
+    const groupX = cx + Math.cos(angle) * radius;
+    const groupY = cy + Math.sin(angle) * radius;
+
+    // Draw category label
+    ctx.fillStyle = '#676879';
+    ctx.font = 'bold 12px Figtree, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(cat.toUpperCase(), groupX, groupY - 30 - mems.length * 2);
+
+    // Draw bubbles for each memory
+    mems.forEach((mem, j) => {
+      const innerAngle = (j / mems.length) * Math.PI * 2;
+      const spread = Math.min(25 + mems.length * 4, 60);
+      const mx = groupX + Math.cos(innerAngle) * spread * (0.3 + Math.random() * 0.7);
+      const my = groupY + Math.sin(innerAngle) * spread * (0.3 + Math.random() * 0.7);
+      const size = 4 + (mem.importance ?? 5) * 0.8;
+      const color = categoryColors[cat] ?? '#676879';
+
+      ctx.beginPath();
+      ctx.arc(mx, my, size, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.7;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+
+    // Count label
+    ctx.fillStyle = categoryColors[cat] ?? '#676879';
+    ctx.font = '11px Figtree, sans-serif';
+    ctx.fillText(`${mems.length}`, groupX, groupY + 35 + mems.length * 2);
+  });
 }
 
 // ── Memory Export ───────────────────────────────────────────────────────────
 
 /** Export all memories as a JSON file download */
 async function exportMemories() {
-  if (!_palaceAvailable || !invoke) {
+  if (!isEngineMode() && (!_palaceAvailable || !invoke)) {
     showToast('Memory not available — enable long-term memory first', 'warning');
     return;
   }
@@ -870,10 +976,16 @@ async function exportMemories() {
   if (btn) btn.disabled = true;
 
   try {
-    // Fetch all memories (large limit)
-    const jsonText = await invoke<string>('memory_search', { query: '*', limit: 500 });
     let memories: Array<Record<string, unknown>> = [];
-    try { memories = JSON.parse(jsonText); } catch { /* empty */ }
+
+    if (isEngineMode()) {
+      const engineMems = await pawEngine.memoryList(500);
+      memories = engineMems.map(m => ({ id: m.id, content: m.content, category: m.category, importance: m.importance, created_at: m.created_at }));
+    } else {
+      // Fetch all memories (large limit)
+      const jsonText = await invoke!<string>('memory_search', { query: '*', limit: 500 });
+      try { memories = JSON.parse(jsonText); } catch { /* empty */ }
+    }
 
     if (!memories.length) {
       showToast('No memories to export', 'info');

@@ -5,6 +5,8 @@ import { gateway } from '../gateway';
 import { listModes, saveMode, deleteMode } from '../db';
 import type { AgentMode } from '../db';
 import type { AgentSummary } from '../types';
+import { isEngineMode } from '../engine-bridge';
+import { pawEngine } from '../engine';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -199,6 +201,31 @@ export async function loadAgents() {
   list.innerHTML = '';
 
   try {
+    if (isEngineMode()) {
+      // Engine mode: show default agent with its files
+      if (loading) loading.style.display = 'none';
+      _agentsList = [{
+        id: 'default',
+        name: 'Default Agent',
+        identity: { name: 'Default Agent', emoji: '🧠' },
+      }] as AgentSummary[];
+
+      const card = document.createElement('div');
+      card.className = 'agent-card';
+      card.innerHTML = `
+        <div class="agent-card-avatar">🧠</div>
+        <div class="agent-card-body">
+          <div class="agent-card-name">Default Agent <span class="agent-card-badge">Default</span></div>
+          <div class="agent-card-id">default</div>
+          <div class="agent-card-theme">Soul files define this agent's personality</div>
+        </div>
+        <svg class="agent-card-chevron" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+      `;
+      card.addEventListener('click', () => openAgentDetail('default'));
+      list.appendChild(card);
+      return;
+    }
+
     const result = await gateway.listAgents();
     if (loading) loading.style.display = 'none';
 
@@ -273,10 +300,25 @@ async function loadAgentFiles(agentId: string) {
   grid.innerHTML = '<div class="view-loading">Loading files…</div>';
 
   try {
-    const result = await gateway.agentFilesList(agentId);
-    if (workspaceEl) workspaceEl.textContent = result.workspace || '—';
+    let files: { path?: string; name?: string; sizeBytes?: number }[] = [];
+    let workspace = '—';
 
-    const files = result.files ?? [];
+    if (isEngineMode()) {
+      // Engine mode: agent files stored in SQLite
+      const engineFiles = await pawEngine.agentFileList(agentId);
+      files = engineFiles.map(f => ({
+        path: f.file_name,
+        name: f.file_name,
+        sizeBytes: new Blob([f.content]).size,
+      }));
+      workspace = '~/.paw/engine.db (agent files)';
+    } else {
+      const result = await gateway.agentFilesList(agentId);
+      workspace = result.workspace || '—';
+      files = result.files ?? [];
+    }
+
+    if (workspaceEl) workspaceEl.textContent = workspace;
     grid.innerHTML = '';
 
     const existingPaths = new Set(files.map(f => f.path ?? f.name ?? ''));
@@ -333,8 +375,15 @@ async function openAgentFileEditor(agentId: string, filePath: string, exists: bo
 
   if (exists) {
     try {
-      const result = await gateway.agentFilesGet(filePath, agentId);
-      content.value = result.content ?? '';
+      let fileContent: string;
+      if (isEngineMode()) {
+        const engineFile = await pawEngine.agentFileGet(filePath, agentId);
+        fileContent = engineFile?.content ?? '';
+      } else {
+        const result = await gateway.agentFilesGet(filePath, agentId);
+        fileContent = result.content ?? '';
+      }
+      content.value = fileContent;
       content.disabled = false;
     } catch (e) {
       content.value = `Error loading file: ${e}`;
@@ -458,7 +507,11 @@ export function initFoundryEvents() {
     const content = $('agent-file-editor-content') as HTMLTextAreaElement | null;
     if (!content?.dataset.filePath || !content?.dataset.agentId) return;
     try {
-      await gateway.agentFilesSet(content.dataset.filePath, content.value, content.dataset.agentId);
+      if (isEngineMode()) {
+        await pawEngine.agentFileSet(content.dataset.filePath, content.value, content.dataset.agentId);
+      } else {
+        await gateway.agentFilesSet(content.dataset.filePath, content.value, content.dataset.agentId);
+      }
       showToast('File saved', 'success');
       loadAgentFiles(content.dataset.agentId);
     } catch (e) {

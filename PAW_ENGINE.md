@@ -1,6 +1,6 @@
 # Paw Agent Engine — Implementation Status
 
-> Last updated: 2026-02-17
+> Last updated: 2026-02-18
 
 ## What This Is
 
@@ -13,9 +13,29 @@ Zero network hop, zero open ports, zero auth tokens in engine mode.
 
 ---
 
-## Current Status: Phase 2 COMPLETE ✅
+## Current Status: Phase 3 COMPLETE ✅
 
-Phase 1 (core engine) was completed 2026-02-16. Phase 2 (security, session management, token metering, error handling, attachments) completed 2026-02-17.
+Phase 1 (core engine) completed 2026-02-16. Phase 2 (security, sessions, metering, errors, attachments) completed 2026-02-17. Phase 3 (soul + memory) completed 2026-02-18.
+
+### Phase 3 Features
+
+#### Soul System — Agent Personality Files ✅
+- **SQLite table:** `agent_files(agent_id TEXT, file_name TEXT, content TEXT, updated_at TEXT)` — stores IDENTITY.md, SOUL.md, USER.md, AGENTS.md, TOOLS.md per agent
+- **Standard files:** `AGENT_STANDARD_FILES` constant defines the 5 canonical agent files with default empty content
+- **System prompt composition:** `compose_agent_context()` loads agent files in deterministic order (IDENTITY → SOUL → USER → AGENTS → TOOLS), joins with `\n\n---\n\n`, prepended to system prompt before each turn
+- **Tauri commands:** `engine_agent_file_list`, `engine_agent_file_get`, `engine_agent_file_set`, `engine_agent_file_delete`
+- **Frontend Foundry wiring:** `loadAgents()` shows "Default Agent" card in engine mode. `loadAgentFiles()`, `openAgentFileEditor()`, save handler all route to `pawEngine.agentFileList/Get/Set()` in engine mode
+
+#### Memory System — Long-Term Semantic Memory ✅
+- **SQLite table:** `memories(id TEXT PRIMARY KEY, content TEXT, category TEXT, importance INTEGER, embedding BLOB, created_at TEXT)`
+- **Ollama embeddings:** `EmbeddingClient` calls local Ollama at `http://localhost:11434/api/embeddings` with `nomic-embed-text` model (768 dimensions). Falls back to OpenAI-compatible `/v1/embeddings` format for any provider
+- **Vector search:** `search_memories_by_embedding()` — cosine similarity in pure Rust over SQLite BLOBs, filtered by threshold (default 0.3)
+- **Keyword fallback:** `search_memories_keyword()` — SQL LIKE search when embeddings unavailable
+- **Auto-recall:** Before each agent turn in `engine_chat_send`, searches memory for context relevant to the user's message. Injects matching memories as `## Relevant Memories` section in system prompt
+- **Auto-capture:** After each agent turn, `extract_memorable_facts()` applies heuristic pattern matching (preference/fact/instruction patterns like "I like", "my project", "always remember") to extract and store new memories with embeddings
+- **Memory config:** `MemoryConfig` with configurable `embedding_url`, `embedding_model`, `embedding_dims`, `auto_recall`, `auto_capture`, `recall_limit` (default 5), `recall_threshold` (default 0.3)
+- **Tauri commands:** `engine_memory_store`, `engine_memory_search`, `engine_memory_stats`, `engine_memory_delete`, `engine_memory_list`, `engine_get_memory_config`, `engine_set_memory_config`, `engine_test_embedding`
+- **Frontend Memory Palace wiring:** All views (sidebar, recall search, recall by ID, remember form, graph visualization, export) route to `pawEngine.memorySearch/Store/List/Stats()` in engine mode
 
 ### Phase 2 Features
 
@@ -74,18 +94,19 @@ Phase 1 (core engine) was completed 2026-02-16. Phase 2 (security, session manag
 | File | LOC | Purpose |
 |------|-----|---------|
 | `mod.rs` | 10 | Module declarations |
-| `types.rs` | ~420 | All data structures: Message, Role, ToolCall, ToolDefinition, EngineEvent, Session, StoredMessage, ChatRequest/Response, EngineConfig, ProviderConfig, ProviderKind, StreamChunk, **TokenUsage**, **ChatAttachment** |
+| `types.rs` | ~420 | All data structures: Message, Role, ToolCall, ToolDefinition, EngineEvent, Session, StoredMessage, ChatRequest/Response, EngineConfig, ProviderConfig, ProviderKind, StreamChunk, **TokenUsage**, **ChatAttachment**, **AgentFile**, **Memory**, **MemoryConfig**, **MemoryStats** |
 | `providers.rs` | ~780 | AI provider HTTP clients with SSE streaming. `OpenAiProvider`, `AnthropicProvider`, `GoogleProvider`. `AnyProvider` enum. **Exponential backoff retry** (3 retries on 429/500/502/503/529). **Token usage parsing** per provider. **Attachment content block formatting** (OpenAI) |
 | `agent_loop.rs` | ~250 | Core agentic loop: call model → accumulate chunks → if tool calls → **HIL approval wait** → execute → loop back. **Token usage accumulation** across chunks. Emits `engine-event` Tauri events |
 | `tool_executor.rs` | ~190 | Tool execution: `exec` (sh -c), `fetch` (reqwest), `read_file`, `write_file`. Output truncation (50KB exec, 50KB fetch, 100KB read) |
-| `sessions.rs` | ~285 | SQLite session/message storage via rusqlite. DB at `~/.paw/engine.db` with WAL mode. Tables: sessions, messages, engine_config |
-| `commands.rs` | ~380 | 11 Tauri `#[tauri::command]` handlers + `EngineState` struct with **`PendingApprovals`** map. **`engine_approve_tool`** command. **Attachment parsing** in chat_send. Smart provider resolution by model prefix |
+| `sessions.rs` | ~450 | SQLite session/message/agent-file/memory storage via rusqlite. DB at `~/.paw/engine.db` with WAL mode. Tables: sessions, messages, engine_config, **agent_files**, **memories**. **`compose_agent_context()`** composes agent files into system prompt section. **Memory CRUD** + `search_memories_by_embedding()` (cosine similarity) + `search_memories_keyword()` (LIKE fallback). Utilities: `f32_vec_to_bytes`, `bytes_to_f32_vec`, `cosine_similarity` |
+| `memory.rs` | ~200 | **NEW** — `EmbeddingClient` (Ollama + OpenAI-compatible format). `store_memory()` (embed + store, graceful fallback). `search_memories()` (semantic + keyword fallback). `extract_memorable_facts()` (heuristic pattern matching for auto-capture) |
+| `commands.rs` | ~600 | 23 Tauri `#[tauri::command]` handlers + `EngineState` struct with **`PendingApprovals`** map, **`MemoryConfig`**. System prompt composition (base + agent context + memory). **Auto-recall** before agent turns, **auto-capture** after. 12 new commands for agent files (4) and memory (8) |
 
 ### TypeScript Frontend (`src/`)
 
 | File | LOC | Purpose |
 |------|-----|---------|
-| `engine.ts` | ~200 | `PawEngineClient` class — Tauri `invoke()` wrappers for all 11 commands. **`approveTool()`** method. Event listener system. Exported singleton `pawEngine` |
+| `engine.ts` | ~320 | `PawEngineClient` class — Tauri `invoke()` wrappers for all 23 commands. **`approveTool()`** method. **10 new methods** for agent files (list/get/set/delete) and memory (store/search/stats/delete/list + config). Event listener system. Exported singleton `pawEngine` |
 | `engine-bridge.ts` | ~175 | Translates engine events → gateway-style agent events. `isEngineMode()`, `startEngineBridge()`, `onEngineAgent()`, `engineChatSend()`. **`onEngineToolApproval()`** / **`resolveEngineToolApproval()`** for HIL. **Attachment passthrough**. **Usage data forwarding**. Filters intermediate Complete events |
 | `views/settings-engine.ts` | ~124 | Engine settings UI: mode toggle, provider kind, API key, model, base URL, save button |
 
@@ -94,8 +115,10 @@ Phase 1 (core engine) was completed 2026-02-16. Phase 2 (security, session manag
 | File | Changes |
 |------|---------|
 | `src-tauri/Cargo.toml` | Added: reqwest 0.12 (json+stream+rustls-tls), tokio 1 (full), tokio-stream 0.1, futures 0.3, uuid 1 (v4), rusqlite 0.31 (bundled) |
-| `src-tauri/src/lib.rs` | Added `pub mod engine;`, `EngineState` init with `PendingApprovals`, `.manage(engine_state)`, 11 engine commands in `invoke_handler` |
+| `src-tauri/src/lib.rs` | Added `pub mod engine;`, `EngineState` init with `PendingApprovals`, `.manage(engine_state)`, **23 engine commands** in `invoke_handler` (was 11, +12 for soul/memory) |
 | `src/main.ts` | Engine-bridge imports, dual-mode `connectGateway()`, `handleAgentEvent()`, dual-mode `sendMessage()`. **Phase 2:** dual-mode `loadSessions()`, `loadChatHistory()`, session rename/delete. **HIL approval handler** (~150 lines) via `onEngineToolApproval()` with full security pipeline. Attachment type handling |
+| `src/views/foundry.ts` | **Phase 3:** `loadAgents()` shows Default Agent card in engine mode. `loadAgentFiles()`, `openAgentFileEditor()`, save handler all route to `pawEngine` in engine mode |
+| `src/views/memory-palace.ts` | **Phase 3:** All memory views (sidebar, recall, remember, graph, export) route to `pawEngine.memorySearch/Store/List/Stats()` in engine mode. `loadMemoryPalace()` initializes with `pawEngine.memoryStats()` check |
 | `index.html` | Runtime Mode section in Settings → General with engine config panel |
 
 ---
@@ -156,26 +179,33 @@ When no `provider_id` is specified, the engine resolves by model name prefix:
 
 ---
 
-## Phase 3 — What's Needed Next
+## Phase 4 — What's Needed Next
 
 ### Priority 1: Multi-Provider Testing
 - Test with Anthropic API key (Claude models)
 - Test with OpenAI API key (GPT-4o, etc.)
 - Test with OpenRouter
-- Test with local Ollama
+- Test with local Ollama (both chat and embeddings)
 - Verify HIL approval flow works for each provider
 - Verify token metering reports correct values per provider
+- Verify auto-recall/capture memory flow
 
 ### Priority 2: Attachment Support — Additional Providers
 - Anthropic: base64 image content blocks (`type: "image"`)
 - Google: inline data parts (`inlineData: { mimeType, data }`)
 - Currently only OpenAI format is implemented
 
-### Priority 3: API Key Validation
+### Priority 3: Memory Settings UI
+- Expose `MemoryConfig` in Settings → Memory tab
+- Toggle auto-recall, auto-capture
+- Configure embedding endpoint URL and model
+- Test embedding connection button
+
+### Priority 4: API Key Validation
 - Test API key on save in engine settings (lightweight test call)
 - Show success/error feedback in settings UI
 
-### Priority 4: Extended Error Surfacing
+### Priority 5: Extended Error Surfacing
 - Ensure all error states (auth, rate limit, model not found) display clearly in chat UI
 - Consider a dedicated error toast for non-recoverable errors
 
@@ -203,7 +233,7 @@ git add -A && git commit -m "..." && git push
 ## Key Technical Notes
 
 - **Tauri lib name:** `paw_temp_lib` (set in Cargo.toml)
-- **Engine DB path:** `~/.paw/engine.db` (SQLite with WAL mode)
+- **Engine DB path:** `~/.paw/engine.db` (SQLite with WAL mode, 5 tables: sessions, messages, engine_config, agent_files, memories)
 - **Tauri event name:** `engine-event` (all engine events flow through this single channel)
 - **Runtime mode storage:** `localStorage.getItem('paw-runtime-mode')` — `'engine'` or `'gateway'`
 - **Google Gemini quirk:** Rejects `additionalProperties`, `$schema`, `$ref` in tool schemas — `sanitize_schema()` strips these

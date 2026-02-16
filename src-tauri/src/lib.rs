@@ -2635,6 +2635,20 @@ pub fn run() {
             engine::commands::engine_remove_provider,
             engine::commands::engine_status,
             engine::commands::engine_approve_tool,
+            // ── Agent Files (Soul / Persona) ──
+            engine::commands::engine_agent_file_list,
+            engine::commands::engine_agent_file_get,
+            engine::commands::engine_agent_file_set,
+            engine::commands::engine_agent_file_delete,
+            // ── Memory (Long-term Semantic) ──
+            engine::commands::engine_memory_store,
+            engine::commands::engine_memory_search,
+            engine::commands::engine_memory_stats,
+            engine::commands::engine_memory_delete,
+            engine::commands::engine_memory_list,
+            engine::commands::engine_get_memory_config,
+            engine::commands::engine_set_memory_config,
+            engine::commands::engine_test_embedding,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

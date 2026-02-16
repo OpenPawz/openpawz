@@ -87,6 +87,42 @@ export interface EngineStatus {
   default_provider?: string;
 }
 
+// ── Agent Files (Soul / Persona) ───────────────────────────────────────
+
+export interface EngineAgentFile {
+  agent_id: string;
+  file_name: string;
+  content: string;
+  updated_at: string;
+}
+
+// ── Memory ─────────────────────────────────────────────────────────────
+
+export interface EngineMemory {
+  id: string;
+  content: string;
+  category: string;
+  importance: number;
+  created_at: string;
+  score?: number;
+}
+
+export interface EngineMemoryConfig {
+  embedding_base_url: string;
+  embedding_model: string;
+  embedding_dims: number;
+  auto_recall: boolean;
+  auto_capture: boolean;
+  recall_limit: number;
+  recall_threshold: number;
+}
+
+export interface EngineMemoryStats {
+  total_memories: number;
+  categories: [string, number][];
+  has_embeddings: boolean;
+}
+
 // ── Engine Client ──────────────────────────────────────────────────────
 
 class PawEngineClient {
@@ -193,6 +229,68 @@ class PawEngineClient {
   /** Resolve a pending tool approval (HIL — Human In the Loop). */
   async approveTool(toolCallId: string, approved: boolean): Promise<void> {
     return invoke('engine_approve_tool', { toolCallId, approved });
+  }
+
+  // ── Agent Files (Soul / Persona) ─────────────────────────────────────
+
+  async agentFileList(agentId?: string): Promise<EngineAgentFile[]> {
+    return invoke<EngineAgentFile[]>('engine_agent_file_list', { agentId: agentId ?? 'default' });
+  }
+
+  async agentFileGet(fileName: string, agentId?: string): Promise<EngineAgentFile | null> {
+    return invoke<EngineAgentFile | null>('engine_agent_file_get', {
+      agentId: agentId ?? 'default',
+      fileName,
+    });
+  }
+
+  async agentFileSet(fileName: string, content: string, agentId?: string): Promise<void> {
+    return invoke('engine_agent_file_set', {
+      agentId: agentId ?? 'default',
+      fileName,
+      content,
+    });
+  }
+
+  async agentFileDelete(fileName: string, agentId?: string): Promise<void> {
+    return invoke('engine_agent_file_delete', {
+      agentId: agentId ?? 'default',
+      fileName,
+    });
+  }
+
+  // ── Memory ───────────────────────────────────────────────────────────
+
+  async memoryStore(content: string, category?: string, importance?: number): Promise<string> {
+    return invoke<string>('engine_memory_store', { content, category, importance });
+  }
+
+  async memorySearch(query: string, limit?: number): Promise<EngineMemory[]> {
+    return invoke<EngineMemory[]>('engine_memory_search', { query, limit });
+  }
+
+  async memoryStats(): Promise<EngineMemoryStats> {
+    return invoke<EngineMemoryStats>('engine_memory_stats');
+  }
+
+  async memoryDelete(id: string): Promise<void> {
+    return invoke('engine_memory_delete', { id });
+  }
+
+  async memoryList(limit?: number): Promise<EngineMemory[]> {
+    return invoke<EngineMemory[]>('engine_memory_list', { limit });
+  }
+
+  async getMemoryConfig(): Promise<EngineMemoryConfig> {
+    return invoke<EngineMemoryConfig>('engine_get_memory_config');
+  }
+
+  async setMemoryConfig(config: EngineMemoryConfig): Promise<void> {
+    return invoke('engine_set_memory_config', { config });
+  }
+
+  async testEmbedding(): Promise<number> {
+    return invoke<number>('engine_test_embedding');
   }
 }
 
