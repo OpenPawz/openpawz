@@ -353,12 +353,19 @@ class GatewayClient {
         this._lastSeq = frame.seq;
       }
       this.emit(frame.event, frame.payload);
-      // Only log non-streaming events to avoid overwhelming WebKit console
-      // (streaming deltas are handled by main.ts event handlers)
-      if (frame.event !== 'connect.challenge' && frame.event !== 'health' && frame.event !== 'tick'
-          && frame.event !== 'agent' && frame.event !== 'chat') {
+      // Log events — include agent/chat for debugging streaming issues
+      if (frame.event !== 'connect.challenge' && frame.event !== 'health' && frame.event !== 'tick') {
         try {
-          console.log(`[gateway] Event: ${frame.event}`, JSON.stringify(frame.payload).slice(0, 200));
+          const payloadStr = JSON.stringify(frame.payload).slice(0, 300);
+          // For agent deltas, only log first 80 chars to avoid console spam
+          if (frame.event === 'agent') {
+            const p = frame.payload as Record<string, unknown> | undefined;
+            console.log(`[gateway] agent event: stream=${p?.stream} session=${p?.sessionKey} runId=${String(p?.runId).slice(0,12)}`, payloadStr.slice(0, 80));
+          } else if (frame.event === 'chat') {
+            console.log(`[gateway] chat event:`, payloadStr.slice(0, 200));
+          } else {
+            console.log(`[gateway] Event: ${frame.event}`, payloadStr.slice(0, 200));
+          }
         } catch {
           console.log(`[gateway] Event: ${frame.event}`);
         }

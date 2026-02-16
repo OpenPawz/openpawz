@@ -790,7 +790,7 @@ $('wake-agent-btn')?.addEventListener('click', async () => {
 // ══════════════════════════════════════════════════════════════════════════
 
 // ── Sessions / Chat ────────────────────────────────────────────────────────
-async function loadSessions() {
+async function loadSessions(opts?: { skipHistory?: boolean }) {
   if (!wsConnected) return;
   try {
     const result = await gateway.listSessions({ limit: 50, includeDerivedTitles: true, includeLastMessage: true });
@@ -801,7 +801,8 @@ async function loadSessions() {
       currentSessionKey = sessions[0].key;
     }
     // Don't reload chat history if we're in the middle of streaming
-    if (currentSessionKey && !isLoading) await loadChatHistory(currentSessionKey);
+    // or if the caller explicitly asked to skip (e.g. after sendMessage which already has local messages)
+    if (!opts?.skipHistory && currentSessionKey && !isLoading) await loadChatHistory(currentSessionKey);
     // Populate mode picker from local DB
     populateModeSelect().catch(() => {});
   } catch (e) { console.warn('Sessions load failed:', e); }
@@ -1325,11 +1326,25 @@ async function sendMessage() {
     const sendUsage = (result as unknown as Record<string, unknown>).usage as Record<string, unknown> | undefined;
     if (sendUsage) recordTokenUsage(sendUsage);
 
+    // Some gateway modes return the full response in the chat.send ack
+    // (non-streaming / sync mode). If so, resolve immediately.
+    const resultAny = result as unknown as Record<string, unknown>;
+    const ackText = result.text
+      ?? (typeof resultAny.response === 'string' ? resultAny.response as string : null)
+      ?? extractContent(resultAny.response);
+    if (ackText && _streamingResolve) {
+      console.log(`[main] chat.send ack contained response (${ackText.length} chars) — resolving`);
+      appendStreamingDelta(ackText);
+      _streamingResolve(ackText);
+      _streamingResolve = null;
+    }
+
     // Now wait for the agent events to deliver the full response
     const finalText = await responsePromise;
     finalizeStreaming(finalText);
-    // Refresh session list (but skip re-loading chat history — we already have it)
-    loadSessions().catch(() => {});
+    // Refresh session list only — don't re-load chat history since we already have
+    // the local messages array up to date from the streaming pipeline
+    loadSessions({ skipHistory: true }).catch(() => {});
   } catch (error) {
     console.error('Chat error:', error);
     // Don't show raw WS errors like "connection closed" — the disconnect handler
@@ -1394,6 +1409,7 @@ function finalizeStreaming(finalContent: string, toolCalls?: import('./types').T
   // Remove the streaming element
   $('streaming-message')?.remove();
   _streamingEl = null;
+  const savedRunId = _streamingRunId;
   _streamingRunId = null;
   _streamingContent = '';
   // Hide abort button
@@ -1420,6 +1436,36 @@ function finalizeStreaming(finalContent: string, toolCalls?: import('./types').T
       _sessionCost += estInput * rate.input + estOutput * rate.output;
       console.log(`[token-meter] Fallback estimate: ~${estInput + estOutput} tokens (${userChars + assistantChars} chars)`);
       updateTokenMeter();
+    }
+  } else {
+    // No content received — try fetching the latest history from the gateway
+    // to recover the response (it may have been stored server-side even though
+    // the streaming events didn't deliver it).
+    console.warn(`[main] finalizeStreaming called with empty content (runId=${savedRunId?.slice(0,12) ?? 'null'}). Fetching history fallback...`);
+    const sk = currentSessionKey;
+    if (sk) {
+      gateway.chatHistory(sk).then(hist => {
+        const msgs = hist.messages ?? [];
+        // Find the last assistant message
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i].role === 'assistant') {
+            const text = extractContent(msgs[i].content);
+            if (text) {
+              console.log(`[main] History fallback recovered ${text.length} chars`);
+              addMessage({ role: 'assistant', content: text, timestamp: new Date() });
+              return;
+            }
+            break;
+          }
+        }
+        console.warn('[main] History fallback: no usable assistant message found');
+        addMessage({ role: 'assistant', content: '*(No response received — the agent may not be configured or the model returned empty output)*', timestamp: new Date() });
+      }).catch(e => {
+        console.warn('[main] History fallback failed:', e);
+        addMessage({ role: 'assistant', content: '*(No response received)*', timestamp: new Date() });
+      });
+    } else {
+      addMessage({ role: 'assistant', content: '*(No response received)*', timestamp: new Date() });
     }
   }
 }
@@ -1570,6 +1616,11 @@ gateway.on('agent', (payload: unknown) => {
     const runId = evt.runId as string | undefined;
     const evtSession = evt.sessionKey as string | undefined;
 
+    // Debug: log routing state for non-delta events
+    if (stream !== 'assistant') {
+      console.log(`[main] agent evt: stream=${stream} session=${evtSession} runId=${String(runId).slice(0,12)} isLoading=${isLoading} hasStreamingEl=${!!_streamingEl} streamingRunId=${_streamingRunId?.slice(0,12) ?? 'null'}`);
+    }
+
     // Route paw-research-* events to the Research view
     if (evtSession && evtSession.startsWith('paw-research-')) {
       if (!ResearchModule.isStreaming()) return;
@@ -1636,7 +1687,7 @@ gateway.on('agent', (payload: unknown) => {
         if (!_streamingRunId && runId) _streamingRunId = runId;
         console.log(`[main] Agent run started: ${runId}`);
       } else if (phase === 'end') {
-        console.log(`[main] Agent run ended: ${runId}`, data ? JSON.stringify(data).slice(0, 500) : '(no data)');
+        console.log(`[main] Agent run ended: ${runId} content-length=${_streamingContent.length}`, data ? JSON.stringify(data).slice(0, 500) : '(no data)');
         // Capture usage from lifecycle end event — try multiple paths
         const dAny = data as Record<string, unknown>;
         const dNested = (dAny.response as Record<string, unknown> | undefined);
@@ -1646,8 +1697,26 @@ gateway.on('agent', (payload: unknown) => {
         const evtUsage = (evt as Record<string, unknown>).usage as Record<string, unknown> | undefined;
         if (evtUsage) recordTokenUsage(evtUsage);
         if (_streamingResolve) {
-          _streamingResolve(_streamingContent);
-          _streamingResolve = null;
+          // If we already have content from deltas, resolve immediately.
+          // Otherwise give the 'chat' final event a 3s grace period to arrive
+          // (the chat.final event carries the assembled response and may arrive
+          // slightly after the lifecycle-end event).
+          if (_streamingContent) {
+            console.log('[main] Resolving with streamed content:', _streamingContent.length, 'chars');
+            _streamingResolve(_streamingContent);
+            _streamingResolve = null;
+          } else {
+            console.log('[main] No content at lifecycle end — waiting 3s for chat.final event...');
+            const savedResolve = _streamingResolve;
+            setTimeout(() => {
+              // Only resolve if the chat.final handler hasn't already done it
+              if (_streamingResolve === savedResolve && _streamingResolve) {
+                console.warn('[main] Grace period expired — resolving with empty content');
+                _streamingResolve(_streamingContent || '');
+                _streamingResolve = null;
+              }
+            }, 3000);
+          }
         }
       }
     } else if (stream === 'tool' && data) {
