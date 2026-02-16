@@ -1428,9 +1428,10 @@ async function sendMessage() {
   try {
     const sessionKey = currentSessionKey ?? 'default';
 
-    // Read selected mode's overrides (model, thinking level)
+    // Read selected mode's overrides (model, thinking level, system prompt)
     const modeSelect = $('chat-mode-select') as HTMLSelectElement | null;
     const selectedModeId = modeSelect?.value;
+    let modeSystemPrompt: string | undefined;
     if (selectedModeId) {
       const modes = await listModes();
       const mode = modes.find(m => m.id === selectedModeId);
@@ -1438,6 +1439,7 @@ async function sendMessage() {
         if (mode.model) chatOpts.model = mode.model;
         if (mode.thinking_level) chatOpts.thinkingLevel = mode.thinking_level;
         if (mode.temperature > 0) chatOpts.temperature = mode.temperature;
+        if (mode.system_prompt) modeSystemPrompt = mode.system_prompt;
       }
     }
 
@@ -1452,6 +1454,19 @@ async function sendMessage() {
       // Pass the full profile to be constructed into a system prompt by the gateway client
       (chatOpts as Record<string, unknown>).agentProfile = currentAgent;
       console.log(`[main] Injecting agent profile for "${currentAgent.name}"`, currentAgent);
+    }
+
+    // Merge mode's system_prompt into the agent profile so both engine and gateway paths use it
+    if (modeSystemPrompt) {
+      const existing = (chatOpts as Record<string, unknown>).agentProfile as Record<string, unknown> | undefined;
+      if (existing) {
+        // Mode system prompt takes priority — prepend before agent's own systemPrompt
+        existing.systemPrompt = modeSystemPrompt + (existing.systemPrompt ? '\n\n' + existing.systemPrompt : '');
+      } else {
+        // No agent selected — create a minimal profile with just the mode system prompt
+        (chatOpts as Record<string, unknown>).agentProfile = { systemPrompt: modeSystemPrompt };
+      }
+      console.log(`[main] Mode system prompt applied (${modeSystemPrompt.length} chars)`);
     }
     
     // Include attachments if any
