@@ -693,20 +693,19 @@ class GatewayClient {
     return this.request<GatewayConfigResult>('config.get', {});
   }
 
-  async configSet(config: Record<string, unknown>): Promise<unknown> {
-    return this.request('config.set', { config });
+  /** Write full config object. Serializes to JSON string and sends via config.apply. */
+  async configWrite(config: Record<string, unknown>): Promise<ConfigApplyResult> {
+    const raw = JSON.stringify(config, null, 2);
+    return this.request<ConfigApplyResult>('config.apply', { raw }, 60_000);
   }
 
-  async configPatch(patch: Record<string, unknown>): Promise<unknown> {
-    return this.request('config.patch', { patch });
+  /** Write raw JSON string directly via config.apply. Used by the raw config editor. */
+  async configApplyRaw(rawJson: string): Promise<ConfigApplyResult> {
+    return this.request<ConfigApplyResult>('config.apply', { raw: rawJson }, 60_000);
   }
 
   async configSchema(): Promise<ConfigSchemaResult> {
     return this.request<ConfigSchemaResult>('config.schema', {});
-  }
-
-  async configApply(rawJson: string): Promise<ConfigApplyResult> {
-    return this.request<ConfigApplyResult>('config.apply', { raw: rawJson }, 60_000);
   }
 
   // Presence

@@ -60,22 +60,22 @@ function deepMerge(target: Record<string, unknown>, source: Record<string, unkno
   return target;
 }
 
-/** Patch config via read → deep-merge → configSet (writes full config).
+/** Patch config via read → deep-merge → config.apply (serialized as JSON string).
  *  This ensures partial patches don't wipe the rest of the config.
  *  Invalidates cache on success. Shows toast on error.
  *  Returns true on success, false on error.
  */
 export async function patchConfig(patch: Record<string, unknown>, silent = false): Promise<boolean> {
   try {
-    // Read current full config
     const current = await getConfig();
-    // Deep-clone current config to avoid mutating cache
     const merged = JSON.parse(JSON.stringify(current));
-    // Deep-merge patch into clone
     deepMerge(merged, patch);
-    // Write the full merged config via config.set (accepts object directly)
-    await gateway.configSet(merged);
-    _configCache = null; // invalidate
+    const result = await gateway.configWrite(merged);
+    _configCache = null;
+    if (!result.ok && result.errors?.length) {
+      showToast(`Config error: ${result.errors.join(', ')}`, 'error');
+      return false;
+    }
     if (!silent) {
       showToast('Settings saved', 'success');
     }
@@ -102,14 +102,17 @@ export async function deleteConfigKey(path: string, silent = false): Promise<boo
     const keys = path.split('.');
     let obj: Record<string, unknown> = merged;
     for (let i = 0; i < keys.length - 1; i++) {
-      if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') return true; // path doesn't exist, nothing to delete
+      if (!obj[keys[i]] || typeof obj[keys[i]] !== 'object') return true;
       obj = obj[keys[i]] as Record<string, unknown>;
     }
     delete obj[keys[keys.length - 1]];
 
-    // Write full config minus the deleted key via config.set
-    await gateway.configSet(merged);
+    const result = await gateway.configWrite(merged);
     _configCache = null;
+    if (!result.ok && result.errors?.length) {
+      showToast(`Config error: ${result.errors.join(', ')}`, 'error');
+      return false;
+    }
     if (!silent) {
       showToast('Removed', 'success');
     }

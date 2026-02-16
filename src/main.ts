@@ -777,7 +777,7 @@ $('settings-save-config')?.addEventListener('click', async () => {
       if (!proceed) return;
     }
 
-    await gateway.configSet(parsed);
+    await gateway.configWrite(parsed);
     alert('Configuration saved!');
   } catch (e) {
     alert(`Invalid config: ${e instanceof Error ? e.message : e}`);
@@ -799,7 +799,7 @@ $('settings-apply-config')?.addEventListener('click', async () => {
       );
       if (!proceed) return;
     }
-    const result = await gateway.configApply(JSON.stringify(parsed, null, 2));
+    const result = await gateway.configApplyRaw(JSON.stringify(parsed, null, 2));
     if (result.errors?.length) {
       alert(`Config applied with warnings:\n${result.errors.join('\n')}`);
     } else {
@@ -2198,7 +2198,9 @@ async function saveChannelSetup() {
 
     // Merge: keep existing channel configs, add/replace this one
     const mergedChannels = { ...currentChannels, ...patchChannels };
-    await gateway.configPatch({ channels: mergedChannels });
+    const fullConfig = JSON.parse(JSON.stringify(current.config));
+    fullConfig.channels = mergedChannels;
+    await gateway.configWrite(fullConfig);
 
     showToast(`${def.name} configured!`, 'success');
     closeChannelSetup();
@@ -2362,7 +2364,9 @@ async function loadChannels() {
           const cfg = current.config as Record<string, unknown>;
           const channels = { ...(cfg?.channels as Record<string, unknown> ?? {}) };
           delete channels[chId];
-          await gateway.configPatch({ channels });
+          const fullConfig = JSON.parse(JSON.stringify(cfg));
+          fullConfig.channels = channels;
+          await gateway.configWrite(fullConfig);
           showToast(`${chId} removed`, 'success');
           setTimeout(() => loadChannels(), 1000);
         } catch (e) {
