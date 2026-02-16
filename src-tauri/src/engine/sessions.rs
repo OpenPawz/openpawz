@@ -87,6 +87,26 @@ impl SessionStore {
                 ON memories(category);
         ").map_err(|e| format!("Failed to create tables: {}", e))?;
 
+        // One-time dedup: remove duplicate messages caused by a bug that
+        // re-inserted historical assistant/tool messages on every agent turn.
+        // Keep only the earliest copy of each (session_id, role, content, tool_call_id) tuple.
+        let deduped = conn.execute(
+            "DELETE FROM messages WHERE id NOT IN (
+                SELECT MIN(id) FROM messages
+                GROUP BY session_id, role, content, tool_call_id
+            )",
+            [],
+        ).unwrap_or(0);
+        if deduped > 0 {
+            info!("[engine] Deduplication: removed {} duplicate messages", deduped);
+            // Update message counts
+            conn.execute_batch(
+                "UPDATE sessions SET message_count = (
+                    SELECT COUNT(*) FROM messages WHERE messages.session_id = sessions.id
+                )"
+            ).ok();
+        }
+
         Ok(SessionStore { conn: Mutex::new(conn) })
     }
 
@@ -178,6 +198,19 @@ impl SessionStore {
             .map_err(|e| format!("Delete messages error: {}", e))?;
         conn.execute("DELETE FROM sessions WHERE id = ?1", params![id])
             .map_err(|e| format!("Delete session error: {}", e))?;
+        Ok(())
+    }
+
+    /// Clear all messages for a session but keep the session itself.
+    pub fn clear_messages(&self, session_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute("DELETE FROM messages WHERE session_id = ?1", params![session_id])
+            .map_err(|e| format!("Delete messages error: {}", e))?;
+        conn.execute(
+            "UPDATE sessions SET message_count = 0, updated_at = datetime('now') WHERE id = ?1",
+            params![session_id],
+        ).map_err(|e| format!("Update session error: {}", e))?;
+        info!("[engine] Cleared all messages for session {}", session_id);
         Ok(())
     }
 

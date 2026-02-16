@@ -265,6 +265,10 @@ pub async fn engine_chat_send(
     let user_message_for_capture = request.message.clone();
     let _memory_cfg_for_capture = state.memory_config.lock().ok().map(|c| c.clone());
 
+    // Track how many messages exist BEFORE the agent loop so we only store
+    // NEW messages afterward (avoids re-inserting historical messages on every turn).
+    let pre_loop_msg_count = messages.len();
+
     // Spawn the agent loop in a background task
     let app = app_handle.clone();
     tauri::async_runtime::spawn(async move {
@@ -286,9 +290,10 @@ pub async fn engine_chat_send(
             Ok(final_text) => {
                 info!("[engine] Agent turn complete: {} chars", final_text.len());
 
-                // Store assistant messages from the conversation
+                // Store only NEW messages generated during this agent turn.
+                // Messages before pre_loop_msg_count were loaded from DB and must not be re-inserted.
                 if let Some(engine_state) = app.try_state::<EngineState>() {
-                    for msg in &messages {
+                    for msg in messages.iter().skip(pre_loop_msg_count) {
                         if msg.role == Role::Assistant || msg.role == Role::Tool {
                             let stored = StoredMessage {
                                 id: uuid::Uuid::new_v4().to_string(),
@@ -380,6 +385,15 @@ pub fn engine_session_delete(
     session_id: String,
 ) -> Result<(), String> {
     state.store.delete_session(&session_id)
+}
+
+#[tauri::command]
+pub fn engine_session_clear(
+    state: State<'_, EngineState>,
+    session_id: String,
+) -> Result<(), String> {
+    info!("[engine] Clearing messages for session {}", session_id);
+    state.store.clear_messages(&session_id)
 }
 
 // ── Engine configuration commands ──────────────────────────────────────

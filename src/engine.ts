@@ -203,6 +203,10 @@ class PawEngineClient {
     return invoke('engine_session_delete', { sessionId });
   }
 
+  async sessionClear(sessionId: string): Promise<void> {
+    return invoke('engine_session_clear', { sessionId });
+  }
+
   // ── Config ───────────────────────────────────────────────────────────
 
   async getConfig(): Promise<EngineConfig> {

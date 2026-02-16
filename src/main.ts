@@ -1186,8 +1186,18 @@ $('session-clear-btn')?.addEventListener('click', async () => {
   if (!currentSessionKey || !wsConnected) return;
   if (!confirm('Clear all messages in this session? The session itself will remain.')) return;
   try {
-    await gateway.resetSession(currentSessionKey);
+    if (isEngineMode()) {
+      await pawEngine.sessionClear(currentSessionKey);
+    } else {
+      await gateway.resetSession(currentSessionKey);
+    }
     messages = [];
+    _sessionTokensUsed = 0;
+    _sessionInputTokens = 0;
+    _sessionOutputTokens = 0;
+    _sessionCost = 0;
+    _lastRecordedTotal = 0;
+    updateTokenMeter();
     renderMessages();
     showToast('Session history cleared', 'success');
   } catch (e) {
