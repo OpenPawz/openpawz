@@ -1,0 +1,668 @@
+// Paw Agent Engine — AI Provider Clients
+// Direct HTTP calls to AI APIs with SSE streaming.
+// No WebSocket gateway, no middleman.
+
+use crate::engine::types::*;
+use futures::StreamExt;
+use log::{info, error};
+use reqwest::Client;
+use serde_json::{json, Value};
+
+// ── OpenAI-compatible provider ─────────────────────────────────────────
+// Works for: OpenAI, OpenRouter, Ollama, any OpenAI-compatible API
+
+pub struct OpenAiProvider {
+    client: Client,
+    base_url: String,
+    api_key: String,
+}
+
+impl OpenAiProvider {
+    pub fn new(config: &ProviderConfig) -> Self {
+        let base_url = config.base_url.clone()
+            .unwrap_or_else(|| config.kind.default_base_url().to_string());
+        OpenAiProvider {
+            client: Client::new(),
+            base_url,
+            api_key: config.api_key.clone(),
+        }
+    }
+
+    fn format_messages(messages: &[Message]) -> Vec<Value> {
+        messages.iter().map(|msg| {
+            let mut m = json!({
+                "role": msg.role,
+                "content": msg.content.as_text(),
+            });
+            if let Some(tc) = &msg.tool_calls {
+                m["tool_calls"] = json!(tc);
+            }
+            if let Some(id) = &msg.tool_call_id {
+                m["tool_call_id"] = json!(id);
+            }
+            if let Some(name) = &msg.name {
+                m["name"] = json!(name);
+            }
+            m
+        }).collect()
+    }
+
+    fn format_tools(tools: &[ToolDefinition]) -> Vec<Value> {
+        tools.iter().map(|t| {
+            json!({
+                "type": t.tool_type,
+                "function": {
+                    "name": t.function.name,
+                    "description": t.function.description,
+                    "parameters": t.function.parameters,
+                }
+            })
+        }).collect()
+    }
+
+    /// Parse a single SSE data line from an OpenAI-compatible stream.
+    fn parse_sse_chunk(data: &str) -> Option<StreamChunk> {
+        if data == "[DONE]" {
+            return None;
+        }
+
+        let v: Value = serde_json::from_str(data).ok()?;
+        let choice = v["choices"].get(0)?;
+        let delta = &choice["delta"];
+        let finish_reason = choice["finish_reason"].as_str().map(|s| s.to_string());
+
+        let delta_text = delta["content"].as_str().map(|s| s.to_string());
+
+        let mut tool_calls = Vec::new();
+        if let Some(tcs) = delta["tool_calls"].as_array() {
+            for tc in tcs {
+                let index = tc["index"].as_u64().unwrap_or(0) as usize;
+                let id = tc["id"].as_str().map(|s| s.to_string());
+                let func = &tc["function"];
+                let function_name = func["name"].as_str().map(|s| s.to_string());
+                let arguments_delta = func["arguments"].as_str().map(|s| s.to_string());
+                tool_calls.push(ToolCallDelta {
+                    index,
+                    id,
+                    function_name,
+                    arguments_delta,
+                });
+            }
+        }
+
+        Some(StreamChunk {
+            delta_text,
+            tool_calls,
+            finish_reason,
+        })
+    }
+}
+
+impl OpenAiProvider {
+    pub async fn chat_stream(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        model: &str,
+        temperature: Option<f64>,
+    ) -> Result<Vec<StreamChunk>, String> {
+        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+
+        let mut body = json!({
+            "model": model,
+            "messages": Self::format_messages(messages),
+            "stream": true,
+        });
+
+        if !tools.is_empty() {
+            body["tools"] = json!(Self::format_tools(tools));
+        }
+        if let Some(temp) = temperature {
+            body["temperature"] = json!(temp);
+        }
+
+        info!("[engine] OpenAI request to {} model={}", url, model);
+
+        let response = self.client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body_text = response.text().await.unwrap_or_default();
+            error!("[engine] OpenAI error {}: {}", status, &body_text[..body_text.len().min(500)]);
+            return Err(format!("API error {}: {}", status, &body_text[..body_text.len().min(200)]));
+        }
+
+        // Read SSE stream
+        let mut chunks = Vec::new();
+        let mut byte_stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(result) = byte_stream.next().await {
+            let bytes = result.map_err(|e| format!("Stream read error: {}", e))?;
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+            // Process complete SSE lines
+            while let Some(line_end) = buffer.find('\n') {
+                let line = buffer[..line_end].trim().to_string();
+                buffer = buffer[line_end + 1..].to_string();
+
+                if line.starts_with("data: ") {
+                    let data = &line[6..];
+                    if let Some(chunk) = Self::parse_sse_chunk(data) {
+                        chunks.push(chunk);
+                    } else if data == "[DONE]" {
+                        return Ok(chunks);
+                    }
+                }
+            }
+        }
+
+        Ok(chunks)
+    }
+}
+
+// ── Anthropic provider ─────────────────────────────────────────────────
+
+pub struct AnthropicProvider {
+    client: Client,
+    base_url: String,
+    api_key: String,
+}
+
+impl AnthropicProvider {
+    pub fn new(config: &ProviderConfig) -> Self {
+        let base_url = config.base_url.clone()
+            .unwrap_or_else(|| config.kind.default_base_url().to_string());
+        AnthropicProvider {
+            client: Client::new(),
+            base_url,
+            api_key: config.api_key.clone(),
+        }
+    }
+
+    fn format_messages(messages: &[Message]) -> (Option<String>, Vec<Value>) {
+        let mut system = None;
+        let mut formatted = Vec::new();
+
+        for msg in messages {
+            if msg.role == Role::System {
+                system = Some(msg.content.as_text());
+                continue;
+            }
+
+            let role = match msg.role {
+                Role::User => "user",
+                Role::Assistant => "assistant",
+                Role::Tool => "user", // Anthropic uses user role for tool results
+                _ => "user",
+            };
+
+            if msg.role == Role::Tool {
+                // Tool results in Anthropic format
+                if let Some(tc_id) = &msg.tool_call_id {
+                    formatted.push(json!({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": tc_id,
+                            "content": msg.content.as_text(),
+                        }]
+                    }));
+                }
+            } else if msg.role == Role::Assistant {
+                if let Some(tool_calls) = &msg.tool_calls {
+                    // Assistant message with tool use
+                    let mut content_blocks: Vec<Value> = vec![];
+                    let text = msg.content.as_text();
+                    if !text.is_empty() {
+                        content_blocks.push(json!({"type": "text", "text": text}));
+                    }
+                    for tc in tool_calls {
+                        let input: Value = serde_json::from_str(&tc.function.arguments)
+                            .unwrap_or(json!({}));
+                        content_blocks.push(json!({
+                            "type": "tool_use",
+                            "id": tc.id,
+                            "name": tc.function.name,
+                            "input": input,
+                        }));
+                    }
+                    formatted.push(json!({
+                        "role": "assistant",
+                        "content": content_blocks,
+                    }));
+                } else {
+                    formatted.push(json!({
+                        "role": role,
+                        "content": msg.content.as_text(),
+                    }));
+                }
+            } else {
+                formatted.push(json!({
+                    "role": role,
+                    "content": msg.content.as_text(),
+                }));
+            }
+        }
+
+        (system, formatted)
+    }
+
+    fn format_tools(tools: &[ToolDefinition]) -> Vec<Value> {
+        tools.iter().map(|t| {
+            json!({
+                "name": t.function.name,
+                "description": t.function.description,
+                "input_schema": t.function.parameters,
+            })
+        }).collect()
+    }
+
+    fn parse_sse_event(data: &str) -> Option<StreamChunk> {
+        let v: Value = serde_json::from_str(data).ok()?;
+        let event_type = v["type"].as_str()?;
+
+        match event_type {
+            "content_block_delta" => {
+                let delta = &v["delta"];
+                let delta_type = delta["type"].as_str().unwrap_or("");
+                match delta_type {
+                    "text_delta" => {
+                        Some(StreamChunk {
+                            delta_text: delta["text"].as_str().map(|s| s.to_string()),
+                            tool_calls: vec![],
+                            finish_reason: None,
+                        })
+                    }
+                    "input_json_delta" => {
+                        let index = v["index"].as_u64().unwrap_or(0) as usize;
+                        Some(StreamChunk {
+                            delta_text: None,
+                            tool_calls: vec![ToolCallDelta {
+                                index,
+                                id: None,
+                                function_name: None,
+                                arguments_delta: delta["partial_json"].as_str().map(|s| s.to_string()),
+                            }],
+                            finish_reason: None,
+                        })
+                    }
+                    _ => None,
+                }
+            }
+            "content_block_start" => {
+                let block = &v["content_block"];
+                let block_type = block["type"].as_str().unwrap_or("");
+                if block_type == "tool_use" {
+                    let index = v["index"].as_u64().unwrap_or(0) as usize;
+                    Some(StreamChunk {
+                        delta_text: None,
+                        tool_calls: vec![ToolCallDelta {
+                            index,
+                            id: block["id"].as_str().map(|s| s.to_string()),
+                            function_name: block["name"].as_str().map(|s| s.to_string()),
+                            arguments_delta: None,
+                        }],
+                        finish_reason: None,
+                    })
+                } else {
+                    None
+                }
+            }
+            "message_delta" => {
+                let stop_reason = v["delta"]["stop_reason"].as_str().map(|s| s.to_string());
+                Some(StreamChunk {
+                    delta_text: None,
+                    tool_calls: vec![],
+                    finish_reason: stop_reason,
+                })
+            }
+            "message_stop" => {
+                Some(StreamChunk {
+                    delta_text: None,
+                    tool_calls: vec![],
+                    finish_reason: Some("stop".into()),
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+impl AnthropicProvider {
+    pub async fn chat_stream(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        model: &str,
+        temperature: Option<f64>,
+    ) -> Result<Vec<StreamChunk>, String> {
+        let url = format!("{}/v1/messages", self.base_url.trim_end_matches('/'));
+
+        let (system, formatted_messages) = Self::format_messages(messages);
+
+        let mut body = json!({
+            "model": model,
+            "messages": formatted_messages,
+            "max_tokens": 8192,
+            "stream": true,
+        });
+
+        if let Some(sys) = system {
+            body["system"] = json!(sys);
+        }
+        if !tools.is_empty() {
+            body["tools"] = json!(Self::format_tools(tools));
+        }
+        if let Some(temp) = temperature {
+            body["temperature"] = json!(temp);
+        }
+
+        info!("[engine] Anthropic request to {} model={}", url, model);
+
+        let response = self.client
+            .post(&url)
+            .header("x-api-key", &self.api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body_text = response.text().await.unwrap_or_default();
+            error!("[engine] Anthropic error {}: {}", status, &body_text[..body_text.len().min(500)]);
+            return Err(format!("API error {}: {}", status, &body_text[..body_text.len().min(200)]));
+        }
+
+        let mut chunks = Vec::new();
+        let mut byte_stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(result) = byte_stream.next().await {
+            let bytes = result.map_err(|e| format!("Stream read error: {}", e))?;
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+            while let Some(line_end) = buffer.find('\n') {
+                let line = buffer[..line_end].trim().to_string();
+                buffer = buffer[line_end + 1..].to_string();
+
+                if line.starts_with("data: ") {
+                    let data = &line[6..];
+                    if let Some(chunk) = Self::parse_sse_event(data) {
+                        chunks.push(chunk);
+                    }
+                }
+            }
+        }
+
+        Ok(chunks)
+    }
+}
+
+// ── Google Gemini provider ─────────────────────────────────────────────
+
+pub struct GoogleProvider {
+    client: Client,
+    base_url: String,
+    api_key: String,
+}
+
+impl GoogleProvider {
+    pub fn new(config: &ProviderConfig) -> Self {
+        let base_url = config.base_url.clone()
+            .unwrap_or_else(|| config.kind.default_base_url().to_string());
+        GoogleProvider {
+            client: Client::new(),
+            base_url,
+            api_key: config.api_key.clone(),
+        }
+    }
+
+    fn format_messages(messages: &[Message]) -> (Option<Value>, Vec<Value>) {
+        let mut system_instruction = None;
+        let mut contents = Vec::new();
+
+        for msg in messages {
+            if msg.role == Role::System {
+                system_instruction = Some(json!({
+                    "parts": [{"text": msg.content.as_text()}]
+                }));
+                continue;
+            }
+
+            let role = match msg.role {
+                Role::User | Role::Tool => "user",
+                Role::Assistant => "model",
+                _ => "user",
+            };
+
+            if msg.role == Role::Tool {
+                if let Some(tc_id) = &msg.tool_call_id {
+                    // Find the function name from tool_call_id — use the id as name fallback
+                    let fn_name = msg.name.clone().unwrap_or_else(|| tc_id.clone());
+                    contents.push(json!({
+                        "role": "function",
+                        "parts": [{
+                            "functionResponse": {
+                                "name": fn_name,
+                                "response": {
+                                    "result": msg.content.as_text()
+                                }
+                            }
+                        }]
+                    }));
+                }
+            } else if msg.role == Role::Assistant {
+                if let Some(tool_calls) = &msg.tool_calls {
+                    let mut parts: Vec<Value> = vec![];
+                    let text = msg.content.as_text();
+                    if !text.is_empty() {
+                        parts.push(json!({"text": text}));
+                    }
+                    for tc in tool_calls {
+                        let args: Value = serde_json::from_str(&tc.function.arguments)
+                            .unwrap_or(json!({}));
+                        parts.push(json!({
+                            "functionCall": {
+                                "name": tc.function.name,
+                                "args": args,
+                            }
+                        }));
+                    }
+                    contents.push(json!({
+                        "role": "model",
+                        "parts": parts,
+                    }));
+                } else {
+                    contents.push(json!({
+                        "role": role,
+                        "parts": [{"text": msg.content.as_text()}]
+                    }));
+                }
+            } else {
+                contents.push(json!({
+                    "role": role,
+                    "parts": [{"text": msg.content.as_text()}]
+                }));
+            }
+        }
+
+        (system_instruction, contents)
+    }
+
+    fn format_tools(tools: &[ToolDefinition]) -> Value {
+        let function_declarations: Vec<Value> = tools.iter().map(|t| {
+            json!({
+                "name": t.function.name,
+                "description": t.function.description,
+                "parameters": t.function.parameters,
+            })
+        }).collect();
+
+        json!([{
+            "functionDeclarations": function_declarations
+        }])
+    }
+}
+
+impl GoogleProvider {
+    pub async fn chat_stream(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        model: &str,
+        temperature: Option<f64>,
+    ) -> Result<Vec<StreamChunk>, String> {
+        let url = format!(
+            "{}/models/{}:streamGenerateContent?alt=sse&key={}",
+            self.base_url.trim_end_matches('/'),
+            model,
+            self.api_key
+        );
+
+        let (system_instruction, contents) = Self::format_messages(messages);
+
+        let mut body = json!({
+            "contents": contents,
+        });
+
+        if let Some(sys) = system_instruction {
+            body["systemInstruction"] = sys;
+        }
+        if !tools.is_empty() {
+            body["tools"] = Self::format_tools(tools);
+        }
+        if let Some(temp) = temperature {
+            body["generationConfig"] = json!({"temperature": temp});
+        }
+
+        info!("[engine] Google request model={}", model);
+
+        let response = self.client
+            .post(&url)
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("HTTP request failed: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body_text = response.text().await.unwrap_or_default();
+            error!("[engine] Google error {}: {}", status, &body_text[..body_text.len().min(500)]);
+            return Err(format!("API error {}: {}", status, &body_text[..body_text.len().min(200)]));
+        }
+
+        let mut chunks = Vec::new();
+        let mut byte_stream = response.bytes_stream();
+        let mut buffer = String::new();
+
+        while let Some(result) = byte_stream.next().await {
+            let bytes = result.map_err(|e| format!("Stream read error: {}", e))?;
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+            while let Some(line_end) = buffer.find('\n') {
+                let line = buffer[..line_end].trim().to_string();
+                buffer = buffer[line_end + 1..].to_string();
+
+                if line.starts_with("data: ") {
+                    let data = &line[6..];
+                    if let Ok(v) = serde_json::from_str::<Value>(data) {
+                        // Parse Google's streaming format
+                        if let Some(candidates) = v["candidates"].as_array() {
+                            for candidate in candidates {
+                                let content = &candidate["content"];
+                                let finish_reason = candidate["finishReason"].as_str()
+                                    .map(|s| s.to_string());
+
+                                if let Some(parts) = content["parts"].as_array() {
+                                    for part in parts {
+                                        if let Some(text) = part["text"].as_str() {
+                                            chunks.push(StreamChunk {
+                                                delta_text: Some(text.to_string()),
+                                                tool_calls: vec![],
+                                                finish_reason: finish_reason.clone(),
+                                            });
+                                        }
+                                        if let Some(fc) = part.get("functionCall") {
+                                            let name = fc["name"].as_str().unwrap_or("").to_string();
+                                            let args = fc["args"].clone();
+                                            chunks.push(StreamChunk {
+                                                delta_text: None,
+                                                tool_calls: vec![ToolCallDelta {
+                                                    index: 0,
+                                                    id: Some(format!("call_{}", uuid::Uuid::new_v4())),
+                                                    function_name: Some(name),
+                                                    arguments_delta: Some(serde_json::to_string(&args).unwrap_or_default()),
+                                                }],
+                                                finish_reason: finish_reason.clone(),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(chunks)
+    }
+}
+
+// ── Provider factory ───────────────────────────────────────────────────
+
+pub enum AnyProvider {
+    OpenAi(OpenAiProvider),
+    Anthropic(AnthropicProvider),
+    Google(GoogleProvider),
+}
+
+impl AnyProvider {
+    pub fn from_config(config: &ProviderConfig) -> Self {
+        match config.kind {
+            ProviderKind::OpenAI | ProviderKind::OpenRouter | ProviderKind::Ollama | ProviderKind::Custom => {
+                AnyProvider::OpenAi(OpenAiProvider::new(config))
+            }
+            ProviderKind::Anthropic => {
+                AnyProvider::Anthropic(AnthropicProvider::new(config))
+            }
+            ProviderKind::Google => {
+                AnyProvider::Google(GoogleProvider::new(config))
+            }
+        }
+    }
+
+    pub async fn chat_stream(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        model: &str,
+        temperature: Option<f64>,
+    ) -> Result<Vec<StreamChunk>, String> {
+        match self {
+            AnyProvider::OpenAi(p) => p.chat_stream(messages, tools, model, temperature).await,
+            AnyProvider::Anthropic(p) => p.chat_stream(messages, tools, model, temperature).await,
+            AnyProvider::Google(p) => p.chat_stream(messages, tools, model, temperature).await,
+        }
+    }
+
+    pub fn kind(&self) -> ProviderKind {
+        match self {
+            AnyProvider::OpenAi(_) => ProviderKind::OpenAI,
+            AnyProvider::Anthropic(_) => ProviderKind::Anthropic,
+            AnyProvider::Google(_) => ProviderKind::Google,
+        }
+    }
+}

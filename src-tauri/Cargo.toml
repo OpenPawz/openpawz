@@ -36,3 +36,11 @@ ed25519-dalek = { version = "2", features = ["rand_core"] }
 sha2 = "0.10"
 base64 = "0.22"
 
+# ── Paw Agent Engine ──────────────────────────────────────────────
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"], default-features = false }
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+futures = "0.3"
+uuid = { version = "1", features = ["v4"] }
+rusqlite = { version = "0.31", features = ["bundled"] }
+

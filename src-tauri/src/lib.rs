@@ -10,6 +10,9 @@ use sha2::{Sha256, Digest};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 
+// ── Paw Agent Engine ───────────────────────────────────────────────────
+pub mod engine;
+
 /// Set restrictive file permissions (owner-only read/write) on Unix.
 /// No-op on non-Unix platforms.
 #[cfg(unix)]
@@ -2565,7 +2568,12 @@ fn sign_device_payload(payload: String) -> Result<String, String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Initialize the Paw Agent Engine
+    let engine_state = engine::commands::EngineState::new()
+        .expect("Failed to initialize Paw Agent Engine");
+
     tauri::Builder::default()
+        .manage(engine_state)
         .plugin(tauri_plugin_log::Builder::new()
             .target(tauri_plugin_log::Target::new(
                 tauri_plugin_log::TargetKind::LogDir { file_name: Some("claw".into()) },
@@ -2578,6 +2586,7 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
+            // ── Existing OpenClaw gateway commands ──
             check_node_installed,
             check_openclaw_installed,
             check_gateway_health,
@@ -2613,7 +2622,18 @@ pub fn run() {
             delete_email,
             set_email_flag,
             get_db_encryption_key,
-            has_db_encryption_key
+            has_db_encryption_key,
+            // ── Paw Agent Engine commands (no gateway needed) ──
+            engine::commands::engine_chat_send,
+            engine::commands::engine_chat_history,
+            engine::commands::engine_sessions_list,
+            engine::commands::engine_session_rename,
+            engine::commands::engine_session_delete,
+            engine::commands::engine_get_config,
+            engine::commands::engine_set_config,
+            engine::commands::engine_upsert_provider,
+            engine::commands::engine_remove_provider,
+            engine::commands::engine_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

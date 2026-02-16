@@ -4,6 +4,7 @@
 import type { AppConfig, Message, InstallProgress, ChatMessage, Session } from './types';
 import { setGatewayConfig, probeHealth } from './api';
 import { gateway, isLocalhostUrl } from './gateway';
+import { isEngineMode, startEngineBridge, onEngineAgent, engineChatSend } from './engine-bridge';
 // ── Inline Lucide-style SVG icons (avoids broken lucide package) ─────────────
 const _icons: Record<string, string> = {
   'paperclip': '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
@@ -24,6 +25,7 @@ function icon(name: string, cls = ''): string {
 }
 import { initDb, initDbEncryption, listModes, listDocs, saveDoc, getDoc, deleteDoc, listProjects, saveProject, listProjectFiles, saveProjectFile, deleteProjectFile, logCredentialActivity, logSecurityEvent } from './db';
 import * as SettingsModule from './views/settings';
+import { initEngineSettings } from './views/settings-engine';
 import * as ModelsSettings from './views/settings-models';
 import * as EnvSettings from './views/settings-env';
 import * as AgentDefaultsSettings from './views/settings-agent-defaults';
@@ -243,6 +245,20 @@ function showView(viewId: string) {
 let _connectInProgress = false;
 
 async function connectGateway(): Promise<boolean> {
+  // ── Engine mode: skip WebSocket entirely, connect via Tauri IPC ──
+  if (isEngineMode()) {
+    console.log('[main] Engine mode — skipping WebSocket, using Tauri IPC');
+    await startEngineBridge();
+    wsConnected = true;
+    setSettingsConnected(true);
+    statusDot?.classList.add('connected');
+    statusDot?.classList.remove('error');
+    if (statusText) statusText.textContent = 'Engine';
+    if (modelLabel) modelLabel.textContent = 'Paw Engine';
+    if (chatAgentName) chatAgentName.textContent = '🐾 Paw';
+    return true;
+  }
+
   if (_connectInProgress || gateway.isConnecting) {
     console.warn('[main] connectGateway called while already connecting, skipping');
     return false;
@@ -1403,7 +1419,9 @@ async function sendMessage() {
       console.log('[main] Sending attachments:', attachments.length, 'items, first mimeType:', attachments[0]?.mimeType, 'content length:', attachments[0]?.content?.length);
     }
 
-    const result = await gateway.chatSend(sessionKey, content, chatOpts);
+    const result = isEngineMode()
+      ? await engineChatSend(sessionKey, content, chatOpts) as unknown as Awaited<ReturnType<typeof gateway.chatSend>>
+      : await gateway.chatSend(sessionKey, content, chatOpts);
     console.log('[main] chat.send ack:', JSON.stringify(result).slice(0, 300));
 
     // Store the runId so we can filter events precisely
@@ -1696,7 +1714,7 @@ function renderMessages() {
 
 // Listen for streaming agent events — update chat bubble in real-time
 // Actual format: { runId, stream: "assistant"|"lifecycle"|"tool", data: {...}, sessionKey, seq, ts }
-gateway.on('agent', (payload: unknown) => {
+function handleAgentEvent(payload: unknown): void {
   try {
     const evt = payload as Record<string, unknown>;
     const stream = evt.stream as string | undefined;
@@ -1827,7 +1845,11 @@ gateway.on('agent', (payload: unknown) => {
   } catch (e) {
     console.warn('[main] Agent event handler error:', e);
   }
-});
+}
+
+// Register with both gateway (WebSocket) and engine bridge (Tauri IPC)
+gateway.on('agent', handleAgentEvent);
+onEngineAgent(handleAgentEvent);
 
 // Listen for chat events — handle 'final' (assembled message) and 'error' states.
 // We skip 'delta' since agent events already handle real-time streaming.
@@ -3689,6 +3711,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     SessionsSettings.initSessionsSettings();
     VoiceSettings.initVoiceSettings();
     AdvancedSettings.initAdvancedSettings();
+    initEngineSettings();
 
     // Initialize Projects module events
     ProjectsModule.bindEvents();

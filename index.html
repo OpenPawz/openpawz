@@ -1670,6 +1670,47 @@
           <!-- ── Tab: General ── -->
           <div class="settings-tab-panel" id="settings-panel-general">
 
+          <!-- Paw Engine Mode Toggle & Provider Config -->
+          <div class="settings-section" id="settings-engine-section">
+            <h2 class="settings-section-title">Runtime Mode</h2>
+            <p class="settings-section-desc" style="margin-bottom:12px">Choose how Paw connects to AI. <strong>Built-in Engine</strong> calls AI APIs directly from your machine — no gateway process needed. <strong>OpenClaw Gateway</strong> uses the WebSocket protocol (legacy).</p>
+            <div class="form-group" style="margin-bottom:16px">
+              <label class="form-label">Mode</label>
+              <select class="form-input" id="settings-engine-mode" style="max-width:300px">
+                <option value="gateway">OpenClaw Gateway (WebSocket)</option>
+                <option value="engine">Built-in Paw Engine (Recommended)</option>
+              </select>
+            </div>
+            <div id="engine-config-panel" style="display:none">
+              <h3 style="margin:16px 0 8px; color:var(--text-secondary); font-size:14px;">AI Provider</h3>
+              <div class="form-group">
+                <label class="form-label">Provider</label>
+                <select class="form-input" id="engine-provider-kind" style="max-width:300px">
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="openai">OpenAI (GPT)</option>
+                  <option value="google">Google (Gemini)</option>
+                  <option value="openrouter">OpenRouter</option>
+                  <option value="ollama">Ollama (Local)</option>
+                  <option value="custom">Custom (OpenAI-compatible)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">API Key</label>
+                <input type="password" class="form-input" id="engine-api-key" placeholder="sk-..." />
+              </div>
+              <div class="form-group">
+                <label class="form-label">Model</label>
+                <input type="text" class="form-input" id="engine-model" placeholder="claude-sonnet-4-20250514" style="max-width:400px" />
+              </div>
+              <div class="form-group" id="engine-base-url-group" style="display:none">
+                <label class="form-label">Base URL (optional)</label>
+                <input type="text" class="form-input" id="engine-base-url" placeholder="https://api.openai.com/v1" style="max-width:500px" />
+              </div>
+              <button class="btn btn-primary" id="engine-save-btn">Save Engine Settings</button>
+              <span id="engine-save-status" style="margin-left:12px; color:var(--text-muted); font-size:13px;"></span>
+            </div>
+          </div>
+
           <div class="settings-section">
             <h2 class="settings-section-title">Gateway Connection</h2>
             <div class="form-group">
