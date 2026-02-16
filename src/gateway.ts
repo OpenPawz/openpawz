@@ -88,6 +88,8 @@ class GatewayClient {
   private _connecting = false;
   private _lastSeq = 0;
   private _challengeNonce: string | null = null;
+  /** Metadata from the last config.get response (hash/etag/etc.) — forwarded to config.apply */
+  private _configMeta: Record<string, unknown> = {};
   hello: HelloOk | null = null;
 
   // ── Connection lifecycle ─────────────────────────────────────────────
@@ -690,18 +692,33 @@ class GatewayClient {
 
   // Config
   async configGet(): Promise<GatewayConfigResult> {
-    return this.request<GatewayConfigResult>('config.get', {});
+    const result = await this.request<GatewayConfigResult>('config.get', {});
+    // Capture ALL metadata fields (hash, baseHash, etag, etc.)
+    // so we can forward them to config.apply without guessing field names
+    this._configMeta = {};
+    const raw = result as unknown as Record<string, unknown>;
+    for (const key of Object.keys(raw)) {
+      if (key !== 'config' && key !== 'path') {
+        this._configMeta[key] = raw[key];
+      }
+    }
+    console.log('[configGet meta]', this._configMeta);
+    return result;
   }
 
-  /** Write full config object via config.apply (sends JSON string). */
+  /** Write full config object via config.apply (sends JSON string + metadata from last configGet). */
   async configWrite(config: Record<string, unknown>): Promise<ConfigApplyResult> {
+    // Ensure we have fresh metadata for optimistic locking
+    if (!Object.keys(this._configMeta).length) await this.configGet();
     const raw = JSON.stringify(config, null, 2);
-    return this.request<ConfigApplyResult>('config.apply', { raw }, 60_000);
+    return this.request<ConfigApplyResult>('config.apply', { raw, ...this._configMeta }, 60_000);
   }
 
   /** Write raw JSON string directly via config.apply. Used by the raw config editor. */
   async configApplyRaw(rawJson: string): Promise<ConfigApplyResult> {
-    return this.request<ConfigApplyResult>('config.apply', { raw: rawJson }, 60_000);
+    // Ensure we have fresh metadata for optimistic locking
+    if (!Object.keys(this._configMeta).length) await this.configGet();
+    return this.request<ConfigApplyResult>('config.apply', { raw: rawJson, ...this._configMeta }, 60_000);
   }
 
   async configSchema(): Promise<ConfigSchemaResult> {
