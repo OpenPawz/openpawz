@@ -348,7 +348,7 @@ export async function loadModelsSettings() {
         showToast('Name must start with a letter (letters, numbers, hyphens only)', 'error');
         return;
       }
-      const provObj: Record<string, unknown> = {};
+      const provObj: Record<string, unknown> = { models: [] };
       if (newUrlInp.value.trim()) provObj.baseUrl = newUrlInp.value.trim();
       if (newKeyInp.value.trim()) provObj.apiKey = newKeyInp.value.trim();
       if (newApiSel.value) provObj.api = newApiSel.value;
