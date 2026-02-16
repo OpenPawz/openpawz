@@ -287,8 +287,8 @@ export async function loadSettingsNodes() {
           <div class="node-entry">
             <div class="presence-dot ${status}"></div>
             <div class="presence-info">
-              <div class="presence-name">${escHtml(n.name || n.id)}</div>
-              <div class="presence-meta">${escHtml(n.platform || '')} · ${escHtml(n.deviceFamily || '')} · Caps: ${escHtml(caps)}</div>
+              <div class="presence-name">${escHtml(String(n.name || n.id || 'unknown'))}</div>
+              <div class="presence-meta">${escHtml(String(n.platform || ''))} · ${escHtml(String(n.deviceFamily || ''))} · Caps: ${escHtml(String(caps))}</div>
             </div>
             ${n.connected ? `<button class="btn btn-ghost btn-sm node-invoke-btn" data-node-id="${escHtml(n.id)}">Invoke</button>` : ''}
           </div>

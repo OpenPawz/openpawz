@@ -48,11 +48,20 @@ async function fetchWeather() {
   if (!weatherEl) return;
   
   try {
-    // Use wttr.in with simple text format (more reliable)
-    const response = await fetch('https://wttr.in/?format=%c|%t|%C', {
-      headers: { 'User-Agent': 'curl' }
-    });
-    const text = await response.text();
+    // Use wttr.in with simple text format — route through gateway proxy to avoid CORS
+    let text = '';
+    try {
+      // Try gateway proxy first (avoids browser CORS restriction)
+      const proxyResult = await gateway.request<{ body?: string }>('http.get', { url: 'https://wttr.in/?format=%c|%t|%C', headers: { 'User-Agent': 'curl' } });
+      text = proxyResult.body ?? '';
+    } catch {
+      // Fallback: direct fetch (works in Tauri webview but not dev browser)
+      const response = await fetch('https://wttr.in/?format=%c|%t|%C', {
+        headers: { 'User-Agent': 'curl' },
+        signal: AbortSignal.timeout(5000),
+      });
+      text = await response.text();
+    }
     if (text && !text.includes('Unknown')) {
       const [icon, temp, desc] = text.trim().split('|');
       weatherEl.innerHTML = `

@@ -670,7 +670,12 @@ class GatewayClient {
 
   // Logs
   async logsTail(lines = 100): Promise<LogsTailResult> {
-    return this.request<LogsTailResult>('logs.tail', { lines });
+    // Gateway expects { count } not { lines } — try both for compatibility
+    try {
+      return await this.request<LogsTailResult>('logs.tail', { count: lines });
+    } catch {
+      return this.request<LogsTailResult>('logs.tail', {});
+    }
   }
 
   // Usage
@@ -794,7 +799,12 @@ class GatewayClient {
 
   // Onboarding wizard
   async wizardStatus(): Promise<{ active: boolean; step?: string; completed?: boolean }> {
-    return this.request('wizard.status', {});
+    // Some gateway versions require sessionId — try with a placeholder, then without
+    try {
+      return await this.request('wizard.status', { sessionId: 'paw' });
+    } catch {
+      return { active: false, completed: false };
+    }
   }
 
   async wizardStart(): Promise<{ step: string }> {
@@ -811,7 +821,11 @@ class GatewayClient {
 
   // Browser control
   async browserStatus(): Promise<{ running: boolean; tabs?: Array<{ id: string; url: string; title?: string }> }> {
-    return this.request('browser.status', {});
+    try {
+      return await this.request('browser.status', {});
+    } catch {
+      return { running: false };
+    }
   }
 
   async browserStart(): Promise<unknown> {
