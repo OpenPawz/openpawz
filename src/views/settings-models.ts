@@ -1,15 +1,40 @@
 // Settings: Models & Providers
 // CRUD for AI model providers + model definitions + default model selection
 // Uses inline forms instead of window.prompt/confirm (blocked in Tauri WebView)
+// Provider CRUD writes directly to ~/.openclaw/openclaw.json via Tauri (bypasses gateway config.apply)
 
 import { gateway } from '../gateway';
 import { showToast } from '../components/toast';
 import {
-  getConfig, patchConfig, deleteConfigKey, getVal, isConnected,
+  getConfig, patchConfig, getVal, isConnected,
   esc, formRow, selectInput, textInput, toggleSwitch, saveReloadButtons
 } from './settings-config';
 
 const $ = (id: string) => document.getElementById(id);
+
+// ── Tauri invoke (direct file I/O) ────────────────────────────────────────
+
+interface TauriWindow {
+  __TAURI__?: {
+    core: { invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> };
+  };
+}
+const _tw = window as unknown as TauriWindow;
+const invoke = _tw.__TAURI__?.core?.invoke;
+
+/** Read openclaw.json directly from disk */
+async function readConfigFile(): Promise<Record<string, unknown>> {
+  if (!invoke) throw new Error('Tauri not available');
+  const json = await invoke<string>('read_openclaw_config');
+  return JSON.parse(json);
+}
+
+/** Deep-merge a patch into openclaw.json on disk (bypasses gateway) */
+async function patchConfigFile(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (!invoke) throw new Error('Tauri not available');
+  const json = await invoke<string>('patch_openclaw_config', { patchJson: JSON.stringify(patch) });
+  return JSON.parse(json);
+}
 
 // ── API Types ──────────────────────────────────────────────────────────────
 
@@ -45,6 +70,62 @@ export async function loadModelsSettings() {
     } catch { /* offline — use provider models instead */ }
 
     container.innerHTML = '';
+
+    // ── Service Routing Table ────────────────────────────────────────────
+    // Shows a visual map of all configured providers and their endpoints
+    const routeSection = document.createElement('div');
+    routeSection.className = 'settings-subsection';
+    routeSection.innerHTML = `<h3 class="settings-subsection-title">Service Routing</h3>
+      <p class="settings-section-desc">Active provider endpoints. Reads directly from config file.</p>`;
+
+    // Read config from disk (not gateway — more reliable)
+    let diskProviders: Record<string, any> = {};
+    try {
+      if (invoke) {
+        const diskCfg = await readConfigFile();
+        diskProviders = (diskCfg?.models as any)?.providers ?? {};
+      }
+    } catch { /* fall through to gateway providers */ }
+
+    // Merge: prefer disk config, fall back to gateway-reported providers
+    const allProviders = { ...providers, ...diskProviders };
+
+    const routeTable = document.createElement('table');
+    routeTable.style.cssText = 'width:100%;border-collapse:collapse;font-size:13px;margin:8px 0 16px 0';
+    routeTable.innerHTML = `<thead><tr style="text-align:left;border-bottom:1px solid var(--border)">
+      <th style="padding:6px 12px 6px 0">Provider</th>
+      <th style="padding:6px 12px">Endpoint</th>
+      <th style="padding:6px 12px">API</th>
+      <th style="padding:6px 12px">Status</th>
+    </tr></thead>`;
+    const tbody = document.createElement('tbody');
+
+    // Always show gateway
+    const gatewayRow = document.createElement('tr');
+    gatewayRow.style.borderBottom = '1px solid var(--border-light, rgba(255,255,255,0.06))';
+    gatewayRow.innerHTML = `<td style="padding:6px 12px 6px 0;font-weight:600">🔌 Gateway</td>
+      <td style="padding:6px 12px;font-family:monospace;font-size:12px">ws://127.0.0.1:18789</td>
+      <td style="padding:6px 12px;color:var(--text-muted)">WebSocket v3</td>
+      <td style="padding:6px 12px">${isConnected() ? '<span style="color:#4ade80">● Connected</span>' : '<span style="color:#ef4444">● Disconnected</span>'}</td>`;
+    tbody.appendChild(gatewayRow);
+
+    for (const [provName, prov] of Object.entries(allProviders)) {
+      if (!prov || typeof prov !== 'object') continue;
+      const url = (prov as any).baseUrl || '(default)';
+      const api = (prov as any).api || '—';
+      const hasKey = !!(prov as any).apiKey;
+      const row = document.createElement('tr');
+      row.style.borderBottom = '1px solid var(--border-light, rgba(255,255,255,0.06))';
+      row.innerHTML = `<td style="padding:6px 12px 6px 0;font-weight:600">${esc(provName)}</td>
+        <td style="padding:6px 12px;font-family:monospace;font-size:12px">${esc(String(url))}</td>
+        <td style="padding:6px 12px">${esc(String(api))}</td>
+        <td style="padding:6px 12px">${hasKey ? '🔑 Key set' : url.includes('127.0.0.1') || url.includes('localhost') ? '🏠 Local' : '—'}</td>`;
+      tbody.appendChild(row);
+    }
+
+    routeTable.appendChild(tbody);
+    routeSection.appendChild(routeTable);
+    container.appendChild(routeSection);
 
     // ── Default Model Selection ──────────────────────────────────────────
     const defaultSection = document.createElement('div');
@@ -271,12 +352,18 @@ export async function loadModelsSettings() {
       if (newUrlInp.value.trim()) provObj.baseUrl = newUrlInp.value.trim();
       if (newKeyInp.value.trim()) provObj.apiKey = newKeyInp.value.trim();
       if (newApiSel.value) provObj.api = newApiSel.value;
-      const ok = await patchConfig({
-        models: { providers: { [name]: provObj } }
-      });
-      if (ok) {
-        showToast(`Provider "${name}" added`, 'success');
+
+      try {
+        createBtn.disabled = true;
+        createBtn.textContent = 'Creating…';
+        // Write directly to config file — bypasses gateway config.apply
+        await patchConfigFile({ models: { providers: { [name]: provObj } } });
+        showToast(`Provider "${name}" added — restart gateway to pick up changes`, 'success');
         loadModelsSettings();
+      } catch (e) {
+        showToast(`Failed: ${e instanceof Error ? e.message : e}`, 'error');
+        createBtn.disabled = false;
+        createBtn.textContent = 'Create Provider';
       }
     });
     const cancelBtn = document.createElement('button');
@@ -360,15 +447,21 @@ function renderProviderCard(name: string, prov: Record<string, unknown>): HTMLDi
       }, 4000);
       return;
     }
-    // Second click: actually delete
+    // Second click: actually delete via direct file I/O
     confirmPending = false;
     delBtn.textContent = 'Removing…';
     delBtn.disabled = true;
-    const ok = await deleteConfigKey(`models.providers.${name}`);
-    if (ok) {
-      showToast(`Provider "${name}" removed`, 'success');
+    try {
+      const cfg = await readConfigFile();
+      const providers = (cfg.models as any)?.providers;
+      if (providers && typeof providers === 'object') {
+        delete providers[name];
+      }
+      await patchConfigFile({ models: { providers: providers ?? {} } });
+      showToast(`Provider "${name}" removed — restart gateway to apply`, 'success');
       loadModelsSettings();
-    } else {
+    } catch (e) {
+      showToast(`Remove failed: ${e instanceof Error ? e.message : e}`, 'error');
       delBtn.textContent = 'Remove';
       delBtn.disabled = false;
     }
@@ -408,7 +501,7 @@ function renderProviderCard(name: string, prov: Record<string, unknown>): HTMLDi
     : 'No models defined';
   card.appendChild(modelsInfo);
 
-  // Save
+  // Save — direct file I/O
   card.appendChild(saveReloadButtons(
     async () => {
       const patch: Record<string, unknown> = {};
@@ -417,7 +510,12 @@ function renderProviderCard(name: string, prov: Record<string, unknown>): HTMLDi
       if (apiSel.value) patch.api = apiSel.value;
       // Preserve models array from original
       if (models.length) patch.models = models;
-      await patchConfig({ models: { providers: { [name]: patch } } });
+      try {
+        await patchConfigFile({ models: { providers: { [name]: patch } } });
+        showToast('Provider saved — restart gateway to apply', 'success');
+      } catch (e) {
+        showToast(`Save failed: ${e instanceof Error ? e.message : e}`, 'error');
+      }
     },
     () => loadModelsSettings()
   ));

@@ -1714,6 +1714,80 @@ fn has_db_encryption_key() -> bool {
         .is_some()
 }
 
+/// Read the raw openclaw.json config and return it as a JSON string.
+#[tauri::command]
+fn read_openclaw_config() -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let config_path = home.join(".openclaw/openclaw.json");
+    if !config_path.exists() {
+        return Ok("{}".to_string());
+    }
+    let content = fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read config: {}", e))?;
+    // Parse (handles JSON5 comments/trailing commas) then re-serialize as clean JSON
+    let sanitized = sanitize_json5(&content);
+    let config: serde_json::Value = serde_json::from_str(&sanitized)
+        .map_err(|e| format!("Failed to parse config: {}", e))?;
+    serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))
+}
+
+/// Deep-merge a JSON patch into openclaw.json and write it back to disk.
+/// This bypasses the gateway WebSocket entirely — writes the file directly.
+#[tauri::command]
+fn patch_openclaw_config(patch_json: String) -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Cannot find home directory")?;
+    let config_path = home.join(".openclaw/openclaw.json");
+
+    // Read existing config (or start empty)
+    let mut config: serde_json::Value = if config_path.exists() {
+        let content = fs::read_to_string(&config_path)
+            .map_err(|e| format!("Failed to read config: {}", e))?;
+        let sanitized = sanitize_json5(&content);
+        serde_json::from_str(&sanitized)
+            .map_err(|e| format!("Failed to parse config: {}", e))?
+    } else {
+        // Ensure directory exists
+        let dir = config_path.parent().unwrap();
+        fs::create_dir_all(dir)
+            .map_err(|e| format!("Failed to create config dir: {}", e))?;
+        serde_json::json!({})
+    };
+
+    // Parse the patch
+    let patch: serde_json::Value = serde_json::from_str(&patch_json)
+        .map_err(|e| format!("Invalid patch JSON: {}", e))?;
+
+    // Deep-merge patch into config
+    deep_merge_json(&mut config, &patch);
+
+    // Write back
+    let output = serde_json::to_string_pretty(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    fs::write(&config_path, &output)
+        .map_err(|e| format!("Failed to write config: {}", e))?;
+    set_owner_only_permissions(&config_path)?;
+
+    info!("Patched openclaw.json successfully ({} bytes)", output.len());
+    Ok(output)
+}
+
+/// Deep-merge source into target JSON values. Objects are merged recursively,
+/// all other types (strings, arrays, numbers, booleans, null) replace.
+fn deep_merge_json(target: &mut serde_json::Value, source: &serde_json::Value) {
+    match (target, source) {
+        (serde_json::Value::Object(t), serde_json::Value::Object(s)) => {
+            for (key, val) in s {
+                let entry = t.entry(key.clone()).or_insert(serde_json::Value::Null);
+                deep_merge_json(entry, val);
+            }
+        }
+        (target, source) => {
+            *target = source.clone();
+        }
+    }
+}
+
 /// Repair openclaw.json by removing any cruft from previous Paw versions.
 /// Removes old "skills" key (from v1 palace integration) and ensures
 /// the config is valid for the gateway.
@@ -2376,6 +2450,8 @@ pub fn run() {
             memory_stats,
             memory_search,
             memory_store,
+            read_openclaw_config,
+            patch_openclaw_config,
             repair_openclaw_config,
             get_device_identity,
             sign_device_payload,
