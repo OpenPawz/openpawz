@@ -1922,7 +1922,9 @@ fn repair_openclaw_config() -> Result<bool, String> {
                 info!("Removed invalid '{}' from embedding config", key);
             }
         }
-        // Now migrate rescued baseUrl to env.vars.OPENAI_BASE_URL (separate borrow scope)
+        // Now migrate rescued baseUrl to env.vars (separate borrow scope).
+        // IMPORTANT: For Azure endpoints, set ONLY AZURE_OPENAI_ENDPOINT (not OPENAI_BASE_URL).
+        // The Azure OpenAI SDK rejects having both — "baseURL and endpoint are mutually exclusive".
         if let Some(url) = rescued_base_url {
             if !obj.contains_key("env") {
                 obj.insert("env".to_string(), serde_json::json!({}));
@@ -1932,15 +1934,40 @@ fn repair_openclaw_config() -> Result<bool, String> {
                     env_obj.insert("vars".to_string(), serde_json::json!({}));
                 }
                 if let Some(vars) = env_obj.get_mut("vars").and_then(|v| v.as_object_mut()) {
-                    vars.insert("OPENAI_BASE_URL".to_string(), serde_json::json!(&url));
                     if is_azure_endpoint(&url) {
+                        // Azure: only set AZURE_OPENAI_ENDPOINT, never OPENAI_BASE_URL
                         vars.insert("AZURE_OPENAI_ENDPOINT".to_string(), serde_json::json!(&url));
                         vars.insert("OPENAI_API_VERSION".to_string(), serde_json::json!(get_api_version_or_default()));
+                        // Remove OPENAI_BASE_URL if a previous repair incorrectly added it
+                        vars.remove("OPENAI_BASE_URL");
+                        info!("Migrated baseUrl to env.vars.AZURE_OPENAI_ENDPOINT: {}", url);
+                    } else {
+                        vars.insert("OPENAI_BASE_URL".to_string(), serde_json::json!(&url));
+                        info!("Migrated baseUrl to env.vars.OPENAI_BASE_URL: {}", url);
                     }
-                    info!("Migrated baseUrl to env.vars.OPENAI_BASE_URL: {}", url);
                 }
             }
             let _ = save_paw_settings(&serde_json::json!({ "embeddingBaseUrl": &url }));
+        }
+
+        // Fix: remove conflicting OPENAI_BASE_URL when AZURE_OPENAI_ENDPOINT is also set.
+        // A previous version of this repair incorrectly set both, which causes the Azure
+        // OpenAI SDK to crash with "baseURL and endpoint are mutually exclusive".
+        if let Some(vars) = obj
+            .get_mut("env")
+            .and_then(|e| e.get_mut("vars"))
+            .and_then(|v| v.as_object_mut())
+        {
+            if vars.contains_key("AZURE_OPENAI_ENDPOINT") && vars.contains_key("OPENAI_BASE_URL") {
+                let azure_ep = vars.get("AZURE_OPENAI_ENDPOINT").and_then(|v| v.as_str()).unwrap_or("");
+                let openai_base = vars.get("OPENAI_BASE_URL").and_then(|v| v.as_str()).unwrap_or("");
+                // Only remove if they point to the same Azure URL (i.e. our erroneous migration)
+                if azure_ep == openai_base || is_azure_endpoint(openai_base) {
+                    vars.remove("OPENAI_BASE_URL");
+                    repaired = true;
+                    info!("Removed conflicting OPENAI_BASE_URL (Azure endpoint already set as AZURE_OPENAI_ENDPOINT)");
+                }
+            }
         }
     }
 
