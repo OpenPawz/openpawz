@@ -1895,6 +1895,90 @@ fn repair_openclaw_config() -> Result<bool, String> {
 
     let mut repaired = false;
     if let Some(obj) = config.as_object_mut() {
+        // ── Fix placeholder / dummy values ─────────────────────────────────
+        // Users sometimes paste template configs with literal placeholder
+        // strings like "YOUR_EXISTING_TOKEN_HERE" or "YOUR_GEMINI_KEY".
+        // Detect these and replace with real generated values.
+        {
+            let placeholder_patterns = [
+                "YOUR_", "REPLACE_", "TODO", "CHANGEME", "PLACEHOLDER", "INSERT_",
+                "PUT_YOUR_", "ENTER_YOUR_", "PASTE_",
+            ];
+            let is_placeholder = |s: &str| -> bool {
+                let upper = s.to_uppercase();
+                placeholder_patterns.iter().any(|p| upper.contains(p))
+                    || s.is_empty()
+                    || s.len() < 4
+            };
+
+            // Fix placeholder gateway token
+            if let Some(token_val) = obj
+                .get("gateway")
+                .and_then(|g| g.get("auth"))
+                .and_then(|a| a.get("token"))
+                .and_then(|t| t.as_str())
+                .map(|s| s.to_string())
+            {
+                if is_placeholder(&token_val) {
+                    let new_token: String = (0..48)
+                        .map(|_| {
+                            let idx = rand::random::<usize>() % 36;
+                            if idx < 10 { (b'0' + idx as u8) as char } else { (b'a' + (idx - 10) as u8) as char }
+                        })
+                        .collect();
+                    if let Some(auth) = obj
+                        .get_mut("gateway")
+                        .and_then(|g| g.get_mut("auth"))
+                        .and_then(|a| a.as_object_mut())
+                    {
+                        auth.insert("token".to_string(), serde_json::json!(new_token));
+                        repaired = true;
+                        info!("Replaced placeholder gateway token with auto-generated token ({}...)", &new_token[..8]);
+                    }
+                }
+            }
+
+            // Fix placeholder API keys in model providers
+            if let Some(providers) = obj
+                .get_mut("models")
+                .and_then(|m| m.get_mut("providers"))
+                .and_then(|p| p.as_object_mut())
+            {
+                for (prov_name, prov_val) in providers.iter_mut() {
+                    if let Some(prov_obj) = prov_val.as_object_mut() {
+                        if let Some(api_key) = prov_obj.get("apiKey").and_then(|k| k.as_str()).map(|s| s.to_string()) {
+                            if is_placeholder(&api_key) {
+                                // Can't generate a real API key — remove the placeholder so
+                                // the gateway doesn't try to use it and fail with a confusing
+                                // auth error.  The user will see "API key missing" in Paw's
+                                // Settings which is much clearer.
+                                prov_obj.remove("apiKey");
+                                repaired = true;
+                                info!("Removed placeholder apiKey from provider '{}' — user must set a real key", prov_name);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Fix placeholder env vars (GEMINI_API_KEY, etc.)
+            if let Some(vars) = obj
+                .get_mut("env")
+                .and_then(|e| e.get_mut("vars"))
+                .and_then(|v| v.as_object_mut())
+            {
+                let placeholder_env_keys: Vec<String> = vars.iter()
+                    .filter(|(_k, v)| v.as_str().map_or(false, |s| is_placeholder(s)))
+                    .map(|(k, _)| k.clone())
+                    .collect();
+                for key in &placeholder_env_keys {
+                    vars.remove(key);
+                    repaired = true;
+                    info!("Removed placeholder env var '{}'", key);
+                }
+            }
+        }
+
         // Remove the invalid "skills" key if present (legacy palace integration)
         if obj.contains_key("skills") {
             obj.remove("skills");
@@ -1906,6 +1990,37 @@ fn repair_openclaw_config() -> Result<bool, String> {
             obj.remove("_paw");
             repaired = true;
             info!("Removed invalid '_paw' key from openclaw.json");
+        }
+
+        // ── Ensure gateway.mode is set ─────────────────────────────────────
+        // Without gateway.mode the gateway refuses to start.  Default to
+        // "local" which is the common single-user desktop setup.
+        {
+            if !obj.contains_key("gateway") {
+                obj.insert("gateway".to_string(), serde_json::json!({}));
+            }
+            if let Some(gw) = obj.get_mut("gateway").and_then(|g| g.as_object_mut()) {
+                if !gw.contains_key("mode") {
+                    gw.insert("mode".to_string(), serde_json::json!("local"));
+                    repaired = true;
+                    info!("Set missing gateway.mode to 'local'");
+                }
+                // Ensure auth section exists with a token
+                if !gw.contains_key("auth") {
+                    let token: String = (0..48)
+                        .map(|_| {
+                            let idx = rand::random::<usize>() % 36;
+                            if idx < 10 { (b'0' + idx as u8) as char } else { (b'a' + (idx - 10) as u8) as char }
+                        })
+                        .collect();
+                    gw.insert("auth".to_string(), serde_json::json!({
+                        "mode": "token",
+                        "token": token
+                    }));
+                    repaired = true;
+                    info!("Added missing gateway.auth with auto-generated token");
+                }
+            }
         }
 
         // Fix: ensure every provider under models.providers has a "models" array.

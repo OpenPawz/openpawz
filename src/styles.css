@@ -1260,8 +1260,16 @@ body {
 /* ─── Settings ─── */
 .settings-view {
   padding: 32px;
+  overflow-y: hidden;        /* don't scroll the whole view – let the panel scroll */
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-tab-panel {
+  flex: 1;
   overflow-y: auto;
-  max-width: 640px;
+  min-height: 0;             /* allow shrinking inside flex parent */
+  max-width: 800px;
 }
 
 .settings-section {
