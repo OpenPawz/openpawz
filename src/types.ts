@@ -423,6 +423,7 @@ export interface NodeListResult {
 export interface GatewayConfigResult {
   config: Record<string, unknown>;
   path: string;
+  hash?: string;
 }
 
 export interface ConfigApplyResult {
