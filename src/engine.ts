@@ -138,10 +138,16 @@ export interface EngineSkillStatus {
   name: string;
   description: string;
   icon: string;
+  category: string;
   enabled: boolean;
   required_credentials: EngineSkillCredentialField[];
   configured_credentials: string[];
   missing_credentials: string[];
+  missing_binaries: string[];
+  required_env_vars: string[];
+  missing_env_vars: string[];
+  install_hint: string;
+  has_instructions: boolean;
   is_ready: boolean;
   tool_names: string[];
 }

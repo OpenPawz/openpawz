@@ -199,7 +199,13 @@ pub async fn engine_chat_send(
         None
     };
 
-    // Compose the full system prompt: base + agent context + memory context
+    // Collect skill instructions from enabled skills
+    let skill_instructions = skills::get_enabled_skill_instructions(&state.store).unwrap_or_default();
+    if !skill_instructions.is_empty() {
+        info!("[engine] Skill instructions injected ({} chars)", skill_instructions.len());
+    }
+
+    // Compose the full system prompt: base + agent context + memory context + skill instructions
     let full_system_prompt = {
         let mut parts: Vec<String> = Vec::new();
         if let Some(sp) = &system_prompt {
@@ -211,11 +217,15 @@ pub async fn engine_chat_send(
         if let Some(mc) = &memory_context {
             parts.push(mc.clone());
         }
+        if !skill_instructions.is_empty() {
+            parts.push(skill_instructions.clone());
+        }
         if parts.is_empty() { None } else { Some(parts.join("\n\n---\n\n")) }
     };
 
     info!("[engine] System prompt: {} parts, total {} chars",
-        [&system_prompt, &agent_context, &memory_context].iter().filter(|p| p.is_some()).count(),
+        [&system_prompt, &agent_context, &memory_context].iter().filter(|p| p.is_some()).count()
+            + if skill_instructions.is_empty() { 0 } else { 1 },
         full_system_prompt.as_ref().map(|s| s.len()).unwrap_or(0));
 
     let mut messages = state.store.load_conversation(
