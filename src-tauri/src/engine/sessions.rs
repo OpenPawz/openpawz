@@ -1242,11 +1242,22 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Delete an agent from a specific project.
+    pub fn delete_agent(&self, project_id: &str, agent_id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "DELETE FROM project_agents WHERE project_id=?1 AND agent_id=?2",
+            params![project_id, agent_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     /// List all unique agents across all projects (deduped by agent_id).
+    /// Filters out rows with empty/NULL agent_id (bad data from manual SQL inserts).
     pub fn list_all_agents(&self) -> Result<Vec<(String, crate::engine::types::ProjectAgent)>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT project_id, agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents ORDER BY agent_id"
+            "SELECT project_id, agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents WHERE agent_id IS NOT NULL AND agent_id != '' ORDER BY agent_id"
         ).map_err(|e| e.to_string())?;
         let agents = stmt.query_map([], |row| {
             let caps_str: String = row.get::<_, String>(8).unwrap_or_default();

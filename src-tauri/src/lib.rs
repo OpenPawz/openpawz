@@ -2798,6 +2798,8 @@ pub fn run() {
             engine::commands::engine_project_delete,
             engine::commands::engine_project_set_agents,
             engine::commands::engine_list_all_agents,
+            engine::commands::engine_create_agent,
+            engine::commands::engine_delete_agent,
             engine::commands::engine_project_messages,
             engine::commands::engine_project_run,
         ])

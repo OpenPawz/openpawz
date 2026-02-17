@@ -860,6 +860,30 @@ class PawEngineClient {
     return invoke<BackendAgent[]>('engine_list_all_agents');
   }
 
+  /** Create a standalone agent (persisted in SQLite). */
+  async createAgent(agent: {
+    agent_id: string;
+    role: string;
+    specialty?: string;
+    model?: string;
+    system_prompt?: string;
+    capabilities?: string[];
+  }): Promise<void> {
+    return invoke('engine_create_agent', {
+      agentId: agent.agent_id,
+      role: agent.role,
+      specialty: agent.specialty ?? 'general',
+      model: agent.model ?? null,
+      systemPrompt: agent.system_prompt ?? null,
+      capabilities: agent.capabilities ?? [],
+    });
+  }
+
+  /** Delete a standalone agent by id. */
+  async deleteAgent(agentId: string): Promise<void> {
+    return invoke('engine_delete_agent', { agentId });
+  }
+
   async projectMessages(projectId: string, limit?: number): Promise<EngineProjectMessage[]> {
     return invoke<EngineProjectMessage[]>('engine_project_messages', { projectId, limit });
   }

@@ -223,7 +223,9 @@ export async function loadAgents() {
 }
 
 function saveAgents() {
-  localStorage.setItem('paw-agents', JSON.stringify(_agents));
+  // Only persist local agents to localStorage (backend agents come from SQLite)
+  const localAgents = _agents.filter(a => a.source !== 'backend');
+  localStorage.setItem('paw-agents', JSON.stringify(localAgents));
 }
 
 function renderAgents() {
@@ -403,9 +405,11 @@ function openAgentCreator() {
       return;
     }
 
+    const agentSlug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    const agentId = `agent-${agentSlug}-${Date.now()}`;
     const template = AGENT_TEMPLATES[selectedTemplate];
     const newAgent: Agent = {
-      id: `agent-${Date.now()}`,
+      id: agentId,
       name,
       avatar: selectedAvatar,
       color: AVATAR_COLORS[_agents.length % AVATAR_COLORS.length],
@@ -416,10 +420,22 @@ function openAgentCreator() {
       skills: template?.skills || [],
       boundaries: [],
       createdAt: new Date().toISOString(),
+      source: 'local',
     };
 
     _agents.push(newAgent);
     saveAgents();
+
+    // Also persist to backend SQLite so agents survive across devices
+    pawEngine.createAgent({
+      agent_id: agentId,
+      role: template?.bio || 'assistant',
+      specialty: selectedTemplate === 'general' ? 'general' : selectedTemplate,
+      model: undefined,
+      system_prompt: undefined,
+      capabilities: template?.skills || [],
+    }).catch(e => console.warn('[agents] Backend persist failed:', e));
+
     renderAgents();
     close();
     showToast(`${name} created!`, 'success');
@@ -635,6 +651,8 @@ function openAgentEditor(agentId: string) {
     if (confirm(`Delete ${agent.name}? This cannot be undone.`)) {
       _agents = _agents.filter(a => a.id !== agentId);
       saveAgents();
+      // Also remove from backend SQLite
+      pawEngine.deleteAgent(agentId).catch(e => console.warn('[agents] Backend delete failed:', e));
       renderAgents();
       modal.remove();
       showToast(`${agent.name} deleted`, 'success');
@@ -674,6 +692,17 @@ function openAgentEditor(agentId: string) {
     agent.systemPrompt = systemPrompt;
     
     saveAgents();
+
+    // Sync changes to backend SQLite
+    pawEngine.createAgent({
+      agent_id: agent.id,
+      role: agent.bio || 'assistant',
+      specialty: agent.template === 'general' ? 'general' : agent.template,
+      model: agent.model !== 'default' ? agent.model : undefined,
+      system_prompt: agent.systemPrompt,
+      capabilities: agent.skills,
+    }).catch(e => console.warn('[agents] Backend update failed:', e));
+
     renderAgents();
     close();
     showToast('Changes saved', 'success');

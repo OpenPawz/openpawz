@@ -2031,6 +2031,45 @@ pub fn engine_list_all_agents(
         .collect())
 }
 
+/// Create a standalone agent (user-created, not from orchestrator).
+/// Uses project_id="_standalone" as a sentinel so it lives alongside project agents
+/// but is clearly user-created.
+#[tauri::command]
+pub fn engine_create_agent(
+    state: State<'_, EngineState>,
+    agent_id: String,
+    role: String,
+    specialty: Option<String>,
+    model: Option<String>,
+    system_prompt: Option<String>,
+    capabilities: Option<Vec<String>>,
+) -> Result<(), String> {
+    let agent = crate::engine::types::ProjectAgent {
+        agent_id: agent_id.clone(),
+        role,
+        specialty: specialty.unwrap_or_else(|| "general".into()),
+        status: "idle".into(),
+        current_task: None,
+        model,
+        system_prompt,
+        capabilities: capabilities.unwrap_or_default(),
+    };
+    state.store.add_project_agent("_standalone", &agent)?;
+    info!("[engine] Created standalone agent: {}", agent_id);
+    Ok(())
+}
+
+/// Delete a standalone agent by agent_id.
+#[tauri::command]
+pub fn engine_delete_agent(
+    state: State<'_, EngineState>,
+    agent_id: String,
+) -> Result<(), String> {
+    state.store.delete_agent("_standalone", &agent_id)?;
+    info!("[engine] Deleted standalone agent: {}", agent_id);
+    Ok(())
+}
+
 #[tauri::command]
 pub fn engine_project_messages(
     state: State<'_, EngineState>,
