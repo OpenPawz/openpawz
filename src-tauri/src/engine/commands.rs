@@ -158,12 +158,12 @@ pub async fn engine_chat_send(
     });
 
     // Compose agent context (soul files) into the system prompt
-    let agent_id = request.agent_id.as_deref().unwrap_or("default");
-    let agent_context = state.store.compose_agent_context(agent_id).unwrap_or(None);
+    let agent_id_owned = request.agent_id.clone().unwrap_or_else(|| "default".to_string());
+    let agent_context = state.store.compose_agent_context(&agent_id_owned).unwrap_or(None);
     if let Some(ref ac) = agent_context {
-        info!("[engine] Agent context loaded ({} chars) for agent '{}'", ac.len(), agent_id);
+        info!("[engine] Agent context loaded ({} chars) for agent '{}'", ac.len(), agent_id_owned);
     } else {
-        info!("[engine] No agent context files found for agent '{}'", agent_id);
+        info!("[engine] No agent context files found for agent '{}'", agent_id_owned);
     }
 
     // Auto-recall: search memory for context relevant to the user's message
@@ -180,7 +180,7 @@ pub async fn engine_chat_send(
     let memory_context = if auto_recall_on {
         let emb_client = state.embedding_client();
         match memory::search_memories(
-            &state.store, &request.message, recall_limit, recall_threshold, emb_client.as_ref()
+            &state.store, &request.message, recall_limit, recall_threshold, emb_client.as_ref(), Some(&agent_id_owned)
         ).await {
             Ok(mems) if !mems.is_empty() => {
                 let ctx: Vec<String> = mems.iter().map(|m| {
@@ -357,6 +357,7 @@ pub async fn engine_chat_send(
 
     // Spawn the agent loop in a background task
     let app = app_handle.clone();
+    let agent_id_for_spawn = agent_id_owned.clone();
     tauri::async_runtime::spawn(async move {
         let provider = AnyProvider::from_config(&provider_config);
 
@@ -409,7 +410,7 @@ pub async fn engine_chat_send(
                             let emb_client = engine_state.embedding_client();
                             for (content, category) in &facts {
                                 match memory::store_memory(
-                                    &engine_state.store, content, category, 5, emb_client.as_ref()
+                                    &engine_state.store, content, category, 5, emb_client.as_ref(), Some(&agent_id_for_spawn)
                                 ).await {
                                     Ok(id) => info!("[engine] Auto-captured memory: {}", &id[..8]),
                                     Err(e) => warn!("[engine] Auto-capture failed: {}", e),
@@ -845,11 +846,12 @@ pub async fn engine_memory_store(
     content: String,
     category: Option<String>,
     importance: Option<u8>,
+    agent_id: Option<String>,
 ) -> Result<String, String> {
     let cat = category.unwrap_or_else(|| "general".into());
     let imp = importance.unwrap_or(5);
     let emb_client = state.embedding_client();
-    memory::store_memory(&state.store, &content, &cat, imp, emb_client.as_ref()).await
+    memory::store_memory(&state.store, &content, &cat, imp, emb_client.as_ref(), agent_id.as_deref()).await
 }
 
 #[tauri::command]
@@ -857,6 +859,7 @@ pub async fn engine_memory_search(
     state: State<'_, EngineState>,
     query: String,
     limit: Option<usize>,
+    agent_id: Option<String>,
 ) -> Result<Vec<Memory>, String> {
     let lim = limit.unwrap_or(10);
     let threshold = {
@@ -864,7 +867,7 @@ pub async fn engine_memory_search(
         mcfg.map(|c| c.recall_threshold).unwrap_or(0.3)
     };
     let emb_client = state.embedding_client();
-    memory::search_memories(&state.store, &query, lim, threshold, emb_client.as_ref()).await
+    memory::search_memories(&state.store, &query, lim, threshold, emb_client.as_ref(), agent_id.as_deref()).await
 }
 
 #[tauri::command]

@@ -170,6 +170,29 @@ impl SessionStore {
         // SQLite ignores ALTER TABLE ADD COLUMN if it already exists (we catch the error).
         conn.execute("ALTER TABLE project_agents ADD COLUMN model TEXT", []).ok();
 
+        // ── Phase 2: Memory Intelligence migrations ──────────────────────
+        // Add agent_id column to memories (for per-agent memory scope)
+        conn.execute("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''", []).ok();
+
+        // Create FTS5 virtual table for BM25 full-text search
+        conn.execute_batch("
+            CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                id UNINDEXED,
+                content,
+                category UNINDEXED,
+                agent_id UNINDEXED,
+                content_rowid=rowid
+            );
+        ").ok();
+
+        // Populate FTS index with existing memories that aren't indexed yet
+        conn.execute_batch("
+            INSERT OR IGNORE INTO memories_fts(id, content, category, agent_id)
+            SELECT id, content, category, COALESCE(agent_id, '')
+            FROM memories
+            WHERE id NOT IN (SELECT id FROM memories_fts);
+        ").ok();
+
         // One-time dedup: remove duplicate messages caused by a bug that
         // re-inserted historical assistant/tool messages on every agent turn.
         // Keep only the earliest copy of each (session_id, role, content, tool_call_id) tuple.
@@ -568,13 +591,20 @@ impl SessionStore {
 
     // ── Memory CRUD ────────────────────────────────────────────────────
 
-    pub fn store_memory(&self, id: &str, content: &str, category: &str, importance: u8, embedding: Option<&[u8]>) -> Result<(), String> {
+    pub fn store_memory(&self, id: &str, content: &str, category: &str, importance: u8, embedding: Option<&[u8]>, agent_id: Option<&str>) -> Result<(), String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let aid = agent_id.unwrap_or("");
         conn.execute(
-            "INSERT OR REPLACE INTO memories (id, content, category, importance, embedding)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![id, content, category, importance as i32, embedding],
+            "INSERT OR REPLACE INTO memories (id, content, category, importance, embedding, agent_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, content, category, importance as i32, embedding, aid],
         ).map_err(|e| format!("Memory store error: {}", e))?;
+
+        // Sync FTS5 index
+        conn.execute(
+            "INSERT OR REPLACE INTO memories_fts (id, content, category, agent_id) VALUES (?1, ?2, ?3, ?4)",
+            params![id, content, category, aid],
+        ).ok(); // Best-effort FTS sync
         Ok(())
     }
 
@@ -582,6 +612,8 @@ impl SessionStore {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
             .map_err(|e| format!("Memory delete error: {}", e))?;
+        // Sync FTS5 index
+        conn.execute("DELETE FROM memories_fts WHERE id = ?1", params![id]).ok();
         Ok(())
     }
 
@@ -610,11 +642,11 @@ impl SessionStore {
 
     /// Search memories by cosine similarity against a query embedding.
     /// Falls back to keyword search if no embeddings are stored.
-    pub fn search_memories_by_embedding(&self, query_embedding: &[f32], limit: usize, threshold: f64) -> Result<Vec<Memory>, String> {
+    pub fn search_memories_by_embedding(&self, query_embedding: &[f32], limit: usize, threshold: f64, agent_id: Option<&str>) -> Result<Vec<Memory>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, content, category, importance, embedding, created_at FROM memories WHERE embedding IS NOT NULL"
+            "SELECT id, content, category, importance, embedding, created_at, agent_id FROM memories WHERE embedding IS NOT NULL"
         ).map_err(|e| format!("Prepare error: {}", e))?;
 
         let mut scored: Vec<(Memory, f64)> = stmt.query_map([], |row| {
@@ -624,14 +656,21 @@ impl SessionStore {
             let importance: i32 = row.get(3)?;
             let embedding_blob: Vec<u8> = row.get(4)?;
             let created_at: String = row.get(5)?;
-            Ok((id, content, category, importance as u8, embedding_blob, created_at))
+            let mem_agent_id: String = row.get::<_, String>(6).unwrap_or_default();
+            Ok((id, content, category, importance as u8, embedding_blob, created_at, mem_agent_id))
         }).map_err(|e| format!("Query error: {}", e))?
         .filter_map(|r| r.ok())
-        .filter_map(|(id, content, category, importance, blob, created_at)| {
+        .filter_map(|(id, content, category, importance, blob, created_at, mem_agent_id)| {
+            // Filter by agent_id if specified
+            if let Some(aid) = agent_id {
+                if !mem_agent_id.is_empty() && mem_agent_id != aid {
+                    return None;
+                }
+            }
             let stored_emb = bytes_to_f32_vec(&blob);
             let score = cosine_similarity(query_embedding, &stored_emb);
             if score >= threshold {
-                Some((Memory { id, content, category, importance, created_at, score: Some(score) }, score))
+                Some((Memory { id, content, category, importance, created_at, score: Some(score), agent_id: if mem_agent_id.is_empty() { None } else { Some(mem_agent_id) } }, score))
             } else {
                 None
             }
@@ -644,13 +683,81 @@ impl SessionStore {
         Ok(scored.into_iter().map(|(m, _)| m).collect())
     }
 
+    /// BM25 full-text search via FTS5 — much better than LIKE keyword search.
+    pub fn search_memories_bm25(&self, query: &str, limit: usize, agent_id: Option<&str>) -> Result<Vec<Memory>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+
+        // FTS5 match query — escape special characters
+        let fts_query = query
+            .replace('"', "\"\"")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" OR ");
+
+        let sql = if let Some(aid) = agent_id {
+            // Filter: memories with matching agent_id OR no agent_id (shared)
+            let mut stmt = conn.prepare(
+                "SELECT f.id, f.content, f.category, f.agent_id, rank,
+                        m.importance, m.created_at
+                 FROM memories_fts f
+                 JOIN memories m ON m.id = f.id
+                 WHERE memories_fts MATCH ?1
+                   AND (f.agent_id = '' OR f.agent_id = ?2)
+                 ORDER BY rank
+                 LIMIT ?3"
+            ).map_err(|e| format!("FTS prepare error: {}", e))?;
+
+            let memories: Vec<Memory> = stmt.query_map(params![fts_query, aid, limit as i64], |row| {
+                let bm25_rank: f64 = row.get(4)?;
+                Ok(Memory {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    category: row.get(2)?,
+                    importance: { let i: i32 = row.get(5)?; i as u8 },
+                    created_at: row.get(6)?,
+                    score: Some(-bm25_rank), // FTS5 rank is negative (lower=better), negate for consistency
+                    agent_id: { let a: String = row.get(3)?; if a.is_empty() { None } else { Some(a) } },
+                })
+            }).map_err(|e| format!("FTS query error: {}", e))?
+            .filter_map(|r| r.ok())
+            .collect();
+            return Ok(memories);
+        } else {
+            "SELECT f.id, f.content, f.category, f.agent_id, rank,
+                    m.importance, m.created_at
+             FROM memories_fts f
+             JOIN memories m ON m.id = f.id
+             WHERE memories_fts MATCH ?1
+             ORDER BY rank
+             LIMIT ?2"
+        };
+
+        let mut stmt = conn.prepare(sql).map_err(|e| format!("FTS prepare error: {}", e))?;
+        let memories: Vec<Memory> = stmt.query_map(params![fts_query, limit as i64], |row| {
+            let bm25_rank: f64 = row.get(4)?;
+            Ok(Memory {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                category: row.get(2)?,
+                importance: { let i: i32 = row.get(5)?; i as u8 },
+                created_at: row.get(6)?,
+                score: Some(-bm25_rank),
+                agent_id: { let a: String = row.get(3)?; if a.is_empty() { None } else { Some(a) } },
+            })
+        }).map_err(|e| format!("FTS query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(memories)
+    }
+
     /// Keyword-based fallback search (no embeddings needed).
     pub fn search_memories_keyword(&self, query: &str, limit: usize) -> Result<Vec<Memory>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         let pattern = format!("%{}%", query.to_lowercase());
         let mut stmt = conn.prepare(
-            "SELECT id, content, category, importance, created_at FROM memories
+            "SELECT id, content, category, importance, created_at, agent_id FROM memories
              WHERE LOWER(content) LIKE ?1
              ORDER BY importance DESC, created_at DESC
              LIMIT ?2"
@@ -667,6 +774,7 @@ impl SessionStore {
                 },
                 created_at: row.get(4)?,
                 score: None,
+                agent_id: { let a: String = row.get::<_, String>(5).unwrap_or_default(); if a.is_empty() { None } else { Some(a) } },
             })
         }).map_err(|e| format!("Query error: {}", e))?
         .filter_map(|r| r.ok())
@@ -679,7 +787,7 @@ impl SessionStore {
     pub fn list_memories(&self, limit: usize) -> Result<Vec<Memory>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, content, category, importance, created_at FROM memories
+            "SELECT id, content, category, importance, created_at, agent_id FROM memories
              ORDER BY created_at DESC LIMIT ?1"
         ).map_err(|e| format!("Prepare error: {}", e))?;
 
@@ -694,6 +802,7 @@ impl SessionStore {
                 },
                 created_at: row.get(4)?,
                 score: None,
+                agent_id: { let a: String = row.get::<_, String>(5).unwrap_or_default(); if a.is_empty() { None } else { Some(a) } },
             })
         }).map_err(|e| format!("Query error: {}", e))?
         .filter_map(|r| r.ok())
@@ -706,7 +815,7 @@ impl SessionStore {
     pub fn list_memories_without_embeddings(&self, limit: usize) -> Result<Vec<Memory>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT id, content, category, importance, created_at FROM memories
+            "SELECT id, content, category, importance, created_at, agent_id FROM memories
              WHERE embedding IS NULL
              ORDER BY created_at DESC LIMIT ?1"
         ).map_err(|e| format!("Prepare error: {}", e))?;
@@ -722,6 +831,7 @@ impl SessionStore {
                 },
                 created_at: row.get(4)?,
                 score: None,
+                agent_id: { let a: String = row.get::<_, String>(5).unwrap_or_default(); if a.is_empty() { None } else { Some(a) } },
             })
         }).map_err(|e| format!("Query error: {}", e))?
         .filter_map(|r| r.ok())

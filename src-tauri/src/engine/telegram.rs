@@ -538,7 +538,7 @@ async fn run_telegram_agent(
     let memory_context = if auto_recall_on {
         let emb_client = engine_state.embedding_client();
         match memory::search_memories(
-            &engine_state.store, message, recall_limit, recall_threshold, emb_client.as_ref()
+            &engine_state.store, message, recall_limit, recall_threshold, emb_client.as_ref(), None
         ).await {
             Ok(mems) if !mems.is_empty() => {
                 let ctx: Vec<String> = mems.iter().map(|m| format!("- [{}] {}", m.category, m.content)).collect();
@@ -676,7 +676,7 @@ async fn run_telegram_agent(
                 let emb_client = engine_state.embedding_client();
                 for (content, category) in &facts {
                     let _ = memory::store_memory(
-                        &engine_state.store, content, category, 5, emb_client.as_ref()
+                        &engine_state.store, content, category, 5, emb_client.as_ref(), None
                     ).await;
                 }
             }

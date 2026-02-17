@@ -130,6 +130,7 @@ impl OpenAiProvider {
                     id,
                     function_name,
                     arguments_delta,
+                    thought_signature: None,
                 });
             }
         }
@@ -431,6 +432,7 @@ impl AnthropicProvider {
                                 id: None,
                                 function_name: None,
                                 arguments_delta: delta["partial_json"].as_str().map(|s| s.to_string()),
+                                thought_signature: None,
                             }],
                             finish_reason: None,
                             usage: None,
@@ -452,6 +454,7 @@ impl AnthropicProvider {
                             id: block["id"].as_str().map(|s| s.to_string()),
                             function_name: block["name"].as_str().map(|s| s.to_string()),
                             arguments_delta: None,
+                            thought_signature: None,
                         }],
                         finish_reason: None,
                         usage: None,

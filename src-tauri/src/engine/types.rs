@@ -923,6 +923,9 @@ pub struct Memory {
     /// Cosine similarity score — only present in search results.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub score: Option<f64>,
+    /// Agent that created this memory (None = shared/global).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
 }
 
 /// Memory configuration (embedding provider settings).

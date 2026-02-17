@@ -651,7 +651,7 @@ async fn run_boss_agent_loop(
 
         // Assemble response
         let mut text_accum = String::new();
-        let mut tool_call_map: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new();
+        let mut tool_call_map: std::collections::HashMap<usize, (String, String, String, Option<String>)> = std::collections::HashMap::new();
         let mut has_tool_calls = false;
 
         // Extract confirmed model from API response
@@ -669,10 +669,11 @@ async fn run_boss_agent_loop(
             for tc_delta in &chunk.tool_calls {
                 has_tool_calls = true;
                 let entry = tool_call_map.entry(tc_delta.index)
-                    .or_insert_with(|| (String::new(), String::new(), String::new()));
+                    .or_insert_with(|| (String::new(), String::new(), String::new(), None));
                 if let Some(id) = &tc_delta.id { entry.0 = id.clone(); }
                 if let Some(name) = &tc_delta.function_name { entry.1 = name.clone(); }
                 if let Some(args_delta) = &tc_delta.arguments_delta { entry.2.push_str(args_delta); }
+                if tc_delta.thought_signature.is_some() { entry.3 = tc_delta.thought_signature.clone(); }
             }
         }
 
@@ -701,12 +702,13 @@ async fn run_boss_agent_loop(
         let mut sorted_indices: Vec<usize> = tool_call_map.keys().cloned().collect();
         sorted_indices.sort();
         for idx in sorted_indices {
-            let (id, name, arguments) = tool_call_map.get(&idx).unwrap();
+            let (id, name, arguments, thought_sig) = tool_call_map.get(&idx).unwrap();
             let call_id = if id.is_empty() { format!("call_{}", uuid::Uuid::new_v4()) } else { id.clone() };
             tool_calls.push(ToolCall {
                 id: call_id,
                 call_type: "function".into(),
                 function: FunctionCall { name: name.clone(), arguments: arguments.clone() },
+                thought_signature: thought_sig.clone(),
             });
         }
 
@@ -1034,7 +1036,7 @@ async fn run_worker_agent_loop(
         let chunks = provider.chat_stream(messages, tools, model, None).await?;
 
         let mut text_accum = String::new();
-        let mut tool_call_map: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new();
+        let mut tool_call_map: std::collections::HashMap<usize, (String, String, String, Option<String>)> = std::collections::HashMap::new();
         let mut has_tool_calls = false;
 
         // Extract confirmed model from API response
@@ -1052,10 +1054,11 @@ async fn run_worker_agent_loop(
             for tc_delta in &chunk.tool_calls {
                 has_tool_calls = true;
                 let entry = tool_call_map.entry(tc_delta.index)
-                    .or_insert_with(|| (String::new(), String::new(), String::new()));
+                    .or_insert_with(|| (String::new(), String::new(), String::new(), None));
                 if let Some(id) = &tc_delta.id { entry.0 = id.clone(); }
                 if let Some(name) = &tc_delta.function_name { entry.1 = name.clone(); }
                 if let Some(args_delta) = &tc_delta.arguments_delta { entry.2.push_str(args_delta); }
+                if tc_delta.thought_signature.is_some() { entry.3 = tc_delta.thought_signature.clone(); }
             }
         }
 
@@ -1075,12 +1078,13 @@ async fn run_worker_agent_loop(
         let mut sorted_indices: Vec<usize> = tool_call_map.keys().cloned().collect();
         sorted_indices.sort();
         for idx in sorted_indices {
-            let (id, name, arguments) = tool_call_map.get(&idx).unwrap();
+            let (id, name, arguments, thought_sig) = tool_call_map.get(&idx).unwrap();
             let call_id = if id.is_empty() { format!("call_{}", uuid::Uuid::new_v4()) } else { id.clone() };
             tool_calls.push(ToolCall {
                 id: call_id,
                 call_type: "function".into(),
                 function: FunctionCall { name: name.clone(), arguments: arguments.clone() },
+                thought_signature: thought_sig.clone(),
             });
         }
 

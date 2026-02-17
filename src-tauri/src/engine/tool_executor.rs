@@ -444,7 +444,7 @@ async fn execute_memory_store(args: &serde_json::Value, app_handle: &tauri::AppH
         .ok_or("Engine state not available")?;
 
     let emb_client = state.embedding_client();
-    let id = memory::store_memory(&state.store, content, category, 5, emb_client.as_ref()).await?;
+    let id = memory::store_memory(&state.store, content, category, 5, emb_client.as_ref(), None).await?;;
 
     Ok(format!("Memory stored (id: {}). I'll recall this automatically when it's relevant.", &id[..8]))
 }
@@ -462,7 +462,7 @@ async fn execute_memory_search(args: &serde_json::Value, app_handle: &tauri::App
         .ok_or("Engine state not available")?;
 
     let emb_client = state.embedding_client();
-    let results = memory::search_memories(&state.store, query, limit, 0.1, emb_client.as_ref()).await?;
+    let results = memory::search_memories(&state.store, query, limit, 0.1, emb_client.as_ref(), None).await?;;
 
     if results.is_empty() {
         return Ok("No relevant memories found.".into());
