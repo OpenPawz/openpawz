@@ -594,10 +594,14 @@ async function loadPalaceStats() {
     try {
       const stats = await pawEngine.memoryStats();
       totalEl.textContent = String(stats.total_memories);
-      if (typesEl) typesEl.textContent = stats.categories.length > 0
-        ? stats.categories.map(([c, n]) => `${c}: ${n}`).join(', ')
-        : 'memories';
-      if (edgesEl) edgesEl.textContent = stats.has_embeddings ? 'semantic' : 'keyword';
+      if (typesEl) {
+        const catCount = stats.categories.length;
+        typesEl.textContent = catCount > 0 ? String(catCount) : '0';
+        typesEl.title = stats.categories.length > 0
+          ? stats.categories.map(([c, n]) => `${c}: ${n}`).join(', ')
+          : '';
+      }
+      if (edgesEl) edgesEl.textContent = stats.has_embeddings ? '✓' : '✗';
 
       // Show embedding status banner
       await renderEmbeddingStatus(stats);

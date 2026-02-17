@@ -4683,15 +4683,15 @@ select.form-input {
   color: var(--accent);
 }
 
-/* ═══ Agents — Multi-Agent Cards & Detail ═══ */
+/* ═══ Agents — Multi-Agent Cards & Detail (Foundry view) ═══ */
 
-.agents-grid {
+#agents-list.agents-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 12px;
 }
 
-.agent-card {
+#agents-list .agent-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -4702,12 +4702,12 @@ select.form-input {
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
-.agent-card:hover {
+#agents-list .agent-card:hover {
   border-color: var(--accent);
   box-shadow: 0 2px 8px rgba(0, 115, 234, 0.08);
 }
 
-.agent-card-avatar {
+#agents-list .agent-card-avatar {
   font-size: 32px;
   line-height: 1;
   flex-shrink: 0;
@@ -4720,19 +4720,19 @@ select.form-input {
   border-radius: var(--radius-md);
 }
 
-.agent-card-body {
+#agents-list .agent-card-body {
   flex: 1;
   min-width: 0;
 }
 
-.agent-card-name {
+#agents-list .agent-card-name {
   font-weight: 600;
   font-size: 14px;
   color: var(--text-primary);
   margin-bottom: 2px;
 }
 
-.agent-card-badge {
+#agents-list .agent-card-badge {
   font-size: 10px;
   font-weight: 600;
   padding: 1px 6px;
@@ -4743,19 +4743,19 @@ select.form-input {
   vertical-align: middle;
 }
 
-.agent-card-id {
+#agents-list .agent-card-id {
   font-size: 11px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
 }
 
-.agent-card-theme {
+#agents-list .agent-card-theme {
   font-size: 12px;
   color: var(--text-secondary);
   margin-top: 4px;
 }
 
-.agent-card-chevron {
+#agents-list .agent-card-chevron {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
@@ -5198,6 +5198,9 @@ select.form-input {
   font-size: 18px;
   font-weight: 700;
   color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .palace-stat-label {
   font-size: 10px;
