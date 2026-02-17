@@ -1241,10 +1241,12 @@ async fn execute_image_generate(
 // ══ Coinbase CDP (Developer Platform) ═══════════════════════════════════
 // ══════════════════════════════════════════════════════════════════════════
 //
-// Uses JWT (ES256) auth per: https://docs.cdp.coinbase.com/get-started/docs/cdp-api-keys
-// Credentials: CDP_API_KEY_NAME (kid) + CDP_API_KEY_SECRET (EC PEM)
+// Supports both ES256 (P-256 ECDSA) and Ed25519 JWT signing.
+// Auto-detects algorithm based on the private key format.
+// Credentials: CDP_API_KEY_NAME (kid) + CDP_API_KEY_SECRET (PEM)
 
 /// Build a JWT for Coinbase CDP API authentication.
+/// Auto-detects ES256 vs Ed25519 from the key.
 fn build_cdp_jwt(
     key_name: &str,
     key_secret: &str,
@@ -1252,19 +1254,19 @@ fn build_cdp_jwt(
     host: &str,
     path: &str,
 ) -> Result<String, String> {
-    use p256::ecdsa::SigningKey;
-    use p256::pkcs8::DecodePrivateKey;
-    use sha2::Digest;
     use base64::Engine as _;
 
     let now = chrono::Utc::now().timestamp() as u64;
     let nonce = uuid::Uuid::new_v4().to_string();
-
-    // URI: "METHOD host path"
     let uri = format!("{} {}{}", method, host, path);
+    let pem_normalized = key_secret.replace("\\n", "\n");
+
+    // Detect algorithm: try Ed25519 first (Coinbase default since 2025), fall back to ES256
+    let is_ed25519 = try_parse_ed25519(&pem_normalized);
+    let alg = if is_ed25519 { "EdDSA" } else { "ES256" };
 
     let header = serde_json::json!({
-        "alg": "ES256",
+        "alg": alg,
         "kid": key_name,
         "nonce": nonce,
         "typ": "JWT"
@@ -1286,19 +1288,44 @@ fn build_cdp_jwt(
 
     let signing_input = format!("{}.{}", b64_header, b64_payload);
 
-    // Parse the EC private key from PEM
-    // The CDP secret may have escaped newlines — normalize them
-    let pem_normalized = key_secret.replace("\\n", "\n");
-    let signing_key = SigningKey::from_pkcs8_pem(&pem_normalized)
-        .map_err(|e| format!("Invalid CDP_API_KEY_SECRET (must be EC PEM): {}", e))?;
-
-    // Sign with ES256 (ECDSA P-256 + SHA-256)
-    use p256::ecdsa::signature::Signer;
-    let signature: p256::ecdsa::Signature = signing_key.sign(signing_input.as_bytes());
-    let b64_sig = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(signature.to_bytes());
+    let b64_sig = if is_ed25519 {
+        sign_ed25519(&pem_normalized, signing_input.as_bytes())?
+    } else {
+        sign_es256(&pem_normalized, signing_input.as_bytes())?
+    };
 
     Ok(format!("{}.{}", signing_input, b64_sig))
+}
+
+/// Check if a PEM key is Ed25519 (try parsing as Ed25519 PKCS8)
+fn try_parse_ed25519(pem: &str) -> bool {
+    use ed25519_dalek::pkcs8::DecodePrivateKey;
+    ed25519_dalek::SigningKey::from_pkcs8_pem(pem).is_ok()
+}
+
+/// Sign with Ed25519
+fn sign_ed25519(pem: &str, message: &[u8]) -> Result<String, String> {
+    use ed25519_dalek::pkcs8::DecodePrivateKey;
+    use ed25519_dalek::Signer;
+    use base64::Engine as _;
+
+    let signing_key = ed25519_dalek::SigningKey::from_pkcs8_pem(pem)
+        .map_err(|e| format!("Invalid Ed25519 key: {}", e))?;
+    let signature = signing_key.sign(message);
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes()))
+}
+
+/// Sign with ES256 (P-256 ECDSA)
+fn sign_es256(pem: &str, message: &[u8]) -> Result<String, String> {
+    use p256::ecdsa::SigningKey;
+    use p256::pkcs8::DecodePrivateKey;
+    use p256::ecdsa::signature::Signer;
+    use base64::Engine as _;
+
+    let signing_key = SigningKey::from_pkcs8_pem(pem)
+        .map_err(|e| format!("Invalid EC key (must be P-256 PEM): {}", e))?;
+    let signature: p256::ecdsa::Signature = signing_key.sign(message);
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes()))
 }
 
 /// Make an authenticated request to the Coinbase CDP/v2 API.
