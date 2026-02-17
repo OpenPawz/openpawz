@@ -4,6 +4,7 @@
 
 import { pawEngine, type BackendAgent } from '../engine';
 import { isEngineMode } from '../engine-bridge';
+import { listen } from '@tauri-apps/api/event';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -1103,6 +1104,55 @@ export function renderAgentDock() {
   });
 }
 
+// ═══ Profile Update Event Listener ═══════════════════════════════════════════
+// Listens for 'agent-profile-updated' Tauri events emitted by the update_profile tool.
+// Updates the agent in _agents + localStorage + re-renders UI in real-time.
+
+let _profileUpdateListenerInitialized = false;
+
+function initProfileUpdateListener() {
+  if (_profileUpdateListenerInitialized) return;
+  _profileUpdateListenerInitialized = true;
+
+  listen<Record<string, string>>('agent-profile-updated', (event) => {
+    const data = event.payload;
+    const agentId = data.agent_id;
+    if (!agentId) return;
+
+    console.log('[agents] Profile update event received:', data);
+
+    const agent = _agents.find(a => a.id === agentId);
+    if (!agent) {
+      console.warn(`[agents] update_profile: agent '${agentId}' not found`);
+      return;
+    }
+
+    // Apply updates
+    if (data.name) agent.name = data.name;
+    if (data.avatar) agent.avatar = data.avatar;
+    if (data.bio) agent.bio = data.bio;
+    if (data.system_prompt) agent.systemPrompt = data.system_prompt;
+
+    // Persist and re-render
+    saveAgents();
+    renderAgents();
+    renderAgentDock();
+
+    // Notify main.ts to update chat header if this is the current agent
+    if (_onProfileUpdated) _onProfileUpdated(agentId, agent);
+    console.log(`[agents] Profile updated for '${agentId}':`, agent.name, agent.avatar);
+  }).catch(e => console.warn('[agents] Failed to listen for profile updates:', e));
+}
+
+/** Callback to notify main.ts when a profile is updated */
+let _onProfileUpdated: ((agentId: string, agent: Agent) => void) | null = null;
+
+/** Register a callback for profile updates (called from main.ts) */
+export function onProfileUpdated(cb: (agentId: string, agent: Agent) => void) {
+  _onProfileUpdated = cb;
+}
+
 export function initAgents() {
   loadAgents();
+  initProfileUpdateListener();
 }

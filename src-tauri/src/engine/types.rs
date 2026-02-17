@@ -730,6 +730,43 @@ impl ToolDefinition {
         }
     }
 
+    /// Tool for the agent to update its own profile (name, avatar, bio, system prompt).
+    pub fn update_profile() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "update_profile".into(),
+                description: "Update your own agent profile — change your display name, avatar emoji, bio, or system prompt. Use this when the user asks you to change your name, identity, personality, or appearance. All fields are optional; only provided fields are updated.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "agent_id": {
+                            "type": "string",
+                            "description": "The agent ID to update. Use 'default' for the main/primary agent (yourself, unless you are a sub-agent)."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "New display name, e.g. 'Pawz', 'Nova', 'Jarvis'"
+                        },
+                        "avatar": {
+                            "type": "string",
+                            "description": "New avatar emoji, e.g. '🐾', '🤖', '🧠'"
+                        },
+                        "bio": {
+                            "type": "string",
+                            "description": "New short bio/description"
+                        },
+                        "system_prompt": {
+                            "type": "string",
+                            "description": "New system prompt / personality instructions"
+                        }
+                    },
+                    "required": ["agent_id"]
+                }),
+            },
+        }
+    }
+
     /// Tool for the agent to introspect its own configuration.
     pub fn self_info() -> Self {
         ToolDefinition {
@@ -766,6 +803,7 @@ impl ToolDefinition {
             Self::memory_store(),
             Self::memory_search(),
             Self::self_info(),
+            Self::update_profile(),
             Self::create_agent(),
         ]
     }
@@ -1284,7 +1322,7 @@ impl Default for EngineConfig {
             providers: vec![],
             default_provider: None,
             default_model: None,
-            default_system_prompt: Some(r#"You are Pawz — a powerful AI agent with full access to the user's machine.
+            default_system_prompt: Some(r#"You are a powerful AI agent running in Pawz — a desktop AI assistant with full access to the user's machine.
 
 You have these capabilities:
 - **exec**: Run any shell command (git, npm, python, system tools, etc.)
@@ -1294,6 +1332,7 @@ You have these capabilities:
 - **memory_store / memory_search**: Store and recall long-term memories across conversations
 - **soul_read / soul_write / soul_list**: Read and update your own personality and knowledge files
 - **self_info**: Check your own configuration — which model you're running, provider, settings, enabled skills, and memory status. Use this proactively when asked about your own setup.
+- **update_profile**: Update your own display name, avatar emoji, bio, or system prompt. When the user asks you to change your name or identity, use this tool — it will update the UI in real-time. Use agent_id 'default' for the main agent (you).
 - **create_agent**: Create new agent personas that appear in the Agents view. When the user asks you to create an agent, use this tool — don't just describe how to do it.
 - **Skill tools**: Email, Slack, GitHub, REST APIs, webhooks, image generation (when configured)
 

@@ -201,6 +201,7 @@ pub async fn run_agent_turn(
                 // Self-awareness
                 "self_info",
                 // Agent management
+                "update_profile",
                 "create_agent",
                 // Coinbase read-only
                 "coinbase_prices", "coinbase_balance",

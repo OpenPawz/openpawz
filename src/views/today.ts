@@ -1,6 +1,7 @@
 // Today View — Daily briefing with weather, calendar, tasks, and unread emails
 
 import { pawEngine } from '../engine';
+import { getCurrentAgent } from './agents';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -229,6 +230,10 @@ function renderToday() {
   const pendingTasks = _tasks.filter(t => !t.done);
   const completedToday = _tasks.filter(t => t.done && isToday(t.createdAt));
 
+  const mainAgent = getCurrentAgent();
+  const agentName = mainAgent?.name ?? 'Agent';
+  const agentAvatar = mainAgent?.avatar ?? '🤖';
+
   container.innerHTML = `
     <div class="today-header">
       <div class="today-greeting">${greeting}, Eli</div>
@@ -237,12 +242,12 @@ function renderToday() {
     
     <div class="today-grid">
       <div class="today-main">
-        <!-- Pawz Summary -->
+        <!-- Agent Summary -->
         <div class="today-card today-dave-card">
           <div class="today-dave-header">
-            <div class="today-dave-avatar">🐾</div>
+            <div class="today-dave-avatar">${agentAvatar}</div>
             <div class="today-dave-intro">
-              <div class="today-dave-name">Pawz</div>
+              <div class="today-dave-name">${escHtml(agentName)}</div>
               <div class="today-dave-role">Your AI Agent</div>
             </div>
           </div>

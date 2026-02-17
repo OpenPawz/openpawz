@@ -11,7 +11,7 @@ use crate::engine::web;
 use log::{info, warn, error};
 use std::process::Command as ProcessCommand;
 use std::time::Duration;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 /// Execute a single tool call and return the result.
 /// This is where security policies are enforced.
@@ -37,6 +37,7 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
         "memory_store" => execute_memory_store(&args, app_handle).await,
         "memory_search" => execute_memory_search(&args, app_handle).await,
         "self_info" => execute_self_info(app_handle).await,
+        "update_profile" => execute_update_profile(&args, app_handle).await,
         "create_agent" => execute_create_agent(&args, app_handle).await,
         // ── Web tools ──
         "web_search" => web::execute_web_search(&args).await,
@@ -554,6 +555,60 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> Result<String, Stri
     );
 
     Ok(output)
+}
+
+// ── update_profile: Let the agent update its own profile ──────────────
+
+async fn execute_update_profile(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
+    let agent_id = args["agent_id"].as_str()
+        .ok_or("update_profile: missing 'agent_id' argument (use 'default' for the main agent)")?;
+
+    let name = args["name"].as_str();
+    let avatar = args["avatar"].as_str();
+    let bio = args["bio"].as_str();
+    let system_prompt = args["system_prompt"].as_str();
+
+    // At least one field should be provided
+    if name.is_none() && avatar.is_none() && bio.is_none() && system_prompt.is_none() {
+        return Err("update_profile: provide at least one field to update (name, avatar, bio, system_prompt)".into());
+    }
+
+    // Build the update payload and emit it to the frontend
+    let mut updates = serde_json::Map::new();
+    updates.insert("agent_id".into(), serde_json::json!(agent_id));
+    if let Some(v) = name { updates.insert("name".into(), serde_json::json!(v)); }
+    if let Some(v) = avatar { updates.insert("avatar".into(), serde_json::json!(v)); }
+    if let Some(v) = bio { updates.insert("bio".into(), serde_json::json!(v)); }
+    if let Some(v) = system_prompt { updates.insert("system_prompt".into(), serde_json::json!(v)); }
+
+    info!("[engine] update_profile tool: updating agent '{}' with fields: {:?}",
+        agent_id, updates.keys().collect::<Vec<_>>());
+
+    // Emit a Tauri event so the frontend can update localStorage and re-render
+    let _ = app_handle.emit("agent-profile-updated", serde_json::Value::Object(updates));
+
+    // Also store in memory
+    let mut desc_parts = vec![format!("Updated profile for agent '{}':", agent_id)];
+    if let Some(v) = name { desc_parts.push(format!("name → {}", v)); }
+    if let Some(v) = avatar { desc_parts.push(format!("avatar → {}", v)); }
+    if let Some(v) = bio { desc_parts.push(format!("bio → {}", v)); }
+    if system_prompt.is_some() { desc_parts.push("system_prompt updated".into()); }
+    let memory_content = desc_parts.join(" ");
+
+    let state = app_handle.try_state::<EngineState>();
+    if let Some(state) = state {
+        let emb_client = state.embedding_client();
+        let _ = memory::store_memory(&state.store, &memory_content, "fact", 5, emb_client.as_ref(), None).await;
+    }
+
+    let mut result_parts = vec![format!("Successfully updated agent profile for '{}':", agent_id)];
+    if let Some(v) = name { result_parts.push(format!("- **Name**: {}", v)); }
+    if let Some(v) = avatar { result_parts.push(format!("- **Avatar**: {}", v)); }
+    if let Some(v) = bio { result_parts.push(format!("- **Bio**: {}", v)); }
+    if system_prompt.is_some() { result_parts.push("- **System Prompt**: updated".into()); }
+    result_parts.push("\nThe UI has been updated in real-time.".into());
+
+    Ok(result_parts.join("\n"))
 }
 
 // ── create_agent: Create a new agent persona from chat ─────────────────
@@ -1304,7 +1359,7 @@ fn build_cdp_jwt(
 
 #[derive(Debug)]
 enum KeyType {
-    Ed25519Raw,   // Raw base64-encoded 32-byte seed (Coinbase default)
+    Ed25519Raw,   // Raw base64-encoded key: 32-byte seed or 64-byte keypair (Coinbase default)
     Ed25519Pem,   // PEM-wrapped Ed25519 PKCS8
     Es256Pem,     // PEM-wrapped P-256 EC key
 }
@@ -1325,7 +1380,8 @@ fn detect_key_type(secret: &str) -> KeyType {
     KeyType::Ed25519Raw
 }
 
-/// Sign with raw base64-encoded Ed25519 key (32-byte seed)
+/// Sign with raw base64-encoded Ed25519 key.
+/// Coinbase CDP gives either a 32-byte seed or a 64-byte keypair (seed + public key).
 fn sign_ed25519_raw(secret_b64: &str, message: &[u8]) -> Result<String, String> {
     use ed25519_dalek::Signer;
     use base64::Engine as _;
@@ -1336,17 +1392,32 @@ fn sign_ed25519_raw(secret_b64: &str, message: &[u8]) -> Result<String, String> 
         .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(secret_b64.trim()))
         .map_err(|e| format!("Failed to decode API secret as base64: {}", e))?;
 
-    if key_bytes.len() != 32 {
-        return Err(format!(
-            "API secret decoded to {} bytes, expected 32 for Ed25519. \
-             If your secret starts with '-----BEGIN', make sure to paste the entire PEM block including headers.",
-            key_bytes.len()
-        ));
-    }
+    info!("[skill:coinbase] Ed25519 raw key decoded to {} bytes", key_bytes.len());
 
-    let mut seed = [0u8; 32];
-    seed.copy_from_slice(&key_bytes);
-    let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
+    let signing_key = match key_bytes.len() {
+        32 => {
+            // 32-byte seed
+            let mut seed = [0u8; 32];
+            seed.copy_from_slice(&key_bytes);
+            ed25519_dalek::SigningKey::from_bytes(&seed)
+        }
+        64 => {
+            // 64-byte keypair: first 32 = seed, last 32 = public key
+            // Coinbase CDP default format for Ed25519 keys
+            let mut keypair = [0u8; 64];
+            keypair.copy_from_slice(&key_bytes);
+            ed25519_dalek::SigningKey::from_keypair_bytes(&keypair)
+                .map_err(|e| format!("Invalid Ed25519 keypair (64 bytes): {}", e))?
+        }
+        n => {
+            return Err(format!(
+                "API secret decoded to {} bytes, expected 32 (seed) or 64 (keypair) for Ed25519. \
+                 If your secret starts with '-----BEGIN', paste the entire PEM block including headers.",
+                n
+            ));
+        }
+    };
+
     let signature = signing_key.sign(message);
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes()))
 }

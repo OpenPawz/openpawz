@@ -2965,6 +2965,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     AgentsModule.initAgents();
 
+    // Listen for agent profile updates (from update_profile tool)
+    AgentsModule.onProfileUpdated((agentId, agent) => {
+      const current = AgentsModule.getCurrentAgent();
+      if (current && current.id === agentId && chatAgentName) {
+        chatAgentName.textContent = `${agent.avatar} ${agent.name}`;
+      }
+      // Refresh agent dropdown
+      populateAgentSelect();
+    });
+
     // Initialize Nodes module events
     NodesModule.initNodesEvents();
 
