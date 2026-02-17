@@ -1312,7 +1312,8 @@ fn build_cdp_jwt(
     use base64::Engine as _;
 
     let now = chrono::Utc::now().timestamp() as u64;
-    let nonce = uuid::Uuid::new_v4().to_string();
+    // Coinbase expects hex nonce (no dashes)
+    let nonce = uuid::Uuid::new_v4().to_string().replace("-", "");
     let uri = format!("{} {}{}", method, host, path);
     let secret_clean = key_secret.replace("\\n", "\n").trim().to_string();
 
@@ -1323,7 +1324,7 @@ fn build_cdp_jwt(
         KeyType::Es256Pem => "ES256",
     };
 
-    info!("[skill:coinbase] JWT signing with algorithm: {} (key type: {:?})", alg, key_type);
+    info!("[skill:coinbase] JWT: alg={}, key_type={:?}, uri={}", alg, key_type, uri);
 
     let header = serde_json::json!({
         "alg": alg,
@@ -1332,13 +1333,13 @@ fn build_cdp_jwt(
         "typ": "JWT"
     });
 
+    // Coinbase Cloud REST API JWT format
     let payload = serde_json::json!({
         "sub": key_name,
-        "iss": "cdp",
-        "aud": ["cdp_service"],
+        "iss": "coinbase-cloud",
         "nbf": now,
         "exp": now + 120,
-        "uris": [uri]
+        "uri": uri
     });
 
     let b64_header = base64::engine::general_purpose::URL_SAFE_NO_PAD
@@ -1484,8 +1485,11 @@ async fn cdp_request(
     let text = resp.text().await.map_err(|e| format!("Read response: {}", e))?;
 
     if !status.is_success() {
-        return Err(format!("Coinbase API error ({}): {}", status, &text[..text.len().min(500)]));
+        warn!("[skill:coinbase] API error {} on {} {}: {}", status, method, path, &text[..text.len().min(500)]);
+        return Err(format!("Coinbase API error (HTTP {}): {}", status.as_u16(), &text[..text.len().min(500)]));
     }
+
+    info!("[skill:coinbase] {} {} → {}", method, path, status);
 
     serde_json::from_str(&text).map_err(|e| format!("Parse Coinbase response: {} — raw: {}", e, &text[..text.len().min(300)]))
 }
