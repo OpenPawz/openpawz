@@ -3,6 +3,7 @@
 // and provides a drop-in chatSend replacement for engine mode.
 
 import { pawEngine, type EngineEvent, type EngineChatRequest } from './engine';
+import { getAgentAllowedTools, ALL_TOOLS } from './features/agent-policies';
 
 type AgentEventHandler = (payload: unknown) => void;
 type ToolApprovalHandler = (event: EngineEvent) => void;
@@ -128,6 +129,12 @@ export async function engineChatSend(
     }
   }
 
+  // Resolve per-agent tool policy filter
+  const agentId = opts.agentProfile?.name ?? 'default';
+  const allowedTools = getAgentAllowedTools(agentId, [...ALL_TOOLS]);
+  // Only send filter if it's actually restrictive (not all tools)
+  const toolFilter = allowedTools.length < ALL_TOOLS.length ? allowedTools : undefined;
+
   const request: EngineChatRequest = {
     session_id: (sessionKey === 'default' || !sessionKey) ? undefined : sessionKey,
     message: content,
@@ -135,6 +142,7 @@ export async function engineChatSend(
     system_prompt: agentSystemPrompt,
     temperature: opts.temperature,
     tools_enabled: true,
+    tool_filter: toolFilter,
     attachments: opts.attachments?.map(a => ({
       mimeType: a.mimeType,
       content: a.content,

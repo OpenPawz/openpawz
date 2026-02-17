@@ -323,6 +323,13 @@ pub async fn engine_chat_send(
             info!("[engine] Adding skill tools for: {:?}", enabled_ids);
             t.extend(ToolDefinition::skill_tools(&enabled_ids));
         }
+        // Apply per-agent tool filter (if provided by frontend policy)
+        if let Some(ref filter) = request.tool_filter {
+            let before = t.len();
+            t.retain(|tool| filter.contains(&tool.function.name));
+            info!("[engine] Tool policy filter applied: {} → {} tools (filter has {} entries)",
+                before, t.len(), filter.len());
+        }
         t
     } else {
         vec![]

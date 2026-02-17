@@ -827,6 +827,10 @@ pub struct ChatRequest {
     pub provider_id: Option<String>,
     pub tools_enabled: Option<bool>,
     pub agent_id: Option<String>,
+    /// Optional list of allowed tool names. If provided, only these tools
+    /// will be offered to the AI model. Enforced by per-agent tool policies.
+    #[serde(default)]
+    pub tool_filter: Option<Vec<String>>,
     #[serde(default)]
     pub attachments: Vec<ChatAttachment>,
 }

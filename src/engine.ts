@@ -47,6 +47,8 @@ export interface EngineChatRequest {
   provider_id?: string;
   tools_enabled?: boolean;
   agent_id?: string;
+  /** Per-agent tool filter: only these tools will be available to the AI. */
+  tool_filter?: string[];
   attachments?: Array<{ mimeType: string; content: string; name?: string }>;
 }
 
