@@ -1029,35 +1029,39 @@ async function sendMessage() {
   try {
     const sessionKey = currentSessionKey ?? 'default';
 
-    // Read selected mode's overrides (model, thinking level, system prompt)
+    // Read selected mode (if any)
     const modeSelect = $('chat-mode-select') as HTMLSelectElement | null;
     const selectedModeId = modeSelect?.value;
+    let selectedMode: import('./db').AgentMode | undefined;
     let modeSystemPrompt: string | undefined;
     if (selectedModeId) {
       const modes = await listModes();
-      const mode = modes.find(m => m.id === selectedModeId);
-      if (mode) {
-        if (mode.model) chatOpts.model = mode.model;
-        if (mode.thinking_level) chatOpts.thinkingLevel = mode.thinking_level;
-        if (mode.temperature > 0) chatOpts.temperature = mode.temperature;
-        if (mode.system_prompt) modeSystemPrompt = mode.system_prompt;
+      selectedMode = modes.find(m => m.id === selectedModeId);
+      if (selectedMode) {
+        if (selectedMode.thinking_level) chatOpts.thinkingLevel = selectedMode.thinking_level;
+        if (selectedMode.temperature > 0) chatOpts.temperature = selectedMode.temperature;
+        if (selectedMode.system_prompt) modeSystemPrompt = selectedMode.system_prompt;
       }
     }
 
     // -- Agent Profile Injection --
-    // Get the current agent and inject its profile into the options
+    // Priority order: slash overrides > mode > agent > global default
+    // Agent sets the base model & profile, mode overrides model on top of that.
     const currentAgent = AgentsModule.getCurrentAgent();
     if (currentAgent) {
-      // Use the agent's model if it's not the default
+      // Use the agent's model as the base (if not default)
       if (currentAgent.model && currentAgent.model !== 'default') {
         chatOpts.model = currentAgent.model;
       }
-      // Pass the full profile to be constructed into a system prompt by the gateway client
+      // Pass the full profile to build the system prompt in engine-bridge
       (chatOpts as Record<string, unknown>).agentProfile = currentAgent;
       console.log(`[main] Injecting agent profile for "${currentAgent.name}"`, currentAgent);
     }
 
-    // Merge mode's system_prompt into the agent profile so both engine and gateway paths use it
+    // Mode's model takes priority over agent's model (mode is a per-session override)
+    if (selectedMode?.model) chatOpts.model = selectedMode.model;
+
+    // Merge mode's system_prompt into the agent profile
     if (modeSystemPrompt) {
       const existing = (chatOpts as Record<string, unknown>).agentProfile as Record<string, unknown> | undefined;
       if (existing) {

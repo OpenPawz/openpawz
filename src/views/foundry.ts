@@ -9,13 +9,10 @@ import { pawEngine } from '../engine';
 const $ = (id: string) => document.getElementById(id);
 
 // ── Module state ───────────────────────────────────────────────────────────
-let wsConnected = false;
 let _cachedModels: { id: string; name?: string; provider?: string; contextWindow?: number; reasoning?: boolean }[] = [];
 let _editingModeId: string | null = null;
 
-export function setWsConnected(connected: boolean) {
-  wsConnected = connected;
-}
+export function setWsConnected(_connected: boolean) { /* engine is always connected */ }
 
 export function getCachedModels() {
   return _cachedModels;
@@ -41,6 +38,9 @@ export async function loadModels() {
   try {
     const config = await pawEngine.getConfig();
     if (loading) loading.style.display = 'none';
+
+    // Reset cached models on each load to avoid duplicates
+    _cachedModels = [];
 
     const providers = config.providers ?? [];
     if (!providers.length) {
