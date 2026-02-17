@@ -209,6 +209,37 @@ Available gh commands: issue (list/create/view/close), pr (list/create/view/merg
 Use exec to read the DISCORD_BOT_TOKEN and DISCORD_DEFAULT_CHANNEL from environment if needed."#.into(),
         },
         SkillDefinition {
+            id: "coinbase".into(),
+            name: "Coinbase (CDP Agentic Wallet)".into(),
+            description: "Trade crypto, manage wallets, and check prices via Coinbase Developer Platform".into(),
+            icon: "🪙".into(),
+            category: SkillCategory::Vault,
+            required_credentials: vec![
+                CredentialField { key: "CDP_API_KEY_NAME".into(), label: "CDP API Key Name".into(), description: "Coinbase Developer Platform API key name (organizations/…/apiKeys/…)".into(), required: true, placeholder: "organizations/abc123/apiKeys/key123".into() },
+                CredentialField { key: "CDP_API_KEY_SECRET".into(), label: "CDP API Key Secret".into(), description: "EC private key in PEM format (starts with -----BEGIN EC PRIVATE KEY-----)".into(), required: true, placeholder: "-----BEGIN EC PRIVATE KEY-----\n...".into() },
+            ],
+            tool_names: vec!["coinbase_prices".into(), "coinbase_balance".into(), "coinbase_wallet_create".into(), "coinbase_trade".into(), "coinbase_transfer".into()],
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API keys at portal.cdp.coinbase.com".into(),
+            agent_instructions: r#"You have Coinbase CDP (Developer Platform) access for crypto trading and wallet management.
+
+Available tools:
+- **coinbase_prices**: Get current spot prices for crypto assets (e.g. BTC, ETH). Read-only, no approval needed.
+- **coinbase_balance**: Check wallet balances. Read-only, no approval needed.
+- **coinbase_wallet_create**: Create a new MPC wallet. Requires user approval.
+- **coinbase_trade**: Execute a buy/sell order. ALWAYS requires user approval. Include clear reasoning.
+- **coinbase_transfer**: Send crypto to an address. ALWAYS requires user approval. Double-check addresses.
+
+Risk Management Rules:
+- NEVER risk more than 2% of portfolio on a single trade
+- Always state your reasoning (technical analysis, sentiment, catalyst) before proposing a trade
+- Always include a stop-loss level when proposing trades
+- Prefer limit orders over market orders when possible
+- Check balances before proposing any trade
+- If the user hasn't set risk parameters, ask before trading
+
+Credentials are injected securely — never ask the user for API keys in chat."#.into(),
+        },
+        SkillDefinition {
             id: "notion".into(),
             name: "Notion".into(),
             description: "Create and manage Notion pages, databases, and blocks".into(),

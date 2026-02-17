@@ -202,6 +202,8 @@ pub async fn run_agent_turn(
                 "self_info",
                 // Agent management
                 "create_agent",
+                // Coinbase read-only
+                "coinbase_prices", "coinbase_balance",
                 // Skill tools
                 "email_send", "email_read",
                 "slack_send", "slack_read",

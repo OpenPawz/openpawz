@@ -52,6 +52,12 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
         "rest_api_call" => execute_skill_tool("rest_api", "rest_api_call", &args, app_handle).await,
         "webhook_send" => execute_skill_tool("webhook", "webhook_send", &args, app_handle).await,
         "image_generate" => execute_skill_tool("image_gen", "image_generate", &args, app_handle).await,
+        // ── Coinbase CDP tools ──
+        "coinbase_prices" => execute_skill_tool("coinbase", "coinbase_prices", &args, app_handle).await,
+        "coinbase_balance" => execute_skill_tool("coinbase", "coinbase_balance", &args, app_handle).await,
+        "coinbase_wallet_create" => execute_skill_tool("coinbase", "coinbase_wallet_create", &args, app_handle).await,
+        "coinbase_trade" => execute_skill_tool("coinbase", "coinbase_trade", &args, app_handle).await,
+        "coinbase_transfer" => execute_skill_tool("coinbase", "coinbase_transfer", &args, app_handle).await,
         _ => Err(format!("Unknown tool: {}", name)),
     };
 
@@ -665,6 +671,12 @@ async fn execute_skill_tool(
         "rest_api_call" => execute_rest_api_call(args, &creds).await,
         "webhook_send" => execute_webhook_send(args, &creds).await,
         "image_generate" => execute_image_generate(args, &creds).await,
+        // ── Coinbase CDP ──
+        "coinbase_prices" => execute_coinbase_prices(args, &creds).await,
+        "coinbase_balance" => execute_coinbase_balance(args, &creds).await,
+        "coinbase_wallet_create" => execute_coinbase_wallet_create(args, &creds).await,
+        "coinbase_trade" => execute_coinbase_trade(args, &creds).await,
+        "coinbase_transfer" => execute_coinbase_transfer(args, &creds).await,
         _ => Err(format!("Unknown skill tool: {}", tool_name)),
     }
 }
@@ -1182,4 +1194,336 @@ async fn execute_image_generate(
     }
 
     Ok(result)
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// ══ Coinbase CDP (Developer Platform) ═══════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════
+//
+// Uses JWT (ES256) auth per: https://docs.cdp.coinbase.com/get-started/docs/cdp-api-keys
+// Credentials: CDP_API_KEY_NAME (kid) + CDP_API_KEY_SECRET (EC PEM)
+
+/// Build a JWT for Coinbase CDP API authentication.
+fn build_cdp_jwt(
+    key_name: &str,
+    key_secret: &str,
+    method: &str,
+    host: &str,
+    path: &str,
+) -> Result<String, String> {
+    use p256::ecdsa::SigningKey;
+    use p256::pkcs8::DecodePrivateKey;
+    use sha2::Digest;
+    use base64::Engine as _;
+
+    let now = chrono::Utc::now().timestamp() as u64;
+    let nonce = uuid::Uuid::new_v4().to_string();
+
+    // URI: "METHOD host path"
+    let uri = format!("{} {}{}", method, host, path);
+
+    let header = serde_json::json!({
+        "alg": "ES256",
+        "kid": key_name,
+        "nonce": nonce,
+        "typ": "JWT"
+    });
+
+    let payload = serde_json::json!({
+        "sub": key_name,
+        "iss": "cdp",
+        "aud": ["cdp_service"],
+        "nbf": now,
+        "exp": now + 120,
+        "uris": [uri]
+    });
+
+    let b64_header = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(serde_json::to_string(&header).map_err(|e| format!("JWT header: {}", e))?);
+    let b64_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(serde_json::to_string(&payload).map_err(|e| format!("JWT payload: {}", e))?);
+
+    let signing_input = format!("{}.{}", b64_header, b64_payload);
+
+    // Parse the EC private key from PEM
+    // The CDP secret may have escaped newlines — normalize them
+    let pem_normalized = key_secret.replace("\\n", "\n");
+    let signing_key = SigningKey::from_pkcs8_pem(&pem_normalized)
+        .map_err(|e| format!("Invalid CDP_API_KEY_SECRET (must be EC PEM): {}", e))?;
+
+    // Sign with ES256 (ECDSA P-256 + SHA-256)
+    use p256::ecdsa::signature::Signer;
+    let signature: p256::ecdsa::Signature = signing_key.sign(signing_input.as_bytes());
+    let b64_sig = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .encode(signature.to_bytes());
+
+    Ok(format!("{}.{}", signing_input, b64_sig))
+}
+
+/// Make an authenticated request to the Coinbase CDP/v2 API.
+async fn cdp_request(
+    creds: &std::collections::HashMap<String, String>,
+    method: &str,
+    path: &str,
+    body: Option<&serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let key_name = creds.get("CDP_API_KEY_NAME").ok_or("Missing CDP_API_KEY_NAME")?;
+    let key_secret = creds.get("CDP_API_KEY_SECRET").ok_or("Missing CDP_API_KEY_SECRET")?;
+
+    let host = "api.coinbase.com";
+    let jwt = build_cdp_jwt(key_name, key_secret, method, host, path)?;
+
+    let url = format!("https://{}{}", host, path);
+    let client = reqwest::Client::new();
+    let mut req = match method {
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "DELETE" => client.delete(&url),
+        _ => client.get(&url),
+    };
+
+    req = req
+        .header("Authorization", format!("Bearer {}", jwt))
+        .header("Content-Type", "application/json")
+        .header("CB-VERSION", "2024-01-01")
+        .timeout(Duration::from_secs(30));
+
+    if let Some(b) = body {
+        req = req.json(b);
+    }
+
+    let resp = req.send().await.map_err(|e| format!("Coinbase API request failed: {}", e))?;
+    let status = resp.status();
+    let text = resp.text().await.map_err(|e| format!("Read response: {}", e))?;
+
+    if !status.is_success() {
+        return Err(format!("Coinbase API error ({}): {}", status, &text[..text.len().min(500)]));
+    }
+
+    serde_json::from_str(&text).map_err(|e| format!("Parse Coinbase response: {} — raw: {}", e, &text[..text.len().min(300)]))
+}
+
+// ── coinbase_prices ────────────────────────────────────────────────────
+
+async fn execute_coinbase_prices(
+    args: &serde_json::Value,
+    creds: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let symbols_str = args["symbols"].as_str().ok_or("coinbase_prices: missing 'symbols'")?;
+    let symbols: Vec<&str> = symbols_str.split(',').map(|s| s.trim().to_uppercase().leak() as &str).collect();
+
+    info!("[skill:coinbase] Fetching prices for: {}", symbols_str);
+
+    let mut results = Vec::new();
+    for sym in &symbols {
+        let path = format!("/v2/prices/{}-USD/spot", sym);
+        match cdp_request(creds, "GET", &path, None).await {
+            Ok(data) => {
+                let amount = data["data"]["amount"].as_str().unwrap_or("?");
+                let currency = data["data"]["currency"].as_str().unwrap_or("USD");
+                results.push(format!("{}: ${} {}", sym, amount, currency));
+            }
+            Err(e) => {
+                results.push(format!("{}: error — {}", sym, e));
+            }
+        }
+    }
+
+    Ok(format!("Current Prices:\n{}", results.join("\n")))
+}
+
+// ── coinbase_balance ───────────────────────────────────────────────────
+
+async fn execute_coinbase_balance(
+    args: &serde_json::Value,
+    creds: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let filter_currency = args["currency"].as_str().map(|s| s.to_uppercase());
+
+    info!("[skill:coinbase] Fetching account balances");
+
+    let data = cdp_request(creds, "GET", "/v2/accounts?limit=100", None).await?;
+    let accounts = data["data"].as_array().ok_or("Unexpected response format")?;
+
+    let mut lines = Vec::new();
+    let mut total_usd = 0.0_f64;
+
+    for acct in accounts {
+        let currency = acct["balance"]["currency"].as_str().unwrap_or("?");
+        let amount = acct["balance"]["amount"].as_str().unwrap_or("0");
+        let native_amount = acct["native_balance"]["amount"].as_str().unwrap_or("0");
+
+        // Skip zero balances unless specifically requested
+        let amt: f64 = amount.parse().unwrap_or(0.0);
+        if amt == 0.0 && filter_currency.is_none() {
+            continue;
+        }
+
+        if let Some(ref fc) = filter_currency {
+            if currency.to_uppercase() != *fc {
+                continue;
+            }
+        }
+
+        let usd: f64 = native_amount.parse().unwrap_or(0.0);
+        total_usd += usd;
+        let name = acct["name"].as_str().unwrap_or(currency);
+        lines.push(format!("  {} ({}): {} {} ≈ ${:.2} USD", name, currency, amount, currency, usd));
+    }
+
+    if lines.is_empty() {
+        Ok("No non-zero balances found.".into())
+    } else {
+        Ok(format!("Account Balances:\n{}\n\nTotal: ${:.2} USD", lines.join("\n"), total_usd))
+    }
+}
+
+// ── coinbase_wallet_create ─────────────────────────────────────────────
+
+async fn execute_coinbase_wallet_create(
+    args: &serde_json::Value,
+    creds: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let name = args["name"].as_str().ok_or("coinbase_wallet_create: missing 'name'")?;
+
+    info!("[skill:coinbase] Creating wallet: {}", name);
+
+    let body = serde_json::json!({
+        "name": name
+    });
+
+    let data = cdp_request(creds, "POST", "/v2/accounts", Some(&body)).await?;
+    let id = data["data"]["id"].as_str().unwrap_or("?");
+    let created_name = data["data"]["name"].as_str().unwrap_or(name);
+    let currency = data["data"]["currency"]["code"].as_str().unwrap_or("?");
+
+    Ok(format!("Wallet created!\n  Name: {}\n  ID: {}\n  Currency: {}", created_name, id, currency))
+}
+
+// ── coinbase_trade ─────────────────────────────────────────────────────
+
+async fn execute_coinbase_trade(
+    args: &serde_json::Value,
+    creds: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let side = args["side"].as_str().ok_or("coinbase_trade: missing 'side'")?;
+    let product_id = args["product_id"].as_str().ok_or("coinbase_trade: missing 'product_id'")?;
+    let amount = args["amount"].as_str().ok_or("coinbase_trade: missing 'amount'")?;
+    let order_type = args["order_type"].as_str().unwrap_or("market");
+    let limit_price = args["limit_price"].as_str();
+    let reason = args["reason"].as_str().unwrap_or("No reason provided");
+
+    info!("[skill:coinbase] Trade {} {} {} ({}). Reason: {}", side, amount, product_id, order_type, reason);
+
+    // Build order config based on type
+    let order_configuration = if order_type == "limit" {
+        let price = limit_price.ok_or("coinbase_trade: limit orders require 'limit_price'")?;
+        if side == "buy" {
+            serde_json::json!({
+                "limit_limit_gtc": {
+                    "base_size": amount,
+                    "limit_price": price
+                }
+            })
+        } else {
+            serde_json::json!({
+                "limit_limit_gtc": {
+                    "base_size": amount,
+                    "limit_price": price
+                }
+            })
+        }
+    } else {
+        // Market order
+        if side == "buy" {
+            serde_json::json!({
+                "market_market_ioc": {
+                    "quote_size": amount
+                }
+            })
+        } else {
+            serde_json::json!({
+                "market_market_ioc": {
+                    "base_size": amount
+                }
+            })
+        }
+    };
+
+    let body = serde_json::json!({
+        "client_order_id": uuid::Uuid::new_v4().to_string(),
+        "product_id": product_id,
+        "side": side.to_uppercase(),
+        "order_configuration": order_configuration
+    });
+
+    let data = cdp_request(creds, "POST", "/api/v3/brokerage/orders", Some(&body)).await?;
+
+    let success = data["success"].as_bool().unwrap_or(false);
+    let order_id = data["success_response"]["order_id"].as_str()
+        .or_else(|| data["order_id"].as_str())
+        .unwrap_or("?");
+
+    if success || data.get("success_response").is_some() {
+        Ok(format!(
+            "Order placed successfully!\n  Side: {}\n  Product: {}\n  Amount: {}\n  Type: {}\n  Order ID: {}\n  Reason: {}",
+            side, product_id, amount, order_type, order_id, reason
+        ))
+    } else {
+        let err_msg = data["error_response"]["message"].as_str()
+            .or_else(|| data["message"].as_str())
+            .unwrap_or("Unknown error");
+        Err(format!("Trade failed: {} — Full response: {}", err_msg, serde_json::to_string_pretty(&data).unwrap_or_default()))
+    }
+}
+
+// ── coinbase_transfer ──────────────────────────────────────────────────
+
+async fn execute_coinbase_transfer(
+    args: &serde_json::Value,
+    creds: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let currency = args["currency"].as_str().ok_or("coinbase_transfer: missing 'currency'")?;
+    let amount = args["amount"].as_str().ok_or("coinbase_transfer: missing 'amount'")?;
+    let to_address = args["to_address"].as_str().ok_or("coinbase_transfer: missing 'to_address'")?;
+    let network = args["network"].as_str();
+    let reason = args["reason"].as_str().unwrap_or("No reason provided");
+
+    info!("[skill:coinbase] Transfer {} {} to {} (reason: {})", amount, currency, &to_address[..to_address.len().min(12)], reason);
+
+    // First, find the account for this currency
+    let accounts_data = cdp_request(creds, "GET", "/v2/accounts?limit=100", None).await?;
+    let accounts = accounts_data["data"].as_array().ok_or("Cannot list accounts")?;
+
+    let account_id = accounts.iter()
+        .find(|a| {
+            a["balance"]["currency"].as_str().unwrap_or("").eq_ignore_ascii_case(currency)
+        })
+        .and_then(|a| a["id"].as_str())
+        .ok_or(format!("No account found for currency: {}", currency))?;
+
+    let mut body = serde_json::json!({
+        "type": "send",
+        "to": to_address,
+        "amount": amount,
+        "currency": currency.to_uppercase(),
+        "description": reason
+    });
+
+    if let Some(net) = network {
+        body["network"] = serde_json::json!(net);
+    }
+
+    let path = format!("/v2/accounts/{}/transactions", account_id);
+    let data = cdp_request(creds, "POST", &path, Some(&body)).await?;
+
+    let tx_id = data["data"]["id"].as_str().unwrap_or("?");
+    let status = data["data"]["status"].as_str().unwrap_or("pending");
+    let native_amount = data["data"]["native_amount"]["amount"].as_str().unwrap_or("?");
+
+    Ok(format!(
+        "Transfer initiated!\n  {} {} → {}\n  Status: {}\n  TX ID: {}\n  USD value: ${}\n  Reason: {}",
+        amount, currency.to_uppercase(), &to_address[..to_address.len().min(20)],
+        status, tx_id, native_amount, reason
+    ))
 }

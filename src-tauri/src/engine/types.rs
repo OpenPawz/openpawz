@@ -781,10 +781,157 @@ impl ToolDefinition {
                 "rest_api" => { tools.push(Self::rest_api_call()); }
                 "webhook" => { tools.push(Self::webhook_send()); }
                 "image_gen" => { tools.push(Self::image_generate()); }
+                "coinbase" => {
+                    tools.push(Self::coinbase_prices());
+                    tools.push(Self::coinbase_balance());
+                    tools.push(Self::coinbase_wallet_create());
+                    tools.push(Self::coinbase_trade());
+                    tools.push(Self::coinbase_transfer());
+                }
                 _ => {}
             }
         }
         tools
+    }
+
+    // ── Coinbase CDP tools ─────────────────────────────────────────────
+
+    pub fn coinbase_prices() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "coinbase_prices".into(),
+                description: "Get current spot prices for one or more crypto assets from Coinbase. Returns USD prices. Use this to check market conditions before trading.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "symbols": {
+                            "type": "string",
+                            "description": "Comma-separated crypto symbols (e.g. 'BTC,ETH,SOL'). Use standard ticker symbols."
+                        }
+                    },
+                    "required": ["symbols"]
+                }),
+            },
+        }
+    }
+
+    pub fn coinbase_balance() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "coinbase_balance".into(),
+                description: "Check wallet/account balances on Coinbase. Returns all non-zero balances with USD values.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "currency": {
+                            "type": "string",
+                            "description": "Optional: filter to a specific currency (e.g. 'BTC'). Omit to see all balances."
+                        }
+                    },
+                    "required": []
+                }),
+            },
+        }
+    }
+
+    pub fn coinbase_wallet_create() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "coinbase_wallet_create".into(),
+                description: "Create a new Coinbase wallet. This creates an MPC-secured wallet on the Coinbase platform.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "Human-readable name for the wallet (e.g. 'Trading Wallet', 'Savings')"
+                        }
+                    },
+                    "required": ["name"]
+                }),
+            },
+        }
+    }
+
+    pub fn coinbase_trade() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "coinbase_trade".into(),
+                description: "Execute a crypto trade on Coinbase. REQUIRES USER APPROVAL. Always explain your reasoning and include risk parameters before calling this.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "side": {
+                            "type": "string",
+                            "enum": ["buy", "sell"],
+                            "description": "Trade direction: 'buy' or 'sell'"
+                        },
+                        "product_id": {
+                            "type": "string",
+                            "description": "Trading pair (e.g. 'BTC-USD', 'ETH-USD', 'SOL-USD')"
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Amount in quote currency for buys (e.g. '100' for $100 of BTC) or base currency for sells (e.g. '0.5' for 0.5 BTC)"
+                        },
+                        "order_type": {
+                            "type": "string",
+                            "enum": ["market", "limit"],
+                            "description": "Order type: 'market' (immediate) or 'limit' (at specific price). Default: market"
+                        },
+                        "limit_price": {
+                            "type": "string",
+                            "description": "Limit price (required if order_type is 'limit')"
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Your analysis and reasoning for this trade. This is shown to the user for approval."
+                        }
+                    },
+                    "required": ["side", "product_id", "amount", "reason"]
+                }),
+            },
+        }
+    }
+
+    pub fn coinbase_transfer() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "coinbase_transfer".into(),
+                description: "Send crypto from your Coinbase account to an external address. REQUIRES USER APPROVAL. Double-check addresses — crypto transfers are irreversible.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "currency": {
+                            "type": "string",
+                            "description": "Currency to send (e.g. 'BTC', 'ETH', 'USDC')"
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Amount to send (e.g. '0.01')"
+                        },
+                        "to_address": {
+                            "type": "string",
+                            "description": "Destination wallet address"
+                        },
+                        "network": {
+                            "type": "string",
+                            "description": "Network to send on (e.g. 'base', 'ethereum', 'bitcoin'). Default: native network for the currency."
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Reason for this transfer"
+                        }
+                    },
+                    "required": ["currency", "amount", "to_address", "reason"]
+                }),
+            },
+        }
     }
 }
 
