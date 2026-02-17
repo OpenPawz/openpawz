@@ -236,11 +236,13 @@ pub async fn engine_chat_send(
     // If the user message has attachments, replace the last (user) message with
     // content blocks so the provider can see images and text files.
     if !request.attachments.is_empty() {
+        info!("[engine] Processing {} attachment(s)", request.attachments.len());
         if let Some(last_msg) = messages.last_mut() {
             if last_msg.role == Role::User {
                 let mut blocks = vec![ContentBlock::Text { text: request.message.clone() }];
                 for att in &request.attachments {
                     let label = att.name.as_deref().unwrap_or("attachment");
+                    info!("[engine] Attachment '{}' type={} size={}B", label, att.mime_type, att.content.len());
                     if att.mime_type.starts_with("image/") {
                         // Images → send as vision content blocks (native LLM vision)
                         let data_url = format!("data:{};base64,{}", att.mime_type, att.content);
