@@ -3,7 +3,7 @@
 // Supports drag-and-drop, live feed, cron scheduling, and agent auto-work.
 
 import { pawEngine } from '../engine';
-import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority } from '../engine';
+import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority, TaskAgent } from '../engine';
 import { showToast } from '../components/toast';
 
 const $ = (id: string) => document.getElementById(id);
@@ -20,6 +20,7 @@ let _activity: EngineTaskActivity[] = [];
 let _editingTask: EngineTask | null = null;
 let _feedFilter: 'all' | 'tasks' | 'status' = 'all';
 let _agents: { id: string; name: string; avatar: string }[] = [];
+let _modalSelectedAgents: TaskAgent[] = [];
 
 const COLUMNS: TaskStatus[] = ['inbox', 'assigned', 'in_progress', 'review', 'blocked', 'done'];
 
@@ -75,19 +76,27 @@ function createTaskCard(task: EngineTask): HTMLElement {
   card.dataset.taskId = task.id;
 
   const priorityColor = task.priority;
-  const agentHtml = task.assigned_agent
-    ? `<span class="task-card-agent">${escHtml(task.assigned_agent)}</span>`
-    : '';
+
+  // Show all assigned agents (multi-agent)
+  const agents = task.assigned_agents?.length
+    ? task.assigned_agents
+    : task.assigned_agent ? [{ agent_id: task.assigned_agent, role: 'lead' }] : [];
+  const agentHtml = agents.map(a =>
+    `<span class="task-card-agent${a.role === 'lead' ? ' lead' : ''}" title="${escHtml(a.role)}">${escHtml(a.agent_id)}</span>`
+  ).join('');
+
   const cronHtml = task.cron_enabled && task.cron_schedule
     ? `<span class="task-card-cron">🔄 ${escHtml(task.cron_schedule)}</span>`
     : '';
   const timeAgo = formatTimeAgo(task.updated_at || task.created_at);
   
-  // Show run button for assigned/in_progress tasks
-  const canRun = task.assigned_agent && ['assigned', 'inbox'].includes(task.status);
+  // Show run button for tasks with agents
+  const hasAgents = agents.length > 0;
+  const canRun = hasAgents && ['assigned', 'inbox'].includes(task.status);
   const runBtnHtml = canRun
     ? `<button class="task-card-action run-btn" data-action="run" title="Run now">▶</button>`
     : '';
+  const agentCountHtml = agents.length > 1 ? `<span class="task-card-agent-count">${agents.length} agents</span>` : '';
 
   card.innerHTML = `
     <div class="task-card-actions">
@@ -98,6 +107,7 @@ function createTaskCard(task: EngineTask): HTMLElement {
     <div class="task-card-meta">
       <span class="task-card-priority ${priorityColor}"></span>
       ${agentHtml}
+      ${agentCountHtml}
       ${cronHtml}
       <span style="margin-left:auto">${timeAgo}</span>
     </div>
@@ -209,18 +219,27 @@ function openTaskModal(task?: EngineTask) {
   if (inputCron) inputCron.value = task?.cron_schedule || '';
   if (inputCronEnabled) inputCronEnabled.checked = task?.cron_enabled || false;
   if (deleteBtn) deleteBtn.style.display = isNew ? 'none' : '';
-  if (runBtn) runBtn.style.display = (task && task.assigned_agent) ? '' : 'none';
+  const hasAgents = task?.assigned_agents?.length || task?.assigned_agent;
+  if (runBtn) runBtn.style.display = hasAgents ? '' : 'none';
 
-  // Populate agent dropdown
+  // Multi-agent picker: populate selected agents from task
+  _modalSelectedAgents = task?.assigned_agents?.length
+    ? [...task.assigned_agents]
+    : task?.assigned_agent
+      ? [{ agent_id: task.assigned_agent, role: 'lead' }]
+      : [];
+  renderAgentPicker();
+
+  // Also set legacy dropdown for backward compat
   if (inputAgent) {
-    inputAgent.innerHTML = '<option value="">Unassigned</option>';
+    inputAgent.innerHTML = '<option value="">+ Add agent</option>';
     for (const agent of _agents) {
       const opt = document.createElement('option');
       opt.value = agent.id;
       opt.textContent = `${agent.avatar} ${agent.name}`;
-      if (task?.assigned_agent === agent.id) opt.selected = true;
       inputAgent.appendChild(opt);
     }
+    inputAgent.value = '';
   }
 
   // Load activity for existing tasks
@@ -232,6 +251,44 @@ function openTaskModal(task?: EngineTask) {
   }
 
   modal.style.display = 'flex';
+}
+
+function renderAgentPicker() {
+  const container = $('tasks-modal-agents-tags');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const ta of _modalSelectedAgents) {
+    const agent = _agents.find(a => a.id === ta.agent_id);
+    const tag = document.createElement('span');
+    tag.className = `agent-tag${ta.role === 'lead' ? ' lead' : ''}`;
+    tag.innerHTML = `${agent ? agent.avatar + ' ' : ''}${escHtml(ta.agent_id)}${ta.role === 'lead' ? ' ★' : ''}<button class="agent-tag-remove" title="Remove">×</button>`;
+
+    // Click tag → toggle lead/collaborator
+    tag.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).classList.contains('agent-tag-remove')) return;
+      ta.role = ta.role === 'lead' ? 'collaborator' : 'lead';
+      renderAgentPicker();
+    });
+
+    // Remove button
+    tag.querySelector('.agent-tag-remove')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      _modalSelectedAgents = _modalSelectedAgents.filter(a => a.agent_id !== ta.agent_id);
+      renderAgentPicker();
+    });
+
+    container.appendChild(tag);
+  }
+  if (!_modalSelectedAgents.length) {
+    container.innerHTML = '<span class="agent-tag-empty">No agents assigned</span>';
+  }
+}
+
+function addAgentToTask(agentId: string) {
+  if (!agentId || _modalSelectedAgents.some(a => a.agent_id === agentId)) return;
+  const role = _modalSelectedAgents.length === 0 ? 'lead' : 'collaborator';
+  _modalSelectedAgents.push({ agent_id: agentId, role });
+  renderAgentPicker();
 }
 
 async function loadTaskActivity(taskId: string) {
@@ -265,20 +322,23 @@ async function saveTask() {
   const inputTitle = $('tasks-modal-input-title') as HTMLInputElement;
   const inputDesc = $('tasks-modal-input-desc') as HTMLTextAreaElement;
   const inputPriority = $('tasks-modal-input-priority') as HTMLSelectElement;
-  const inputAgent = $('tasks-modal-input-agent') as HTMLSelectElement;
   const inputCron = $('tasks-modal-input-cron') as HTMLInputElement;
   const inputCronEnabled = $('tasks-modal-input-cron-enabled') as HTMLInputElement;
 
   const title = inputTitle?.value.trim();
   if (!title) { showToast('Task title is required', 'warning'); return; }
 
-  const agentId = inputAgent?.value || undefined;
   const cronSchedule = inputCron?.value.trim() || undefined;
   const cronEnabled = inputCronEnabled?.checked || false;
 
+  // Primary agent = first lead or first agent in the multi-select
+  const primaryAgent = _modalSelectedAgents.find(a => a.role === 'lead')
+    || _modalSelectedAgents[0];
+  const agentId = primaryAgent?.agent_id;
+
   // Determine status
   let status: TaskStatus = _editingTask?.status || 'inbox';
-  if (!_editingTask && agentId) status = 'assigned';
+  if (!_editingTask && _modalSelectedAgents.length > 0) status = 'assigned';
 
   const now = new Date().toISOString();
   const task: EngineTask = {
@@ -288,6 +348,7 @@ async function saveTask() {
     status,
     priority: (inputPriority?.value || 'medium') as TaskPriority,
     assigned_agent: agentId,
+    assigned_agents: _modalSelectedAgents,
     session_id: _editingTask?.session_id,
     cron_schedule: cronSchedule,
     cron_enabled: cronEnabled,
@@ -300,9 +361,17 @@ async function saveTask() {
   try {
     if (_editingTask) {
       await pawEngine.taskUpdate(task);
+      // Save multi-agent assignments
+      if (_modalSelectedAgents.length > 0) {
+        await pawEngine.taskSetAgents(task.id, _modalSelectedAgents);
+      }
       showToast('Task updated', 'success');
     } else {
       await pawEngine.taskCreate(task);
+      // Save multi-agent assignments for new task
+      if (_modalSelectedAgents.length > 0) {
+        await pawEngine.taskSetAgents(task.id, _modalSelectedAgents);
+      }
       showToast('Task created', 'success');
     }
     closeTaskModal();
@@ -451,6 +520,15 @@ export function bindTaskEvents() {
     if (_editingTask) {
       closeTaskModal();
       runTask(_editingTask.id);
+    }
+  });
+
+  // Agent dropdown → add agent tag
+  $('tasks-modal-input-agent')?.addEventListener('change', () => {
+    const sel = $('tasks-modal-input-agent') as HTMLSelectElement;
+    if (sel?.value) {
+      addAgentToTask(sel.value);
+      sel.value = ''; // reset dropdown
     }
   });
 

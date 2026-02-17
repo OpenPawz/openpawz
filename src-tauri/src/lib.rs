@@ -2665,6 +2665,7 @@ pub fn run() {
             engine::commands::engine_task_delete,
             engine::commands::engine_task_move,
             engine::commands::engine_task_activity,
+            engine::commands::engine_task_set_agents,
             engine::commands::engine_task_run,
             engine::commands::engine_tasks_cron_tick,
         ])

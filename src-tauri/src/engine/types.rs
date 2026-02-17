@@ -690,6 +690,7 @@ pub struct ChatRequest {
     pub temperature: Option<f64>,
     pub provider_id: Option<String>,
     pub tools_enabled: Option<bool>,
+    pub agent_id: Option<String>,
     #[serde(default)]
     pub attachments: Vec<ChatAttachment>,
 }
@@ -849,7 +850,9 @@ pub struct Task {
     pub description: String,
     pub status: String,         // inbox, assigned, in_progress, review, blocked, done
     pub priority: String,       // low, medium, high, urgent
-    pub assigned_agent: Option<String>,
+    pub assigned_agent: Option<String>,   // legacy single agent (kept for simple cases)
+    #[serde(default)]
+    pub assigned_agents: Vec<TaskAgent>,  // multi-agent assignments
     pub session_id: Option<String>,
     pub cron_schedule: Option<String>,  // e.g. "every 1h", "daily 09:00", cron expression
     pub cron_enabled: bool,
@@ -857,6 +860,12 @@ pub struct Task {
     pub next_run_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaskAgent {
+    pub agent_id: String,
+    pub role: String,           // lead, collaborator
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

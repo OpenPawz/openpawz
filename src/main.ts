@@ -221,7 +221,13 @@ function switchView(viewName: string) {
       case 'foundry': FoundryModule.loadModels(); FoundryModule.loadModes(); FoundryModule.loadAgents(); break;
       case 'nodes': NodesModule.loadNodes(); NodesModule.loadPairingRequests(); break;
       case 'memory': MemoryPalaceModule.loadMemoryPalace(); loadMemory(); break;
-      case 'tasks': TasksModule.loadTasks(); break;
+      case 'tasks': {
+        // Pass agents list to tasks module before loading
+        const agentsList = AgentsModule.getAgents();
+        TasksModule.setAgents(agentsList.map(a => ({ id: a.id, name: a.name, avatar: a.avatar })));
+        TasksModule.loadTasks();
+        break;
+      }
       case 'mail': MailModule.loadMail(); loadSpaceCron('mail'); break;
       case 'settings': syncSettingsForm(); loadGatewayConfig(); SettingsModule.loadSettings(); SettingsModule.startUsageAutoRefresh(); loadActiveSettingsTab(); break;
       default: break;

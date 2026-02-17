@@ -677,10 +677,12 @@
                     </select>
                   </div>
                   <div class="tasks-modal-field">
-                    <label>Assign Agent</label>
-                    <select id="tasks-modal-input-agent" class="input">
-                      <option value="">Unassigned</option>
+                    <label>Assign Agents</label>
+                    <div id="tasks-modal-agents-tags" class="agent-tags-container"></div>
+                    <select id="tasks-modal-input-agent" class="input" style="margin-top:6px">
+                      <option value="">+ Add agent</option>
                     </select>
+                    <div class="tasks-modal-hint">Click tag to toggle lead ★ / collaborator. First agent is lead by default.</div>
                   </div>
                 </div>
                 <div class="tasks-modal-field">

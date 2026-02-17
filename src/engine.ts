@@ -31,6 +31,7 @@ export interface EngineChatRequest {
   temperature?: number;
   provider_id?: string;
   tools_enabled?: boolean;
+  agent_id?: string;
   attachments?: Array<{ mimeType: string; content: string }>;
 }
 
@@ -167,7 +168,8 @@ export interface EngineTask {
   description: string;
   status: TaskStatus;
   priority: TaskPriority;
-  assigned_agent?: string;
+  assigned_agent?: string;        // legacy single agent
+  assigned_agents: TaskAgent[];   // multi-agent assignments
   session_id?: string;
   cron_schedule?: string;
   cron_enabled: boolean;
@@ -175,6 +177,11 @@ export interface EngineTask {
   next_run_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface TaskAgent {
+  agent_id: string;
+  role: string;   // 'lead' | 'collaborator'
 }
 
 export interface EngineTaskActivity {
@@ -414,6 +421,10 @@ class PawEngineClient {
 
   async taskActivity(taskId?: string, limit?: number): Promise<EngineTaskActivity[]> {
     return invoke<EngineTaskActivity[]>('engine_task_activity', { taskId, limit });
+  }
+
+  async taskSetAgents(taskId: string, agents: TaskAgent[]): Promise<void> {
+    return invoke('engine_task_set_agents', { taskId, agents });
   }
 
   async taskRun(taskId: string): Promise<string> {

@@ -2214,6 +2214,64 @@ button:focus:not(:focus-visible) { outline: none; }
   white-space: nowrap;
   cursor: pointer;
 }
+.tasks-modal-hint {
+  font-size: 11px;
+  color: var(--text-tertiary, #666);
+  margin-top: 4px;
+}
+/* Agent tags in task modal */
+.agent-tags-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 28px;
+  padding: 4px 0;
+}
+.agent-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: var(--bg-secondary, #2a2a2a);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  font-size: 12px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.agent-tag:hover { border-color: var(--accent); }
+.agent-tag.lead {
+  border-color: var(--accent);
+  background: rgba(0,115,234,0.12);
+}
+.agent-tag-remove {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+}
+.agent-tag-remove:hover { color: var(--error, #ef4444); }
+.agent-tag-empty {
+  font-size: 12px;
+  color: var(--text-tertiary, #666);
+  padding: 4px 0;
+}
+/* Multi-agent badge on task cards */
+.task-card-agent.lead {
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.task-card-agent-count {
+  font-size: 10px;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  background: var(--bg-secondary, #2a2a2a);
+  border-radius: 8px;
+}
 .tasks-modal-footer {
   display: flex;
   align-items: center;

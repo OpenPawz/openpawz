@@ -20,13 +20,13 @@ Zero network hop, zero open ports, zero auth tokens to manage.
 - **Phase 3** (2026-02-18): Soul system (agent personality files), Memory system (long-term semantic memory)
 - **Phase 4** (2026-02-18): Web browsing tools (search, read, screenshot, browse), Soul/Memory self-evolution tools
 - **Phase 5** (2026-02-16): Skill Vault (37 skills across 9 categories), credential encryption, instruction injection, advanced editing, Pawz rebrand
-- **Phase 6** (2026-02-16): Tasks Hub — Kanban board, agent auto-work, cron scheduling, live activity feed
+- **Phase 6** (2026-02-16): Tasks Hub — Kanban board, multi-agent parallel execution, cron scheduling, live activity feed
 
 ---
 
 ## Phase 6 Features
 
-### Tasks Hub — Kanban Board with Agent Auto-Work ✅
+### Tasks Hub — Kanban Board with Multi-Agent Execution ✅
 
 Replaces the old Build IDE view with a full Kanban task board. Agents autonomously execute tasks, move them through status columns, and report results.
 
@@ -37,16 +37,26 @@ Replaces the old Build IDE view with a full Kanban task board. Agents autonomous
 - **Task detail modal:** Title, description, priority picker, agent assignment, cron schedule, activity log
 - **Stats bar:** Total tasks, active tasks, scheduled (cron) tasks
 
-#### Agent Auto-Work ✅
-- **`engine_task_run` command:** Spawns full agent loop for a task in background
-  - Creates/reuses dedicated session per task (`task-{id}`)
-  - Composes system prompt: base + soul files + skill instructions + task context
-  - Stores user message with task title + description
-  - Loads full conversation history via `load_conversation()`
-  - Runs `agent_loop::run_agent_turn()` asynchronously
-  - On completion: moves task → "review", logs `agent_completed` activity
-  - On error: moves task → "blocked", logs `agent_error` activity
+#### Multi-Agent Execution ✅
+- **`engine_task_run` command:** Spawns parallel agent loops for all assigned agents
+  - Reads assigned agents from `task_agents` junction table (fallback: legacy `assigned_agent`, fallback: `"default"`)
+  - Per-agent dedicated session: `eng-task-{task_id}-{agent_id}`
+  - Per-agent soul context via `compose_agent_context(agent_id)` — each agent gets its own personality
+  - Multi-agent context note injected when >1 agent: "You are agent '{id}', one of {N} agents working collaboratively"
+  - Spawns parallel `tauri::async_runtime::spawn` handles for each agent
+  - Coordinator task awaits all handles, updates final status:
+    - Any agent succeeds → task moves to "review"
+    - All agents fail → task moves to "blocked"
+  - Logs `agent_started`, `agent_completed`/`agent_error` activity per agent
   - Emits `task-updated` Tauri event for real-time UI updates
+- **Agent roles:** Lead (primary agent, ★ badge) and Collaborator
+  - First assigned agent auto-gets "lead" role
+  - Click tag to toggle lead/collaborator in UI
+- **`engine_task_set_agents` command:** Sets agent list for a task
+  - Clears + inserts into `task_agents` junction table
+  - Auto-updates legacy `assigned_agent` field to lead/first agent
+  - Logs "assigned" activity
+- **`engine_chat_send`:** Accepts optional `agent_id` parameter (no longer hardcoded to "default")
 
 #### Cron Scheduling ✅
 - **Schedule formats:** `every Xm` (minutes), `every Xh` (hours), `daily HH:MM`
@@ -62,9 +72,18 @@ Replaces the old Build IDE view with a full Kanban task board. Agents autonomous
 - **Filter tabs:** All / Tasks / Status — filter activity by type
 - **Relative timestamps:** "2m ago", "1h ago", "3d ago"
 
+#### Multi-Agent UI ✅
+- **Tag-style agent picker:** Click to add agents from dropdown, tags show name + avatar
+- **Lead indicator:** ★ on lead agent tag, blue accent border
+- **Role toggle:** Click tag to switch between lead/collaborator
+- **Remove:** × button on each tag
+- **Card badges:** All assigned agents shown on task cards with lead styling + count badge when >1
+- **Agents passed from main.ts:** `AgentsModule.getAgents()` → map to `{id, name, avatar}` → `TasksModule.setAgents()`
+
 #### Database Tables ✅
 - **`tasks`** (13 columns): id, title, description, status, priority, assigned_agent, session_id, cron_schedule, cron_enabled, last_run_at, next_run_at, created_at, updated_at
 - **`task_activity`** (6 columns): id, task_id, kind, agent, content, created_at
+- **`task_agents`** (4 columns): task_id, agent_id, role, added_at — junction table with composite PK (task_id, agent_id)
 
 ---
 
@@ -281,7 +300,7 @@ User types message
 ### Provider Resolution
 From model name prefix: `claude*`→Anthropic, `gemini*`→Google, `gpt*`/`o1*`/`o3*`→OpenAI. Fallback→default→first configured.
 
-### Database Schema (10 tables in `~/.paw/engine.db`)
+### Database Schema (11 tables in `~/.paw/engine.db`)
 | Table | Purpose |
 |-------|---------|
 | `sessions` | Session metadata (id, model, system_prompt, timestamps) |
@@ -294,8 +313,9 @@ From model name prefix: `claude*`→Anthropic, `gemini*`→Google, `gpt*`/`o1*`/
 | `skill_custom_instructions` | User-edited skill instructions |
 | `tasks` | Kanban tasks (title, description, status, priority, agent, cron schedule, timestamps) |
 | `task_activity` | Activity log entries per task (kind, agent, content, timestamp) |
+| `task_agents` | Multi-agent junction table (task_id, agent_id, role, added_at) |
 
-### 39 Tauri Commands
+### 40 Tauri Commands
 **Chat:** `engine_chat_send`, `engine_chat_history`
 **Sessions:** `engine_sessions_list`, `engine_session_rename`, `engine_session_delete`, `engine_session_clear`
 **Config:** `engine_get_config`, `engine_set_config`, `engine_upsert_provider`, `engine_remove_provider`, `engine_status`
@@ -303,7 +323,7 @@ From model name prefix: `claude*`→Anthropic, `gemini*`→Google, `gpt*`/`o1*`/
 **Agent Files:** `engine_agent_file_list`, `engine_agent_file_get`, `engine_agent_file_set`, `engine_agent_file_delete`
 **Memory:** `engine_memory_store`, `engine_memory_search`, `engine_memory_stats`, `engine_memory_delete`, `engine_memory_list`, `engine_get_memory_config`, `engine_set_memory_config`, `engine_test_embedding`
 **Skills:** `engine_skills_list`, `engine_skill_set_enabled`, `engine_skill_set_credential`, `engine_skill_delete_credential`, `engine_skill_revoke_all`, `engine_skill_get_instructions`, `engine_skill_set_instructions`
-**Tasks:** `engine_tasks_list`, `engine_task_create`, `engine_task_update`, `engine_task_delete`, `engine_task_move`, `engine_task_activity`, `engine_task_run`, `engine_tasks_cron_tick`
+**Tasks:** `engine_tasks_list`, `engine_task_create`, `engine_task_update`, `engine_task_delete`, `engine_task_move`, `engine_task_activity`, `engine_task_run`, `engine_tasks_cron_tick`, `engine_task_set_agents`
 
 ---
 
@@ -346,11 +366,12 @@ git add -A && git commit -m "..." && git push
 ## Key Technical Notes
 
 - **Tauri lib name:** `paw_temp_lib` (Cargo.toml)
-- **Engine DB:** `~/.paw/engine.db` (SQLite WAL, 10 tables)
+- **Engine DB:** `~/.paw/engine.db` (SQLite WAL, 11 tables)
 - **Event channel:** `engine-event` (single Tauri event for all engine events)
 - **Session prefix:** `eng-` (not `paw-`, which gets filtered)
+- **Task sessions:** `eng-task-{task_id}-{agent_id}` — per-agent session per task
 - **Google quirk:** Rejects `additionalProperties`/`$schema`/`$ref` — `sanitize_schema()` strips these
 - **Vault encryption:** XOR with 32-byte random key in OS keychain (`paw-skill-vault` service)
 - **Web browsing:** headless_chrome v1 with OnceLock singleton browser instance
-- **Total engine Rust LOC:** ~5,768 across 9 files
-- **Total engine TS LOC:** ~1,648 across 5 files
+- **Total engine Rust LOC:** ~6,736 across 10 files
+- **Total engine TS LOC:** ~1,000 across engine.ts + tasks.ts + main.ts bridge

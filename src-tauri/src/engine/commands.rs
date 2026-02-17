@@ -158,7 +158,7 @@ pub async fn engine_chat_send(
     });
 
     // Compose agent context (soul files) into the system prompt
-    let agent_id = "default"; // TODO: support multi-agent selection from frontend
+    let agent_id = request.agent_id.as_deref().unwrap_or("default");
     let agent_context = state.store.compose_agent_context(agent_id).unwrap_or(None);
     if let Some(ref ac) = agent_context {
         info!("[engine] Agent context loaded ({} chars) for agent '{}'", ac.len(), agent_id);
@@ -818,8 +818,31 @@ pub fn engine_task_activity(
     }
 }
 
-/// Run a task: send it to an agent and stream the result.
-/// Creates a dedicated session for the task and kicks off the agent loop.
+/// Set agents assigned to a task (multi-agent support).
+#[tauri::command]
+pub fn engine_task_set_agents(
+    state: State<'_, EngineState>,
+    task_id: String,
+    agents: Vec<TaskAgent>,
+) -> Result<(), String> {
+    info!("[engine] Setting {} agent(s) for task {}", agents.len(), task_id);
+    state.store.set_task_agents(&task_id, &agents)?;
+
+    // Log activity
+    let agent_names: Vec<&str> = agents.iter().map(|a| a.agent_id.as_str()).collect();
+    let aid = uuid::Uuid::new_v4().to_string();
+    state.store.add_task_activity(
+        &aid, &task_id, "assigned", None,
+        &format!("Agents assigned: {}", agent_names.join(", ")),
+    )?;
+
+    Ok(())
+}
+
+/// Run a task: send it to agents and stream the results.
+/// Multi-agent: spawns parallel agent loops for all assigned agents.
+/// Each agent gets its own session (`eng-task-{task_id}-{agent_id}`)
+/// and its own soul context.
 #[tauri::command]
 pub async fn engine_task_run(
     app_handle: tauri::AppHandle,
@@ -833,99 +856,55 @@ pub async fn engine_task_run(
     let task = tasks.into_iter().find(|t| t.id == task_id)
         .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
-    // Resolve provider + model
-    let (provider_config, model) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
-        let model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
-        let provider = cfg.providers.iter()
-            .find(|p| {
-                if model.starts_with("claude") || model.starts_with("anthropic") {
-                    p.kind == ProviderKind::Anthropic
-                } else if model.starts_with("gemini") || model.starts_with("google") {
-                    p.kind == ProviderKind::Google
-                } else if model.starts_with("gpt") || model.starts_with("o1") || model.starts_with("o3") {
-                    p.kind == ProviderKind::OpenAI
-                } else {
-                    false
-                }
-            })
-            .or_else(|| {
-                cfg.default_provider.as_ref()
-                    .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp))
-            })
-            .or_else(|| cfg.providers.first())
-            .cloned();
-        match provider {
-            Some(p) => (p, model),
-            None => return Err("No AI provider configured".into()),
-        }
+    // Determine which agents to run
+    // Multi-agent: use task_agents table; fallback to legacy assigned_agent
+    let agent_ids: Vec<String> = if !task.assigned_agents.is_empty() {
+        task.assigned_agents.iter().map(|a| a.agent_id.clone()).collect()
+    } else if let Some(ref agent) = task.assigned_agent {
+        vec![agent.clone()]
+    } else {
+        vec!["default".to_string()]
     };
 
-    // Create or reuse a session for this task
-    let session_id = task.session_id.clone().unwrap_or_else(|| format!("eng-task-{}", task.id));
-    if state.store.get_session(&session_id).ok().flatten().is_none() {
-        state.store.create_session(&session_id, &model, None)?;
-    }
+    info!("[engine] Running task '{}' with {} agent(s): {:?}", task.title, agent_ids.len(), agent_ids);
 
     // Update task status to in_progress
     {
         let mut t = task.clone();
         t.status = "in_progress".to_string();
-        t.session_id = Some(session_id.clone());
         state.store.update_task(&t)?;
     }
 
-    // Log activity
-    let aid = uuid::Uuid::new_v4().to_string();
-    let agent_name = task.assigned_agent.clone().unwrap_or_else(|| "default".to_string());
-    state.store.add_task_activity(
-        &aid, &task_id, "agent_started", Some(&agent_name),
-        &format!("Agent {} started working on: {}", agent_name, task.title),
-    )?;
+    // Log activity for each agent
+    for agent_id in &agent_ids {
+        let aid = uuid::Uuid::new_v4().to_string();
+        state.store.add_task_activity(
+            &aid, &task_id, "agent_started", Some(agent_id),
+            &format!("Agent {} started working on: {}", agent_id, task.title),
+        )?;
+    }
 
-    // Compose prompt from task
+    // Compose task prompt
     let task_prompt = if task.description.is_empty() {
         task.title.clone()
     } else {
         format!("{}\n\n{}", task.title, task.description)
     };
 
-    // Compose system prompt (same logic as chat)
-    let system_prompt = {
-        let cfg = state.config.lock().ok();
-        cfg.and_then(|c| c.default_system_prompt.clone())
+    // Get global config values
+    let (base_system_prompt, max_rounds, tool_timeout) = {
+        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        (
+            cfg.default_system_prompt.clone(),
+            cfg.max_tool_rounds,
+            cfg.tool_timeout_secs,
+        )
     };
-    let agent_id = agent_name.clone();
-    let agent_context = state.store.compose_agent_context(&agent_id).unwrap_or(None);
 
-    // Get skill instructions
+    // Get skill instructions (shared across agents)
     let skill_instructions = skills::get_enabled_skill_instructions(&state.store).unwrap_or_default();
 
-    let mut parts: Vec<String> = Vec::new();
-    if let Some(sp) = &system_prompt { parts.push(sp.clone()); }
-    if let Some(ac) = agent_context { parts.push(ac); }
-    if !skill_instructions.is_empty() { parts.push(skill_instructions); }
-    parts.push(format!("## Current Task\nYou are working on a task from the task board.\n- **Title:** {}\n- **Priority:** {}\n\nComplete this task thoroughly. When done, summarize what you accomplished.", task.title, task.priority));
-
-    let full_system_prompt = parts.join("\n\n---\n\n");
-
-    // Store user message (the task prompt)
-    let user_msg = StoredMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        session_id: session_id.clone(),
-        role: "user".into(),
-        content: task_prompt,
-        tool_calls_json: None,
-        tool_call_id: None,
-        name: None,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-    state.store.add_message(&user_msg)?;
-
-    // Load conversation with full system prompt composition
-    let mut messages = state.store.load_conversation(&session_id, Some(&full_system_prompt))?;
-
-    // Build tools
+    // Build tools (shared across agents)
     let mut all_tools = ToolDefinition::builtins();
     let enabled_ids: Vec<String> = skills::builtin_skills().iter()
         .filter(|s| state.store.is_skill_enabled(&s.id).unwrap_or(false))
@@ -935,79 +914,181 @@ pub async fn engine_task_run(
         all_tools.extend(ToolDefinition::skill_tools(&enabled_ids));
     }
 
-    let max_rounds = {
-        let cfg = state.config.lock().ok();
-        cfg.map(|c| c.max_tool_rounds).unwrap_or(20)
-    };
-    let tool_timeout = {
-        let cfg = state.config.lock().ok();
-        cfg.map(|c| c.tool_timeout_secs).unwrap_or(120)
-    };
-
-    let provider = AnyProvider::from_config(&provider_config);
     let pending = state.pending_approvals.clone();
-    let task_id_clone = task_id.clone();
     let store_path = crate::engine::sessions::engine_db_path();
-    let run_id_clone = run_id.clone();
-    let session_id_clone = session_id.clone();
+    let task_id_for_spawn = task_id.clone();
+    let agent_count = agent_ids.len();
 
-    // Spawn the agent work in background
+    // For each agent, spawn a parallel agent loop
+    let mut handles = Vec::new();
+
+    for agent_id in agent_ids.clone() {
+        // Per-agent session: eng-task-{task_id}-{agent_id}
+        let session_id = format!("eng-task-{}-{}", task.id, agent_id);
+
+        // Create session if needed
+        let (provider_config, model) = {
+            let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+            let model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
+            let provider = cfg.providers.iter()
+                .find(|p| {
+                    if model.starts_with("claude") || model.starts_with("anthropic") {
+                        p.kind == ProviderKind::Anthropic
+                    } else if model.starts_with("gemini") || model.starts_with("google") {
+                        p.kind == ProviderKind::Google
+                    } else if model.starts_with("gpt") || model.starts_with("o1") || model.starts_with("o3") {
+                        p.kind == ProviderKind::OpenAI
+                    } else {
+                        false
+                    }
+                })
+                .or_else(|| {
+                    cfg.default_provider.as_ref()
+                        .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp))
+                })
+                .or_else(|| cfg.providers.first())
+                .cloned();
+            match provider {
+                Some(p) => (p, model),
+                None => return Err("No AI provider configured".into()),
+            }
+        };
+
+        if state.store.get_session(&session_id).ok().flatten().is_none() {
+            state.store.create_session(&session_id, &model, None)?;
+        }
+
+        // Compose system prompt with agent-specific soul context
+        let agent_context = state.store.compose_agent_context(&agent_id).unwrap_or(None);
+
+        let mut parts: Vec<String> = Vec::new();
+        if let Some(sp) = &base_system_prompt { parts.push(sp.clone()); }
+        if let Some(ac) = agent_context { parts.push(ac); }
+        if !skill_instructions.is_empty() { parts.push(skill_instructions.clone()); }
+
+        // Multi-agent context
+        let agent_count_note = if agent_count > 1 {
+            format!("\n\nYou are agent '{}', one of {} agents working on this task collaboratively. Focus on your area of expertise. Be thorough but avoid duplicating work other agents may do.", agent_id, agent_count)
+        } else {
+            String::new()
+        };
+
+        parts.push(format!(
+            "## Current Task\nYou are working on a task from the task board.\n- **Title:** {}\n- **Priority:** {}{}\n\nComplete this task thoroughly. When done, summarize what you accomplished.",
+            task.title, task.priority, agent_count_note
+        ));
+
+        let full_system_prompt = parts.join("\n\n---\n\n");
+
+        // Store user message for this agent's session
+        let user_msg = StoredMessage {
+            id: uuid::Uuid::new_v4().to_string(),
+            session_id: session_id.clone(),
+            role: "user".into(),
+            content: task_prompt.clone(),
+            tool_calls_json: None,
+            tool_call_id: None,
+            name: None,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+        state.store.add_message(&user_msg)?;
+
+        // Load conversation
+        let mut messages = state.store.load_conversation(&session_id, Some(&full_system_prompt))?;
+
+        let provider = AnyProvider::from_config(&provider_config);
+        let pending_clone = pending.clone();
+        let task_id_clone = task_id.clone();
+        let store_path_clone = store_path.clone();
+        let run_id_clone = run_id.clone();
+        let app_handle_clone = app_handle.clone();
+        let all_tools_clone = all_tools.clone();
+        let model_clone = model.clone();
+
+        let handle = tauri::async_runtime::spawn(async move {
+            let result = agent_loop::run_agent_turn(
+                &app_handle_clone,
+                &provider,
+                &model_clone,
+                &mut messages,
+                &all_tools_clone,
+                &session_id,
+                &run_id_clone,
+                max_rounds,
+                None,
+                &pending_clone,
+                tool_timeout,
+            ).await;
+
+            // Store agent result
+            if let Ok(conn) = rusqlite::Connection::open(&store_path_clone) {
+                match &result {
+                    Ok(text) => {
+                        let msg_id = uuid::Uuid::new_v4().to_string();
+                        conn.execute(
+                            "INSERT INTO messages (id, session_id, role, content) VALUES (?1, ?2, 'assistant', ?3)",
+                            rusqlite::params![msg_id, session_id, text],
+                        ).ok();
+                        // Activity log
+                        let aid = uuid::Uuid::new_v4().to_string();
+                        conn.execute(
+                            "INSERT INTO task_activity (id, task_id, kind, agent, content) VALUES (?1, ?2, 'agent_completed', ?3, ?4)",
+                            rusqlite::params![aid, task_id_clone, agent_id, format!("Agent {} completed. Summary: {}", agent_id, &text[..text.len().min(200)])],
+                        ).ok();
+                    }
+                    Err(err) => {
+                        let aid = uuid::Uuid::new_v4().to_string();
+                        conn.execute(
+                            "INSERT INTO task_activity (id, task_id, kind, agent, content) VALUES (?1, ?2, 'agent_error', ?3, ?4)",
+                            rusqlite::params![aid, task_id_clone, agent_id, format!("Agent {} error: {}", agent_id, err)],
+                        ).ok();
+                    }
+                }
+            }
+
+            result
+        });
+
+        handles.push(handle);
+    }
+
+    // Spawn a coordinator that waits for all agents to finish
+    let app_handle_final = app_handle.clone();
     tauri::async_runtime::spawn(async move {
-        let result = agent_loop::run_agent_turn(
-            &app_handle,
-            &provider,
-            &model,
-            &mut messages,
-            &all_tools,
-            &session_id_clone,
-            &run_id_clone,
-            max_rounds,
-            None,
-            &pending,
-            tool_timeout,
-        ).await;
-
-        // Store the final assistant message + update task status
-        if let Ok(conn) = rusqlite::Connection::open(&store_path) {
-            match &result {
-                Ok(text) => {
-                    // Store assistant message
-                    let msg_id = uuid::Uuid::new_v4().to_string();
-                    conn.execute(
-                        "INSERT INTO messages (id, session_id, role, content) VALUES (?1, ?2, 'assistant', ?3)",
-                        rusqlite::params![msg_id, session_id_clone, text],
-                    ).ok();
-                    // Move task to review
-                    conn.execute(
-                        "UPDATE tasks SET status = 'review', updated_at = datetime('now') WHERE id = ?1",
-                        rusqlite::params![task_id_clone],
-                    ).ok();
-                    // Activity log
-                    let aid = uuid::Uuid::new_v4().to_string();
-                    conn.execute(
-                        "INSERT INTO task_activity (id, task_id, kind, agent, content) VALUES (?1, ?2, 'agent_completed', ?3, ?4)",
-                        rusqlite::params![aid, task_id_clone, "default", format!("Task completed. Summary: {}", &text[..text.len().min(200)])],
-                    ).ok();
-                }
-                Err(err) => {
-                    // Move task to blocked
-                    conn.execute(
-                        "UPDATE tasks SET status = 'blocked', updated_at = datetime('now') WHERE id = ?1",
-                        rusqlite::params![task_id_clone],
-                    ).ok();
-                    let aid = uuid::Uuid::new_v4().to_string();
-                    conn.execute(
-                        "INSERT INTO task_activity (id, task_id, kind, agent, content) VALUES (?1, ?2, 'agent_error', ?3, ?4)",
-                        rusqlite::params![aid, task_id_clone, "default", format!("Agent error: {}", err)],
-                    ).ok();
-                }
+        let mut all_ok = true;
+        let mut any_ok = false;
+        for handle in handles {
+            match handle.await {
+                Ok(Ok(_)) => { any_ok = true; }
+                _ => { all_ok = false; }
             }
         }
 
-        // Emit task-updated event so frontend refreshes
-        app_handle.emit("task-updated", serde_json::json!({
-            "task_id": task_id_clone,
-            "status": if result.is_ok() { "review" } else { "blocked" },
+        // Update task status based on results
+        if let Ok(conn) = rusqlite::Connection::open(&store_path) {
+            let new_status = if all_ok { "review" } else if any_ok { "review" } else { "blocked" };
+            conn.execute(
+                "UPDATE tasks SET status = ?2, updated_at = datetime('now') WHERE id = ?1",
+                rusqlite::params![task_id_for_spawn, new_status],
+            ).ok();
+
+            // Final summary activity
+            let aid = uuid::Uuid::new_v4().to_string();
+            let summary = if agent_count > 1 {
+                format!("All {} agents finished. Status: {}", agent_count, new_status)
+            } else {
+                format!("Task completed. Status: {}", new_status)
+            };
+            conn.execute(
+                "INSERT INTO task_activity (id, task_id, kind, content) VALUES (?1, ?2, 'status_change', ?3)",
+                rusqlite::params![aid, task_id_for_spawn, summary],
+            ).ok();
+        }
+
+        // Emit task-updated event
+        app_handle_final.emit("task-updated", serde_json::json!({
+            "task_id": task_id_for_spawn,
+            "status": if any_ok { "review" } else { "blocked" },
         })).ok();
     });
 

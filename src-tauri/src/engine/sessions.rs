@@ -116,6 +116,15 @@ impl SessionStore {
             );
 
             CREATE INDEX IF NOT EXISTS idx_task_activity_task ON task_activity(task_id, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS task_agents (
+                task_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'collaborator',
+                added_at TEXT NOT NULL DEFAULT (datetime('now')),
+                PRIMARY KEY (task_id, agent_id),
+                FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+            );
         ").map_err(|e| format!("Failed to create tables: {}", e))?;
 
         // One-time dedup: remove duplicate messages caused by a bug that
@@ -662,7 +671,7 @@ impl SessionStore {
              FROM tasks ORDER BY updated_at DESC"
         ).map_err(|e| e.to_string())?;
 
-        let tasks = stmt.query_map([], |row| {
+        let mut tasks: Vec<Task> = stmt.query_map([], |row| {
             Ok(Task {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -670,6 +679,7 @@ impl SessionStore {
                 status: row.get(3)?,
                 priority: row.get(4)?,
                 assigned_agent: row.get(5)?,
+                assigned_agents: Vec::new(), // populated below
                 session_id: row.get(6)?,
                 cron_schedule: row.get(7)?,
                 cron_enabled: row.get::<_, i32>(8)? != 0,
@@ -681,6 +691,22 @@ impl SessionStore {
         }).map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())
         .collect();
+
+        // Load agents for each task
+        let mut agent_stmt = conn.prepare(
+            "SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at"
+        ).map_err(|e| e.to_string())?;
+
+        for task in &mut tasks {
+            if let Ok(agents) = agent_stmt.query_map(params![task.id], |row| {
+                Ok(TaskAgent {
+                    agent_id: row.get(0)?,
+                    role: row.get(1)?,
+                })
+            }) {
+                task.assigned_agents = agents.filter_map(|r| r.ok()).collect();
+            }
+        }
 
         Ok(tasks)
     }
@@ -798,7 +824,7 @@ impl SessionStore {
              FROM tasks WHERE cron_enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?1"
         ).map_err(|e| e.to_string())?;
 
-        let tasks = stmt.query_map(params![now], |row| {
+        let mut tasks: Vec<Task> = stmt.query_map(params![now], |row| {
             Ok(Task {
                 id: row.get(0)?,
                 title: row.get(1)?,
@@ -806,6 +832,7 @@ impl SessionStore {
                 status: row.get(3)?,
                 priority: row.get(4)?,
                 assigned_agent: row.get(5)?,
+                assigned_agents: Vec::new(),
                 session_id: row.get(6)?,
                 cron_schedule: row.get(7)?,
                 cron_enabled: row.get::<_, i32>(8)? != 0,
@@ -818,6 +845,21 @@ impl SessionStore {
         .filter_map(|r| r.ok())
         .collect();
 
+        // Load agents for each cron task
+        let mut agent_stmt = conn.prepare(
+            "SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at"
+        ).map_err(|e| e.to_string())?;
+        for task in &mut tasks {
+            if let Ok(agents) = agent_stmt.query_map(params![task.id], |row| {
+                Ok(TaskAgent {
+                    agent_id: row.get(0)?,
+                    role: row.get(1)?,
+                })
+            }) {
+                task.assigned_agents = agents.filter_map(|r| r.ok()).collect();
+            }
+        }
+
         Ok(tasks)
     }
 
@@ -829,6 +871,49 @@ impl SessionStore {
             params![task_id, last_run, next_run],
         ).map_err(|e| e.to_string())?;
         Ok(())
+    }
+
+    // ── Task Agents (multi-agent assignments) ──────────────────────────
+
+    /// Set the agents for a task (replaces all existing assignments).
+    pub fn set_task_agents(&self, task_id: &str, agents: &[TaskAgent]) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        // Clear existing
+        conn.execute("DELETE FROM task_agents WHERE task_id = ?1", params![task_id])
+            .map_err(|e| e.to_string())?;
+        // Insert new
+        for ta in agents {
+            conn.execute(
+                "INSERT INTO task_agents (task_id, agent_id, role) VALUES (?1, ?2, ?3)",
+                params![task_id, ta.agent_id, ta.role],
+            ).map_err(|e| e.to_string())?;
+        }
+        // Also update legacy assigned_agent to the first lead (or first agent)
+        let primary = agents.iter().find(|a| a.role == "lead").or_else(|| agents.first());
+        let primary_id = primary.map(|a| a.agent_id.as_str());
+        conn.execute(
+            "UPDATE tasks SET assigned_agent = ?2, updated_at = datetime('now') WHERE id = ?1",
+            params![task_id, primary_id],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Get agents assigned to a task.
+    pub fn get_task_agents(&self, task_id: &str) -> Result<Vec<TaskAgent>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at"
+        ).map_err(|e| e.to_string())?;
+
+        let agents = stmt.query_map(params![task_id], |row| {
+            Ok(TaskAgent {
+                agent_id: row.get(0)?,
+                role: row.get(1)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+        Ok(agents)
     }
 }
 
