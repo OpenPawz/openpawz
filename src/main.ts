@@ -223,7 +223,7 @@ function switchView(viewName: string) {
       case 'agents': AgentsModule.loadAgents(); break;
       case 'today': TodayModule.loadToday(); break;
       case 'skills': SkillsSettings.loadSkillsSettings(); break;
-      case 'foundry': FoundryModule.loadModels(); FoundryModule.loadModes(); FoundryModule.loadAgents(); break;
+      case 'foundry': FoundryModule.loadModels(); FoundryModule.loadModes(); break;
       case 'nodes': NodesModule.loadNodes(); NodesModule.loadPairingRequests(); break;
       case 'memory': MemoryPalaceModule.loadMemoryPalace(); loadMemory(); break;
       case 'tasks': {
@@ -4247,7 +4247,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     $('refresh-skills-btn')?.addEventListener('click', () => SkillsSettings.loadSkillsSettings());
 
     // Initialize Foundry module events
-    FoundryModule.configure({ promptModal });
     FoundryModule.initFoundryEvents();
 
     // Initialize Research module events

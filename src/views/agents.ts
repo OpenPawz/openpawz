@@ -29,27 +29,64 @@ export interface Agent {
   projectId?: string;           // If backend-created, which project
 }
 
-// Available models
-const AVAILABLE_MODELS = [
+// Model list — dynamically loaded from engine config
+let _availableModels: { id: string; name: string }[] = [
   { id: 'default', name: 'Default (Use account setting)' },
-  // Google Gemini
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
-  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-  { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
-  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
-  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
-  { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash 8B' },
-  // Anthropic
-  { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
-  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
-  { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
-  // OpenAI
-  { id: 'gpt-4o', name: 'GPT-4o' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-  { id: 'o1', name: 'o1' },
-  { id: 'o3-mini', name: 'o3-mini' },
 ];
+
+/** Fetch configured models from the engine and populate the model picker. */
+async function refreshAvailableModels() {
+  try {
+    const config = await pawEngine.getConfig();
+    const models: { id: string; name: string }[] = [
+      { id: 'default', name: 'Default (Use account setting)' },
+    ];
+    // Add each provider's default model, plus well-known models per provider kind
+    const WELL_KNOWN: Record<string, { id: string; name: string }[]> = {
+      google: [
+        { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+        { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+        { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+      ],
+      anthropic: [
+        { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+        { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+        { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
+      ],
+      openai: [
+        { id: 'gpt-4o', name: 'GPT-4o' },
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
+        { id: 'o1', name: 'o1' },
+        { id: 'o3-mini', name: 'o3-mini' },
+      ],
+      openrouter: [],
+      ollama: [],
+      custom: [],
+    };
+    const seen = new Set<string>(['default']);
+    for (const p of config.providers ?? []) {
+      // Provider's own default model
+      if (p.default_model && !seen.has(p.default_model)) {
+        seen.add(p.default_model);
+        models.push({ id: p.default_model, name: `${p.default_model} (${p.kind})` });
+      }
+      // Well-known models for this provider kind
+      for (const wk of WELL_KNOWN[p.kind] ?? []) {
+        if (!seen.has(wk.id)) {
+          seen.add(wk.id);
+          models.push(wk);
+        }
+      }
+    }
+    // Also add the global default model if set
+    if (config.default_model && !seen.has(config.default_model)) {
+      models.push({ id: config.default_model, name: `${config.default_model} (default)` });
+    }
+    _availableModels = models;
+  } catch (e) {
+    console.warn('[agents] Could not load models from engine config:', e);
+  }
+}
 
 // Available skills
 const AVAILABLE_SKILLS = [
@@ -115,6 +152,8 @@ export function configure(opts: {
 
 export async function loadAgents() {
   console.log('[agents] loadAgents called');
+  // Refresh available models from engine config (non-blocking)
+  await refreshAvailableModels();
   // Load from localStorage (manually created agents)
   try {
     const stored = localStorage.getItem('paw-agents');
@@ -425,7 +464,7 @@ function openAgentEditor(agentId: string) {
           <div class="form-group">
             <label class="form-label">Model</label>
             <select class="form-input" id="agent-edit-model">
-              ${AVAILABLE_MODELS.map(m => `<option value="${m.id}" ${agent.model === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
+              ${_availableModels.map(m => `<option value="${m.id}" ${agent.model === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
             </select>
             <div class="form-hint">Which AI model this agent uses</div>
           </div>
