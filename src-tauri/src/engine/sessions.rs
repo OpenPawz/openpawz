@@ -34,6 +34,24 @@ impl SessionStore {
         // Enable WAL mode for better concurrent read performance
         conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
 
+        // ── Pre-migration: detect stale project_agents schema ───────────
+        // Older versions created project_agents with (id INTEGER PK, project_id INTEGER,
+        // name TEXT, …) which is incompatible with the current (project_id TEXT,
+        // agent_id TEXT, …) composite-PK schema.  Detect the old layout by checking
+        // for the presence of a `name` column (the new schema has no such column)
+        // and DROP + recreate so CREATE TABLE IF NOT EXISTS picks up the new DDL.
+        {
+            let has_old_schema = conn
+                .prepare("SELECT name FROM pragma_table_info('project_agents') WHERE name = 'name'")
+                .and_then(|mut stmt| stmt.query_row([], |_row| Ok(true)))
+                .unwrap_or(false);
+
+            if has_old_schema {
+                warn!("[engine] Detected legacy project_agents schema — migrating to composite-PK layout");
+                conn.execute_batch("DROP TABLE IF EXISTS project_agents;").ok();
+            }
+        }
+
         // Create tables
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS sessions (
