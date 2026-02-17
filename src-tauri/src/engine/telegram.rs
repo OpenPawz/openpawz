@@ -501,7 +501,9 @@ async fn run_telegram_agent(
     };
 
     // Ensure session exists
-    let session_exists = engine_state.store.get_session(&session_id).is_ok();
+    let session_exists = engine_state.store.get_session(&session_id)
+        .map(|opt| opt.is_some())
+        .unwrap_or(false);
     if !session_exists {
         engine_state.store.create_session(&session_id, &model, system_prompt.as_deref())?;
     }
