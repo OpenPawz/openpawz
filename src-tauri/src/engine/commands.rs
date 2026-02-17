@@ -211,7 +211,7 @@ pub async fn engine_chat_send(
         let provider_name = cfg.providers.iter()
             .find(|p| Some(p.id.clone()) == cfg.default_provider)
             .or_else(|| cfg.providers.first())
-            .map(|p| format!("{} ({:?})", p.name, p.kind))
+            .map(|p| format!("{} ({:?})", p.id, p.kind))
             .unwrap_or_else(|| "unknown".into());
         format!(
             "## Your Runtime Identity\n\

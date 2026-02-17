@@ -469,7 +469,7 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> Result<String, Stri
     // Provider info
     let providers_info: Vec<String> = cfg.providers.iter().map(|p| {
         let is_default = cfg.default_provider.as_ref() == Some(&p.id);
-        format!("  - {} ({:?}) [id: {}]{}", p.name, p.kind, p.id, if is_default { " ← DEFAULT" } else { "" })
+        format!("  - {} ({:?}){}", p.id, p.kind, if is_default { " ← DEFAULT" } else { "" })
     }).collect();
 
     // Model routing info
@@ -487,7 +487,7 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> Result<String, Stri
     // Memory config
     let memory_info = format!(
         "  Embedding provider: {}\n  Embedding model: {}\n  Auto-recall: {}\n  Auto-capture: {}\n  Recall limit: {}\n  Base URL: {}",
-        mcfg.embedding_provider,
+        mcfg.embedding_base_url,
         if mcfg.embedding_model.is_empty() { "(not configured)" } else { &mcfg.embedding_model },
         mcfg.auto_recall,
         mcfg.auto_capture,
