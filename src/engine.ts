@@ -526,6 +526,18 @@ class PawEngineClient {
     return invoke<number>('engine_test_embedding');
   }
 
+  async embeddingStatus(): Promise<{ ollama_running: boolean; model_available: boolean; model_name: string; error?: string }> {
+    return invoke('engine_embedding_status');
+  }
+
+  async embeddingPullModel(): Promise<string> {
+    return invoke<string>('engine_embedding_pull_model');
+  }
+
+  async memoryBackfill(): Promise<{ success: number; failed: number }> {
+    return invoke('engine_memory_backfill');
+  }
+
   // ── Skills (Credential Vault) ────────────────────────────────────────
 
   async skillsList(): Promise<EngineSkillStatus[]> {

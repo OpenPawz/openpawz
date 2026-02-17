@@ -119,6 +119,84 @@ export async function loadAgentDefaultsSettings() {
 
     container.appendChild(memSection);
 
+    // ── Embedding Configuration ──────────────────────────────────────────
+    const embSection = document.createElement('div');
+    embSection.innerHTML = '<h3 class="settings-subsection-title" style="margin-top:20px">Embedding (Semantic Search)</h3>';
+    embSection.innerHTML += '<p class="form-hint" style="margin:0 0 8px;font-size:11px;color:var(--text-muted)">Ollama runs locally and powers semantic memory search. The embedding model converts text to vectors for similarity matching.</p>';
+
+    const embUrlRow = formRow('Ollama URL', 'Where Ollama is running (default: http://localhost:11434)');
+    const embUrlInp = textInput(memConfig.embedding_base_url || 'http://localhost:11434', 'http://localhost:11434');
+    embUrlInp.style.maxWidth = '320px';
+    embUrlRow.appendChild(embUrlInp);
+    embSection.appendChild(embUrlRow);
+
+    const embModelRow = formRow('Embedding Model', 'Ollama model for generating embeddings');
+    const embModelInp = textInput(memConfig.embedding_model || 'nomic-embed-text', 'nomic-embed-text');
+    embModelInp.style.maxWidth = '220px';
+    embModelRow.appendChild(embModelInp);
+    embSection.appendChild(embModelRow);
+
+    const embDimsRow = formRow('Embedding Dimensions', 'Vector dimensions (768 for nomic-embed-text, 384 for all-minilm)');
+    const embDimsInp = numberInput(memConfig.embedding_dims || 768, { min: 64, max: 4096, placeholder: '768' });
+    embDimsInp.style.maxWidth = '120px';
+    embDimsRow.appendChild(embDimsInp);
+    embSection.appendChild(embDimsRow);
+
+    // Status / test button
+    const embStatusRow = document.createElement('div');
+    embStatusRow.style.cssText = 'display:flex;align-items:center;gap:8px;margin:10px 0';
+    const testBtn = document.createElement('button');
+    testBtn.className = 'btn btn-sm';
+    testBtn.textContent = 'Test Connection';
+    const statusSpan = document.createElement('span');
+    statusSpan.style.cssText = 'font-size:12px;color:var(--text-muted)';
+    embStatusRow.appendChild(testBtn);
+    embStatusRow.appendChild(statusSpan);
+    embSection.appendChild(embStatusRow);
+
+    testBtn.addEventListener('click', async () => {
+      testBtn.disabled = true;
+      statusSpan.textContent = 'Testing...';
+      statusSpan.style.color = 'var(--text-muted)';
+      try {
+        // Save current values first so the test uses them
+        const mc = await pawEngine.getMemoryConfig();
+        mc.embedding_base_url = embUrlInp.value.trim() || 'http://localhost:11434';
+        mc.embedding_model = embModelInp.value.trim() || 'nomic-embed-text';
+        mc.embedding_dims = parseInt(embDimsInp.value) || 768;
+        await pawEngine.setMemoryConfig(mc);
+
+        const dims = await pawEngine.testEmbedding();
+        statusSpan.textContent = `✓ Connected — ${dims} dimensions`;
+        statusSpan.style.color = 'var(--text-success, green)';
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        statusSpan.textContent = `✗ ${err}`;
+        statusSpan.style.color = 'var(--text-danger, red)';
+      } finally {
+        testBtn.disabled = false;
+      }
+    });
+
+    // Check Ollama status on load
+    (async () => {
+      try {
+        const embStatus = await pawEngine.embeddingStatus();
+        if (embStatus.ollama_running && embStatus.model_available) {
+          statusSpan.textContent = `✓ Ollama running, ${embStatus.model_name} available`;
+          statusSpan.style.color = 'var(--text-success, green)';
+        } else if (embStatus.ollama_running) {
+          statusSpan.textContent = `⚠ Ollama running but ${embStatus.model_name} not pulled — click Test to auto-pull`;
+          statusSpan.style.color = 'var(--text-warning, orange)';
+        } else {
+          statusSpan.textContent = '⚠ Ollama not running — start Ollama for semantic search';
+          statusSpan.style.color = 'var(--text-warning, orange)';
+        }
+      } catch { /* ignore */ }
+    })();
+
+    container.appendChild(embSection);
+
     // ── Save ─────────────────────────────────────────────────────────────
     container.appendChild(saveReloadButtons(
       async () => {
@@ -132,11 +210,14 @@ export async function loadAgentDefaultsSettings() {
           cfg.default_system_prompt = promptArea.value.trim() || undefined;
           await pawEngine.setConfig(cfg);
 
-          // Save memory config
+          // Save memory config (including embedding settings)
           const mc = await pawEngine.getMemoryConfig();
           mc.auto_recall = recallCb.checked;
           mc.auto_capture = captureCb.checked;
           mc.recall_limit = parseInt(recallLimitInp.value) || 5;
+          mc.embedding_base_url = embUrlInp.value.trim() || 'http://localhost:11434';
+          mc.embedding_model = embModelInp.value.trim() || 'nomic-embed-text';
+          mc.embedding_dims = parseInt(embDimsInp.value) || 768;
           await pawEngine.setMemoryConfig(mc);
 
           showToast('Agent defaults saved', 'success');

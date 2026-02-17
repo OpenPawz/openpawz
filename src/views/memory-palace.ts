@@ -459,6 +459,129 @@ function initPalaceInstall() {
   });
 }
 
+// ── Embedding Status Banner ────────────────────────────────────────────────
+async function renderEmbeddingStatus(stats: { total_memories: number; has_embeddings: boolean }) {
+  // Remove old banner if any
+  const old = $('palace-embedding-banner');
+  if (old) old.remove();
+
+  // Only show in engine mode
+  if (!isEngineMode()) return;
+
+  try {
+    const status = await pawEngine.embeddingStatus();
+    const statsEl = $('palace-stats');
+    if (!statsEl) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'palace-embedding-banner';
+    banner.style.cssText = 'margin:8px 0;padding:10px 14px;border-radius:8px;font-size:12px;line-height:1.5';
+
+    if (!status.ollama_running) {
+      // Ollama not running
+      banner.style.background = 'var(--warning-bg, rgba(234,179,8,0.1))';
+      banner.style.border = '1px solid var(--warning-border, rgba(234,179,8,0.3))';
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px">⚠️</span>
+          <div>
+            <strong>Ollama not running</strong> — semantic memory search is disabled.
+            <div style="color:var(--text-muted);margin-top:2px">
+              Start Ollama to enable AI-powered memory search.
+              Memory will fallback to keyword matching.
+            </div>
+          </div>
+        </div>`;
+    } else if (!status.model_available) {
+      // Ollama running but model not pulled
+      banner.style.background = 'var(--info-bg, rgba(59,130,246,0.1))';
+      banner.style.border = '1px solid var(--info-border, rgba(59,130,246,0.3))';
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px">📦</span>
+          <div style="flex:1">
+            <strong>Embedding model needed</strong> — <code style="font-size:11px;background:var(--bg-tertiary,rgba(255,255,255,0.06));padding:1px 5px;border-radius:3px">${escHtml(status.model_name)}</code> not found.
+            <div style="color:var(--text-muted);margin-top:2px">
+              Pull the model to enable semantic memory search (~275 MB download).
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="palace-pull-model-btn" style="white-space:nowrap">Pull Model</button>
+        </div>
+        <div id="palace-pull-progress" style="display:none;margin-top:6px;color:var(--text-muted)"></div>`;
+
+      // Insert before wiring events
+      statsEl.after(banner);
+      $('palace-pull-model-btn')?.addEventListener('click', async () => {
+        const btn = $('palace-pull-model-btn') as HTMLButtonElement | null;
+        const prog = $('palace-pull-progress');
+        if (btn) { btn.disabled = true; btn.textContent = 'Pulling...'; }
+        if (prog) { prog.style.display = ''; prog.textContent = 'Downloading model... this may take a minute.'; }
+        try {
+          const result = await pawEngine.embeddingPullModel();
+          if (prog) prog.textContent = `✓ ${result}`;
+          if (btn) btn.textContent = '✓ Done';
+          showToast('Embedding model ready!', 'success');
+          // Refresh stats
+          setTimeout(() => loadPalaceStats(), 1000);
+        } catch (e) {
+          if (prog) prog.textContent = `✗ Failed: ${e}`;
+          if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+          showToast(`Pull failed: ${e}`, 'error');
+        }
+      });
+      return; // Already inserted
+    } else if (!stats.has_embeddings && stats.total_memories > 0) {
+      // Ollama ready, model available, but existing memories have no vectors
+      banner.style.background = 'var(--info-bg, rgba(59,130,246,0.1))';
+      banner.style.border = '1px solid var(--info-border, rgba(59,130,246,0.3))';
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px">🔄</span>
+          <div style="flex:1">
+            <strong>Embeddings ready</strong> — ${stats.total_memories} memories need vectors for semantic search.
+          </div>
+          <button class="btn btn-primary btn-sm" id="palace-backfill-btn" style="white-space:nowrap">Embed All</button>
+        </div>
+        <div id="palace-backfill-progress" style="display:none;margin-top:6px;color:var(--text-muted)"></div>`;
+
+      statsEl.after(banner);
+      $('palace-backfill-btn')?.addEventListener('click', async () => {
+        const btn = $('palace-backfill-btn') as HTMLButtonElement | null;
+        const prog = $('palace-backfill-progress');
+        if (btn) { btn.disabled = true; btn.textContent = 'Embedding...'; }
+        if (prog) { prog.style.display = ''; prog.textContent = 'Generating embeddings for existing memories...'; }
+        try {
+          const result = await pawEngine.memoryBackfill();
+          if (prog) prog.textContent = `✓ ${result.success} embedded${result.failed > 0 ? `, ${result.failed} failed` : ''}`;
+          if (btn) btn.textContent = '✓ Done';
+          showToast(`Embedded ${result.success} memories`, 'success');
+          setTimeout(() => loadPalaceStats(), 1000);
+        } catch (e) {
+          if (prog) prog.textContent = `✗ Failed: ${e}`;
+          if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
+          showToast(`Backfill failed: ${e}`, 'error');
+        }
+      });
+      return;
+    } else if (status.ollama_running && status.model_available) {
+      // All good — semantic search is active!
+      banner.style.background = 'var(--success-bg, rgba(34,197,94,0.08))';
+      banner.style.border = '1px solid var(--success-border, rgba(34,197,94,0.2))';
+      banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:14px">✓</span>
+          <span>Semantic search active — <code style="font-size:11px;background:var(--bg-tertiary,rgba(255,255,255,0.06));padding:1px 5px;border-radius:3px">${escHtml(status.model_name)}</code> via Ollama</span>
+        </div>`;
+    } else {
+      return; // Nothing to show
+    }
+
+    statsEl.after(banner);
+  } catch (e) {
+    console.warn('[memory] Embedding status check failed:', e);
+  }
+}
+
 // ── Stats loader ───────────────────────────────────────────────────────────
 async function loadPalaceStats() {
   const totalEl = $('palace-total');
@@ -474,6 +597,9 @@ async function loadPalaceStats() {
         ? stats.categories.map(([c, n]) => `${c}: ${n}`).join(', ')
         : 'memories';
       if (edgesEl) edgesEl.textContent = stats.has_embeddings ? 'semantic' : 'keyword';
+
+      // Show embedding status banner
+      await renderEmbeddingStatus(stats);
     } catch (e) {
       console.warn('[memory] Engine stats failed:', e);
       totalEl.textContent = '—';

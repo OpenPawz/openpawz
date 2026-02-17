@@ -670,6 +670,80 @@ pub async fn engine_test_embedding(
     Ok(dims)
 }
 
+/// Check Ollama status and model availability.
+/// Returns { ollama_running: bool, model_available: bool, model_name: String }
+#[tauri::command]
+pub async fn engine_embedding_status(
+    state: State<'_, EngineState>,
+) -> Result<serde_json::Value, String> {
+    let client = match state.embedding_client() {
+        Some(c) => c,
+        None => return Ok(serde_json::json!({
+            "ollama_running": false,
+            "model_available": false,
+            "model_name": "",
+            "error": "No embedding configuration"
+        })),
+    };
+
+    let model_name = {
+        let cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        cfg.embedding_model.clone()
+    };
+
+    let ollama_running = client.check_ollama_running().await.unwrap_or(false);
+    let model_available = if ollama_running {
+        client.check_model_available().await.unwrap_or(false)
+    } else {
+        false
+    };
+
+    Ok(serde_json::json!({
+        "ollama_running": ollama_running,
+        "model_available": model_available,
+        "model_name": model_name,
+    }))
+}
+
+/// Pull the embedding model from Ollama.
+#[tauri::command]
+pub async fn engine_embedding_pull_model(
+    state: State<'_, EngineState>,
+) -> Result<String, String> {
+    let client = state.embedding_client()
+        .ok_or_else(|| "No embedding configuration".to_string())?;
+
+    // Check Ollama running first
+    let running = client.check_ollama_running().await.unwrap_or(false);
+    if !running {
+        return Err("Ollama is not running. Start Ollama first, then try again.".into());
+    }
+
+    // Check if already available
+    if client.check_model_available().await.unwrap_or(false) {
+        return Ok("Model already available".into());
+    }
+
+    // Pull the model (blocking)
+    client.pull_model().await?;
+    Ok("Model pulled successfully".into())
+}
+
+/// Backfill embeddings for memories that don't have them.
+#[tauri::command]
+pub async fn engine_memory_backfill(
+    state: State<'_, EngineState>,
+) -> Result<serde_json::Value, String> {
+    let client = state.embedding_client()
+        .ok_or_else(|| "No embedding configuration — Ollama must be running with an embedding model".to_string())?;
+
+    let (success, fail) = memory::backfill_embeddings(&state.store, &client).await?;
+    Ok(serde_json::json!({
+        "success": success,
+        "failed": fail,
+    }))
+}
+
 // ── Skill Vault commands ───────────────────────────────────────────────
 
 #[tauri::command]

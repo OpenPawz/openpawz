@@ -657,6 +657,44 @@ impl SessionStore {
 
         Ok(memories)
     }
+
+    /// List memories that have no embedding vector (for backfill).
+    pub fn list_memories_without_embeddings(&self, limit: usize) -> Result<Vec<Memory>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, content, category, importance, created_at FROM memories
+             WHERE embedding IS NULL
+             ORDER BY created_at DESC LIMIT ?1"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let memories = stmt.query_map(params![limit as i64], |row| {
+            Ok(Memory {
+                id: row.get(0)?,
+                content: row.get(1)?,
+                category: row.get(2)?,
+                importance: {
+                    let i: i32 = row.get(3)?;
+                    i as u8
+                },
+                created_at: row.get(4)?,
+                score: None,
+            })
+        }).map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(memories)
+    }
+
+    /// Update the embedding for an existing memory (used by backfill).
+    pub fn update_memory_embedding(&self, id: &str, embedding: &[u8]) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE memories SET embedding = ?2 WHERE id = ?1",
+            params![id, embedding],
+        ).map_err(|e| format!("Update embedding error: {}", e))?;
+        Ok(())
+    }
 }
 
 // ── Task CRUD ──────────────────────────────────────────────────────────

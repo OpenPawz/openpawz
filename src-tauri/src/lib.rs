@@ -2650,6 +2650,9 @@ pub fn run() {
             engine::commands::engine_get_memory_config,
             engine::commands::engine_set_memory_config,
             engine::commands::engine_test_embedding,
+            engine::commands::engine_embedding_status,
+            engine::commands::engine_embedding_pull_model,
+            engine::commands::engine_memory_backfill,
             // ── Skill Vault ──
             engine::commands::engine_skills_list,
             engine::commands::engine_skill_set_enabled,
