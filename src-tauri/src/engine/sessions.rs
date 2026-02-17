@@ -125,6 +125,44 @@ impl SessionStore {
                 PRIMARY KEY (task_id, agent_id),
                 FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
             );
+
+            -- ═══ Orchestrator: Projects & Message Bus ═══
+
+            CREATE TABLE IF NOT EXISTS projects (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                goal TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'planning',
+                boss_agent TEXT NOT NULL DEFAULT 'default',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS project_agents (
+                project_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'worker',
+                specialty TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'idle',
+                current_task TEXT,
+                PRIMARY KEY (project_id, agent_id),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE TABLE IF NOT EXISTS project_messages (
+                id TEXT PRIMARY KEY,
+                project_id TEXT NOT NULL,
+                from_agent TEXT NOT NULL,
+                to_agent TEXT,
+                kind TEXT NOT NULL DEFAULT 'message',
+                content TEXT NOT NULL DEFAULT '',
+                metadata TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_project_messages
+                ON project_messages(project_id, created_at);
         ").map_err(|e| format!("Failed to create tables: {}", e))?;
 
         // One-time dedup: remove duplicate messages caused by a bug that
@@ -953,6 +991,141 @@ impl SessionStore {
         .filter_map(|r| r.ok())
         .collect();
         Ok(agents)
+    }
+
+    // ── Orchestrator: Projects ─────────────────────────────────────────
+
+    pub fn list_projects(&self) -> Result<Vec<crate::engine::types::Project>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, title, goal, status, boss_agent, created_at, updated_at FROM projects ORDER BY updated_at DESC"
+        ).map_err(|e| e.to_string())?;
+
+        let projects = stmt.query_map([], |row| {
+            Ok(crate::engine::types::Project {
+                id: row.get(0)?,
+                title: row.get(1)?,
+                goal: row.get(2)?,
+                status: row.get(3)?,
+                boss_agent: row.get(4)?,
+                agents: vec![],
+                created_at: row.get(5)?,
+                updated_at: row.get(6)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>();
+
+        // Load agents for each project
+        let mut result = Vec::new();
+        for mut p in projects {
+            p.agents = self.get_project_agents(&p.id)?;
+            result.push(p);
+        }
+        Ok(result)
+    }
+
+    pub fn create_project(&self, project: &crate::engine::types::Project) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT INTO projects (id, title, goal, status, boss_agent) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![project.id, project.title, project.goal, project.status, project.boss_agent],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn update_project(&self, project: &crate::engine::types::Project) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE projects SET title=?2, goal=?3, status=?4, boss_agent=?5, updated_at=datetime('now') WHERE id=?1",
+            params![project.id, project.title, project.goal, project.status, project.boss_agent],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn delete_project(&self, id: &str) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute("DELETE FROM projects WHERE id=?1", params![id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn set_project_agents(&self, project_id: &str, agents: &[crate::engine::types::ProjectAgent]) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute("DELETE FROM project_agents WHERE project_id=?1", params![project_id])
+            .map_err(|e| e.to_string())?;
+        for a in agents {
+            conn.execute(
+                "INSERT INTO project_agents (project_id, agent_id, role, specialty, status, current_task) VALUES (?1,?2,?3,?4,?5,?6)",
+                params![project_id, a.agent_id, a.role, a.specialty, a.status, a.current_task],
+            ).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    pub fn get_project_agents(&self, project_id: &str) -> Result<Vec<crate::engine::types::ProjectAgent>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT agent_id, role, specialty, status, current_task FROM project_agents WHERE project_id=?1"
+        ).map_err(|e| e.to_string())?;
+        let agents = stmt.query_map(params![project_id], |row| {
+            Ok(crate::engine::types::ProjectAgent {
+                agent_id: row.get(0)?,
+                role: row.get(1)?,
+                specialty: row.get(2)?,
+                status: row.get(3)?,
+                current_task: row.get(4)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+        Ok(agents)
+    }
+
+    pub fn update_project_agent_status(&self, project_id: &str, agent_id: &str, status: &str, current_task: Option<&str>) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "UPDATE project_agents SET status=?3, current_task=?4 WHERE project_id=?1 AND agent_id=?2",
+            params![project_id, agent_id, status, current_task],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    // ── Orchestrator: Message Bus ──────────────────────────────────────
+
+    pub fn add_project_message(&self, msg: &crate::engine::types::ProjectMessage) -> Result<(), String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        conn.execute(
+            "INSERT INTO project_messages (id, project_id, from_agent, to_agent, kind, content, metadata) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![msg.id, msg.project_id, msg.from_agent, msg.to_agent, msg.kind, msg.content, msg.metadata],
+        ).map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    pub fn get_project_messages(&self, project_id: &str, limit: i64) -> Result<Vec<crate::engine::types::ProjectMessage>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, from_agent, to_agent, kind, content, metadata, created_at FROM project_messages WHERE project_id=?1 ORDER BY created_at DESC LIMIT ?2"
+        ).map_err(|e| e.to_string())?;
+        let msgs = stmt.query_map(params![project_id, limit], |row| {
+            Ok(crate::engine::types::ProjectMessage {
+                id: row.get(0)?,
+                project_id: row.get(1)?,
+                from_agent: row.get(2)?,
+                to_agent: row.get(3)?,
+                kind: row.get(4)?,
+                content: row.get(5)?,
+                metadata: row.get(6)?,
+                created_at: row.get(7)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<_>>();
+
+        // Return in chronological order
+        let mut result = msgs;
+        result.reverse();
+        Ok(result)
     }
 }
 

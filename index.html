@@ -67,6 +67,17 @@
               <span>Tasks</span>
               <span class="nav-badge">New</span>
             </div>
+            <div class="nav-item" data-view="orchestrator">
+              <svg class="icon" viewBox="0 0 24 24">
+                <circle cx="12" cy="5" r="3"/>
+                <circle cx="5" cy="19" r="3"/>
+                <circle cx="19" cy="19" r="3"/>
+                <line x1="12" y1="8" x2="5" y2="16"/>
+                <line x1="12" y1="8" x2="19" y2="16"/>
+              </svg>
+              <span>Orchestrator</span>
+              <span class="nav-badge">New</span>
+            </div>
             <div class="nav-item" data-view="code">
               <svg class="icon" viewBox="0 0 24 24">
                 <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
@@ -708,6 +719,135 @@
                   Run Now
                 </button>
                 <button class="btn btn-primary btn-sm" id="tasks-modal-save">Save</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ Orchestrator — Multi-Agent Projects ═══ -->
+        <div class="view orchestrator-view" id="orchestrator-view">
+          <div class="orchestrator-header">
+            <div class="orchestrator-header-left">
+              <h1 class="view-title">Orchestrator</h1>
+              <p class="view-subtitle">Multi-agent project coordination</p>
+            </div>
+            <div class="orchestrator-header-right">
+              <div class="orchestrator-stats">
+                <span class="orchestrator-stat" id="orch-stat-total">0 projects</span>
+                <span class="tasks-stat-sep">·</span>
+                <span class="orchestrator-stat" id="orch-stat-running">0 running</span>
+              </div>
+              <button class="btn btn-primary" id="orch-create-btn">
+                <svg class="icon-sm" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                New Project
+              </button>
+            </div>
+          </div>
+
+          <!-- Project list -->
+          <div class="orchestrator-content">
+            <div class="orch-project-list" id="orch-project-list">
+              <div class="empty-state">
+                <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" fill="none" stroke-width="1.5">
+                  <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/>
+                  <line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/>
+                </svg>
+                <h3>No projects yet</h3>
+                <p>Create a project to orchestrate multiple agents working together on a shared goal.</p>
+              </div>
+            </div>
+
+            <!-- Project detail (hidden by default) -->
+            <div class="orch-project-detail" id="orch-project-detail" style="display:none;">
+              <div class="orch-detail-header">
+                <button class="btn btn-ghost btn-sm" id="orch-back-btn">← Back</button>
+                <div class="orch-detail-title">
+                  <h2 id="orch-detail-name">Project Name</h2>
+                  <span class="orch-status-badge" id="orch-detail-status">planning</span>
+                </div>
+                <div class="orch-detail-actions">
+                  <button class="btn btn-primary btn-sm" id="orch-run-btn">▶ Run</button>
+                  <button class="btn btn-ghost btn-sm" id="orch-edit-btn">Edit</button>
+                  <button class="btn btn-danger btn-sm" id="orch-delete-btn">Delete</button>
+                </div>
+              </div>
+              <div class="orch-detail-goal" id="orch-detail-goal"></div>
+
+              <!-- Agent roster -->
+              <div class="orch-section">
+                <div class="orch-section-header">
+                  <h3>Agent Team</h3>
+                  <button class="btn btn-ghost btn-sm" id="orch-add-agent-btn">+ Add Agent</button>
+                </div>
+                <div class="orch-agent-roster" id="orch-agent-roster"></div>
+              </div>
+
+              <!-- Message bus -->
+              <div class="orch-section">
+                <h3>Message Bus</h3>
+                <div class="orch-message-bus" id="orch-message-bus">
+                  <div class="empty-state-sm">No messages yet. Run the project to see agent communication.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Create/Edit Project Modal -->
+          <div class="modal-overlay" id="orch-modal" style="display:none;">
+            <div class="modal" style="max-width:560px;">
+              <div class="modal-header">
+                <h3 id="orch-modal-title">New Project</h3>
+                <button class="modal-close" id="orch-modal-close">×</button>
+              </div>
+              <div class="modal-body">
+                <div class="form-group">
+                  <label>Project Title</label>
+                  <input type="text" class="form-input" id="orch-form-title" placeholder="e.g. Build Landing Page">
+                </div>
+                <div class="form-group">
+                  <label>Goal</label>
+                  <textarea class="form-input" id="orch-form-goal" rows="4" placeholder="Describe what this project should achieve..."></textarea>
+                </div>
+                <div class="form-group">
+                  <label>Boss Agent ID</label>
+                  <input type="text" class="form-input" id="orch-form-boss" placeholder="default" value="default">
+                  <small class="form-hint">The agent that orchestrates the project. Must have a soul file in the Foundry.</small>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-ghost" id="orch-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="orch-modal-save">Create Project</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Add Agent Modal -->
+          <div class="modal-overlay" id="orch-agent-modal" style="display:none;">
+            <div class="modal" style="max-width:480px;">
+              <div class="modal-header">
+                <h3>Add Agent to Project</h3>
+                <button class="modal-close" id="orch-agent-modal-close">×</button>
+              </div>
+              <div class="modal-body">
+                <div class="form-group">
+                  <label>Agent ID</label>
+                  <input type="text" class="form-input" id="orch-agent-form-id" placeholder="e.g. coder-1">
+                </div>
+                <div class="form-group">
+                  <label>Specialty</label>
+                  <select class="form-input" id="orch-agent-form-specialty">
+                    <option value="general">General</option>
+                    <option value="coder">Coder</option>
+                    <option value="researcher">Researcher</option>
+                    <option value="designer">Designer</option>
+                    <option value="communicator">Communicator</option>
+                    <option value="security">Security</option>
+                  </select>
+                </div>
+              </div>
+              <div class="modal-footer">
+                <button class="btn btn-ghost" id="orch-agent-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="orch-agent-modal-save">Add Agent</button>
               </div>
             </div>
           </div>

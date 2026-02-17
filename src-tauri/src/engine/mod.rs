@@ -13,6 +13,7 @@ pub mod skills;
 pub mod web;
 pub mod telegram;
 pub mod channels;
+pub mod orchestrator;
 pub mod discord;
 pub mod irc;
 pub mod slack;

@@ -2763,6 +2763,14 @@ pub fn run() {
             engine::commands::engine_webchat_approve_user,
             engine::commands::engine_webchat_deny_user,
             engine::commands::engine_webchat_remove_user,
+            // ── Orchestrator: Projects ──
+            engine::commands::engine_projects_list,
+            engine::commands::engine_project_create,
+            engine::commands::engine_project_update,
+            engine::commands::engine_project_delete,
+            engine::commands::engine_project_set_agents,
+            engine::commands::engine_project_messages,
+            engine::commands::engine_project_run,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

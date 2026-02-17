@@ -914,3 +914,39 @@ pub struct TaskActivity {
     pub content: String,
     pub created_at: String,
 }
+
+// ── Orchestrator: Projects ────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Project {
+    pub id: String,
+    pub title: String,
+    pub goal: String,
+    pub status: String,         // planning, running, paused, completed, failed
+    pub boss_agent: String,     // agent_id of the orchestrator/boss agent
+    #[serde(default)]
+    pub agents: Vec<ProjectAgent>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectAgent {
+    pub agent_id: String,
+    pub role: String,           // boss, worker
+    pub specialty: String,      // coder, researcher, designer, communicator, security, general
+    pub status: String,         // idle, working, done, error
+    pub current_task: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectMessage {
+    pub id: String,
+    pub project_id: String,
+    pub from_agent: String,
+    pub to_agent: Option<String>,   // None = broadcast to project
+    pub kind: String,               // delegation, progress, result, error, message
+    pub content: String,
+    pub metadata: Option<String>,   // JSON blob for structured data
+    pub created_at: String,
+}

@@ -203,6 +203,38 @@ export interface EngineTaskActivity {
   created_at: string;
 }
 
+// ── Orchestrator: Projects ─────────────────────────────────────────────
+
+export interface EngineProject {
+  id: string;
+  title: string;
+  goal: string;
+  status: string;         // planning, running, paused, completed, failed
+  boss_agent: string;
+  agents: EngineProjectAgent[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EngineProjectAgent {
+  agent_id: string;
+  role: string;           // boss, worker
+  specialty: string;      // coder, researcher, designer, communicator, security, general
+  status: string;         // idle, working, done, error
+  current_task?: string;
+}
+
+export interface EngineProjectMessage {
+  id: string;
+  project_id: string;
+  from_agent: string;
+  to_agent?: string;
+  kind: string;           // delegation, progress, result, error, message
+  content: string;
+  metadata?: string;
+  created_at: string;
+}
+
 // ── Telegram ───────────────────────────────────────────────────────────
 
 export interface TelegramConfig {
@@ -746,6 +778,36 @@ class PawEngineClient {
   async twitchApproveUser(userId: string): Promise<void> { return invoke('engine_twitch_approve_user', { userId }); }
   async twitchDenyUser(userId: string): Promise<void> { return invoke('engine_twitch_deny_user', { userId }); }
   async twitchRemoveUser(userId: string): Promise<void> { return invoke('engine_twitch_remove_user', { userId }); }
+
+  // ── Orchestrator: Projects ───────────────────────────────────────────
+
+  async projectsList(): Promise<EngineProject[]> {
+    return invoke<EngineProject[]>('engine_projects_list');
+  }
+
+  async projectCreate(project: EngineProject): Promise<void> {
+    return invoke('engine_project_create', { project });
+  }
+
+  async projectUpdate(project: EngineProject): Promise<void> {
+    return invoke('engine_project_update', { project });
+  }
+
+  async projectDelete(projectId: string): Promise<void> {
+    return invoke('engine_project_delete', { projectId });
+  }
+
+  async projectSetAgents(projectId: string, agents: EngineProjectAgent[]): Promise<void> {
+    return invoke('engine_project_set_agents', { projectId, agents });
+  }
+
+  async projectMessages(projectId: string, limit?: number): Promise<EngineProjectMessage[]> {
+    return invoke<EngineProjectMessage[]>('engine_project_messages', { projectId, limit });
+  }
+
+  async projectRun(projectId: string): Promise<string> {
+    return invoke<string>('engine_project_run', { projectId });
+  }
 }
 
 export const pawEngine = new PawEngineClient();

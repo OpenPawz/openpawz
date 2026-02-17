@@ -47,6 +47,7 @@ import * as ProjectsModule from './views/projects';
 import * as AgentsModule from './views/agents';
 import * as TodayModule from './views/today';
 import * as TasksModule from './views/tasks';
+import * as OrchestratorModule from './views/orchestrator';
 import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, getSessionOverrideRemaining, isFilesystemWriteTool, activateSessionOverride, extractCommandString, type RiskClassification } from './security';
 
 // ── Global error handlers ──────────────────────────────────────────────────
@@ -165,6 +166,7 @@ const settingsView = $('settings-view');
 const nodesView = $('nodes-view');
 const agentsView = $('agents-view');
 const todayView = $('today-view');
+const orchestratorView = $('orchestrator-view');
 const statusDot = $('status-dot');
 const statusText = $('status-text');
 const chatMessages = $('chat-messages');
@@ -180,6 +182,7 @@ const allViews = [
   chatView, tasksView, codeView, contentView, mailView,
   automationsView, channelsView, researchView, memoryView,
   skillsView, foundryView, settingsView, nodesView, agentsView, todayView,
+  orchestratorView,
 ].filter(Boolean);
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -204,6 +207,7 @@ function switchView(viewName: string) {
     channels: channelsView, research: researchView, memory: memoryView,
     skills: skillsView, foundry: foundryView, settings: settingsView,
     nodes: nodesView, agents: agentsView, today: todayView,
+    orchestrator: orchestratorView,
   };
   const target = viewMap[viewName];
   if (target) target.classList.add('active');
@@ -228,6 +232,7 @@ function switchView(viewName: string) {
         TasksModule.loadTasks();
         break;
       }
+      case 'orchestrator': OrchestratorModule.loadProjects(); break;
       case 'mail': MailModule.loadMail(); loadSpaceCron('mail'); break;
       case 'settings': syncSettingsForm(); loadGatewayConfig(); SettingsModule.loadSettings(); SettingsModule.startUsageAutoRefresh(); loadActiveSettingsTab(); break;
       default: break;
@@ -4142,6 +4147,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize Tasks module events
     TasksModule.bindTaskEvents();
+
+    // Initialize Orchestrator module
+    OrchestratorModule.initOrchestrator();
 
     // ── Pawz: Always engine mode — no gateway needed ──
     // Force engine mode in localStorage so isEngineMode() returns true everywhere
