@@ -1016,10 +1016,23 @@ impl SessionStore {
         .filter_map(|r| r.ok())
         .collect::<Vec<_>>();
 
-        // Load agents for each project
+        // Load agents for each project (inline to avoid double-locking self.conn)
         let mut result = Vec::new();
         for mut p in projects {
-            p.agents = self.get_project_agents(&p.id)?;
+            let mut agent_stmt = conn.prepare(
+                "SELECT agent_id, role, specialty, status, current_task FROM project_agents WHERE project_id=?1"
+            ).map_err(|e| e.to_string())?;
+            p.agents = agent_stmt.query_map(params![p.id], |row| {
+                Ok(crate::engine::types::ProjectAgent {
+                    agent_id: row.get(0)?,
+                    role: row.get(1)?,
+                    specialty: row.get(2)?,
+                    status: row.get(3)?,
+                    current_task: row.get(4)?,
+                })
+            }).map_err(|e| e.to_string())?
+            .filter_map(|r| r.ok())
+            .collect();
             result.push(p);
         }
         Ok(result)
