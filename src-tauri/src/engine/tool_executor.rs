@@ -45,6 +45,7 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
         "github_api" => execute_skill_tool("github", "github_api", &args, app_handle).await,
         "rest_api_call" => execute_skill_tool("rest_api", "rest_api_call", &args, app_handle).await,
         "webhook_send" => execute_skill_tool("webhook", "webhook_send", &args, app_handle).await,
+        "image_generate" => execute_skill_tool("image_gen", "image_generate", &args, app_handle).await,
         _ => Err(format!("Unknown tool: {}", name)),
     };
 
@@ -368,6 +369,7 @@ async fn execute_skill_tool(
         "github_api" => execute_github_api(args, &creds).await,
         "rest_api_call" => execute_rest_api_call(args, &creds).await,
         "webhook_send" => execute_webhook_send(args, &creds).await,
+        "image_generate" => execute_image_generate(args, &creds).await,
         _ => Err(format!("Unknown skill tool: {}", tool_name)),
     }
 }
@@ -750,4 +752,139 @@ fn simple_hmac_hex(key: &str, data: &str) -> String {
     key.hash(&mut hasher);
     data.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
+}
+
+// ── Image Generation (Gemini) ──────────────────────────────────────────
+
+async fn execute_image_generate(
+    args: &serde_json::Value,
+    creds: &std::collections::HashMap<String, String>,
+) -> Result<String, String> {
+    let prompt = args["prompt"].as_str().ok_or("image_generate: missing 'prompt'")?;
+    let filename = args["filename"].as_str().unwrap_or("");
+
+    let api_key = creds.get("GEMINI_API_KEY").ok_or("Missing GEMINI_API_KEY credential")?;
+
+    info!("[skill:image_gen] Generating image for prompt: {}", &prompt[..prompt.len().min(80)]);
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    // Use Gemini's image generation via generateContent with responseModalities
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={}",
+        api_key
+    );
+
+    let body = serde_json::json!({
+        "contents": [{
+            "parts": [{
+                "text": prompt
+            }]
+        }],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
+    });
+
+    let resp = client.post(&url)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Gemini API error: {}", e))?;
+
+    let status = resp.status().as_u16();
+    let resp_text = resp.text().await.map_err(|e| format!("Read response: {}", e))?;
+
+    if status >= 400 {
+        return Err(format!("Gemini API error (HTTP {}): {}", status, &resp_text[..resp_text.len().min(500)]));
+    }
+
+    let resp_json: serde_json::Value = serde_json::from_str(&resp_text)
+        .map_err(|e| format!("Parse Gemini response: {}", e))?;
+
+    // Extract image data from response
+    // Gemini returns: candidates[0].content.parts[] with either {text} or {inlineData: {mimeType, data}}
+    let parts = resp_json
+        .get("candidates").and_then(|c| c.get(0))
+        .and_then(|c| c.get("content"))
+        .and_then(|c| c.get("parts"))
+        .and_then(|p| p.as_array())
+        .ok_or("Gemini response missing candidates/content/parts")?;
+
+    let mut image_data: Option<(String, String)> = None; // (mime_type, base64_data)
+    let mut text_response: Option<String> = None;
+
+    for part in parts {
+        if let Some(inline) = part.get("inlineData") {
+            let mime = inline["mimeType"].as_str().unwrap_or("image/png");
+            let data = inline["data"].as_str().unwrap_or("");
+            if !data.is_empty() {
+                image_data = Some((mime.to_string(), data.to_string()));
+            }
+        }
+        if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
+            text_response = Some(text.to_string());
+        }
+    }
+
+    let (mime_type, base64_data) = image_data
+        .ok_or("Gemini did not return an image. The model may not support image generation for this prompt. Try a more descriptive prompt.")?;
+
+    // Determine file extension from MIME type
+    let ext = match mime_type.as_str() {
+        "image/png" => "png",
+        "image/jpeg" | "image/jpg" => "jpg",
+        "image/webp" => "webp",
+        "image/gif" => "gif",
+        _ => "png",
+    };
+
+    // Generate output filename
+    let output_name = if filename.is_empty() {
+        let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
+        let slug: String = prompt.chars()
+            .filter(|c| c.is_alphanumeric() || *c == ' ')
+            .take(30)
+            .collect::<String>()
+            .trim()
+            .replace(' ', "_")
+            .to_lowercase();
+        format!("generated_{}_{}", ts, slug)
+    } else {
+        filename.to_string()
+    };
+
+    // Save to the user's pictures/paw directory or temp
+    let output_dir = std::env::var("HOME")
+        .map(|h| std::path::PathBuf::from(h).join("Pictures").join("paw"))
+        .unwrap_or_else(|_| std::env::temp_dir().join("paw_images"));
+
+    std::fs::create_dir_all(&output_dir)
+        .map_err(|e| format!("Create output dir: {}", e))?;
+
+    let output_path = output_dir.join(format!("{}.{}", output_name, ext));
+
+    // Decode base64 and write
+    use base64::Engine as _;
+    let bytes = base64::engine::general_purpose::STANDARD.decode(&base64_data)
+        .map_err(|e| format!("Decode image data: {}", e))?;
+
+    std::fs::write(&output_path, &bytes)
+        .map_err(|e| format!("Write image file: {}", e))?;
+
+    let path_str = output_path.to_string_lossy().to_string();
+    let size_kb = bytes.len() / 1024;
+
+    info!("[skill:image_gen] Saved {} ({} KB) to {}", mime_type, size_kb, path_str);
+
+    let mut result = format!("Image generated and saved to: {}\nSize: {} KB | Format: {}", path_str, size_kb, ext.to_uppercase());
+    if let Some(text) = text_response {
+        result.push_str(&format!("\n\nModel notes: {}", text));
+    }
+
+    Ok(result)
 }

@@ -2218,6 +2218,28 @@ const CHANNEL_SETUPS: ChannelSetupDef[] = [
     ],
     buildConfig: (v) => ({ oauth_token: v.oauthToken as string, bot_username: v.botUsername as string, channels_to_join: (v.channels as string || '').split(',').map(s => s.trim()).filter(Boolean), enabled: true, dm_policy: v.dmPolicy as string || 'open', require_mention: v.requireMention !== false }),
   },
+  {
+    id: 'webchat',
+    name: 'Web Chat',
+    icon: '🌐',
+    description: 'Share a link so friends can chat with your agent from their browser. No accounts needed — just a URL and access token.',
+    fields: [
+      { key: 'port', label: 'Port', type: 'text', placeholder: '3939', defaultValue: '3939' },
+      { key: 'bindAddress', label: 'Bind Address', type: 'select', options: [
+        { value: '0.0.0.0', label: '0.0.0.0 (LAN accessible)' },
+        { value: '127.0.0.1', label: '127.0.0.1 (localhost only)' },
+      ], defaultValue: '0.0.0.0' },
+      { key: 'accessToken', label: 'Access Token', type: 'text', placeholder: 'Auto-generated if empty', hint: 'Share this token with friends so they can connect' },
+      { key: 'pageTitle', label: 'Page Title', type: 'text', placeholder: 'Paw Chat', defaultValue: 'Paw Chat' },
+      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
+        { value: 'open', label: 'Open (anyone with the link + token)' },
+        { value: 'pairing', label: 'Pairing (approve first-time users)' },
+        { value: 'allowlist', label: 'Allowlist only' },
+      ], defaultValue: 'open' },
+      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
+    ],
+    buildConfig: (v) => ({ port: parseInt(v.port as string) || 3939, bind_address: v.bindAddress as string || '0.0.0.0', access_token: v.accessToken as string || '', page_title: v.pageTitle as string || 'Paw Chat', enabled: true, dm_policy: v.dmPolicy as string || 'open' }),
+  },
 ];
 
 let _channelSetupType: string | null = null;

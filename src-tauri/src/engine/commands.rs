@@ -1843,3 +1843,46 @@ pub fn engine_twitch_deny_user(app_handle: tauri::AppHandle, user_id: String) ->
 pub fn engine_twitch_remove_user(app_handle: tauri::AppHandle, user_id: String) -> Result<(), String> {
     crate::engine::twitch::remove_user(&app_handle, &user_id)
 }
+
+// ── Web Chat Bridge Commands ───────────────────────────────────────────
+
+#[tauri::command]
+pub fn engine_webchat_start(app_handle: tauri::AppHandle) -> Result<(), String> {
+    crate::engine::webchat::start_bridge(app_handle)
+}
+
+#[tauri::command]
+pub fn engine_webchat_stop() -> Result<(), String> {
+    crate::engine::webchat::stop_bridge();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn engine_webchat_status(app_handle: tauri::AppHandle) -> Result<crate::engine::channels::ChannelStatus, String> {
+    Ok(crate::engine::webchat::get_status(&app_handle))
+}
+
+#[tauri::command]
+pub fn engine_webchat_get_config(app_handle: tauri::AppHandle) -> Result<crate::engine::webchat::WebChatConfig, String> {
+    crate::engine::webchat::load_config(&app_handle)
+}
+
+#[tauri::command]
+pub fn engine_webchat_set_config(app_handle: tauri::AppHandle, config: crate::engine::webchat::WebChatConfig) -> Result<(), String> {
+    crate::engine::webchat::save_config(&app_handle, &config)
+}
+
+#[tauri::command]
+pub fn engine_webchat_approve_user(app_handle: tauri::AppHandle, user_id: String) -> Result<(), String> {
+    crate::engine::webchat::approve_user(&app_handle, &user_id)
+}
+
+#[tauri::command]
+pub fn engine_webchat_deny_user(app_handle: tauri::AppHandle, user_id: String) -> Result<(), String> {
+    crate::engine::webchat::deny_user(&app_handle, &user_id)
+}
+
+#[tauri::command]
+pub fn engine_webchat_remove_user(app_handle: tauri::AppHandle, user_id: String) -> Result<(), String> {
+    crate::engine::webchat::remove_user(&app_handle, &user_id)
+}

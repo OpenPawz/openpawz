@@ -488,6 +488,30 @@ impl ToolDefinition {
         }
     }
 
+    pub fn image_generate() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "image_generate".into(),
+                description: "Generate an image from a text description using AI. Returns the file path of the saved image. Use detailed, descriptive prompts for best results.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "prompt": {
+                            "type": "string",
+                            "description": "Detailed text description of the image to generate. Be specific about style, subject, lighting, colors, composition."
+                        },
+                        "filename": {
+                            "type": "string",
+                            "description": "Optional filename for the output image (without extension). Defaults to a generated name."
+                        }
+                    },
+                    "required": ["prompt"]
+                }),
+            },
+        }
+    }
+
     // ── Web browsing tools ─────────────────────────────────────────────
 
     pub fn web_search() -> Self {
@@ -600,6 +624,7 @@ impl ToolDefinition {
                 "github" => { tools.push(Self::github_api()); }
                 "rest_api" => { tools.push(Self::rest_api_call()); }
                 "webhook" => { tools.push(Self::webhook_send()); }
+                "image_gen" => { tools.push(Self::image_generate()); }
                 _ => {}
             }
         }

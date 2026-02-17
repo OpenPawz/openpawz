@@ -2754,6 +2754,15 @@ pub fn run() {
             engine::commands::engine_twitch_approve_user,
             engine::commands::engine_twitch_deny_user,
             engine::commands::engine_twitch_remove_user,
+            // ── Web Chat Bridge ──
+            engine::commands::engine_webchat_start,
+            engine::commands::engine_webchat_stop,
+            engine::commands::engine_webchat_status,
+            engine::commands::engine_webchat_get_config,
+            engine::commands::engine_webchat_set_config,
+            engine::commands::engine_webchat_approve_user,
+            engine::commands::engine_webchat_deny_user,
+            engine::commands::engine_webchat_remove_user,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

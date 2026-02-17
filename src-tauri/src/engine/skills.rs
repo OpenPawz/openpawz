@@ -402,19 +402,18 @@ Include: file (audio binary), model: "whisper-1", optional: language, response_f
         SkillDefinition {
             id: "image_gen".into(),
             name: "Image Generation".into(),
-            description: "Generate images via OpenAI DALL-E or GPT Image API".into(),
+            description: "Generate images from text using Gemini (Google AI)".into(),
             icon: "🖼️".into(),
             category: SkillCategory::Media,
             required_credentials: vec![
-                CredentialField { key: "OPENAI_API_KEY".into(), label: "OpenAI API Key".into(), description: "OpenAI API key for image generation".into(), required: true, placeholder: "sk-...".into() },
+                CredentialField { key: "GEMINI_API_KEY".into(), label: "Gemini API Key".into(), description: "Google AI API key for image generation".into(), required: true, placeholder: "AIza...".into() },
             ],
-            tool_names: vec![],
-            required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API key from platform.openai.com".into(),
-            agent_instructions: r#"You can generate images using the OpenAI Images API.
-Use fetch to POST to https://api.openai.com/v1/images/generations with:
-{"model":"dall-e-3","prompt":"<description>","n":1,"size":"1024x1024","quality":"standard"}
-Sizes: 1024x1024, 1792x1024, 1024x1792. Quality: standard, hd.
-Response includes a URL to the generated image. Download and save with write_file if needed."#.into(),
+            tool_names: vec!["image_generate".into()],
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API key from aistudio.google.com/apikey".into(),
+            agent_instructions: r#"You have an image_generate tool that creates images from text descriptions using Gemini.
+Call image_generate with a detailed prompt describing the image you want to create.
+The tool returns the file path of the generated image.
+Tip: Be descriptive — include style, lighting, composition, colors, and mood in your prompts for best results."#.into(),
         },
         SkillDefinition {
             id: "video_frames".into(),
