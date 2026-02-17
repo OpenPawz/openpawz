@@ -306,6 +306,8 @@ body::after {
 .nav-item[data-view="skills"]::after { background-image: url('assets/sprites/sm/sheet5-10.png'); }
 .nav-item[data-view="foundry"]::after { background-image: url('assets/sprites/sm/sheet3-09.png'); }
 .nav-item[data-view="settings"]::after { background-image: url('assets/sprites/sm/sheet4-12.png'); }
+.nav-item[data-view="tasks"]::after { background-image: url('assets/sprites/sm/sheet2-09.png'); }
+.nav-item[data-view="orchestrator"]::after { background-image: url('assets/sprites/sm/sheet3-05.png'); }
 
 .sidebar-footer {
   padding: 10px;
