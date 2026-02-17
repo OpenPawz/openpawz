@@ -711,7 +711,8 @@ pub fn save_telegram_config(app_handle: &tauri::AppHandle, config: &TelegramConf
 }
 
 /// Approve a pending pairing request. Adds user to allowlist, removes from pending.
-pub fn approve_user(app_handle: &tauri::AppHandle, user_id: i64) -> Result<(), String> {
+/// Sends a confirmation message to the user on Telegram.
+pub async fn approve_user(app_handle: &tauri::AppHandle, user_id: i64) -> Result<(), String> {
     let mut config = load_telegram_config(app_handle)?;
 
     if !config.allowed_users.contains(&user_id) {
@@ -721,12 +722,40 @@ pub fn approve_user(app_handle: &tauri::AppHandle, user_id: i64) -> Result<(), S
 
     save_telegram_config(app_handle, &config)?;
     info!("[telegram] User {} approved", user_id);
+
+    // Send confirmation to the user on Telegram
+    if !config.bot_token.is_empty() {
+        let client = reqwest::Client::new();
+        let _ = tg_send_message(
+            &client,
+            &config.bot_token,
+            user_id,  // chat_id == user_id for DMs
+            "✅ You've been approved! You can now chat with me. Send any message to get started.",
+            None,
+        ).await;
+    }
+
     Ok(())
 }
 
 /// Deny a pending pairing request. Removes from pending.
-pub fn deny_user(app_handle: &tauri::AppHandle, user_id: i64) -> Result<(), String> {
-    let mut config = load_telegram_config(app_handle)?;
+/// Sends a rejection message to the user on Telegram.
+pub async fn deny_user(app_handle: &tauri::AppHandle, user_id: i64) -> Result<(), String> {
+    let config = load_telegram_config(app_handle)?;
+
+    // Send rejection before removing
+    if !config.bot_token.is_empty() {
+        let client = reqwest::Client::new();
+        let _ = tg_send_message(
+            &client,
+            &config.bot_token,
+            user_id,
+            "❌ Your pairing request was denied.",
+            None,
+        ).await;
+    }
+
+    let mut config = config;
     config.pending_users.retain(|p| p.user_id != user_id);
     save_telegram_config(app_handle, &config)?;
     info!("[telegram] User {} denied", user_id);

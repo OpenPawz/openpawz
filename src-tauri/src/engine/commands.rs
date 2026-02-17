@@ -1477,19 +1477,19 @@ pub fn engine_telegram_set_config(
 }
 
 #[tauri::command]
-pub fn engine_telegram_approve_user(
+pub async fn engine_telegram_approve_user(
     app_handle: tauri::AppHandle,
     user_id: i64,
 ) -> Result<(), String> {
-    crate::engine::telegram::approve_user(&app_handle, user_id)
+    crate::engine::telegram::approve_user(&app_handle, user_id).await
 }
 
 #[tauri::command]
-pub fn engine_telegram_deny_user(
+pub async fn engine_telegram_deny_user(
     app_handle: tauri::AppHandle,
     user_id: i64,
 ) -> Result<(), String> {
-    crate::engine::telegram::deny_user(&app_handle, user_id)
+    crate::engine::telegram::deny_user(&app_handle, user_id).await
 }
 
 #[tauri::command]
