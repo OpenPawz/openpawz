@@ -1242,6 +1242,31 @@ impl SessionStore {
         Ok(())
     }
 
+    /// List all unique agents across all projects (deduped by agent_id).
+    pub fn list_all_agents(&self) -> Result<Vec<(String, crate::engine::types::ProjectAgent)>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT project_id, agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents ORDER BY agent_id"
+        ).map_err(|e| e.to_string())?;
+        let agents = stmt.query_map([], |row| {
+            let caps_str: String = row.get::<_, String>(8).unwrap_or_default();
+            let capabilities: Vec<String> = serde_json::from_str(&caps_str).unwrap_or_default();
+            Ok((row.get::<_, String>(0)?, crate::engine::types::ProjectAgent {
+                agent_id: row.get(1)?,
+                role: row.get(2)?,
+                specialty: row.get(3)?,
+                status: row.get(4)?,
+                current_task: row.get(5)?,
+                model: row.get(6)?,
+                system_prompt: row.get(7)?,
+                capabilities,
+            }))
+        }).map_err(|e| e.to_string())?
+        .filter_map(|r| r.ok())
+        .collect();
+        Ok(agents)
+    }
+
     // ── Orchestrator: Message Bus ──────────────────────────────────────
 
     pub fn add_project_message(&self, msg: &crate::engine::types::ProjectMessage) -> Result<(), String> {

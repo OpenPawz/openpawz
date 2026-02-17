@@ -1,9 +1,13 @@
 // Agents View — Create and manage AI agent personas
 // Each agent has its own personality, skills, and memories
+// Supports both localStorage agents (manually created) and backend agents (created by orchestrator)
+
+import { pawEngine, type BackendAgent } from '../engine';
+import { isEngineMode } from '../engine-bridge';
 
 const $ = (id: string) => document.getElementById(id);
 
-interface Agent {
+export interface Agent {
   id: string;
   name: string;
   avatar: string; // emoji or initials
@@ -21,6 +25,8 @@ interface Agent {
   systemPrompt?: string; // Custom instructions
   createdAt: string;
   lastUsed?: string;
+  source?: 'local' | 'backend'; // Where this agent comes from
+  projectId?: string;           // If backend-created, which project
 }
 
 // Available models
@@ -109,18 +115,20 @@ export function configure(opts: {
 
 export async function loadAgents() {
   console.log('[agents] loadAgents called');
-  // Load from localStorage for now (could move to SQLite later)
+  // Load from localStorage (manually created agents)
   try {
     const stored = localStorage.getItem('paw-agents');
     _agents = stored ? JSON.parse(stored) : [];
+    // Tag localStorage agents as local
+    _agents.forEach(a => { if (!a.source) a.source = 'local'; });
     console.log('[agents] Loaded from storage:', _agents.length, 'agents');
   } catch {
     _agents = [];
   }
 
   // Ensure there's always a default agent
-  if (_agents.length === 0) {
-    _agents.push({
+  if (!_agents.find(a => a.id === 'default')) {
+    _agents.unshift({
       id: 'default',
       name: 'Dave',
       avatar: '🧠',
@@ -132,8 +140,44 @@ export async function loadAgents() {
       skills: ['web_search', 'web_fetch', 'read', 'write', 'exec'],
       boundaries: ['Ask before sending emails', 'No destructive git commands without permission'],
       createdAt: new Date().toISOString(),
+      source: 'local',
     });
     saveAgents();
+  }
+
+  // Merge backend-created agents (from project_agents table)
+  if (isEngineMode()) {
+    try {
+      const backendAgents: BackendAgent[] = await pawEngine.listAllAgents();
+      console.log('[agents] Backend agents:', backendAgents.length);
+      for (const ba of backendAgents) {
+        // Skip if already in local list (by agent_id)
+        if (_agents.find(a => a.id === ba.agent_id)) continue;
+        // Convert backend agent to Agent format
+        const specialtyEmoji: Record<string, string> = {
+          coder: '💻', researcher: '🔬', designer: '🎨', communicator: '💬',
+          security: '🛡️', general: '🤖', writer: '✍️', analyst: '📊',
+        };
+        _agents.push({
+          id: ba.agent_id,
+          name: ba.agent_id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+          avatar: specialtyEmoji[ba.specialty] || '🤖',
+          color: AVATAR_COLORS[_agents.length % AVATAR_COLORS.length],
+          bio: `${ba.role} — ${ba.specialty}`,
+          model: ba.model || 'default',
+          template: 'custom',
+          personality: { tone: 'balanced', initiative: 'balanced', detail: 'balanced' },
+          skills: ba.capabilities || [],
+          boundaries: [],
+          systemPrompt: ba.system_prompt,
+          createdAt: new Date().toISOString(),
+          source: 'backend',
+          projectId: ba.project_id,
+        });
+      }
+    } catch (e) {
+      console.warn('[agents] Failed to load backend agents:', e);
+    }
   }
 
   renderAgents();
@@ -150,23 +194,24 @@ function renderAgents() {
   if (!grid) return;
 
   grid.innerHTML = _agents.map(agent => `
-    <div class="agent-card" data-id="${agent.id}">
+    <div class="agent-card${agent.source === 'backend' ? ' agent-card-backend' : ''}" data-id="${agent.id}">
       <div class="agent-card-header">
         <div class="agent-avatar" style="background:${agent.color}">${agent.avatar}</div>
         <div class="agent-info">
           <div class="agent-name">${escHtml(agent.name)}</div>
-          <div class="agent-template">${agent.template.charAt(0).toUpperCase() + agent.template.slice(1)}</div>
+          <div class="agent-template">${agent.source === 'backend' ? 'AI-Created' : agent.template.charAt(0).toUpperCase() + agent.template.slice(1)}</div>
         </div>
-        <button class="btn-icon agent-menu-btn" title="Options">⋮</button>
+        ${agent.source !== 'backend' ? '<button class="btn-icon agent-menu-btn" title="Options">⋮</button>' : ''}
       </div>
       <div class="agent-bio">${escHtml(agent.bio)}</div>
       <div class="agent-stats">
         <span class="agent-stat">${agent.skills.length} skills</span>
-        <span class="agent-stat">${agent.boundaries.length} rules</span>
+        ${agent.source === 'backend' ? `<span class="agent-stat agent-stat-backend">orchestrator</span>` : `<span class="agent-stat">${agent.boundaries.length} rules</span>`}
       </div>
       <div class="agent-actions">
         <button class="btn btn-primary btn-sm agent-chat-btn">Chat</button>
-        <button class="btn btn-ghost btn-sm agent-edit-btn">Edit</button>
+        <button class="btn btn-ghost btn-sm agent-minichat-btn" title="Open mini chat window">💬</button>
+        ${agent.source !== 'backend' ? '<button class="btn btn-ghost btn-sm agent-edit-btn">Edit</button>' : ''}
       </div>
     </div>
   `).join('') + `
@@ -182,6 +227,14 @@ function renderAgents() {
       const card = (e.target as HTMLElement).closest('.agent-card');
       const id = card?.getAttribute('data-id');
       if (id) startChatWithAgent(id);
+    });
+  });
+
+  grid.querySelectorAll('.agent-minichat-btn').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const card = (e.target as HTMLElement).closest('.agent-card');
+      const id = card?.getAttribute('data-id');
+      if (id) openMiniChat(id);
     });
   });
 
@@ -610,6 +663,232 @@ function escAttr(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
+// ═══ Mini-Chat Popup System (FB Messenger–style) ═══════════════════════════
+
+interface MiniChatWindow {
+  agentId: string;
+  agent: Agent;
+  sessionId: string | null;
+  el: HTMLElement;
+  messagesEl: HTMLElement;
+  inputEl: HTMLInputElement;
+  isMinimized: boolean;
+  isStreaming: boolean;
+  streamingContent: string;
+  streamingEl: HTMLElement | null;
+  runId: string | null;
+  unlistenDelta: (() => void) | null;
+  unlistenComplete: (() => void) | null;
+  unlistenError: (() => void) | null;
+}
+
+const _miniChats: Map<string, MiniChatWindow> = new Map();
+const MINI_CHAT_WIDTH = 320;
+const MINI_CHAT_GAP = 12;
+
+function getMiniChatOffset(index: number): number {
+  return MINI_CHAT_GAP + index * (MINI_CHAT_WIDTH + MINI_CHAT_GAP);
+}
+
+function repositionMiniChats() {
+  let idx = 0;
+  for (const mc of _miniChats.values()) {
+    mc.el.style.right = `${getMiniChatOffset(idx)}px`;
+    idx++;
+  }
+}
+
+function openMiniChat(agentId: string) {
+  // If already open, just un-minimize
+  const existing = _miniChats.get(agentId);
+  if (existing) {
+    if (existing.isMinimized) toggleMinimizeMiniChat(agentId);
+    existing.inputEl.focus();
+    return;
+  }
+
+  const agent = _agents.find(a => a.id === agentId);
+  if (!agent) return;
+
+  const el = document.createElement('div');
+  el.className = 'mini-chat';
+  el.style.right = `${getMiniChatOffset(_miniChats.size)}px`;
+  el.innerHTML = `
+    <div class="mini-chat-header" style="background:${agent.color}">
+      <div class="mini-chat-avatar">${agent.avatar}</div>
+      <div class="mini-chat-name">${escHtml(agent.name)}</div>
+      <div class="mini-chat-controls">
+        <button class="mini-chat-btn mini-chat-minimize" title="Minimize">—</button>
+        <button class="mini-chat-btn mini-chat-close" title="Close">×</button>
+      </div>
+    </div>
+    <div class="mini-chat-body">
+      <div class="mini-chat-messages"></div>
+      <div class="mini-chat-input-row">
+        <input type="text" class="mini-chat-input" placeholder="Message ${escAttr(agent.name)}…">
+        <button class="mini-chat-send">➤</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(el);
+
+  const messagesEl = el.querySelector('.mini-chat-messages') as HTMLElement;
+  const inputEl = el.querySelector('.mini-chat-input') as HTMLInputElement;
+
+  const mc: MiniChatWindow = {
+    agentId,
+    agent,
+    sessionId: null,
+    el,
+    messagesEl,
+    inputEl,
+    isMinimized: false,
+    isStreaming: false,
+    streamingContent: '',
+    streamingEl: null,
+    runId: null,
+    unlistenDelta: null,
+    unlistenComplete: null,
+    unlistenError: null,
+  };
+  _miniChats.set(agentId, mc);
+
+  // Set up engine event listeners for this chat
+  setupMiniChatListeners(mc);
+
+  // Header drag/minimize
+  el.querySelector('.mini-chat-minimize')?.addEventListener('click', () => toggleMinimizeMiniChat(agentId));
+  el.querySelector('.mini-chat-close')?.addEventListener('click', () => closeMiniChat(agentId));
+  el.querySelector('.mini-chat-header')?.addEventListener('dblclick', () => toggleMinimizeMiniChat(agentId));
+
+  // Send on Enter or button
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMiniChatMessage(agentId);
+    }
+  });
+  el.querySelector('.mini-chat-send')?.addEventListener('click', () => sendMiniChatMessage(agentId));
+
+  // Animate in
+  requestAnimationFrame(() => el.classList.add('mini-chat-visible'));
+  inputEl.focus();
+}
+
+function setupMiniChatListeners(mc: MiniChatWindow) {
+  // Listen for delta events
+  mc.unlistenDelta = pawEngine.on('delta', (event) => {
+    if (!mc.runId || event.run_id !== mc.runId) return;
+    mc.streamingContent += event.text || '';
+    if (mc.streamingEl) {
+      mc.streamingEl.textContent = mc.streamingContent;
+      mc.messagesEl.scrollTop = mc.messagesEl.scrollHeight;
+    }
+  });
+
+  // Listen for completion
+  mc.unlistenComplete = pawEngine.on('complete', (event) => {
+    if (!mc.runId || event.run_id !== mc.runId) return;
+    finalizeMiniChatStreaming(mc);
+  });
+
+  // Listen for errors
+  mc.unlistenError = pawEngine.on('error', (event) => {
+    if (!mc.runId || event.run_id !== mc.runId) return;
+    mc.streamingContent += `\n⚠️ ${event.message || 'Error'}`;
+    finalizeMiniChatStreaming(mc);
+  });
+}
+
+function finalizeMiniChatStreaming(mc: MiniChatWindow) {
+  mc.isStreaming = false;
+  mc.runId = null;
+  if (mc.streamingEl) {
+    mc.streamingEl.classList.remove('mini-chat-streaming');
+    mc.streamingEl = null;
+  }
+  mc.inputEl.disabled = false;
+  mc.inputEl.focus();
+}
+
+async function sendMiniChatMessage(agentId: string) {
+  const mc = _miniChats.get(agentId);
+  if (!mc || mc.isStreaming) return;
+
+  const text = mc.inputEl.value.trim();
+  if (!text) return;
+
+  mc.inputEl.value = '';
+  mc.isStreaming = true;
+  mc.streamingContent = '';
+  mc.inputEl.disabled = true;
+
+  // Add user message bubble
+  const userBubble = document.createElement('div');
+  userBubble.className = 'mini-chat-msg mini-chat-msg-user';
+  userBubble.textContent = text;
+  mc.messagesEl.appendChild(userBubble);
+
+  // Add assistant streaming bubble
+  const asstBubble = document.createElement('div');
+  asstBubble.className = 'mini-chat-msg mini-chat-msg-assistant mini-chat-streaming';
+  asstBubble.innerHTML = '<span class="mini-chat-dots">···</span>';
+  mc.messagesEl.appendChild(asstBubble);
+  mc.streamingEl = asstBubble;
+  mc.messagesEl.scrollTop = mc.messagesEl.scrollHeight;
+
+  try {
+    // Build agent system prompt
+    const parts: string[] = [];
+    if (mc.agent.name) parts.push(`You are ${mc.agent.name}.`);
+    if (mc.agent.bio) parts.push(mc.agent.bio);
+    if (mc.agent.systemPrompt) parts.push(mc.agent.systemPrompt);
+    const systemPrompt = parts.length > 0 ? parts.join(' ') : undefined;
+
+    const resolvedModel = (mc.agent.model && mc.agent.model !== 'default') ? mc.agent.model : undefined;
+
+    const request = {
+      session_id: mc.sessionId || undefined,
+      message: text,
+      model: resolvedModel,
+      system_prompt: systemPrompt,
+      tools_enabled: true,
+      agent_id: mc.agentId,
+    };
+
+    const result = await pawEngine.chatSend(request);
+    mc.runId = result.run_id;
+    mc.sessionId = result.session_id;
+  } catch (e) {
+    console.error('[mini-chat] Send error:', e);
+    asstBubble.textContent = `⚠️ ${e instanceof Error ? e.message : 'Failed to send'}`;
+    asstBubble.classList.remove('mini-chat-streaming');
+    mc.isStreaming = false;
+    mc.streamingEl = null;
+    mc.inputEl.disabled = false;
+  }
+}
+
+function toggleMinimizeMiniChat(agentId: string) {
+  const mc = _miniChats.get(agentId);
+  if (!mc) return;
+  mc.isMinimized = !mc.isMinimized;
+  mc.el.classList.toggle('mini-chat-minimized', mc.isMinimized);
+}
+
+function closeMiniChat(agentId: string) {
+  const mc = _miniChats.get(agentId);
+  if (!mc) return;
+  // Cleanup listeners
+  mc.unlistenDelta?.();
+  mc.unlistenComplete?.();
+  mc.unlistenError?.();
+  mc.el.classList.remove('mini-chat-visible');
+  setTimeout(() => mc.el.remove(), 200);
+  _miniChats.delete(agentId);
+  repositionMiniChats();
+}
+
 export function getAgents(): Agent[] {
   return _agents;
 }
@@ -617,6 +896,9 @@ export function getAgents(): Agent[] {
 export function getCurrentAgent(): Agent | null {
   return _agents.find(a => a.id === _selectedAgent) || _agents[0] || null;
 }
+
+/** Open a mini-chat popup for any agent (callable from outside the module). */
+export { openMiniChat };
 
 export function initAgents() {
   loadAgents();

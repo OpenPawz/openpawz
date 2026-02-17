@@ -256,6 +256,19 @@ export interface EngineProjectMessage {
   created_at: string;
 }
 
+/** A backend-created agent (from project_agents table). */
+export interface BackendAgent {
+  project_id: string;
+  agent_id: string;
+  role: string;
+  specialty: string;
+  status: string;
+  current_task?: string;
+  model?: string;
+  system_prompt?: string;
+  capabilities?: string[];
+}
+
 // ── Telegram ───────────────────────────────────────────────────────────
 
 export interface TelegramConfig {
@@ -832,6 +845,11 @@ class PawEngineClient {
 
   async projectSetAgents(projectId: string, agents: EngineProjectAgent[]): Promise<void> {
     return invoke('engine_project_set_agents', { projectId, agents });
+  }
+
+  /** List all agents across all projects (backend-created agents). */
+  async listAllAgents(): Promise<BackendAgent[]> {
+    return invoke<BackendAgent[]>('engine_list_all_agents');
   }
 
   async projectMessages(projectId: string, limit?: number): Promise<EngineProjectMessage[]> {

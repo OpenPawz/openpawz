@@ -272,21 +272,20 @@ fn extract_readable_text(document: &Html) -> String {
 
 // ── web_screenshot: Headless Chrome screenshot ─────────────────────────
 
-pub async fn execute_web_screenshot(args: &serde_json::Value, agent_id: &str) -> Result<String, String> {
+pub async fn execute_web_screenshot(args: &serde_json::Value) -> Result<String, String> {
     let url = args["url"].as_str()
         .ok_or("web_screenshot: missing 'url' argument")?;
     let full_page = args["full_page"].as_bool().unwrap_or(false);
     let width = args["width"].as_u64().unwrap_or(1280) as u32;
     let height = args["height"].as_u64().unwrap_or(800) as u32;
 
-    info!("[web] screenshot: {} {}x{} full_page={} agent={}", url, width, height, full_page, agent_id);
+    info!("[web] screenshot: {} {}x{} full_page={}", url, width, height, full_page);
 
     let url_owned = url.to_string();
-    let agent_id_owned = agent_id.to_string();
 
     // Browser ops are blocking — run in spawn_blocking
     let result = tokio::task::spawn_blocking(move || {
-        let browser = crate::engine::browser::get_or_launch_browser_for_agent(&agent_id_owned)?;
+        let browser = get_or_launch_browser()?;
 
         let tab = browser.new_tab().map_err(|e| format!("New tab error: {}", e))?;
 
@@ -351,7 +350,7 @@ pub async fn execute_web_screenshot(args: &serde_json::Value, agent_id: &str) ->
 
 // ── web_browse: Interactive headless browser session ───────────────────
 
-pub async fn execute_web_browse(args: &serde_json::Value, agent_id: &str) -> Result<String, String> {
+pub async fn execute_web_browse(args: &serde_json::Value) -> Result<String, String> {
     let action = args["action"].as_str()
         .ok_or("web_browse: missing 'action' argument")?;
     let url = args["url"].as_str().map(|s| s.to_string());
@@ -359,13 +358,12 @@ pub async fn execute_web_browse(args: &serde_json::Value, agent_id: &str) -> Res
     let text = args["text"].as_str().map(|s| s.to_string());
     let js = args["javascript"].as_str().map(|s| s.to_string());
 
-    info!("[web] browse: action={} url={:?} selector={:?} agent={}", action, url, selector, agent_id);
+    info!("[web] browse: action={} url={:?} selector={:?}", action, url, selector);
 
     let action_owned = action.to_string();
-    let agent_id_owned = agent_id.to_string();
 
     let result = tokio::task::spawn_blocking(move || {
-        let browser = crate::engine::browser::get_or_launch_browser_for_agent(&agent_id_owned)?;
+        let browser = get_or_launch_browser()?;
 
         // Get or create the working tab (reuse first tab for session continuity)
         let tab: Arc<Tab> = {
