@@ -4162,6 +4162,37 @@ document.addEventListener('DOMContentLoaded', async () => {
     switchView('dashboard');
     await connectGateway(); // in engine mode this just starts the Tauri IPC bridge
 
+    // ── Auto-reconnect configured channels on startup ──────────────
+    // Fire-and-forget: start any channel that was previously configured & enabled
+    (async () => {
+      try {
+        // Telegram (special — uses its own config/start API)
+        const tgCfg = await pawEngine.telegramGetConfig();
+        if (tgCfg.enabled && tgCfg.bot_token) {
+          const tgStatus = await pawEngine.telegramStatus();
+          if (!tgStatus.running) {
+            await pawEngine.telegramStart();
+            console.log('[main] Auto-started Telegram bridge');
+          }
+        }
+      } catch (e) { console.warn('[main] Telegram auto-start skipped:', e); }
+
+      // Generic channels
+      const channels = ['discord', 'irc', 'slack', 'matrix', 'mattermost', 'nextcloud', 'nostr', 'twitch'] as const;
+      for (const ch of channels) {
+        try {
+          const cfg = await _getChannelConfig(ch);
+          if (cfg && (cfg as Record<string, unknown>).enabled) {
+            const status = await _getChannelStatus(ch);
+            if (status && !status.running) {
+              await _startChannel(ch);
+              console.log(`[main] Auto-started ${ch} bridge`);
+            }
+          }
+        } catch (e) { console.warn(`[main] ${ch} auto-start skipped:`, e); }
+      }
+    })();
+
     console.log('[main] Pawz initialized');
   } catch (e) {
     console.error('[main] Init error:', e);
