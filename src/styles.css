@@ -1128,6 +1128,7 @@ body::after {
   padding: 6px 6px 6px 16px;
   transition: all var(--transition-fast);
   box-shadow: var(--shadow-sm);
+  position: relative;
 }
 
 .chat-input-wrapper:focus-within {
@@ -1170,6 +1171,45 @@ body::after {
 
 .chat-input:focus { outline: none; }
 .chat-input::placeholder { color: var(--text-muted); }
+
+/* ── Slash command autocomplete popup ─────────────────────────────────── */
+.slash-autocomplete-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 100;
+  margin-bottom: 4px;
+}
+.slash-ac-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.slash-ac-item:hover,
+.slash-ac-item.selected {
+  background: var(--accent-subtle);
+}
+.slash-ac-cmd {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
+  min-width: 80px;
+  font-family: var(--font-mono, monospace);
+}
+.slash-ac-desc {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 
 .chat-send {
   width: 36px;

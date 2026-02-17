@@ -49,6 +49,7 @@ import * as TodayModule from './views/today';
 import * as TasksModule from './views/tasks';
 import * as OrchestratorModule from './views/orchestrator';
 import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, getSessionOverrideRemaining, isFilesystemWriteTool, activateSessionOverride, extractCommandString, type RiskClassification } from './security';
+import { interceptSlashCommand, getSessionOverrides as getSlashOverrides, getAutocompleteSuggestions, isSlashCommand, type CommandContext } from './features/slash-commands';
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -1076,12 +1077,70 @@ function chatMsgToMessage(m: ChatMessage): MessageWithAttachments {
 // Chat send
 chatSend?.addEventListener('click', sendMessage);
 chatInput?.addEventListener('keydown', (e) => {
+  // If autocomplete popup is visible, handle arrow keys and enter
+  const popup = $('slash-autocomplete');
+  if (popup && popup.style.display !== 'none') {
+    if (e.key === 'Escape') { popup.style.display = 'none'; e.preventDefault(); return; }
+    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+      const selected = popup.querySelector('.slash-ac-item.selected') as HTMLElement | null;
+      if (selected) {
+        e.preventDefault();
+        const cmd = selected.dataset.command ?? '';
+        if (chatInput) { chatInput.value = cmd + ' '; chatInput.focus(); }
+        popup.style.display = 'none';
+        return;
+      }
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const items = Array.from(popup.querySelectorAll('.slash-ac-item')) as HTMLElement[];
+      const cur = items.findIndex(el => el.classList.contains('selected'));
+      items.forEach(el => el.classList.remove('selected'));
+      const next = e.key === 'ArrowDown' ? (cur + 1) % items.length : (cur - 1 + items.length) % items.length;
+      items[next]?.classList.add('selected');
+      return;
+    }
+  }
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
 });
 chatInput?.addEventListener('input', () => {
   if (chatInput) {
     chatInput.style.height = 'auto';
     chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+
+    // Slash command autocomplete
+    const val = chatInput.value;
+    let popup = $('slash-autocomplete') as HTMLElement | null;
+    if (val.startsWith('/') && !val.includes(' ')) {
+      const suggestions = getAutocompleteSuggestions(val);
+      if (suggestions.length > 0) {
+        if (!popup) {
+          popup = document.createElement('div');
+          popup.id = 'slash-autocomplete';
+          popup.className = 'slash-autocomplete-popup';
+          chatInput.parentElement?.insertBefore(popup, chatInput);
+        }
+        popup.innerHTML = suggestions.map((s, i) =>
+          `<div class="slash-ac-item${i === 0 ? ' selected' : ''}" data-command="${s.command}">
+            <span class="slash-ac-cmd">${s.command}</span>
+            <span class="slash-ac-desc">${s.description}</span>
+          </div>`
+        ).join('');
+        popup.style.display = 'block';
+        // Click handler for items
+        popup.querySelectorAll('.slash-ac-item').forEach(item => {
+          item.addEventListener('click', () => {
+            const cmd = (item as HTMLElement).dataset.command ?? '';
+            if (chatInput) { chatInput.value = cmd + ' '; chatInput.focus(); }
+            if (popup) popup.style.display = 'none';
+          });
+        });
+      } else if (popup) {
+        popup.style.display = 'none';
+      }
+    } else if (popup) {
+      popup.style.display = 'none';
+    }
   }
 });
 
@@ -1425,8 +1484,41 @@ $('compaction-warning-dismiss')?.addEventListener('click', () => {
 });
 
 async function sendMessage() {
-  const content = chatInput?.value.trim();
+  let content = chatInput?.value.trim();
   if (!content || isLoading) return;
+
+  // ── Slash command interception ───────────────────────────────────
+  if (isSlashCommand(content)) {
+    const cmdCtx: CommandContext = {
+      sessionKey: currentSessionKey,
+      addSystemMessage: (text: string) => addMessage({ role: 'assistant', content: text, timestamp: new Date() }),
+      clearChatUI: () => { const el = $('chat-messages'); if (el) el.innerHTML = ''; messages = []; },
+      newSession: async (label?: string) => {
+        currentSessionKey = null;
+        if (label) {
+          const newId = `session_${Date.now()}`;
+          const result = await pawEngine.chatSend({ session_id: newId, message: '', model: '' });
+          if (result.session_id) {
+            currentSessionKey = result.session_id;
+            await pawEngine.sessionRename(result.session_id, label);
+          }
+        }
+      },
+      reloadSessions: () => loadSessions({ skipHistory: true }),
+      getCurrentModel: () => 'default',
+    };
+    const result = await interceptSlashCommand(content, cmdCtx);
+    if (result.handled) {
+      if (chatInput) { chatInput.value = ''; chatInput.style.height = 'auto'; }
+      if (result.systemMessage) {
+        cmdCtx.addSystemMessage(result.systemMessage);
+      }
+      if (result.refreshSessions) loadSessions({ skipHistory: true }).catch(() => {});
+      if (result.preventDefault && !result.rewrittenInput) return;
+      // If rewrittenInput, continue the normal flow with the rewritten text
+      if (result.rewrittenInput) content = result.rewrittenInput;
+    }
+  }
 
   // Convert pending File[] to attachments (matching webchat format)
   const attachments: Array<{ type: string; mimeType: string; content: string; name?: string }> = [];
@@ -1536,6 +1628,12 @@ async function sendMessage() {
       chatOpts.attachments = attachments;
       console.log('[main] Sending attachments:', attachments.length, 'items, first mimeType:', attachments[0]?.mimeType, 'content length:', attachments[0]?.content?.length);
     }
+
+    // Apply slash command session overrides (highest priority)
+    const slashOverrides = getSlashOverrides();
+    if (slashOverrides.model) chatOpts.model = slashOverrides.model;
+    if (slashOverrides.thinkingLevel) chatOpts.thinkingLevel = slashOverrides.thinkingLevel;
+    if (slashOverrides.temperature !== undefined) chatOpts.temperature = slashOverrides.temperature;
 
     const result = isEngineMode()
       ? await engineChatSend(sessionKey, content, {
