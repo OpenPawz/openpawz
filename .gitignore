@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 resources/node/*.tar.gz
 *.bak
+
+# SQLite database files
+*.db
+*.db-wal
+*.db-shm
