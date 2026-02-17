@@ -215,8 +215,8 @@ Use exec to read the DISCORD_BOT_TOKEN and DISCORD_DEFAULT_CHANNEL from environm
             icon: "🪙".into(),
             category: SkillCategory::Vault,
             required_credentials: vec![
-                CredentialField { key: "CDP_API_KEY_NAME".into(), label: "CDP API Key Name".into(), description: "Coinbase Developer Platform API key name (organizations/…/apiKeys/…)".into(), required: true, placeholder: "organizations/abc123/apiKeys/key123".into() },
-                CredentialField { key: "CDP_API_KEY_SECRET".into(), label: "CDP API Key Secret".into(), description: "EC private key in PEM format (starts with -----BEGIN EC PRIVATE KEY-----)".into(), required: true, placeholder: "-----BEGIN EC PRIVATE KEY-----\n...".into() },
+                CredentialField { key: "CDP_API_KEY_NAME".into(), label: "API Key (Key ID)".into(), description: "The Key ID shown in the CDP portal (e.g. 38e1a5c0-...)".into(), required: true, placeholder: "38e1a5c0-xxxx-xxxx-xxxx-xxxxxxxxxxxx".into() },
+                CredentialField { key: "CDP_API_KEY_SECRET".into(), label: "API Secret (Private Key)".into(), description: "The secret or private key from Coinbase. Paste exactly as given.".into(), required: true, placeholder: "-----BEGIN EC PRIVATE KEY-----\n...".into() },
             ],
             tool_names: vec!["coinbase_prices".into(), "coinbase_balance".into(), "coinbase_wallet_create".into(), "coinbase_trade".into(), "coinbase_transfer".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API keys at portal.cdp.coinbase.com".into(),
