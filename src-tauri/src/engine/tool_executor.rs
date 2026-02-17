@@ -37,6 +37,7 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
         "memory_store" => execute_memory_store(&args, app_handle).await,
         "memory_search" => execute_memory_search(&args, app_handle).await,
         "self_info" => execute_self_info(app_handle).await,
+        "create_agent" => execute_create_agent(&args, app_handle).await,
         // ── Web tools ──
         "web_search" => web::execute_web_search(&args).await,
         "web_read" => web::execute_web_read(&args).await,
@@ -547,6 +548,77 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> Result<String, Stri
     );
 
     Ok(output)
+}
+
+// ── create_agent: Create a new agent persona from chat ─────────────────
+
+async fn execute_create_agent(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
+    let name = args["name"].as_str()
+        .ok_or("create_agent: missing 'name' argument")?;
+    let role = args["role"].as_str()
+        .ok_or("create_agent: missing 'role' argument")?;
+    let system_prompt = args["system_prompt"].as_str()
+        .ok_or("create_agent: missing 'system_prompt' argument")?;
+    let specialty = args["specialty"].as_str().unwrap_or("general");
+    let model = args["model"].as_str().filter(|s| !s.is_empty());
+    let capabilities: Vec<String> = args["capabilities"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+
+    // Generate a slug-style agent_id from the name
+    let slug: String = name.to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    let agent_id = format!("agent-{}-{}", slug, timestamp);
+
+    info!("[engine] create_agent tool: creating '{}' as {}", name, agent_id);
+
+    let state = app_handle.try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
+
+    let agent = crate::engine::types::ProjectAgent {
+        agent_id: agent_id.clone(),
+        role: role.to_string(),
+        specialty: specialty.to_string(),
+        status: "idle".into(),
+        current_task: None,
+        model: model.map(String::from),
+        system_prompt: Some(system_prompt.to_string()),
+        capabilities,
+    };
+
+    state.store.add_project_agent("_standalone", &agent)?;
+
+    // Also store in memory so the agent remembers it created this agent
+    let memory_content = format!(
+        "Created agent '{}' (id: {}, role: {}, specialty: {})",
+        name, agent_id, role, specialty
+    );
+    let emb_client = state.embedding_client();
+    let _ = memory::store_memory(&state.store, &memory_content, "fact", 5, emb_client.as_ref(), None).await;
+
+    Ok(format!(
+        "Successfully created agent '{}'!\n\n\
+        - **Agent ID**: {}\n\
+        - **Role**: {}\n\
+        - **Specialty**: {}\n\
+        - **Model**: {}\n\
+        - **Capabilities**: {}\n\n\
+        The agent is now available in the Agents view. The user can select it from the agent picker to start chatting with it.",
+        name, agent_id, role, specialty,
+        model.unwrap_or("(uses default)"),
+        if agent.capabilities.is_empty() { "all tools".to_string() } else { agent.capabilities.join(", ") }
+    ))
 }
 
 // ── Skill Tools: Credential-injected execution ─────────────────────────

@@ -200,6 +200,8 @@ pub async fn run_agent_turn(
                 "memory_store", "memory_search",
                 // Self-awareness
                 "self_info",
+                // Agent management
+                "create_agent",
                 // Skill tools
                 "email_send", "email_read",
                 "slack_send", "slack_read",

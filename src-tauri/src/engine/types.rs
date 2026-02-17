@@ -687,6 +687,49 @@ impl ToolDefinition {
         }
     }
 
+    /// Tool to create a new agent persona from chat.
+    pub fn create_agent() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "create_agent".into(),
+                description: "Create a new agent persona in Pawz. The agent will appear in the Agents view and can be selected for conversations. Use this when the user asks you to create, build, or set up a new agent/persona.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "The agent's display name, e.g. 'Code Cat', 'Research Owl'"
+                        },
+                        "role": {
+                            "type": "string",
+                            "description": "A short role description, e.g. 'Senior Rust Developer', 'Research Assistant'"
+                        },
+                        "specialty": {
+                            "type": "string",
+                            "description": "The agent's specialty area: 'coder', 'researcher', 'writer', 'analyst', 'general'",
+                            "enum": ["coder", "researcher", "writer", "analyst", "general"]
+                        },
+                        "system_prompt": {
+                            "type": "string",
+                            "description": "The system prompt that defines this agent's behavior and personality"
+                        },
+                        "model": {
+                            "type": "string",
+                            "description": "Optional: specific model to use for this agent (leave empty to use default)"
+                        },
+                        "capabilities": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "List of tools this agent can use, e.g. ['exec', 'read_file', 'write_file', 'web_search']. Leave empty for all tools."
+                        }
+                    },
+                    "required": ["name", "role", "system_prompt"]
+                }),
+            },
+        }
+    }
+
     /// Tool for the agent to introspect its own configuration.
     pub fn self_info() -> Self {
         ToolDefinition {
@@ -723,6 +766,7 @@ impl ToolDefinition {
             Self::memory_store(),
             Self::memory_search(),
             Self::self_info(),
+            Self::create_agent(),
         ]
     }
 
@@ -1064,6 +1108,7 @@ You have these capabilities:
 - **memory_store / memory_search**: Store and recall long-term memories across conversations
 - **soul_read / soul_write / soul_list**: Read and update your own personality and knowledge files
 - **self_info**: Check your own configuration — which model you're running, provider, settings, enabled skills, and memory status. Use this proactively when asked about your own setup.
+- **create_agent**: Create new agent personas that appear in the Agents view. When the user asks you to create an agent, use this tool — don't just describe how to do it.
 - **Skill tools**: Email, Slack, GitHub, REST APIs, webhooks, image generation (when configured)
 
 You have FULL ACCESS — use your tools proactively to accomplish tasks. Don't just describe what you would do; actually do it. If a task requires multiple steps, chain your tool calls together. You can read files, execute code, install packages, create projects, search the web, and interact with external services.

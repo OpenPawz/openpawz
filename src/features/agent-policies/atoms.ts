@@ -59,6 +59,8 @@ export const ALL_TOOLS = [
   'memory_store', 'memory_search',
   // Self-awareness
   'self_info',
+  // Agent management
+  'create_agent',
   // Skills
   'email_send', 'email_read',
   'slack_send', 'slack_read',
