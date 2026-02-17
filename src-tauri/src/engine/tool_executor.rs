@@ -1246,7 +1246,7 @@ async fn execute_image_generate(
 // Credentials: CDP_API_KEY_NAME (kid) + CDP_API_KEY_SECRET (PEM)
 
 /// Build a JWT for Coinbase CDP API authentication.
-/// Auto-detects ES256 vs Ed25519 from the key.
+/// Auto-detects key format: raw base64 Ed25519, PEM Ed25519, or PEM ES256.
 fn build_cdp_jwt(
     key_name: &str,
     key_secret: &str,
@@ -1259,11 +1259,16 @@ fn build_cdp_jwt(
     let now = chrono::Utc::now().timestamp() as u64;
     let nonce = uuid::Uuid::new_v4().to_string();
     let uri = format!("{} {}{}", method, host, path);
-    let pem_normalized = key_secret.replace("\\n", "\n");
+    let secret_clean = key_secret.replace("\\n", "\n").trim().to_string();
 
-    // Detect algorithm: try Ed25519 first (Coinbase default since 2025), fall back to ES256
-    let is_ed25519 = try_parse_ed25519(&pem_normalized);
-    let alg = if is_ed25519 { "EdDSA" } else { "ES256" };
+    // Detect key type and algorithm
+    let key_type = detect_key_type(&secret_clean);
+    let alg = match key_type {
+        KeyType::Ed25519Pem | KeyType::Ed25519Raw => "EdDSA",
+        KeyType::Es256Pem => "ES256",
+    };
+
+    info!("[skill:coinbase] JWT signing with algorithm: {} (key type: {:?})", alg, key_type);
 
     let header = serde_json::json!({
         "alg": alg,
@@ -1288,34 +1293,77 @@ fn build_cdp_jwt(
 
     let signing_input = format!("{}.{}", b64_header, b64_payload);
 
-    let b64_sig = if is_ed25519 {
-        sign_ed25519(&pem_normalized, signing_input.as_bytes())?
-    } else {
-        sign_es256(&pem_normalized, signing_input.as_bytes())?
+    let b64_sig = match key_type {
+        KeyType::Ed25519Raw => sign_ed25519_raw(&secret_clean, signing_input.as_bytes())?,
+        KeyType::Ed25519Pem => sign_ed25519_pem(&secret_clean, signing_input.as_bytes())?,
+        KeyType::Es256Pem => sign_es256(&secret_clean, signing_input.as_bytes())?,
     };
 
     Ok(format!("{}.{}", signing_input, b64_sig))
 }
 
-/// Check if a PEM key is Ed25519 (try parsing as Ed25519 PKCS8)
-fn try_parse_ed25519(pem: &str) -> bool {
-    use ed25519_dalek::pkcs8::DecodePrivateKey;
-    ed25519_dalek::SigningKey::from_pkcs8_pem(pem).is_ok()
+#[derive(Debug)]
+enum KeyType {
+    Ed25519Raw,   // Raw base64-encoded 32-byte seed (Coinbase default)
+    Ed25519Pem,   // PEM-wrapped Ed25519 PKCS8
+    Es256Pem,     // PEM-wrapped P-256 EC key
 }
 
-/// Sign with Ed25519
-fn sign_ed25519(pem: &str, message: &[u8]) -> Result<String, String> {
+/// Detect key format from the secret string
+fn detect_key_type(secret: &str) -> KeyType {
+    // If it starts with PEM header, parse as PEM
+    if secret.contains("-----BEGIN") {
+        // Try Ed25519 PEM first
+        use ed25519_dalek::pkcs8::DecodePrivateKey;
+        if ed25519_dalek::SigningKey::from_pkcs8_pem(secret).is_ok() {
+            return KeyType::Ed25519Pem;
+        }
+        // Otherwise assume ES256 PEM (P-256)
+        return KeyType::Es256Pem;
+    }
+    // No PEM header — treat as raw base64 Ed25519 key (Coinbase default format)
+    KeyType::Ed25519Raw
+}
+
+/// Sign with raw base64-encoded Ed25519 key (32-byte seed)
+fn sign_ed25519_raw(secret_b64: &str, message: &[u8]) -> Result<String, String> {
+    use ed25519_dalek::Signer;
+    use base64::Engine as _;
+
+    // Coinbase gives the secret as standard base64 (may have + and /)
+    let key_bytes = base64::engine::general_purpose::STANDARD
+        .decode(secret_b64.trim())
+        .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(secret_b64.trim()))
+        .map_err(|e| format!("Failed to decode API secret as base64: {}", e))?;
+
+    if key_bytes.len() != 32 {
+        return Err(format!(
+            "API secret decoded to {} bytes, expected 32 for Ed25519. \
+             If your secret starts with '-----BEGIN', make sure to paste the entire PEM block including headers.",
+            key_bytes.len()
+        ));
+    }
+
+    let mut seed = [0u8; 32];
+    seed.copy_from_slice(&key_bytes);
+    let signing_key = ed25519_dalek::SigningKey::from_bytes(&seed);
+    let signature = signing_key.sign(message);
+    Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes()))
+}
+
+/// Sign with PEM-encoded Ed25519 key
+fn sign_ed25519_pem(pem: &str, message: &[u8]) -> Result<String, String> {
     use ed25519_dalek::pkcs8::DecodePrivateKey;
     use ed25519_dalek::Signer;
     use base64::Engine as _;
 
     let signing_key = ed25519_dalek::SigningKey::from_pkcs8_pem(pem)
-        .map_err(|e| format!("Invalid Ed25519 key: {}", e))?;
+        .map_err(|e| format!("Invalid Ed25519 PEM key: {}", e))?;
     let signature = signing_key.sign(message);
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes()))
 }
 
-/// Sign with ES256 (P-256 ECDSA)
+/// Sign with ES256 (P-256 ECDSA) PEM key
 fn sign_es256(pem: &str, message: &[u8]) -> Result<String, String> {
     use p256::ecdsa::SigningKey;
     use p256::pkcs8::DecodePrivateKey;
