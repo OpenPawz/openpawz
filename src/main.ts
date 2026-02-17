@@ -45,6 +45,7 @@ import * as AgentsModule from './views/agents';
 import * as TodayModule from './views/today';
 import * as TasksModule from './views/tasks';
 import * as OrchestratorModule from './views/orchestrator';
+import * as TradingModule from './views/trading';
 import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, getSessionOverrideRemaining, isFilesystemWriteTool, activateSessionOverride, extractCommandString, type RiskClassification } from './security';
 import { interceptSlashCommand, getSessionOverrides as getSlashOverrides, getAutocompleteSuggestions, isSlashCommand, type CommandContext } from './features/slash-commands';
 
@@ -158,6 +159,7 @@ const nodesView = $('nodes-view');
 const agentsView = $('agents-view');
 const todayView = $('today-view');
 const orchestratorView = $('orchestrator-view');
+const tradingView = $('trading-view');
 const statusDot = $('status-dot');
 const statusText = $('status-text');
 const chatMessages = $('chat-messages');
@@ -173,7 +175,7 @@ const allViews = [
   chatView, tasksView, codeView, contentView, mailView,
   automationsView, channelsView, researchView, memoryView,
   skillsView, foundryView, settingsView, nodesView, agentsView, todayView,
-  orchestratorView,
+  orchestratorView, tradingView,
 ].filter(Boolean);
 
 // ── Navigation ─────────────────────────────────────────────────────────────
@@ -198,7 +200,7 @@ function switchView(viewName: string) {
     channels: channelsView, research: researchView, memory: memoryView,
     skills: skillsView, foundry: foundryView, settings: settingsView,
     nodes: nodesView, agents: agentsView, today: todayView,
-    orchestrator: orchestratorView,
+    orchestrator: orchestratorView, trading: tradingView,
   };
   const target = viewMap[viewName];
   if (target) target.classList.add('active');
@@ -224,6 +226,7 @@ function switchView(viewName: string) {
         break;
       }
       case 'orchestrator': OrchestratorModule.loadProjects(); break;
+      case 'trading': TradingModule.loadTrading(); break;
       case 'mail': MailModule.loadMail(); loadSpaceCron('mail'); break;
       case 'settings': SettingsModule.loadSettings(); SettingsModule.startUsageAutoRefresh(); loadActiveSettingsTab(); break;
       default: break;
@@ -286,6 +289,7 @@ async function connectEngine(): Promise<boolean> {
     ResearchModule.setWsConnected(true);
     NodesModule.setWsConnected(true);
     AutomationsModule.setWsConnected(true);
+    TradingModule.setWsConnected(true);
     statusDot?.classList.add('connected');
     statusDot?.classList.remove('error');
     if (statusText) statusText.textContent = 'Engine';

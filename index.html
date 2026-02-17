@@ -132,6 +132,13 @@
               </svg>
               <span>Nodes</span>
             </div>
+            <div class="nav-item" data-view="trading">
+              <svg class="icon" viewBox="0 0 24 24">
+                <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/>
+                <polyline points="16 7 22 7 22 13"/>
+              </svg>
+              <span>Trading</span>
+            </div>
           </div>
           
           <div class="nav-section">
@@ -1176,6 +1183,25 @@
               <div class="empty-subtitle">Pair a device (iOS, Android, Mac) to use camera, location, clipboard, and more</div>
             </div>
             <div id="nodes-detail" style="display:none"></div>
+          </div>
+        </div>
+
+        <!-- ═══ Trading View — Coinbase Dashboard ═══ -->
+        <div class="view list-view" id="trading-view">
+          <div class="view-header">
+            <span class="view-title">Trading</span>
+            <button class="btn-secondary" id="trading-refresh">
+              <svg class="icon-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Refresh
+            </button>
+          </div>
+          <div class="trading-toast" id="trading-toast" style="display:none"></div>
+          <div id="trading-content">
+            <div class="empty-state">
+              <div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
+              <div class="empty-title">Trading Dashboard</div>
+              <div class="empty-subtitle">Enable the Coinbase skill and let your agents trade. Activity will appear here.</div>
+            </div>
           </div>
         </div>
 

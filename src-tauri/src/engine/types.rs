@@ -1131,6 +1131,45 @@ pub struct Memory {
     pub agent_id: Option<String>,
 }
 
+/// Trading policy for auto-approve guidelines.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TradingPolicy {
+    /// Whether auto-approve is enabled for trading tools
+    #[serde(default)]
+    pub auto_approve: bool,
+    /// Maximum allowed trade size in USD
+    #[serde(default = "default_max_trade")]
+    pub max_trade_usd: f64,
+    /// Maximum daily spending (buys + transfers) before requiring manual approval
+    #[serde(default = "default_max_daily")]
+    pub max_daily_loss_usd: f64,
+    /// Allowed trading pairs (empty = all pairs allowed)
+    #[serde(default)]
+    pub allowed_pairs: Vec<String>,
+    /// Whether transfers (send crypto) are auto-approved
+    #[serde(default)]
+    pub allow_transfers: bool,
+    /// Maximum transfer size in USD
+    #[serde(default)]
+    pub max_transfer_usd: f64,
+}
+
+fn default_max_trade() -> f64 { 100.0 }
+fn default_max_daily() -> f64 { 500.0 }
+
+impl Default for TradingPolicy {
+    fn default() -> Self {
+        Self {
+            auto_approve: false,
+            max_trade_usd: 100.0,
+            max_daily_loss_usd: 500.0,
+            allowed_pairs: vec![],
+            allow_transfers: false,
+            max_transfer_usd: 0.0,
+        }
+    }
+}
+
 /// Memory configuration (embedding provider settings).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryConfig {

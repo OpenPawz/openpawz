@@ -185,6 +185,46 @@ export interface EngineSkillStatus {
   custom_instructions: string;
 }
 
+// ── Trading ────────────────────────────────────────────────────────────
+
+export interface TradeRecord {
+  id: string;
+  trade_type: 'trade' | 'transfer';
+  side: string | null;
+  product_id: string | null;
+  currency: string | null;
+  amount: string;
+  order_type: string | null;
+  order_id: string | null;
+  status: string;
+  usd_value: string | null;
+  to_address: string | null;
+  reason: string;
+  session_id: string | null;
+  agent_id: string | null;
+  created_at: string;
+}
+
+export interface TradingSummary {
+  date: string;
+  trade_count: number;
+  transfer_count: number;
+  buy_total_usd: number;
+  sell_total_usd: number;
+  transfer_total_usd: number;
+  net_pnl_usd: number;
+  daily_spent_usd: number;
+}
+
+export interface TradingPolicy {
+  auto_approve: boolean;
+  max_trade_usd: number;
+  max_daily_loss_usd: number;
+  allowed_pairs: string[];
+  allow_transfers: boolean;
+  max_transfer_usd: number;
+}
+
 // ── Tasks ──────────────────────────────────────────────────────────────
 
 export type TaskStatus = 'inbox' | 'assigned' | 'in_progress' | 'review' | 'blocked' | 'done';
@@ -671,6 +711,24 @@ class PawEngineClient {
 
   async skillSetInstructions(skillId: string, instructions: string): Promise<void> {
     return invoke('engine_skill_set_instructions', { skillId, instructions });
+  }
+
+  // ── Trading ──────────────────────────────────────────────────────────
+
+  async tradingHistory(limit?: number): Promise<TradeRecord[]> {
+    return invoke<TradeRecord[]>('engine_trading_history', { limit });
+  }
+
+  async tradingSummary(): Promise<TradingSummary> {
+    return invoke<TradingSummary>('engine_trading_summary');
+  }
+
+  async tradingPolicyGet(): Promise<TradingPolicy> {
+    return invoke<TradingPolicy>('engine_trading_policy_get');
+  }
+
+  async tradingPolicySet(policy: TradingPolicy): Promise<void> {
+    return invoke('engine_trading_policy_set', { policy });
   }
 
   // ── Tasks (Kanban Board) ─────────────────────────────────────────────

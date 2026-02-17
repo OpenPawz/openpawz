@@ -2691,6 +2691,11 @@ pub fn run() {
             engine::commands::engine_skill_revoke_all,
             engine::commands::engine_skill_get_instructions,
             engine::commands::engine_skill_set_instructions,
+            // ── Trading ──
+            engine::commands::engine_trading_history,
+            engine::commands::engine_trading_summary,
+            engine::commands::engine_trading_policy_get,
+            engine::commands::engine_trading_policy_set,
             // ── Tasks (Kanban Board) ──
             engine::commands::engine_tasks_list,
             engine::commands::engine_task_create,

@@ -1127,6 +1127,48 @@ pub fn engine_skill_set_instructions(
     state.store.set_skill_custom_instructions(&skill_id, &instructions)
 }
 
+// ── Trading commands ───────────────────────────────────────────────────
+
+#[tauri::command]
+pub fn engine_trading_history(
+    state: State<'_, EngineState>,
+    limit: Option<u32>,
+) -> Result<Vec<serde_json::Value>, String> {
+    state.store.list_trades(limit.unwrap_or(100))
+}
+
+#[tauri::command]
+pub fn engine_trading_summary(
+    state: State<'_, EngineState>,
+) -> Result<serde_json::Value, String> {
+    state.store.daily_trade_summary()
+}
+
+#[tauri::command]
+pub fn engine_trading_policy_get(
+    state: State<'_, EngineState>,
+) -> Result<TradingPolicy, String> {
+    match state.store.get_config("trading_policy") {
+        Ok(Some(json)) => {
+            serde_json::from_str(&json).map_err(|e| format!("Parse error: {}", e))
+        }
+        Ok(None) => Ok(TradingPolicy::default()),
+        Err(e) => Err(e),
+    }
+}
+
+#[tauri::command]
+pub fn engine_trading_policy_set(
+    state: State<'_, EngineState>,
+    policy: TradingPolicy,
+) -> Result<(), String> {
+    info!("[engine] Updating trading policy: auto_approve={}, max_trade=${}, max_daily=${}, pairs={:?}, transfers={}",
+        policy.auto_approve, policy.max_trade_usd, policy.max_daily_loss_usd,
+        policy.allowed_pairs, policy.allow_transfers);
+    let json = serde_json::to_string(&policy).map_err(|e| format!("Serialize error: {}", e))?;
+    state.store.set_config("trading_policy", &json)
+}
+
 // ── Task commands ──────────────────────────────────────────────────────
 
 #[tauri::command]

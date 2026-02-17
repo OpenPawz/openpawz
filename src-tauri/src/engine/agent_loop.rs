@@ -5,10 +5,10 @@
 use crate::engine::types::*;
 use crate::engine::providers::AnyProvider;
 use crate::engine::tool_executor;
-use crate::engine::commands::PendingApprovals;
+use crate::engine::commands::{PendingApprovals, EngineState};
 use log::{info, warn, error};
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 /// Run a complete agent turn: send messages to the model, execute tool calls,
 /// and repeat until the model produces a final text response or max rounds hit.
@@ -212,7 +212,13 @@ pub async fn run_agent_turn(
                 "webhook_send",
                 "image_generate",
             ];
-            let skip_hil = safe_tools.contains(&tc.function.name.as_str());
+
+            // Dynamic HIL: check trading policy for coinbase write tools
+            let skip_hil = if safe_tools.contains(&tc.function.name.as_str()) {
+                true
+            } else {
+                check_trading_auto_approve(&tc.function.name, &tc.function.arguments, app_handle)
+            };
 
             let approved = if skip_hil {
                 info!("[engine] Auto-approved safe tool: {}", tc.function.name);
@@ -307,4 +313,103 @@ pub async fn run_agent_turn(
 
         // Continue the loop — model will see tool results and either respond or call more tools
     }
+}
+
+/// Check if a coinbase trading tool should be auto-approved based on the trading policy.
+/// Returns true if the trade is within policy bounds and should skip HIL.
+fn check_trading_auto_approve(tool_name: &str, args_str: &str, app_handle: &tauri::AppHandle) -> bool {
+    // Only applies to coinbase write tools
+    match tool_name {
+        "coinbase_trade" | "coinbase_transfer" | "coinbase_wallet_create" => {}
+        _ => return false,
+    }
+
+    // Load trading policy from engine config
+    let state = match app_handle.try_state::<EngineState>() {
+        Some(s) => s,
+        None => return false,
+    };
+
+    let policy: TradingPolicy = match state.store.get_config("trading_policy") {
+        Ok(Some(json)) => serde_json::from_str(&json).unwrap_or_default(),
+        _ => TradingPolicy::default(),
+    };
+
+    if !policy.auto_approve {
+        return false;
+    }
+
+    // Wallet creation is always safe if auto-approve is on
+    if tool_name == "coinbase_wallet_create" {
+        info!("[engine] Auto-approved coinbase_wallet_create via trading policy");
+        return true;
+    }
+
+    let args: serde_json::Value = serde_json::from_str(args_str).unwrap_or_default();
+
+    if tool_name == "coinbase_trade" {
+        let amount: f64 = args["amount"].as_str()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(f64::MAX);
+        let product_id = args["product_id"].as_str().unwrap_or("");
+
+        // Check trade size
+        if amount > policy.max_trade_usd {
+            info!("[engine] Trade ${:.2} exceeds max ${:.2} — requiring HIL", amount, policy.max_trade_usd);
+            return false;
+        }
+
+        // Check allowed pairs
+        if !policy.allowed_pairs.is_empty() {
+            let pair_upper = product_id.to_uppercase();
+            if !policy.allowed_pairs.iter().any(|p| p.to_uppercase() == pair_upper) {
+                info!("[engine] Pair {} not in allowed list — requiring HIL", product_id);
+                return false;
+            }
+        }
+
+        // Check daily spending limit
+        if let Ok(summary) = state.store.daily_trade_summary() {
+            let daily_spent = summary["daily_spent_usd"].as_f64().unwrap_or(0.0);
+            if daily_spent + amount > policy.max_daily_loss_usd {
+                info!("[engine] Daily spend ${:.2} + ${:.2} exceeds max ${:.2} — requiring HIL",
+                    daily_spent, amount, policy.max_daily_loss_usd);
+                return false;
+            }
+        }
+
+        info!("[engine] Auto-approved coinbase_trade ${:.2} {} via trading policy", amount, product_id);
+        return true;
+    }
+
+    if tool_name == "coinbase_transfer" {
+        if !policy.allow_transfers {
+            info!("[engine] Transfers not auto-approved in trading policy");
+            return false;
+        }
+
+        let amount: f64 = args["amount"].as_str()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(f64::MAX);
+
+        if amount > policy.max_transfer_usd {
+            info!("[engine] Transfer ${:.2} exceeds max ${:.2} — requiring HIL", amount, policy.max_transfer_usd);
+            return false;
+        }
+
+        // Check daily spending limit (transfers count toward it too)
+        if let Ok(summary) = state.store.daily_trade_summary() {
+            let daily_spent = summary["daily_spent_usd"].as_f64().unwrap_or(0.0);
+            if daily_spent + amount > policy.max_daily_loss_usd {
+                info!("[engine] Daily spend ${:.2} + ${:.2} exceeds max ${:.2} — requiring HIL",
+                    daily_spent, amount, policy.max_daily_loss_usd);
+                return false;
+            }
+        }
+
+        info!("[engine] Auto-approved coinbase_transfer ${:.2} via trading policy", amount);
+        return true;
+    }
+
+    false
 }

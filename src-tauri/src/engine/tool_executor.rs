@@ -675,8 +675,49 @@ async fn execute_skill_tool(
         "coinbase_prices" => execute_coinbase_prices(args, &creds).await,
         "coinbase_balance" => execute_coinbase_balance(args, &creds).await,
         "coinbase_wallet_create" => execute_coinbase_wallet_create(args, &creds).await,
-        "coinbase_trade" => execute_coinbase_trade(args, &creds).await,
-        "coinbase_transfer" => execute_coinbase_transfer(args, &creds).await,
+        "coinbase_trade" => {
+            let result = execute_coinbase_trade(args, &creds).await;
+            if result.is_ok() {
+                // Record successful trade in history
+                let _ = state.store.insert_trade(
+                    "trade",
+                    args["side"].as_str(),
+                    args["product_id"].as_str(),
+                    None,
+                    args["amount"].as_str().unwrap_or("0"),
+                    args["order_type"].as_str(),
+                    None, // order_id extracted from response below
+                    "completed",
+                    args["amount"].as_str(), // USD value approximation for market orders
+                    None,
+                    args["reason"].as_str().unwrap_or(""),
+                    None, None,
+                    result.as_ref().ok().map(|s| s.as_str()),
+                );
+            }
+            result
+        }
+        "coinbase_transfer" => {
+            let result = execute_coinbase_transfer(args, &creds).await;
+            if result.is_ok() {
+                let _ = state.store.insert_trade(
+                    "transfer",
+                    Some("send"),
+                    None,
+                    args["currency"].as_str(),
+                    args["amount"].as_str().unwrap_or("0"),
+                    None,
+                    None,
+                    "completed",
+                    None,
+                    args["to_address"].as_str(),
+                    args["reason"].as_str().unwrap_or(""),
+                    None, None,
+                    result.as_ref().ok().map(|s| s.as_str()),
+                );
+            }
+            result
+        }
         _ => Err(format!("Unknown skill tool: {}", tool_name)),
     }
 }

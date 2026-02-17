@@ -4,6 +4,7 @@
 // for the engine's data, separate from the frontend's paw.db.
 
 use crate::engine::types::*;
+use chrono::Utc;
 use log::{info, warn, error};
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
@@ -182,6 +183,32 @@ impl SessionStore {
 
             CREATE INDEX IF NOT EXISTS idx_project_messages
                 ON project_messages(project_id, created_at);
+
+            -- ═══ Trading: Trade History & Auto-Trade Policy ═══
+
+            CREATE TABLE IF NOT EXISTS trade_history (
+                id TEXT PRIMARY KEY,
+                trade_type TEXT NOT NULL,
+                side TEXT,
+                product_id TEXT,
+                currency TEXT,
+                amount TEXT NOT NULL,
+                order_type TEXT,
+                order_id TEXT,
+                status TEXT NOT NULL DEFAULT 'completed',
+                usd_value TEXT,
+                to_address TEXT,
+                reason TEXT NOT NULL DEFAULT '',
+                session_id TEXT,
+                agent_id TEXT,
+                raw_response TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_trade_history_created
+                ON trade_history(created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_trade_history_type
+                ON trade_history(trade_type, created_at DESC);
         ").map_err(|e| format!("Failed to create tables: {}", e))?;
 
         // ── Migrations: add columns to existing tables ──────────────────
@@ -537,6 +564,118 @@ impl SessionStore {
             params![key, value],
         ).map_err(|e| format!("Config write error: {}", e))?;
         Ok(())
+    }
+
+    // ── Trade History ──────────────────────────────────────────────────
+
+    pub fn insert_trade(
+        &self,
+        trade_type: &str,
+        side: Option<&str>,
+        product_id: Option<&str>,
+        currency: Option<&str>,
+        amount: &str,
+        order_type: Option<&str>,
+        order_id: Option<&str>,
+        status: &str,
+        usd_value: Option<&str>,
+        to_address: Option<&str>,
+        reason: &str,
+        session_id: Option<&str>,
+        agent_id: Option<&str>,
+        raw_response: Option<&str>,
+    ) -> Result<String, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT INTO trade_history (id, trade_type, side, product_id, currency, amount, order_type, order_id, status, usd_value, to_address, reason, session_id, agent_id, raw_response)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            params![id, trade_type, side, product_id, currency, amount, order_type, order_id, status, usd_value, to_address, reason, session_id, agent_id, raw_response],
+        ).map_err(|e| format!("Insert trade error: {}", e))?;
+        Ok(id)
+    }
+
+    pub fn list_trades(&self, limit: u32) -> Result<Vec<serde_json::Value>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut stmt = conn.prepare(
+            "SELECT id, trade_type, side, product_id, currency, amount, order_type, order_id, status, usd_value, to_address, reason, session_id, agent_id, created_at
+             FROM trade_history ORDER BY created_at DESC LIMIT ?1"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+        let rows = stmt.query_map(params![limit], |row| {
+            Ok(serde_json::json!({
+                "id": row.get::<_, String>(0)?,
+                "trade_type": row.get::<_, String>(1)?,
+                "side": row.get::<_, Option<String>>(2)?,
+                "product_id": row.get::<_, Option<String>>(3)?,
+                "currency": row.get::<_, Option<String>>(4)?,
+                "amount": row.get::<_, String>(5)?,
+                "order_type": row.get::<_, Option<String>>(6)?,
+                "order_id": row.get::<_, Option<String>>(7)?,
+                "status": row.get::<_, String>(8)?,
+                "usd_value": row.get::<_, Option<String>>(9)?,
+                "to_address": row.get::<_, Option<String>>(10)?,
+                "reason": row.get::<_, String>(11)?,
+                "session_id": row.get::<_, Option<String>>(12)?,
+                "agent_id": row.get::<_, Option<String>>(13)?,
+                "created_at": row.get::<_, String>(14)?,
+            }))
+        }).map_err(|e| format!("Query error: {}", e))?;
+        let mut trades = Vec::new();
+        for row in rows {
+            trades.push(row.map_err(|e| format!("Row error: {}", e))?);
+        }
+        Ok(trades)
+    }
+
+    /// Get daily P&L: sum of all trades today, grouped by side
+    pub fn daily_trade_summary(&self) -> Result<serde_json::Value, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let today = Utc::now().format("%Y-%m-%d").to_string();
+
+        let trade_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM trade_history WHERE trade_type = 'trade' AND created_at >= ?1",
+            params![format!("{}T00:00:00", today)],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        let transfer_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM trade_history WHERE trade_type = 'transfer' AND created_at >= ?1",
+            params![format!("{}T00:00:00", today)],
+            |row| row.get(0),
+        ).unwrap_or(0);
+
+        // Sum USD values for buys and sells today
+        let buy_total: f64 = conn.query_row(
+            "SELECT COALESCE(SUM(CAST(usd_value AS REAL)), 0.0) FROM trade_history WHERE trade_type = 'trade' AND side = 'buy' AND created_at >= ?1",
+            params![format!("{}T00:00:00", today)],
+            |row| row.get(0),
+        ).unwrap_or(0.0);
+
+        let sell_total: f64 = conn.query_row(
+            "SELECT COALESCE(SUM(CAST(usd_value AS REAL)), 0.0) FROM trade_history WHERE trade_type = 'trade' AND side = 'sell' AND created_at >= ?1",
+            params![format!("{}T00:00:00", today)],
+            |row| row.get(0),
+        ).unwrap_or(0.0);
+
+        let transfer_total: f64 = conn.query_row(
+            "SELECT COALESCE(SUM(CAST(usd_value AS REAL)), 0.0) FROM trade_history WHERE trade_type = 'transfer' AND created_at >= ?1",
+            params![format!("{}T00:00:00", today)],
+            |row| row.get(0),
+        ).unwrap_or(0.0);
+
+        // Total spent today (buys + transfers out) for daily loss tracking
+        let daily_spent = buy_total + transfer_total;
+
+        Ok(serde_json::json!({
+            "date": today,
+            "trade_count": trade_count,
+            "transfer_count": transfer_count,
+            "buy_total_usd": buy_total,
+            "sell_total_usd": sell_total,
+            "transfer_total_usd": transfer_total,
+            "net_pnl_usd": sell_total - buy_total,
+            "daily_spent_usd": daily_spent,
+        }))
     }
 
     // ── Agent Files (Soul / Persona) ───────────────────────────────────
