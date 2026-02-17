@@ -145,6 +145,7 @@ impl SessionStore {
                 specialty TEXT NOT NULL DEFAULT '',
                 status TEXT NOT NULL DEFAULT 'idle',
                 current_task TEXT,
+                model TEXT,
                 PRIMARY KEY (project_id, agent_id),
                 FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
@@ -164,6 +165,10 @@ impl SessionStore {
             CREATE INDEX IF NOT EXISTS idx_project_messages
                 ON project_messages(project_id, created_at);
         ").map_err(|e| format!("Failed to create tables: {}", e))?;
+
+        // ── Migrations: add columns to existing tables ──────────────────
+        // SQLite ignores ALTER TABLE ADD COLUMN if it already exists (we catch the error).
+        conn.execute("ALTER TABLE project_agents ADD COLUMN model TEXT", []).ok();
 
         // One-time dedup: remove duplicate messages caused by a bug that
         // re-inserted historical assistant/tool messages on every agent turn.
@@ -1020,7 +1025,7 @@ impl SessionStore {
         let mut result = Vec::new();
         for mut p in projects {
             let mut agent_stmt = conn.prepare(
-                "SELECT agent_id, role, specialty, status, current_task FROM project_agents WHERE project_id=?1"
+                "SELECT agent_id, role, specialty, status, current_task, model FROM project_agents WHERE project_id=?1"
             ).map_err(|e| e.to_string())?;
             p.agents = agent_stmt.query_map(params![p.id], |row| {
                 Ok(crate::engine::types::ProjectAgent {
@@ -1029,6 +1034,7 @@ impl SessionStore {
                     specialty: row.get(2)?,
                     status: row.get(3)?,
                     current_task: row.get(4)?,
+                    model: row.get(5)?,
                 })
             }).map_err(|e| e.to_string())?
             .filter_map(|r| r.ok())
@@ -1069,8 +1075,8 @@ impl SessionStore {
             .map_err(|e| e.to_string())?;
         for a in agents {
             conn.execute(
-                "INSERT INTO project_agents (project_id, agent_id, role, specialty, status, current_task) VALUES (?1,?2,?3,?4,?5,?6)",
-                params![project_id, a.agent_id, a.role, a.specialty, a.status, a.current_task],
+                "INSERT INTO project_agents (project_id, agent_id, role, specialty, status, current_task, model) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+                params![project_id, a.agent_id, a.role, a.specialty, a.status, a.current_task, a.model],
             ).map_err(|e| e.to_string())?;
         }
         Ok(())
@@ -1079,7 +1085,7 @@ impl SessionStore {
     pub fn get_project_agents(&self, project_id: &str) -> Result<Vec<crate::engine::types::ProjectAgent>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         let mut stmt = conn.prepare(
-            "SELECT agent_id, role, specialty, status, current_task FROM project_agents WHERE project_id=?1"
+            "SELECT agent_id, role, specialty, status, current_task, model FROM project_agents WHERE project_id=?1"
         ).map_err(|e| e.to_string())?;
         let agents = stmt.query_map(params![project_id], |row| {
             Ok(crate::engine::types::ProjectAgent {
@@ -1088,6 +1094,7 @@ impl SessionStore {
                 specialty: row.get(2)?,
                 status: row.get(3)?,
                 current_task: row.get(4)?,
+                model: row.get(5)?,
             })
         }).map_err(|e| e.to_string())?
         .filter_map(|r| r.ok())

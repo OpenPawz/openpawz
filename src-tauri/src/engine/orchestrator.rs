@@ -423,28 +423,25 @@ pub async fn run_project(
     };
     state.store.add_project_message(&init_msg)?;
 
-    // Get provider config
+    // Get provider config — use model routing for boss agent
     let (provider_config, model) = {
         let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
-        let model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
-        let provider = cfg.providers.iter()
-            .find(|p| {
-                if model.starts_with("claude") || model.starts_with("anthropic") {
-                    p.kind == ProviderKind::Anthropic
-                } else if model.starts_with("gemini") || model.starts_with("google") {
-                    p.kind == ProviderKind::Google
-                } else if model.starts_with("gpt") || model.starts_with("o1") || model.starts_with("o3") {
-                    p.kind == ProviderKind::OpenAI
-                } else {
-                    false
-                }
-            })
-            .or_else(|| {
-                cfg.default_provider.as_ref()
-                    .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp))
-            })
-            .or_else(|| cfg.providers.first())
-            .cloned();
+        let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
+
+        // Find the boss agent's ProjectAgent entry to get specialty
+        let boss_entry = project.agents.iter().find(|a| a.role == "boss");
+        let boss_specialty = boss_entry.map(|a| a.specialty.as_str()).unwrap_or("general");
+
+        // Resolve model via routing: per-agent override > boss_model > default
+        let model = if let Some(agent_model) = boss_entry.and_then(|a| a.model.as_deref()).filter(|m| !m.is_empty()) {
+            agent_model.to_string()
+        } else {
+            cfg.model_routing.resolve(&project.boss_agent, "boss", boss_specialty, &default_model)
+        };
+
+        info!("[orchestrator] Boss agent '{}' using model '{}'", project.boss_agent, model);
+
+        let provider = resolve_provider_for_model(&cfg, &model);
         match provider {
             Some(p) => (p, model),
             None => return Err("No AI provider configured".into()),
@@ -619,8 +616,24 @@ async fn run_boss_agent_loop(
     let mut final_text = String::new();
 
     let orchestrator_tool_names = ["delegate_task", "check_agent_status", "send_agent_message", "project_complete"];
-    let safe_tools = ["memory_store", "memory_search", "soul_read", "soul_write", "soul_list",
-        "delegate_task", "check_agent_status", "send_agent_message", "project_complete", "report_progress"];
+    // All built-in tools skip HIL — the agent has full access
+    let safe_tools = [
+        // Core tools
+        "exec", "fetch", "read_file", "write_file",
+        "list_directory", "append_file", "delete_file",
+        // Web tools
+        "web_search", "web_read", "web_screenshot", "web_browse",
+        // Soul / persona tools
+        "soul_read", "soul_write", "soul_list",
+        // Memory tools
+        "memory_store", "memory_search",
+        // Skill tools
+        "email_send", "email_read",
+        "slack_send", "slack_read",
+        "github_api", "rest_api_call", "webhook_send", "image_generate",
+        // Orchestrator tools
+        "delegate_task", "check_agent_status", "send_agent_message", "project_complete",
+    ];
 
     loop {
         round += 1;
@@ -806,28 +819,26 @@ async fn run_sub_agent(
 ) -> Result<String, String> {
     let state = app_handle.state::<EngineState>();
 
-    // Get provider
+    // Get provider — use model routing for worker agents
     let (provider_config, model) = {
         let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
-        let model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
-        let provider = cfg.providers.iter()
-            .find(|p| {
-                if model.starts_with("claude") || model.starts_with("anthropic") {
-                    p.kind == ProviderKind::Anthropic
-                } else if model.starts_with("gemini") || model.starts_with("google") {
-                    p.kind == ProviderKind::Google
-                } else if model.starts_with("gpt") || model.starts_with("o1") || model.starts_with("o3") {
-                    p.kind == ProviderKind::OpenAI
-                } else {
-                    false
-                }
-            })
-            .or_else(|| {
-                cfg.default_provider.as_ref()
-                    .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp))
-            })
-            .or_else(|| cfg.providers.first())
-            .cloned();
+        let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
+
+        // Look up this agent in the project to get specialty and per-agent model override
+        let agent_entry = state.store.get_project_agents(project_id).ok()
+            .and_then(|agents| agents.into_iter().find(|a| a.agent_id == agent_id));
+        let specialty = agent_entry.as_ref().map(|a| a.specialty.as_str()).unwrap_or("general");
+
+        // Resolve model: per-agent field > model_routing > default
+        let model = if let Some(agent_model) = agent_entry.as_ref().and_then(|a| a.model.as_deref()).filter(|m| !m.is_empty()) {
+            agent_model.to_string()
+        } else {
+            cfg.model_routing.resolve(agent_id, "worker", specialty, &default_model)
+        };
+
+        info!("[orchestrator] Worker agent '{}' (specialty={}) using model '{}'", agent_id, specialty, model);
+
+        let provider = resolve_provider_for_model(&cfg, &model);
         match provider {
             Some(p) => (p, model),
             None => return Err("No AI provider configured".into()),
@@ -984,7 +995,24 @@ async fn run_worker_agent_loop(
     let mut round = 0;
     let mut final_text = String::new();
 
-    let safe_tools = ["memory_store", "memory_search", "soul_read", "soul_write", "soul_list", "report_progress"];
+    // All built-in tools skip HIL — the agent has full access
+    let safe_tools = [
+        // Core tools
+        "exec", "fetch", "read_file", "write_file",
+        "list_directory", "append_file", "delete_file",
+        // Web tools
+        "web_search", "web_read", "web_screenshot", "web_browse",
+        // Soul / persona tools
+        "soul_read", "soul_write", "soul_list",
+        // Memory tools
+        "memory_store", "memory_search",
+        // Skill tools
+        "email_send", "email_read",
+        "slack_send", "slack_read",
+        "github_api", "rest_api_call", "webhook_send", "image_generate",
+        // Worker tool
+        "report_progress",
+    ];
 
     loop {
         round += 1;
@@ -1135,6 +1163,35 @@ async fn run_worker_agent_loop(
             return Ok(final_text);
         }
     }
+}
+
+/// Resolve a provider config for a given model string.
+/// Uses smart prefix matching (gemini → Google, claude → Anthropic, etc.)
+/// Falls back to default provider, then first provider.
+fn resolve_provider_for_model(cfg: &EngineConfig, model: &str) -> Option<ProviderConfig> {
+    // Match model prefix to provider kind
+    let provider = if model.starts_with("claude") || model.starts_with("anthropic") {
+        cfg.providers.iter().find(|p| p.kind == ProviderKind::Anthropic).cloned()
+    } else if model.starts_with("gemini") || model.starts_with("google") {
+        cfg.providers.iter().find(|p| p.kind == ProviderKind::Google).cloned()
+    } else if model.starts_with("gpt") || model.starts_with("o1") || model.starts_with("o3") || model.starts_with("o4") {
+        cfg.providers.iter().find(|p| p.kind == ProviderKind::OpenAI).cloned()
+    } else if model.contains('/') {
+        // OpenRouter-style model IDs (e.g., meta-llama/llama-3.1-405b)
+        cfg.providers.iter().find(|p| p.kind == ProviderKind::OpenRouter).cloned()
+    } else if model.contains(':') {
+        // Ollama-style model IDs (e.g., llama3.1:8b)
+        cfg.providers.iter().find(|p| p.kind == ProviderKind::Ollama).cloned()
+    } else {
+        None
+    };
+
+    provider
+        .or_else(|| {
+            cfg.default_provider.as_ref()
+                .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned())
+        })
+        .or_else(|| cfg.providers.first().cloned())
 }
 
 /// Helper to get a SessionStore from app_handle.

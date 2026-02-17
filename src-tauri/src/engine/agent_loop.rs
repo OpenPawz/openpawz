@@ -167,10 +167,26 @@ pub async fn run_agent_turn(
         for tc in &tool_calls {
             info!("[engine] Tool call: {} id={}", tc.function.name, tc.id);
 
-            // Safe internal tools skip HIL — they don't touch the OS
+            // All built-in tools skip HIL — the agent has full access.
+            // Security classification still happens on the frontend side for
+            // exec/shell commands, but the agent loop itself doesn't block.
             let safe_tools = [
-                "memory_store", "memory_search",
+                // Core tools
+                "exec", "fetch", "read_file", "write_file",
+                "list_directory", "append_file", "delete_file",
+                // Web tools
+                "web_search", "web_read", "web_screenshot", "web_browse",
+                // Soul / persona tools
                 "soul_read", "soul_write", "soul_list",
+                // Memory tools
+                "memory_store", "memory_search",
+                // Skill tools
+                "email_send", "email_read",
+                "slack_send", "slack_read",
+                "github_api",
+                "rest_api_call",
+                "webhook_send",
+                "image_generate",
             ];
             let skip_hil = safe_tools.contains(&tc.function.name.as_str());
 

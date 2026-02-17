@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
+  "description": "Full capability for the main window — Pawz agent has complete access",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -19,11 +19,16 @@
     "fs:allow-read-dir",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
+    "fs:allow-rename",
+    "fs:allow-copy-file",
     {
       "identifier": "fs:scope",
       "allow": [
         "$HOME/**",
-        "$HOME"
+        "$HOME",
+        "/tmp/**",
+        "/tmp",
+        "/**"
       ]
     },
     "shell:allow-open",

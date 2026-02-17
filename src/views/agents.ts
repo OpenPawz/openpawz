@@ -26,12 +26,23 @@ interface Agent {
 // Available models
 const AVAILABLE_MODELS = [
   { id: 'default', name: 'Default (Use account setting)' },
-  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+  // Google Gemini
+  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash' },
+  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
+  { id: 'gemini-2.0-flash-lite', name: 'Gemini 2.0 Flash Lite' },
+  { id: 'gemini-1.5-pro', name: 'Gemini 1.5 Pro' },
+  { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash' },
+  { id: 'gemini-1.5-flash-8b', name: 'Gemini 1.5 Flash 8B' },
+  // Anthropic
   { id: 'claude-opus-4-20250514', name: 'Claude Opus 4' },
+  { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4' },
+  { id: 'claude-3-5-haiku-20241022', name: 'Claude 3.5 Haiku' },
+  // OpenAI
   { id: 'gpt-4o', name: 'GPT-4o' },
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini' },
-  { id: 'gemini-2.0-flash', name: 'Gemini 2.0 Flash' },
-  { id: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro' },
+  { id: 'o1', name: 'o1' },
+  { id: 'o3-mini', name: 'o3-mini' },
 ];
 
 // Available skills

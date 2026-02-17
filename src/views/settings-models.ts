@@ -2,7 +2,7 @@
 // Multi-provider management — add/edit/remove AI providers, set default model
 // All config goes through the Paw engine (Tauri IPC). No gateway.
 
-import { pawEngine, type EngineProviderConfig, type EngineConfig } from '../engine';
+import { pawEngine, type EngineProviderConfig, type EngineConfig, type ModelRouting } from '../engine';
 import { showToast } from '../components/toast';
 import {
   isConnected, getEngineConfig, setEngineConfig,
@@ -35,7 +35,7 @@ const POPULAR_MODELS: Record<string, string[]> = {
   ollama: ['llama3.2:3b', 'llama3.1:8b', 'llama3.1:70b', 'mistral:7b', 'codellama:13b', 'deepseek-coder:6.7b', 'phi3:mini', 'qwen2.5:7b'],
   openai: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
   anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-opus-4-20250514'],
-  google: ['gemini-2.0-flash', 'gemini-2.0-pro', 'gemini-1.5-flash-8b'],
+  google: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
   openrouter: ['meta-llama/llama-3.1-405b-instruct', 'anthropic/claude-sonnet-4-20250514'],
   custom: [],
 };
@@ -197,6 +197,9 @@ export async function loadModelsSettings() {
     ));
     container.appendChild(defaultSection);
 
+    // ── Model Routing (Multi-Agent) ──────────────────────────────────────
+    container.appendChild(buildModelRoutingSection(config, allModelOpts));
+
     // ── Provider Cards (edit/remove each) ────────────────────────────────
     const provHeader = document.createElement('div');
     provHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:24px';
@@ -219,6 +222,136 @@ export async function loadModelsSettings() {
   } catch (e) {
     container.innerHTML = `<p style="color:var(--danger)">Failed to load: ${esc(String(e))}</p>`;
   }
+}
+
+// ── Model Routing Section ───────────────────────────────────────────────────
+
+/** All model options for datalist suggestions */
+const ALL_KNOWN_MODELS = [
+  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite',
+  'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b',
+  'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini',
+  'claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-opus-4-20250514',
+  'llama3.1:8b', 'llama3.1:70b', 'mistral:7b', 'qwen2.5:7b',
+];
+
+const SPECIALTIES = ['coder', 'researcher', 'designer', 'communicator', 'security', 'general'];
+
+function buildModelRoutingSection(
+  config: EngineConfig,
+  _allModelOpts: Array<{ value: string; label: string }>
+): HTMLDivElement {
+  const section = document.createElement('div');
+  section.className = 'settings-subsection';
+  section.style.marginTop = '20px';
+  section.innerHTML = `<h3 class="settings-subsection-title">Model Routing (Multi-Agent)</h3>
+    <p class="settings-section-desc">Use different models for different roles. With a single API key (e.g. Gemini), route your boss agent to a powerful model and sub-agents to cheaper, faster models.</p>`;
+
+  const routing = config.model_routing ?? {};
+
+  // Build datalist for model suggestions
+  const dlId = 'routing-model-datalist';
+  const dl = document.createElement('datalist');
+  dl.id = dlId;
+  for (const m of ALL_KNOWN_MODELS) {
+    const o = document.createElement('option');
+    o.value = m;
+    dl.appendChild(o);
+  }
+  section.appendChild(dl);
+
+  // Boss Model
+  const bossRow = formRow('Boss / Orchestrator Model', 'Powerful model for the master agent that plans and delegates');
+  const bossInp = textInput(routing.boss_model ?? '', 'e.g. gemini-2.5-pro');
+  bossInp.style.maxWidth = '320px';
+  bossInp.setAttribute('list', dlId);
+  bossRow.appendChild(bossInp);
+  section.appendChild(bossRow);
+
+  // Worker Model
+  const workerRow = formRow('Worker / Sub-Agent Model', 'Cheaper/faster model for sub-agents executing tasks');
+  const workerInp = textInput(routing.worker_model ?? '', 'e.g. gemini-2.0-flash');
+  workerInp.style.maxWidth = '320px';
+  workerInp.setAttribute('list', dlId);
+  workerRow.appendChild(workerInp);
+  section.appendChild(workerRow);
+
+  // Quick preset chips
+  const presets = document.createElement('div');
+  presets.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 16px 0';
+  const presetOptions = [
+    { label: 'Gemini Pro + Flash', boss: 'gemini-2.5-pro', worker: 'gemini-2.0-flash' },
+    { label: 'Gemini Pro + Flash Lite', boss: 'gemini-2.5-pro', worker: 'gemini-2.0-flash-lite' },
+    { label: 'Gemini Flash + Flash Lite', boss: 'gemini-2.5-flash', worker: 'gemini-2.0-flash-lite' },
+    { label: 'GPT-4o + 4o-mini', boss: 'gpt-4o', worker: 'gpt-4o-mini' },
+    { label: 'Claude Opus + Haiku', boss: 'claude-opus-4-20250514', worker: 'claude-3-5-haiku-20241022' },
+  ];
+  for (const p of presetOptions) {
+    const chip = document.createElement('button');
+    chip.className = 'btn btn-ghost btn-sm';
+    chip.style.cssText = 'font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid var(--border)';
+    chip.textContent = p.label;
+    chip.addEventListener('click', () => {
+      bossInp.value = p.boss;
+      workerInp.value = p.worker;
+    });
+    presets.appendChild(chip);
+  }
+  section.appendChild(presets);
+
+  // Specialty Overrides
+  const specSection = document.createElement('div');
+  specSection.style.cssText = 'margin-top:16px';
+  specSection.innerHTML = `<div style="font-weight:600;font-size:13px;margin-bottom:8px">Per-Specialty Overrides <span style="font-weight:normal;color:var(--text-muted)">(optional)</span></div>
+    <p style="font-size:12px;color:var(--text-muted);margin:0 0 8px 0">Assign specific models to agent specialties. Leave blank to use the Worker model.</p>`;
+
+  const specModels: Record<string, string> = { ...(routing.specialty_models ?? {}) };
+  const specGrid = document.createElement('div');
+  specGrid.style.cssText = 'display:grid;grid-template-columns:120px 1fr;gap:6px 12px;align-items:center';
+  const specInputs: Record<string, HTMLInputElement> = {};
+
+  for (const spec of SPECIALTIES) {
+    const label = document.createElement('span');
+    label.style.cssText = 'font-size:12px;text-transform:capitalize;color:var(--text-muted)';
+    label.textContent = spec;
+    specGrid.appendChild(label);
+
+    const inp = textInput(specModels[spec] ?? '', `default (use worker model)`);
+    inp.style.cssText = 'font-size:12px;padding:4px 8px;max-width:280px';
+    inp.setAttribute('list', dlId);
+    specInputs[spec] = inp;
+    specGrid.appendChild(inp);
+  }
+  specSection.appendChild(specGrid);
+  section.appendChild(specSection);
+
+  // Save button
+  section.appendChild(saveReloadButtons(
+    async () => {
+      const specialtyModels: Record<string, string> = {};
+      for (const [spec, inp] of Object.entries(specInputs)) {
+        const val = inp.value.trim();
+        if (val) specialtyModels[spec] = val;
+      }
+
+      const newRouting: ModelRouting = {
+        boss_model: bossInp.value.trim() || undefined,
+        worker_model: workerInp.value.trim() || undefined,
+        specialty_models: Object.keys(specialtyModels).length > 0 ? specialtyModels : undefined,
+        agent_models: routing.agent_models, // preserve existing per-agent overrides
+      };
+
+      const updated: EngineConfig = {
+        ...config,
+        model_routing: newRouting,
+      };
+      const ok = await setEngineConfig(updated);
+      if (ok) loadModelsSettings();
+    },
+    () => loadModelsSettings()
+  ));
+
+  return section;
 }
 
 // ── Add Provider Form ───────────────────────────────────────────────────────

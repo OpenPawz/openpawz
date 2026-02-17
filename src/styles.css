@@ -8566,6 +8566,16 @@ select.form-input {
   text-transform: capitalize;
 }
 
+.orch-agent-model {
+  font-size: 10px;
+  font-family: var(--font-mono, monospace);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb, 99,102,241), 0.12);
+  padding: 1px 6px;
+  border-radius: 4px;
+  width: fit-content;
+}
+
 .orch-agent-task {
   font-size: 11px;
   color: var(--primary);

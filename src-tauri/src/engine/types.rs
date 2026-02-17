@@ -243,6 +243,85 @@ impl ToolDefinition {
         }
     }
 
+    /// Create a `list_directory` tool.
+    pub fn list_directory() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "list_directory".into(),
+                description: "List files and subdirectories in a directory. Returns names, sizes, and types. Optionally recurse into subdirectories.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Directory path to list (default: current directory)"
+                        },
+                        "recursive": {
+                            "type": "boolean",
+                            "description": "If true, list contents recursively (default: false)"
+                        },
+                        "max_depth": {
+                            "type": "integer",
+                            "description": "Maximum recursion depth (default: 3)"
+                        }
+                    },
+                    "required": []
+                }),
+            },
+        }
+    }
+
+    /// Create an `append_file` tool.
+    pub fn append_file() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "append_file".into(),
+                description: "Append content to the end of a file. Creates the file if it doesn't exist. Unlike write_file, this preserves existing content.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path to append to"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Content to append to the file"
+                        }
+                    },
+                    "required": ["path", "content"]
+                }),
+            },
+        }
+    }
+
+    /// Create a `delete_file` tool.
+    pub fn delete_file() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "delete_file".into(),
+                description: "Delete a file or directory from the filesystem. For directories, set recursive=true to delete non-empty directories.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "Path to the file or directory to delete"
+                        },
+                        "recursive": {
+                            "type": "boolean",
+                            "description": "If true and path is a directory, delete it and all contents (default: false)"
+                        }
+                    },
+                    "required": ["path"]
+                }),
+            },
+        }
+    }
+
     /// Tool to read a soul/persona file (SOUL.md, IDENTITY.md, etc.)
     pub fn soul_read() -> Self {
         ToolDefinition {
@@ -602,6 +681,9 @@ impl ToolDefinition {
             Self::fetch(),
             Self::read_file(),
             Self::write_file(),
+            Self::list_directory(),
+            Self::append_file(),
+            Self::delete_file(),
             Self::web_search(),
             Self::web_read(),
             Self::web_screenshot(),
@@ -853,6 +935,58 @@ pub struct MemoryStats {
     pub has_embeddings: bool,
 }
 
+// ── Model Routing (Multi-Model Agent System) ──────────────────────────
+
+/// Defines which models to use for different agent roles.
+/// With a single API key (e.g. Gemini), you can route the boss agent
+/// to a powerful model and sub-agents to cheaper/faster models.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelRouting {
+    /// Model for the boss/orchestrator agent (expensive, powerful)
+    pub boss_model: Option<String>,
+    /// Default model for worker/sub-agents (cheap, fast)
+    pub worker_model: Option<String>,
+    /// Per-specialty model overrides: e.g. {"coder": "gemini-2.5-pro", "researcher": "gemini-2.0-flash"}
+    #[serde(default)]
+    pub specialty_models: std::collections::HashMap<String, String>,
+    /// Per-agent overrides (highest priority): e.g. {"agent-123": "gemini-2.5-pro"}
+    #[serde(default)]
+    pub agent_models: std::collections::HashMap<String, String>,
+}
+
+impl Default for ModelRouting {
+    fn default() -> Self {
+        ModelRouting {
+            boss_model: None,
+            worker_model: None,
+            specialty_models: std::collections::HashMap::new(),
+            agent_models: std::collections::HashMap::new(),
+        }
+    }
+}
+
+impl ModelRouting {
+    /// Resolve the model for a given agent in a project context.
+    /// Priority: agent_models > specialty_models > role-based (boss/worker) > fallback
+    pub fn resolve(&self, agent_id: &str, role: &str, specialty: &str, fallback: &str) -> String {
+        // 1. Per-agent override
+        if let Some(m) = self.agent_models.get(agent_id) {
+            if !m.is_empty() { return m.clone(); }
+        }
+        // 2. Per-specialty override
+        if !specialty.is_empty() {
+            if let Some(m) = self.specialty_models.get(specialty) {
+                if !m.is_empty() { return m.clone(); }
+            }
+        }
+        // 3. Role-based (boss vs worker)
+        match role {
+            "boss" => self.boss_model.as_deref().unwrap_or(fallback).to_string(),
+            _ => self.worker_model.as_deref().unwrap_or(fallback).to_string(),
+        }
+    }
+}
+
 // ── Engine State ───────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -863,6 +997,9 @@ pub struct EngineConfig {
     pub default_system_prompt: Option<String>,
     pub max_tool_rounds: u32,
     pub tool_timeout_secs: u64,
+    /// Model routing for multi-agent orchestration
+    #[serde(default)]
+    pub model_routing: ModelRouting,
 }
 
 impl Default for EngineConfig {
@@ -871,9 +1008,23 @@ impl Default for EngineConfig {
             providers: vec![],
             default_provider: None,
             default_model: None,
-            default_system_prompt: Some("You are a helpful AI assistant. You have access to tools that let you execute commands, read and write files, and make HTTP requests on the user's machine. Always ask for confirmation before doing anything destructive.".into()),
-            max_tool_rounds: 20,
-            tool_timeout_secs: 120,
+            default_system_prompt: Some(r#"You are Pawz — a powerful AI agent with full access to the user's machine.
+
+You have these capabilities:
+- **exec**: Run any shell command (git, npm, python, system tools, etc.)
+- **read_file / write_file**: Read and write any file on the system
+- **fetch**: Make HTTP requests to any URL (APIs, webhooks, downloads)
+- **web_search / web_read / web_browse / web_screenshot**: Search the internet, read web pages, control a headless browser
+- **memory_store / memory_search**: Store and recall long-term memories across conversations
+- **soul_read / soul_write / soul_list**: Read and update your own personality and knowledge files
+- **Skill tools**: Email, Slack, GitHub, REST APIs, webhooks, image generation (when configured)
+
+You have FULL ACCESS — use your tools proactively to accomplish tasks. Don't just describe what you would do; actually do it. If a task requires multiple steps, chain your tool calls together. You can read files, execute code, install packages, create projects, search the web, and interact with external services.
+
+Be thorough, resourceful, and action-oriented. When the user asks you to do something, do it completely."#.into()),
+            max_tool_rounds: 50,
+            tool_timeout_secs: 300,
+            model_routing: ModelRouting::default(),
         }
     }
 }
@@ -937,6 +1088,9 @@ pub struct ProjectAgent {
     pub specialty: String,      // coder, researcher, designer, communicator, security, general
     pub status: String,         // idle, working, done, error
     pub current_task: Option<String>,
+    /// Optional per-agent model override (takes highest priority)
+    #[serde(default)]
+    pub model: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

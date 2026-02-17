@@ -31,6 +31,7 @@ const els = {
   get agentModal() { return document.getElementById('orch-agent-modal')!; },
   get agentFormId() { return document.getElementById('orch-agent-form-id') as HTMLInputElement; },
   get agentFormSpecialty() { return document.getElementById('orch-agent-form-specialty') as HTMLSelectElement; },
+  get agentFormModel() { return document.getElementById('orch-agent-form-model') as HTMLInputElement | null; },
 };
 
 // ── Init ───────────────────────────────────────────────────────────────
@@ -198,6 +199,7 @@ function renderAgentRoster(agents: EngineProjectAgent[]) {
       </div>
       <div class="orch-agent-meta">
         <span class="orch-agent-specialty">${a.specialty}</span>
+        ${a.model ? `<span class="orch-agent-model" title="Model: ${escapeHtml(a.model)}">${escapeHtml(a.model)}</span>` : ''}
         ${a.current_task ? `<span class="orch-agent-task" title="${escapeHtml(a.current_task)}">${escapeHtml(a.current_task.substring(0, 60))}</span>` : ''}
       </div>
     </div>
@@ -430,6 +432,7 @@ async function addAgent() {
     specialty,
     status: 'idle',
     current_task: undefined,
+    model: els.agentFormModel?.value.trim() || undefined,
   };
 
   const allAgents = [...currentProject.agents, newAgent];

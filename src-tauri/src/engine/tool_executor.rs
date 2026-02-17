@@ -27,6 +27,9 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
         "fetch" => execute_fetch(&args).await,
         "read_file" => execute_read_file(&args).await,
         "write_file" => execute_write_file(&args).await,
+        "list_directory" => execute_list_directory(&args).await,
+        "append_file" => execute_append_file(&args).await,
+        "delete_file" => execute_delete_file(&args).await,
         "soul_read" => execute_soul_read(&args, app_handle).await,
         "soul_write" => execute_soul_write(&args, app_handle).await,
         "soul_list" => execute_soul_list(app_handle).await,
@@ -210,6 +213,133 @@ async fn execute_write_file(args: &serde_json::Value) -> Result<String, String> 
         .map_err(|e| format!("Failed to write file '{}': {}", path, e))?;
 
     Ok(format!("Successfully wrote {} bytes to {}", content.len(), path))
+}
+
+// ── list_directory: List contents of a directory ───────────────────────
+
+async fn execute_list_directory(args: &serde_json::Value) -> Result<String, String> {
+    let path = args["path"].as_str().unwrap_or(".");
+    let recursive = args["recursive"].as_bool().unwrap_or(false);
+    let max_depth = args["max_depth"].as_u64().unwrap_or(3) as usize;
+
+    info!("[engine] list_directory: {} recursive={}", path, recursive);
+
+    let dir = std::path::Path::new(path);
+    if !dir.exists() {
+        return Err(format!("Directory '{}' does not exist", path));
+    }
+    if !dir.is_dir() {
+        return Err(format!("'{}' is not a directory", path));
+    }
+
+    let mut entries = Vec::new();
+
+    fn walk_dir(dir: &std::path::Path, prefix: &str, depth: usize, max_depth: usize, entries: &mut Vec<String>) -> std::io::Result<()> {
+        if depth > max_depth { return Ok(()); }
+        let mut items: Vec<_> = std::fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
+        items.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+
+        for entry in &items {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let suffix = if is_dir { "/" } else { "" };
+
+            if let Ok(meta) = entry.metadata() {
+                let size = if is_dir { String::new() } else { format!(" ({} bytes)", meta.len()) };
+                entries.push(format!("{}{}{}{}", prefix, name, suffix, size));
+            } else {
+                entries.push(format!("{}{}{}", prefix, name, suffix));
+            }
+
+            if is_dir && depth < max_depth {
+                walk_dir(&entry.path(), &format!("{}  ", prefix), depth + 1, max_depth, entries)?;
+            }
+        }
+        Ok(())
+    }
+
+    if recursive {
+        walk_dir(dir, "", 0, max_depth, &mut entries)
+            .map_err(|e| format!("Failed to list directory '{}': {}", path, e))?;
+    } else {
+        let mut items: Vec<_> = std::fs::read_dir(dir)
+            .map_err(|e| format!("Failed to list directory '{}': {}", path, e))?
+            .filter_map(|e| e.ok())
+            .collect();
+        items.sort_by(|a, b| a.file_name().cmp(&b.file_name()));
+
+        for entry in &items {
+            let name = entry.file_name().to_string_lossy().to_string();
+            let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            let suffix = if is_dir { "/" } else { "" };
+            if let Ok(meta) = entry.metadata() {
+                let size = if is_dir { String::new() } else { format!(" ({} bytes)", meta.len()) };
+                entries.push(format!("{}{}{}", name, suffix, size));
+            } else {
+                entries.push(format!("{}{}", name, suffix));
+            }
+        }
+    }
+
+    if entries.is_empty() {
+        Ok(format!("Directory '{}' is empty.", path))
+    } else {
+        Ok(format!("Contents of '{}':\n{}", path, entries.join("\n")))
+    }
+}
+
+// ── append_file: Append content to a file ──────────────────────────────
+
+async fn execute_append_file(args: &serde_json::Value) -> Result<String, String> {
+    let path = args["path"].as_str()
+        .ok_or("append_file: missing 'path' argument")?;
+    let content = args["content"].as_str()
+        .ok_or("append_file: missing 'content' argument")?;
+
+    info!("[engine] append_file: {} ({} bytes)", path, content.len());
+
+    use std::io::Write;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("Failed to open file '{}' for append: {}", path, e))?;
+
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to append to file '{}': {}", path, e))?;
+
+    Ok(format!("Appended {} bytes to {}", content.len(), path))
+}
+
+// ── delete_file: Delete a file or directory ─────────────────────────────
+
+async fn execute_delete_file(args: &serde_json::Value) -> Result<String, String> {
+    let path = args["path"].as_str()
+        .ok_or("delete_file: missing 'path' argument")?;
+    let recursive = args["recursive"].as_bool().unwrap_or(false);
+
+    info!("[engine] delete_file: {} recursive={}", path, recursive);
+
+    let p = std::path::Path::new(path);
+    if !p.exists() {
+        return Err(format!("Path '{}' does not exist", path));
+    }
+
+    if p.is_dir() {
+        if recursive {
+            std::fs::remove_dir_all(path)
+                .map_err(|e| format!("Failed to remove directory '{}': {}", path, e))?;
+            Ok(format!("Deleted directory '{}' (recursive)", path))
+        } else {
+            std::fs::remove_dir(path)
+                .map_err(|e| format!("Failed to remove directory '{}' (not empty? use recursive=true): {}", path, e))?;
+            Ok(format!("Deleted empty directory '{}'", path))
+        }
+    } else {
+        std::fs::remove_file(path)
+            .map_err(|e| format!("Failed to delete file '{}': {}", path, e))?;
+        Ok(format!("Deleted file '{}'", path))
+    }
 }
 
 // ── soul_read: Read a soul/persona file ────────────────────────────────

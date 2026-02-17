@@ -21,6 +21,21 @@ export interface EngineConfig {
   default_system_prompt?: string;
   max_tool_rounds: number;
   tool_timeout_secs: number;
+  model_routing?: ModelRouting;
+}
+
+/** Model routing for multi-agent orchestration.
+ *  Lets you assign different models for boss vs worker agents,
+ *  per-specialty, or per-agent overrides. */
+export interface ModelRouting {
+  /** Model for the boss/orchestrator agent (powerful) */
+  boss_model?: string;
+  /** Default model for worker/sub-agents (cheaper/faster) */
+  worker_model?: string;
+  /** Per-specialty model overrides: e.g. { coder: 'gemini-2.5-pro' } */
+  specialty_models?: Record<string, string>;
+  /** Per-agent overrides (highest priority): e.g. { 'agent-123': 'gemini-2.5-pro' } */
+  agent_models?: Record<string, string>;
 }
 
 export interface EngineChatRequest {
@@ -222,6 +237,7 @@ export interface EngineProjectAgent {
   specialty: string;      // coder, researcher, designer, communicator, security, general
   status: string;         // idle, working, done, error
   current_task?: string;
+  model?: string;         // per-agent model override
 }
 
 export interface EngineProjectMessage {
