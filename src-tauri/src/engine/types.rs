@@ -119,6 +119,9 @@ pub struct ToolCall {
     #[serde(rename = "type")]
     pub call_type: String,
     pub function: FunctionCall,
+    /// Google Gemini thought_signature — must be echoed back in functionCall parts
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thought_signature: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -875,6 +878,8 @@ pub struct ToolCallDelta {
     pub id: Option<String>,
     pub function_name: Option<String>,
     pub arguments_delta: Option<String>,
+    /// Google Gemini thought_signature — captured from streaming response
+    pub thought_signature: Option<String>,
 }
 
 /// Token usage reported by the API (for metering).

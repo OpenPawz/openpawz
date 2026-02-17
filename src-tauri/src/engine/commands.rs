@@ -518,6 +518,28 @@ pub async fn engine_session_compact(
     ).await
 }
 
+// ── Sandbox commands ───────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn engine_sandbox_check() -> Result<bool, String> {
+    Ok(crate::engine::sandbox::is_docker_available().await)
+}
+
+#[tauri::command]
+pub fn engine_sandbox_get_config(
+    state: State<'_, EngineState>,
+) -> Result<crate::engine::sandbox::SandboxConfig, String> {
+    Ok(crate::engine::sandbox::load_sandbox_config(&state.store))
+}
+
+#[tauri::command]
+pub fn engine_sandbox_set_config(
+    state: State<'_, EngineState>,
+    config: crate::engine::sandbox::SandboxConfig,
+) -> Result<(), String> {
+    crate::engine::sandbox::save_sandbox_config(&state.store, &config)
+}
+
 // ── Engine configuration commands ──────────────────────────────────────
 
 #[tauri::command]

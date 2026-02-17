@@ -6,6 +6,7 @@ use crate::engine::types::*;
 use crate::engine::commands::EngineState;
 use crate::engine::memory;
 use crate::engine::skills;
+use crate::engine::sandbox;
 use crate::engine::web;
 use log::{info, warn, error};
 use std::process::Command as ProcessCommand;
@@ -23,7 +24,7 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
     let args: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
 
     let result = match name.as_str() {
-        "exec" => execute_exec(&args).await,
+        "exec" => execute_exec(&args, app_handle).await,
         "fetch" => execute_fetch(&args).await,
         "read_file" => execute_read_file(&args).await,
         "write_file" => execute_write_file(&args).await,
@@ -69,11 +70,28 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
 
 // ── exec: Run shell commands ───────────────────────────────────────────
 
-async fn execute_exec(args: &serde_json::Value) -> Result<String, String> {
+async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
     let command = args["command"].as_str()
         .ok_or("exec: missing 'command' argument")?;
 
     info!("[engine] exec: {}", &command[..command.len().min(200)]);
+
+    // Check sandbox config — if enabled, route through Docker container
+    let sandbox_config = {
+        let state = app_handle.state::<EngineState>();
+        sandbox::load_sandbox_config(&state.store)
+    };
+
+    if sandbox_config.enabled {
+        info!("[engine] exec: routing through sandbox (image={})", sandbox_config.image);
+        match sandbox::run_in_sandbox(command, &sandbox_config).await {
+            Ok(result) => return Ok(sandbox::format_sandbox_result(&result)),
+            Err(e) => {
+                warn!("[engine] Sandbox execution failed, falling back to host: {}", e);
+                // Fall through to host execution
+            }
+        }
+    }
 
     // Run via sh -c (Unix) or cmd /C (Windows)
     let output = if cfg!(target_os = "windows") {

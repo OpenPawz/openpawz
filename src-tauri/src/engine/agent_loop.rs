@@ -46,8 +46,8 @@ pub async fn run_agent_turn(
 
         // ── 2. Assemble the response from chunks ──────────────────────
         let mut text_accum = String::new();
-        let mut tool_call_map: std::collections::HashMap<usize, (String, String, String)> = std::collections::HashMap::new();
-        // (id, name, arguments)
+        let mut tool_call_map: std::collections::HashMap<usize, (String, String, String, Option<String>)> = std::collections::HashMap::new();
+        // (id, name, arguments, thought_signature)
         let mut has_tool_calls = false;
         let mut _finished = false;
 
@@ -71,7 +71,7 @@ pub async fn run_agent_turn(
             for tc_delta in &chunk.tool_calls {
                 has_tool_calls = true;
                 let entry = tool_call_map.entry(tc_delta.index)
-                    .or_insert_with(|| (String::new(), String::new(), String::new()));
+                    .or_insert_with(|| (String::new(), String::new(), String::new(), None));
 
                 if let Some(id) = &tc_delta.id {
                     entry.0 = id.clone();
@@ -81,6 +81,9 @@ pub async fn run_agent_turn(
                 }
                 if let Some(args_delta) = &tc_delta.arguments_delta {
                     entry.2.push_str(args_delta);
+                }
+                if tc_delta.thought_signature.is_some() {
+                    entry.3 = tc_delta.thought_signature.clone();
                 }
             }
 
@@ -138,7 +141,7 @@ pub async fn run_agent_turn(
         sorted_indices.sort();
 
         for idx in sorted_indices {
-            let (id, name, arguments) = tool_call_map.get(&idx).unwrap();
+            let (id, name, arguments, thought_sig) = tool_call_map.get(&idx).unwrap();
 
             // Generate ID if provider didn't supply one
             let call_id = if id.is_empty() {
@@ -154,6 +157,7 @@ pub async fn run_agent_turn(
                     name: name.clone(),
                     arguments: arguments.clone(),
                 },
+                thought_signature: thought_sig.clone(),
             });
         }
 

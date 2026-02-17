@@ -52,3 +52,6 @@ url = "2"
 # ── Channel Bridges (WebSocket + IRC) ───────────────────────────
 tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
 
+# ── Container Sandboxing (Docker) ───────────────────────────────
+bollard = "0.16"
+

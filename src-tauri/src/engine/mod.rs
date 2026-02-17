@@ -14,6 +14,7 @@ pub mod web;
 pub mod injection;
 pub mod compaction;
 pub mod routing;
+pub mod sandbox;
 pub mod telegram;
 pub mod channels;
 pub mod orchestrator;
