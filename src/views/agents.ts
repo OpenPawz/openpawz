@@ -965,6 +965,11 @@ export function getCurrentAgent(): Agent | null {
   return _agents.find(a => a.id === _selectedAgent) || _agents[0] || null;
 }
 
+/** Set the selected agent by ID (used by main.ts agent dropdown). */
+export function setSelectedAgent(agentId: string | null) {
+  _selectedAgent = agentId;
+}
+
 /** Open a mini-chat popup for any agent (callable from outside the module). */
 export { openMiniChat };
 

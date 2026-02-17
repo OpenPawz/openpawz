@@ -1,6 +1,6 @@
 # Pawz vs OpenClaw — Full Competitive Audit
 
-> Last updated: 2025-02-17 (P1 complete, P2 complete)
+> Last updated: 2026-02-17 (P1 complete, P2 complete, major refactors + new features)
 > Source: OpenClaw docs (docs.openclaw.ai) + full Pawz codebase audit
 
 ---
@@ -24,8 +24,10 @@ Pawz and OpenClaw solve the same problem (personal AI agent gateway) with fundam
 | **Architecture** | Native Rust backend, zero open ports, zero auth tokens, direct IPC | Node.js process listening on WebSocket with auth token | **No network attack surface** — IPC only |
 | **Tool approval UX** | Risk-classified modal (red DANGER for critical, type "ALLOW" for sudo), auto-deny rules, session overrides with timer, unified audit log with export | Simple approve/deny with askMode/askFallback | **Much richer HIL experience** |
 | **Credential management** | OS keychain (macOS Keychain / libsecret) + encrypted vault + audit trail + per-account permission toggles | Config file with env vars | **Production-grade credential security** |
-| **Skill ecosystem** | 37 skills across 9 categories, encrypted credential vault, instruction injection with live credentials, custom instruction editor, binary/env detection | AgentSkills-compatible, ClawHub registry for discovery/install | **More built-in skills**, but OpenClaw has discovery advantage |
-| **Multi-agent orchestration** | Boss/worker pattern with `delegate_task`, `check_agent_status`, `send_agent_message`, `project_complete` tools; per-agent model routing; confirmed_model from API response | Bindings-based routing (channel→agent), per-agent workspaces/sessions/auth | **Richer orchestration primitives** — OpenClaw has better routing |
+| **Skill ecosystem** | 37+ skills across 9 categories incl. Coinbase CDP wallet (prices, balance, trade, transfer, wallet_create), encrypted credential vault, instruction injection with live credentials, custom instruction editor, binary/env detection | AgentSkills-compatible, ClawHub registry for discovery/install | **More built-in skills** incl. crypto trading, but OpenClaw has discovery advantage |
+| **Multi-agent orchestration** | Boss/worker pattern with `delegate_task`, `check_agent_status`, `send_agent_message`, `project_complete` tools; `create_agent` tool (agents can spawn sub-agents from chat); per-agent model routing; confirmed_model from API response; backend agent persistence in SQLite | Bindings-based routing (channel→agent), per-agent workspaces/sessions/auth | **Richer orchestration primitives** — agents can self-replicate |
+| **Trading dashboard** | Live crypto trading dashboard with auto-trade guidelines, position tracking, portfolio view | No equivalent | **Unique feature** |
+| **Coinbase integration** | CDP Agentic Wallet: JWT auth (ES256), prices, balances, trade, transfer, wallet creation — all via Rust skill system | No equivalent | **Unique feature** |
 | **Tasks system** | Kanban board with 6 columns, drag-and-drop, multi-agent parallel execution, cron scheduling, live activity feed, agent role management (lead/collaborator) | No equivalent | **Unique feature** — OpenClaw has nothing like this |
 | **Research view** | Full research workflow: project → streaming research → findings → synthesis report | No equivalent | **Unique feature** |
 | **Email integration** | Full IMAP/SMTP via Himalaya, provider picker (Gmail/Outlook/Yahoo/iCloud/Fastmail), OS keychain credentials, per-account agent permissions, audit log | No built-in email | **Unique feature** |
@@ -197,6 +199,20 @@ OpenClaw has managed profiles, Playwright, Chrome Extension relay. Pawz has basi
 | Per-agent tool policies | ✅ | ✅ |
 | Kanban task board | ✅ | ❌ |
 | Multi-agent parallel execution | ✅ | ❌ |
+| Agent self-replication (create_agent tool) | ✅ | ❌ |
+| Backend agent persistence (SQLite) | ✅ | ✅ |
+| Mini-chat popups (per-agent) | ✅ | ❌ |
+
+### 3.6 Crypto / Web3
+
+| Feature | Pawz | OpenClaw |
+|---------|:----:|:--------:|
+| Coinbase CDP Agentic Wallet | ✅ | ❌ |
+| Crypto price lookup | ✅ | ❌ |
+| Wallet balance / portfolio | ✅ | ❌ |
+| Trade execution (buy/sell) | ✅ | ❌ |
+| Crypto transfer | ✅ | ❌ |
+| Trading dashboard UI | ✅ | ❌ |
 
 ---
 
@@ -295,14 +311,15 @@ OpenClaw has managed profiles, Playwright, Chrome Extension relay. Pawz has basi
 | Metric | Pawz | OpenClaw |
 |--------|------|----------|
 | Backend language | Rust | Node.js/TypeScript |
-| Backend LOC | ~18,206 (20 engine files) | Unknown |
-| Frontend LOC | ~20,045 (30+ TS files) | Vite + Lit SPA |
-| Total LOC | ~38,251 | Unknown |
+| Backend LOC | ~21,472 (20+ engine files) | Unknown |
+| Frontend LOC | ~29,038 (30+ TS/CSS files) | Vite + Lit SPA |
+| Total LOC | ~50,510 | Unknown |
 | Channels | 10 | 13+ |
-| Built-in tools | 26+ | ~20+ |
-| Built-in skills | 37 | Variable |
+| Built-in tools | 32+ (incl. create_agent, 5 Coinbase tools) | ~20+ |
+| Built-in skills | 37+ (incl. Coinbase CDP) | Variable |
 | AI providers | 6 | 7+ |
-| Database | SQLite (11 tables, WAL) | SQLite + Markdown |
+| Database | SQLite (11+ tables, WAL, FTS5) | SQLite + Markdown |
+| Gateway dependency | **None** — pure Rust engine (gateway.ts removed) | Node.js WebSocket |
 
 ---
 
@@ -319,4 +336,24 @@ Backend: `src-tauri/src/engine/{feature}/` or `src-tauri/src/engine/{feature}.rs
 
 ---
 
-**TL;DR**: ~~Close the 6 P1 gaps~~ **All 6 P1 features are DONE. All 4 P2 Memory & Intelligence features are DONE.** WhatsApp remains as Phase 1.5. Next up: Phase 3 (Voice & TTS).
+## 8. Recent Major Changes (Post-P2)
+
+These changes were made between P2 completion and the current state:
+
+| Commit | Feature | Summary |
+|--------|---------|---------|
+| a8796e5 | **Gateway removal** | Removed `gateway.ts` and all OpenClaw gateway references — Pawz is now 100% self-contained Rust engine |
+| 60b44e6 | **Agent/model consolidation** | Removed Foundry Agents tab, consolidated into unified Agents view |
+| 053c5a4 | **Backend agent persistence** | Agents created by orchestrator/chat are stored in SQLite (`project_agents`) |
+| 75b2dd8 | **create_agent tool** | Agents can now spawn sub-agents from within chat conversations |
+| 9a32983 | **Auto-patch system prompt** | System prompt automatically includes create_agent tool |
+| 50fd0fc | **Standalone project seed** | DB init seeds `_standalone` project for FK constraints |
+| 6eef42b | **Dedup migration fix** | Fixed chat history reset caused by dedup migration running every startup |
+| 680f2e8 | **Security hardening** | Removed `exec` from safe_tools (HIL bypass), added SQL danger patterns |
+| 607ac7c | **Mini-chat popups** | FB Messenger-style per-agent floating chat windows |
+| eb20c35 | **Coinbase CDP integration** | Full Agentic Wallet: JWT auth (ES256), prices, balances, trade, transfer, wallet creation |
+| e6c854f | **Trading dashboard** | Live crypto trading UI with auto-trade guidelines and position tracking |
+
+---
+
+**TL;DR**: **All 6 P1 features DONE. All 4 P2 Memory & Intelligence features DONE. Gateway fully removed. Coinbase CDP wallet integrated. Agents can self-replicate via create_agent tool. Trading dashboard live.** WhatsApp remains as Phase 1.5. P4 (Browser & Sandbox) not yet started.

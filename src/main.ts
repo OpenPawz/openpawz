@@ -167,6 +167,7 @@ const chatEmpty = $('chat-empty');
 const chatInput = $('chat-input') as HTMLTextAreaElement | null;
 const chatSend = $('chat-send') as HTMLButtonElement | null;
 const chatSessionSelect = $('chat-session-select') as HTMLSelectElement | null;
+const chatAgentSelect = $('chat-agent-select') as HTMLSelectElement | null;
 const chatAgentName = $('chat-agent-name');
 const modelLabel = $('model-label');
 
@@ -209,7 +210,7 @@ function switchView(viewName: string) {
   if (wsConnected) {
     switch (viewName) {
       case 'dashboard': loadDashboardCron(); break;
-      case 'chat': loadSessions(); break;
+      case 'chat': loadSessions(); populateAgentSelect(); break;
       case 'channels': loadChannels(); break;
       case 'automations': AutomationsModule.loadCron(); break;
       case 'agents': AgentsModule.loadAgents(); break;
@@ -293,7 +294,8 @@ async function connectEngine(): Promise<boolean> {
     statusDot?.classList.add('connected');
     statusDot?.classList.remove('error');
     if (statusText) statusText.textContent = 'Engine';
-    if (chatAgentName) chatAgentName.textContent = '🐾 Paw';
+    const initAgent = AgentsModule.getCurrentAgent();
+    if (chatAgentName) chatAgentName.textContent = initAgent ? `${initAgent.avatar} ${initAgent.name}` : '🐾 Paw';
 
     // Show the active model in the chat header
     refreshModelLabel();
@@ -472,6 +474,53 @@ async function populateModeSelect() {
     sel.appendChild(opt);
   }
 }
+
+/** Populate the agent picker dropdown in the chat header */
+function populateAgentSelect() {
+  if (!chatAgentSelect) return;
+  const agents = AgentsModule.getAgents();
+  const currentAgent = AgentsModule.getCurrentAgent();
+  chatAgentSelect.innerHTML = '';
+  for (const a of agents) {
+    const opt = document.createElement('option');
+    opt.value = a.id;
+    opt.textContent = `${a.avatar} ${a.name}`;
+    if (currentAgent && a.id === currentAgent.id) opt.selected = true;
+    chatAgentSelect.appendChild(opt);
+  }
+}
+
+/** Switch the active agent — updates header, creates a new session, and clears chat */
+function switchToAgent(agentId: string) {
+  AgentsModule.setSelectedAgent(agentId);
+  const agent = AgentsModule.getCurrentAgent();
+  if (chatAgentName && agent) {
+    chatAgentName.textContent = `${agent.avatar} ${agent.name}`;
+  }
+  // Update dropdown selection
+  if (chatAgentSelect) chatAgentSelect.value = agentId;
+  // Start a new session for this agent (clear existing messages)
+  messages = [];
+  currentSessionKey = null;
+  _sessionTokensUsed = 0;
+  _sessionInputTokens = 0;
+  _sessionOutputTokens = 0;
+  _sessionCost = 0;
+  _lastRecordedTotal = 0;
+  _compactionDismissed = false;
+  updateTokenMeter();
+  const ba = $('session-budget-alert');
+  if (ba) ba.style.display = 'none';
+  renderMessages();
+  if (chatSessionSelect) chatSessionSelect.value = '';
+  console.log(`[main] Switched to agent "${agent?.name}" (${agentId})`);
+}
+
+// Wire agent dropdown change event
+chatAgentSelect?.addEventListener('change', () => {
+  const agentId = chatAgentSelect?.value;
+  if (agentId) switchToAgent(agentId);
+});
 
 async function loadChatHistory(sessionKey: string) {
   if (!wsConnected) return;
@@ -2930,7 +2979,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize Agents module
     AgentsModule.configure({
       switchView,
-      setCurrentAgent: (agentId) => { console.log('[main] Agent selected:', agentId); },
+      setCurrentAgent: (agentId) => {
+        if (agentId) switchToAgent(agentId);
+      },
     });
     AgentsModule.initAgents();
 

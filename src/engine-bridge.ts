@@ -143,6 +143,7 @@ export async function engineChatSend(
     temperature: opts.temperature,
     tools_enabled: true,
     tool_filter: toolFilter,
+    agent_id: agentId !== 'default' ? agentId : undefined,
     attachments: opts.attachments?.map(a => ({
       mimeType: a.mimeType,
       content: a.content,
