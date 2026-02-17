@@ -169,10 +169,10 @@ export async function loadAgents() {
   if (!_agents.find(a => a.id === 'default')) {
     _agents.unshift({
       id: 'default',
-      name: 'Dave',
-      avatar: '🧠',
+      name: 'Pawz',
+      avatar: '🐾',
       color: AVATAR_COLORS[0],
-      bio: 'Your main AI assistant',
+      bio: 'Your main AI agent',
       model: 'default',
       template: 'general',
       personality: { tone: 'balanced', initiative: 'balanced', detail: 'balanced' },

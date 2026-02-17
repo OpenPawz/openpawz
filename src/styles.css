@@ -3567,7 +3567,7 @@ button:focus:not(:focus-visible) { outline: none; }
 }
 .today-quick-action:last-child { margin-bottom: 0; }
 
-/* Dave's card */
+/* Pawz's card */
 .today-dave-card {
   background: var(--bg-secondary);
   border: 1px solid #ff00ff44;

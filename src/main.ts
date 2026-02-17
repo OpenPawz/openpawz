@@ -22,7 +22,7 @@ function icon(name: string, cls = ''): string {
   const inner = _icons[name] || '';
   return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${cls ? ` class="${cls}"` : ''}>${inner}</svg>`;
 }
-import { initDb, initDbEncryption, listModes, listDocs, saveDoc, getDoc, deleteDoc, logCredentialActivity, logSecurityEvent } from './db';
+import { initDb, initDbEncryption, listDocs, saveDoc, getDoc, deleteDoc, logCredentialActivity, logSecurityEvent } from './db';
 import * as SettingsModule from './views/settings';
 import { initEngineSettings } from './views/settings-engine';
 import * as ModelsSettings from './views/settings-models';
@@ -423,7 +423,6 @@ async function loadSessions(opts?: { skipHistory?: boolean }) {
       currentSessionKey = sessions[0].key;
     }
     if (!opts?.skipHistory && currentSessionKey && !isLoading) await loadChatHistory(currentSessionKey);
-    populateModeSelect().catch(() => {});
   } catch (e) { console.warn('Sessions load failed:', e); }
 }
 
@@ -463,20 +462,6 @@ chatSessionSelect?.addEventListener('change', () => {
     loadChatHistory(key);
   }
 });
-
-/** Populate the mode picker dropdown in the chat header */
-async function populateModeSelect() {
-  const sel = $('chat-mode-select') as HTMLSelectElement | null;
-  if (!sel) return;
-  const modes = await listModes();
-  sel.innerHTML = '<option value="">Default</option>';
-  for (const m of modes) {
-    const opt = document.createElement('option');
-    opt.value = m.id;
-    opt.textContent = m.name;
-    sel.appendChild(opt);
-  }
-}
 
 /** Populate the agent picker dropdown in the chat header */
 function populateAgentSelect() {
@@ -1050,24 +1035,8 @@ async function sendMessage() {
   try {
     const sessionKey = currentSessionKey ?? 'default';
 
-    // Read selected mode (if any)
-    const modeSelect = $('chat-mode-select') as HTMLSelectElement | null;
-    const selectedModeId = modeSelect?.value;
-    let selectedMode: import('./db').AgentMode | undefined;
-    let modeSystemPrompt: string | undefined;
-    if (selectedModeId) {
-      const modes = await listModes();
-      selectedMode = modes.find(m => m.id === selectedModeId);
-      if (selectedMode) {
-        if (selectedMode.thinking_level) chatOpts.thinkingLevel = selectedMode.thinking_level;
-        if (selectedMode.temperature > 0) chatOpts.temperature = selectedMode.temperature;
-        if (selectedMode.system_prompt) modeSystemPrompt = selectedMode.system_prompt;
-      }
-    }
-
     // -- Agent Profile Injection --
-    // Priority order: slash overrides > mode > agent > global default
-    // Agent sets the base model & profile, mode overrides model on top of that.
+    // Priority order: slash overrides > agent > global default
     const currentAgent = AgentsModule.getCurrentAgent();
     if (currentAgent) {
       // Use the agent's model as the base (if not default)
@@ -1077,22 +1046,6 @@ async function sendMessage() {
       // Pass the full profile to build the system prompt in engine-bridge
       (chatOpts as Record<string, unknown>).agentProfile = currentAgent;
       console.log(`[main] Injecting agent profile for "${currentAgent.name}"`, currentAgent);
-    }
-
-    // Mode's model takes priority over agent's model (mode is a per-session override)
-    if (selectedMode?.model) chatOpts.model = selectedMode.model;
-
-    // Merge mode's system_prompt into the agent profile
-    if (modeSystemPrompt) {
-      const existing = (chatOpts as Record<string, unknown>).agentProfile as Record<string, unknown> | undefined;
-      if (existing) {
-        // Mode system prompt takes priority — prepend before agent's own systemPrompt
-        existing.systemPrompt = modeSystemPrompt + (existing.systemPrompt ? '\n\n' + existing.systemPrompt : '');
-      } else {
-        // No agent selected — create a minimal profile with just the mode system prompt
-        (chatOpts as Record<string, unknown>).agentProfile = { systemPrompt: modeSystemPrompt };
-      }
-      console.log(`[main] Mode system prompt applied (${modeSystemPrompt.length} chars)`);
     }
     
     // Include attachments if any

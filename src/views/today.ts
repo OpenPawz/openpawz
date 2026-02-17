@@ -237,17 +237,17 @@ function renderToday() {
     
     <div class="today-grid">
       <div class="today-main">
-        <!-- Dave's Summary -->
+        <!-- Pawz Summary -->
         <div class="today-card today-dave-card">
           <div class="today-dave-header">
-            <div class="today-dave-avatar">🧠</div>
+            <div class="today-dave-avatar">🐾</div>
             <div class="today-dave-intro">
-              <div class="today-dave-name">Dave</div>
-              <div class="today-dave-role">Your AI Assistant</div>
+              <div class="today-dave-name">Pawz</div>
+              <div class="today-dave-role">Your AI Agent</div>
             </div>
           </div>
           <div class="today-dave-message" id="today-dave-message">
-            ${getDaveMessage(pendingTasks.length, completedToday.length)}
+            ${getPawzMessage(pendingTasks.length, completedToday.length)}
           </div>
         </div>
         
@@ -457,7 +457,7 @@ function getGreeting(): string {
   return 'Good evening';
 }
 
-function getDaveMessage(pendingTasks: number, completedToday: number): string {
+function getPawzMessage(pendingTasks: number, completedToday: number): string {
   const hour = new Date().getHours();
   const day = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   
