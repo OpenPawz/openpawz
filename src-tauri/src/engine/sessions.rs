@@ -221,23 +221,34 @@ impl SessionStore {
             [],
         ).map_err(|e| format!("Failed to seed _standalone project: {}", e))?;
 
-        // One-time dedup: remove duplicate messages caused by a bug that
-        // re-inserted historical assistant/tool messages on every agent turn.
-        // Keep only the earliest copy of each (session_id, role, content, tool_call_id) tuple.
-        let deduped = conn.execute(
-            "DELETE FROM messages WHERE id NOT IN (
-                SELECT MIN(id) FROM messages
-                GROUP BY session_id, role, content, tool_call_id
-            )",
-            [],
-        ).unwrap_or(0);
-        if deduped > 0 {
-            info!("[engine] Deduplication: removed {} duplicate messages", deduped);
-            // Update message counts
-            conn.execute_batch(
-                "UPDATE sessions SET message_count = (
-                    SELECT COUNT(*) FROM messages WHERE messages.session_id = sessions.id
-                )"
+        // One-time dedup (runs once, guarded by flag): remove duplicate messages
+        // caused by a historical bug that re-inserted messages on every agent turn.
+        // The underlying bug is fixed (pre_loop_msg_count guard in commands.rs).
+        let already_deduped: bool = conn.query_row(
+            "SELECT COUNT(*) FROM engine_config WHERE key = 'migration_dedup_done'",
+            [], |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+
+        if !already_deduped {
+            let deduped = conn.execute(
+                "DELETE FROM messages WHERE id NOT IN (
+                    SELECT MIN(id) FROM messages
+                    GROUP BY session_id, role, content, tool_call_id
+                )",
+                [],
+            ).unwrap_or(0);
+            if deduped > 0 {
+                info!("[engine] Deduplication: removed {} duplicate messages", deduped);
+                conn.execute_batch(
+                    "UPDATE sessions SET message_count = (
+                        SELECT COUNT(*) FROM messages WHERE messages.session_id = sessions.id
+                    )"
+                ).ok();
+            }
+            // Mark migration as done so it never runs again
+            conn.execute(
+                "INSERT OR REPLACE INTO engine_config (key, value) VALUES ('migration_dedup_done', '1')",
+                [],
             ).ok();
         }
 
