@@ -98,6 +98,9 @@ let _streamingResolve: ((text: string) => void) | null = null;  // resolves when
 let _streamingTimeout: ReturnType<typeof setTimeout> | null = null;
 let _pendingAttachments: File[] = [];
 
+// Per-agent session mapping: remembers which session belongs to which agent
+const _agentSessionMap: Map<string, string> = new Map();
+
 // ── Token metering state ───────────────────────────────────────────────────
 let _sessionTokensUsed = 0;         // accumulated tokens for current session
 let _sessionInputTokens = 0;
@@ -490,8 +493,14 @@ function populateAgentSelect() {
   }
 }
 
-/** Switch the active agent — updates header, creates a new session, and clears chat */
-function switchToAgent(agentId: string) {
+/** Switch the active agent — saves current session, restores target agent's session */
+async function switchToAgent(agentId: string) {
+  // Save current agent's session before switching
+  const prevAgent = AgentsModule.getCurrentAgent();
+  if (prevAgent && currentSessionKey) {
+    _agentSessionMap.set(prevAgent.id, currentSessionKey);
+  }
+
   AgentsModule.setSelectedAgent(agentId);
   const agent = AgentsModule.getCurrentAgent();
   if (chatAgentName && agent) {
@@ -499,9 +508,8 @@ function switchToAgent(agentId: string) {
   }
   // Update dropdown selection
   if (chatAgentSelect) chatAgentSelect.value = agentId;
-  // Start a new session for this agent (clear existing messages)
-  messages = [];
-  currentSessionKey = null;
+
+  // Reset token meter
   _sessionTokensUsed = 0;
   _sessionInputTokens = 0;
   _sessionOutputTokens = 0;
@@ -511,9 +519,23 @@ function switchToAgent(agentId: string) {
   updateTokenMeter();
   const ba = $('session-budget-alert');
   if (ba) ba.style.display = 'none';
-  renderMessages();
-  if (chatSessionSelect) chatSessionSelect.value = '';
-  console.log(`[main] Switched to agent "${agent?.name}" (${agentId})`);
+
+  // Restore this agent's previous session, or start fresh
+  const savedSessionKey = _agentSessionMap.get(agentId);
+  if (savedSessionKey) {
+    currentSessionKey = savedSessionKey;
+    await loadChatHistory(savedSessionKey);
+    // Update session dropdown selection
+    if (chatSessionSelect) chatSessionSelect.value = savedSessionKey;
+  } else {
+    // No previous session for this agent — start a blank chat
+    messages = [];
+    currentSessionKey = null;
+    renderMessages();
+    if (chatSessionSelect) chatSessionSelect.value = '';
+  }
+
+  console.log(`[main] Switched to agent "${agent?.name}" (${agentId}), session=${currentSessionKey ?? 'new'}`);
 }
 
 // Wire agent dropdown change event
@@ -1093,7 +1115,12 @@ async function sendMessage() {
 
     // Store the runId so we can filter events precisely
     if (result.runId) _streamingRunId = result.runId;
-    if (result.sessionKey) currentSessionKey = result.sessionKey;
+    if (result.sessionKey) {
+      currentSessionKey = result.sessionKey;
+      // Track this session for the current agent
+      const curAgent = AgentsModule.getCurrentAgent();
+      if (curAgent) _agentSessionMap.set(curAgent.id, result.sessionKey);
+    }
 
     // Try to extract usage from the send response itself
     const sendUsage = (result as unknown as Record<string, unknown>).usage as Record<string, unknown> | undefined;
