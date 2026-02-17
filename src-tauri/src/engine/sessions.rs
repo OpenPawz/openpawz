@@ -213,6 +213,14 @@ impl SessionStore {
             WHERE id NOT IN (SELECT id FROM memories_fts);
         ").ok();
 
+        // Ensure the _standalone sentinel project exists so that
+        // user-created agents (via create_agent tool) satisfy the FK constraint.
+        conn.execute(
+            "INSERT OR IGNORE INTO projects (id, title, goal, status, boss_agent)
+             VALUES ('_standalone', 'Standalone Agents', 'Container for user-created agents', 'active', 'system')",
+            [],
+        ).map_err(|e| format!("Failed to seed _standalone project: {}", e))?;
+
         // One-time dedup: remove duplicate messages caused by a bug that
         // re-inserted historical assistant/tool messages on every agent turn.
         // Keep only the earliest copy of each (session_id, role, content, tool_call_id) tuple.
