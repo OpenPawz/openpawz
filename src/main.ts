@@ -260,6 +260,14 @@ async function connectGateway(): Promise<boolean> {
     await startEngineBridge();
     wsConnected = true;
     setSettingsConnected(true);
+    SettingsModule.setWsConnected(true);
+    MemoryPalaceModule.setWsConnected(true);
+    MailModule.setWsConnected(true);
+    SkillsModule.setWsConnected(true);
+    FoundryModule.setWsConnected(true);
+    ResearchModule.setWsConnected(true);
+    NodesModule.setWsConnected(true);
+    AutomationsModule.setWsConnected(true);
     statusDot?.classList.add('connected');
     statusDot?.classList.remove('error');
     if (statusText) statusText.textContent = 'Engine';
@@ -412,6 +420,7 @@ gateway.on('_connected', () => {
   FoundryModule.setWsConnected(true);
   ResearchModule.setWsConnected(true);
   NodesModule.setWsConnected(true);
+  AutomationsModule.setWsConnected(true);
   statusDot?.classList.add('connected');
   statusDot?.classList.remove('error');
   if (statusText) statusText.textContent = 'Connected';
@@ -431,6 +440,7 @@ gateway.on('_disconnected', () => {
   FoundryModule.setWsConnected(false);
   ResearchModule.setWsConnected(false);
   NodesModule.setWsConnected(false);
+  AutomationsModule.setWsConnected(false);
   statusDot?.classList.remove('connected');
   statusDot?.classList.add('error');
   if (statusText) statusText.textContent = 'Reconnecting...';

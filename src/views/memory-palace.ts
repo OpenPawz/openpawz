@@ -177,9 +177,10 @@ export async function loadMemoryPalace() {
       // Memory is available — full mode
       if (banner) banner.style.display = 'none';
       if (filesDivider) filesDivider.style.display = '';
-      // Show settings gear so user can reconfigure endpoint/API key
+      // Settings gear — only for gateway mode (OpenAI/Azure endpoint config)
+      // Engine mode uses the embedding status banner for Ollama config
       const settingsBtn = $('palace-settings');
-      if (settingsBtn) settingsBtn.style.display = '';
+      if (settingsBtn) settingsBtn.style.display = isEngineMode() ? 'none' : '';
     }
 
   // Only load stats + sidebar when memory is actually available
@@ -1121,7 +1122,7 @@ async function exportMemories() {
     // Build export payload with metadata
     const exportData = {
       exportedAt: new Date().toISOString(),
-      source: 'Paw Desktop — OpenClaw Memory Export',
+      source: 'Paw Desktop — Memory Export',
       totalMemories: memories.length,
       memories,
     };
