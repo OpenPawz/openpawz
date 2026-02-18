@@ -354,8 +354,8 @@
         <div class="view chat-view" id="chat-view">
           <div class="chat-header">
             <div class="chat-header-left">
-              <div class="chat-avatar">
-                <span class="ms ms-lg">person</span>
+              <div class="chat-avatar" id="chat-avatar">
+                <img src="/src/assets/sprites/sm/sheet5-02.png" alt="" width="32" height="32" style="image-rendering:pixelated">
               </div>
               <div>
                 <div class="chat-title" id="chat-agent-name">Agent</div>
@@ -1636,24 +1636,26 @@
               <div class="form-group">
                 <label class="form-label">Provider</label>
                 <select class="form-input" id="engine-provider-kind" style="max-width:300px">
-                  <option value="anthropic">Anthropic (Claude)</option>
-                  <option value="openai">OpenAI (GPT)</option>
-                  <option value="google">Google (Gemini)</option>
-                  <option value="openrouter">OpenRouter</option>
-                  <option value="ollama">Ollama (Local)</option>
-                  <option value="custom" data-base-url="">Custom (OpenAI-compatible)</option>
+                  <option value="anthropic" data-kind="anthropic">Anthropic (Claude)</option>
+                  <option value="openai" data-kind="openai">OpenAI (GPT)</option>
+                  <option value="google" data-kind="google">Google (Gemini)</option>
+                  <option value="openrouter" data-kind="openrouter">OpenRouter</option>
+                  <option value="ollama" data-kind="ollama">Ollama (Local)</option>
+                  <option value="custom" data-kind="custom" data-base-url="">Custom (OpenAI-compatible)</option>
                   <optgroup label="OpenAI-compatible providers">
-                    <option value="custom" data-base-url="https://api.moonshot.cn/v1" data-model="moonshot-v1-128k">Kimi / Moonshot AI</option>
-                    <option value="custom" data-base-url="https://api.deepseek.com/v1" data-model="deepseek-chat">DeepSeek</option>
-                    <option value="custom" data-base-url="https://api.x.ai/v1" data-model="grok-3">xAI (Grok)</option>
-                    <option value="custom" data-base-url="https://api.mistral.ai/v1" data-model="mistral-large-latest">Mistral AI</option>
-                    <option value="custom" data-base-url="https://api.together.xyz/v1" data-model="meta-llama/Llama-3-70b-chat-hf">Together AI</option>
-                    <option value="custom" data-base-url="https://api.fireworks.ai/inference/v1" data-model="accounts/fireworks/models/llama-v3p1-70b-instruct">Fireworks AI</option>
-                    <option value="custom" data-base-url="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile">Groq</option>
-                    <option value="custom" data-base-url="https://generativelanguage.googleapis.com/v1beta/openai/" data-model="gemini-2.5-flash">Google AI (OpenAI-compat)</option>
+                    <option value="moonshot" data-kind="custom" data-base-url="https://api.moonshot.cn/v1" data-model="moonshot-v1-128k">Kimi / Moonshot AI</option>
+                    <option value="deepseek" data-kind="custom" data-base-url="https://api.deepseek.com/v1" data-model="deepseek-chat">DeepSeek</option>
+                    <option value="xai" data-kind="custom" data-base-url="https://api.x.ai/v1" data-model="grok-3">xAI (Grok)</option>
+                    <option value="mistral" data-kind="custom" data-base-url="https://api.mistral.ai/v1" data-model="mistral-large-latest">Mistral AI</option>
+                    <option value="together" data-kind="custom" data-base-url="https://api.together.xyz/v1" data-model="meta-llama/Llama-3-70b-chat-hf">Together AI</option>
+                    <option value="fireworks" data-kind="custom" data-base-url="https://api.fireworks.ai/inference/v1" data-model="accounts/fireworks/models/llama-v3p1-70b-instruct">Fireworks AI</option>
+                    <option value="groq" data-kind="custom" data-base-url="https://api.groq.com/openai/v1" data-model="llama-3.3-70b-versatile">Groq</option>
+                    <option value="google-openai" data-kind="custom" data-base-url="https://generativelanguage.googleapis.com/v1beta/openai/" data-model="gemini-2.5-flash">Google AI (OpenAI-compat)</option>
                   </optgroup>
                 </select>
               </div>
+              <!-- Configured providers list -->
+              <div id="engine-providers-list" style="margin-bottom:16px"></div>
               <div class="form-group">
                 <label class="form-label">API Key</label>
                 <input type="password" class="form-input" id="engine-api-key" placeholder="sk-..." />

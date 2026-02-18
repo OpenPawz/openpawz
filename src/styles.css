@@ -267,22 +267,7 @@ body {
   letter-spacing: normal;
 }
 
-/* CRT Scanline overlay — subtle retro TV effect (disabled in light mode via --scanline-opacity) */
-body::after {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 99999;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(0, 0, 0, var(--scanline-opacity)) 2px,
-    rgba(0, 0, 0, var(--scanline-opacity)) 4px
-  );
-  mix-blend-mode: multiply;
-}
+/* CRT Scanline overlay — REMOVED (no longer retro CRT aesthetic) */
 
 /* Light mode overrides for elements that need special handling */
 [data-theme="light"] body,
@@ -539,11 +524,6 @@ body::after {
   flex-direction: column;
   overflow: hidden;
   background: var(--bg-primary);
-  /* Subtle pixelated grid background */
-  background-image:
-    linear-gradient(rgba(255, 0, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 0, 255, 0.03) 1px, transparent 1px);
-  background-size: 16px 16px;
 }
 
 /* ─── Views ─── */
@@ -1063,16 +1043,15 @@ body::after {
 .chat-avatar {
   width: 32px;
   height: 32px;
-  background: url('/src/assets/sprites/sm/sheet5-02.png') center/contain no-repeat;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
   justify-content: center;
-  filter: drop-shadow(0 0 4px rgba(0, 255, 255, 0.4));
+  overflow: hidden;
+  flex-shrink: 0;
 }
-
-.chat-avatar svg {
-  display: none; /* Hidden — using pixel sprite instead */
+.chat-avatar img {
+  image-rendering: pixelated;
 }
 
 .chat-title {
@@ -1081,7 +1060,11 @@ body::after {
   font-weight: 400;
   color: var(--cyan);
   text-shadow: 0 0 6px rgba(0, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
+.chat-title img { image-rendering: pixelated; vertical-align: middle; }
 
 .chat-subtitle {
   font-size: 11px;
@@ -3762,10 +3745,14 @@ button:focus:not(:focus-visible) { outline: none; }
 .today-dave-avatar {
   width: 48px;
   height: 48px;
-  background: url('assets/sprites/md/sheet2-05.png') center / contain no-repeat;
   border-radius: var(--radius-sm);
   image-rendering: pixelated;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.today-dave-avatar img { image-rendering: pixelated; }
 .today-dave-intro { flex: 1; }
 .today-dave-name { font-size: 14px; font-weight: 600; font-family: var(--font-pixel); color: #ff00ff; }
 .today-dave-role { font-size: 12px; color: var(--text-muted); }
@@ -3928,10 +3915,11 @@ button:focus:not(:focus-visible) { outline: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 24px;
   flex-shrink: 0;
+  overflow: hidden;
   image-rendering: pixelated;
 }
+.agent-avatar img { image-rendering: pixelated; }
 .agent-info { flex: 1; }
 .agent-name {
   font-size: 16px;
@@ -4093,15 +4081,20 @@ button:focus:not(:focus-visible) { outline: none; }
   flex-wrap: wrap;
 }
 .agent-avatar-option {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border: 2px solid var(--border);
-  border-radius: 50%;
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
-  font-size: 22px;
   cursor: pointer;
   transition: all var(--transition-fast);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
 }
+.agent-avatar-option img { image-rendering: pixelated; }
 .agent-avatar-option:hover { border-color: var(--accent); }
 .agent-avatar-option.selected {
   border-color: var(--accent);
@@ -4249,8 +4242,9 @@ button:focus:not(:focus-visible) { outline: none; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  overflow: hidden;
 }
+.agent-avatar-large img { image-rendering: pixelated; }
 
 /* ═══ Automations Board ═══ */
 .auto-view {
@@ -9268,9 +9262,11 @@ select.form-input {
   flex-shrink: 0;
 }
 .mini-chat-avatar {
-  font-size: 18px;
   line-height: 1;
+  display: flex;
+  align-items: center;
 }
+.mini-chat-avatar img { image-rendering: pixelated; }
 .mini-chat-name {
   flex: 1;
   font-size: 13px;
@@ -9464,11 +9460,10 @@ select.form-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 22px;
-  line-height: 1;
-  color: var(--text-on-accent);
+  overflow: hidden;
   user-select: none;
 }
+.agent-dock-avatar img { image-rendering: pixelated; }
 .agent-dock-badge {
   position: absolute;
   top: -2px;

@@ -5,6 +5,7 @@
 import { pawEngine } from '../engine';
 import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority, TaskAgent } from '../engine';
 import { showToast } from '../components/toast';
+import { spriteAvatar } from './agents';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -236,7 +237,7 @@ function openTaskModal(task?: EngineTask) {
     for (const agent of _agents) {
       const opt = document.createElement('option');
       opt.value = agent.id;
-      opt.textContent = `${agent.avatar} ${agent.name}`;
+      opt.textContent = agent.name;
       inputAgent.appendChild(opt);
     }
     inputAgent.value = '';
@@ -261,7 +262,7 @@ function renderAgentPicker() {
     const agent = _agents.find(a => a.id === ta.agent_id);
     const tag = document.createElement('span');
     tag.className = `agent-tag${ta.role === 'lead' ? ' lead' : ''}`;
-    tag.innerHTML = `${agent ? agent.avatar + ' ' : ''}${escHtml(ta.agent_id)}${ta.role === 'lead' ? ' ★' : ''}<button class="agent-tag-remove" title="Remove">×</button>`;
+    tag.innerHTML = `${agent ? spriteAvatar(agent.avatar, 18) + ' ' : ''}${escHtml(ta.agent_id)}${ta.role === 'lead' ? ' ★' : ''}<button class="agent-tag-remove" title="Remove">×</button>`;
 
     // Click tag → toggle lead/collaborator
     tag.addEventListener('click', (e) => {
@@ -480,9 +481,9 @@ export function stopCronTimer() {
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function getAgentAvatar(agentId?: string | null): string {
-  if (!agentId) return '🔧';
+  if (!agentId) return '<span class="ms">build</span>';
   const agent = _agents.find(a => a.id === agentId || a.name === agentId);
-  return agent?.avatar || '🤖';
+  return agent ? spriteAvatar(agent.avatar, 20) : '<span class="ms">smart_toy</span>';
 }
 
 function formatTimeAgo(dateStr: string): string {

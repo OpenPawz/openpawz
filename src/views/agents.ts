@@ -11,7 +11,7 @@ const $ = (id: string) => document.getElementById(id);
 export interface Agent {
   id: string;
   name: string;
-  avatar: string; // emoji or initials
+  avatar: string; // sprite ID (e.g. 'sheet1-03') or legacy emoji
   color: string;
   bio: string;
   model: string; // AI model to use
@@ -136,6 +136,35 @@ const AVATAR_COLORS = [
   '#0073EA', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#ef4444'
 ];
 
+// ── Sprite Avatars ─────────────────────────────────────────────────────────
+// Curated set of character sprites for agent avatars
+const SPRITE_AVATARS = [
+  'sheet1-03', 'sheet1-05', 'sheet1-07', 'sheet1-09', 'sheet1-11', 'sheet1-14',
+  'sheet2-02', 'sheet2-04', 'sheet2-07', 'sheet2-10', 'sheet2-13', 'sheet2-16',
+  'sheet3-01', 'sheet3-04', 'sheet3-07', 'sheet3-10', 'sheet3-14', 'sheet3-18',
+  'sheet4-03', 'sheet4-06', 'sheet4-09', 'sheet4-12', 'sheet4-15', 'sheet4-18',
+  'sheet5-01', 'sheet5-04', 'sheet5-07', 'sheet5-10', 'sheet5-14', 'sheet5-17',
+  'sheet6-02', 'sheet6-05', 'sheet6-08', 'sheet6-11', 'sheet6-14', 'sheet6-17',
+];
+
+/** Default avatar for new agents */
+const DEFAULT_AVATAR = 'sheet5-02';
+
+/** Check if avatar string is a sprite ID (e.g. 'sheet1-03') vs a legacy emoji */
+function isSprite(avatar: string): boolean {
+  return /^sheet\d+-\d+$/.test(avatar);
+}
+
+/** Render an agent avatar as an <img> (sprite) or emoji <span> */
+export function spriteAvatar(avatar: string, size = 32): string {
+  if (isSprite(avatar)) {
+    const folder = size <= 32 ? 'sm' : 'md';
+    return `<img src="/src/assets/sprites/${folder}/${avatar}.png" alt="" width="${size}" height="${size}" style="image-rendering:pixelated;display:block">`;
+  }
+  // Legacy emoji fallback
+  return `<span style="font-size:${Math.round(size * 0.7)}px;line-height:1">${avatar}</span>`;
+}
+
 let _agents: Agent[] = [];
 let _selectedAgent: string | null = null;
 
@@ -171,7 +200,7 @@ export async function loadAgents() {
     _agents.unshift({
       id: 'default',
       name: 'Pawz',
-      avatar: '🐾',
+      avatar: DEFAULT_AVATAR,
       color: AVATAR_COLORS[0],
       bio: 'Your main AI agent',
       model: 'default',
@@ -194,14 +223,14 @@ export async function loadAgents() {
         // Skip if already in local list (by agent_id)
         if (_agents.find(a => a.id === ba.agent_id)) continue;
         // Convert backend agent to Agent format
-        const specialtyEmoji: Record<string, string> = {
-          coder: '💻', researcher: '🔬', designer: '🎨', communicator: '💬',
-          security: '🛡️', general: '🤖', writer: '✍️', analyst: '📊',
+        const specialtySprite: Record<string, string> = {
+          coder: 'sheet3-04', researcher: 'sheet2-07', designer: 'sheet1-09', communicator: 'sheet4-06',
+          security: 'sheet6-05', general: 'sheet3-10', writer: 'sheet5-07', analyst: 'sheet2-13',
         };
         _agents.push({
           id: ba.agent_id,
           name: ba.agent_id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-          avatar: specialtyEmoji[ba.specialty] || '🤖',
+          avatar: specialtySprite[ba.specialty] || 'sheet3-10',
           color: AVATAR_COLORS[_agents.length % AVATAR_COLORS.length],
           bio: `${ba.role} — ${ba.specialty}`,
           model: ba.model || 'default',
@@ -240,7 +269,7 @@ function renderAgents() {
   grid.innerHTML = _agents.map(agent => `
     <div class="agent-card${agent.source === 'backend' ? ' agent-card-backend' : ''}" data-id="${agent.id}">
       <div class="agent-card-header">
-        <div class="agent-avatar" style="background:${agent.color}">${agent.avatar}</div>
+        <div class="agent-avatar" style="background:${agent.color}">${spriteAvatar(agent.avatar, 48)}</div>
         <div class="agent-info">
           <div class="agent-name">${escHtml(agent.name)}</div>
           <div class="agent-template">${agent.source === 'backend' ? 'AI-Created' : agent.template.charAt(0).toUpperCase() + agent.template.slice(1)}</div>
@@ -349,14 +378,9 @@ function openAgentCreator() {
         <div class="form-group">
           <label class="form-label">Avatar</label>
           <div class="agent-avatar-picker" id="agent-avatar-picker">
-            <button class="agent-avatar-option selected" data-avatar="🤖">🤖</button>
-            <button class="agent-avatar-option" data-avatar="🧠">🧠</button>
-            <button class="agent-avatar-option" data-avatar="🔬">🔬</button>
-            <button class="agent-avatar-option" data-avatar="🎨">🎨</button>
-            <button class="agent-avatar-option" data-avatar="💻">💻</button>
-            <button class="agent-avatar-option" data-avatar="📚">📚</button>
-            <button class="agent-avatar-option" data-avatar="🚀">🚀</button>
-            <button class="agent-avatar-option" data-avatar="⚡">⚡</button>
+            ${SPRITE_AVATARS.map((s, i) =>
+              `<button class="agent-avatar-option${i === 0 ? ' selected' : ''}" data-avatar="${s}">${spriteAvatar(s, 36)}</button>`
+            ).join('')}
           </div>
         </div>
       </div>
@@ -369,7 +393,7 @@ function openAgentCreator() {
   document.body.appendChild(modal);
 
   let selectedTemplate = 'general';
-  let selectedAvatar = '🤖';
+  let selectedAvatar = SPRITE_AVATARS[0];
 
   // Template selection
   modal.querySelectorAll('.agent-template-card').forEach(card => {
@@ -390,7 +414,7 @@ function openAgentCreator() {
     btn.addEventListener('click', () => {
       modal.querySelectorAll('.agent-avatar-option').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
-      selectedAvatar = btn.getAttribute('data-avatar') || '🤖';
+      selectedAvatar = btn.getAttribute('data-avatar') || SPRITE_AVATARS[0];
     });
   });
 
@@ -455,7 +479,7 @@ function openAgentEditor(agentId: string) {
     <div class="agent-modal-dialog agent-modal-large">
       <div class="agent-modal-header">
         <div class="agent-modal-header-left">
-          <div class="agent-avatar-large" style="background:${agent.color}">${agent.avatar}</div>
+          <div class="agent-avatar-large" style="background:${agent.color}">${spriteAvatar(agent.avatar, 36)}</div>
           <span>Edit ${escHtml(agent.name)}</span>
         </div>
         <button class="btn-icon agent-modal-close">×</button>
@@ -491,8 +515,8 @@ function openAgentEditor(agentId: string) {
           <div class="form-group">
             <label class="form-label">Avatar</label>
             <div class="agent-avatar-picker">
-              ${['🤖','🧠','🔬','🎨','💻','📚','🚀','⚡','🎯','💡','🔥','✨'].map(a => 
-                `<button class="agent-avatar-option ${agent.avatar === a ? 'selected' : ''}" data-avatar="${a}">${a}</button>`
+              ${SPRITE_AVATARS.map(s =>
+                `<button class="agent-avatar-option ${agent.avatar === s ? 'selected' : ''}" data-avatar="${s}">${spriteAvatar(s, 36)}</button>`
               ).join('')}
             </div>
           </div>
@@ -600,7 +624,7 @@ function openAgentEditor(agentId: string) {
     btn.addEventListener('click', () => {
       modal.querySelectorAll('.agent-avatar-option').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
-      selectedAvatar = btn.getAttribute('data-avatar') || '🤖';
+      selectedAvatar = btn.getAttribute('data-avatar') || SPRITE_AVATARS[0];
     });
   });
 
@@ -787,7 +811,7 @@ function openMiniChat(agentId: string) {
   el.style.right = `${getMiniChatOffset(_miniChats.size)}px`;
   el.innerHTML = `
     <div class="mini-chat-header" style="background:${agent.color}">
-      <div class="mini-chat-avatar">${agent.avatar}</div>
+      <div class="mini-chat-avatar">${spriteAvatar(agent.avatar, 24)}</div>
       <div class="mini-chat-name">${escHtml(agent.name)}</div>
       <div class="mini-chat-controls">
         <button class="mini-chat-btn mini-chat-minimize" title="Minimize">—</button>
@@ -1089,7 +1113,7 @@ export function renderAgentDock() {
     const unread = mc?.unreadCount ?? 0;
     return `
       <div class="agent-dock-item${isOpen ? ' agent-dock-active' : ''}" data-agent-id="${a.id}" title="${escAttr(a.name)}">
-        <div class="agent-dock-avatar" style="background:${a.color}">${a.avatar}</div>
+        <div class="agent-dock-avatar" style="background:${a.color}">${spriteAvatar(a.avatar, 40)}</div>
         ${unread > 0 ? `<span class="agent-dock-badge">${unread > 9 ? '9+' : unread}</span>` : ''}
       </div>
     `;

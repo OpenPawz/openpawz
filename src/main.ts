@@ -340,7 +340,12 @@ async function connectEngine(): Promise<boolean> {
     statusDot?.classList.remove('error');
     if (statusText) statusText.textContent = 'Engine';
     const initAgent = AgentsModule.getCurrentAgent();
-    if (chatAgentName) chatAgentName.textContent = initAgent ? `${initAgent.avatar} ${initAgent.name}` : '🐾 Paw';
+    if (chatAgentName) chatAgentName.innerHTML = initAgent ? `${AgentsModule.spriteAvatar(initAgent.avatar, 20)} ${escHtml(initAgent.name)}` : `${AgentsModule.spriteAvatar('sheet5-02', 20)} Paw`;
+    // Update chat avatar pic
+    const chatAvatarInit = document.getElementById('chat-avatar');
+    if (chatAvatarInit && initAgent) {
+      chatAvatarInit.innerHTML = AgentsModule.spriteAvatar(initAgent.avatar, 32);
+    }
 
     // Show the active model in the chat header
     refreshModelLabel();
@@ -514,7 +519,7 @@ function populateAgentSelect() {
   for (const a of agents) {
     const opt = document.createElement('option');
     opt.value = a.id;
-    opt.textContent = `${a.avatar} ${a.name}`;
+    opt.textContent = a.name;
     if (currentAgent && a.id === currentAgent.id) opt.selected = true;
     chatAgentSelect.appendChild(opt);
   }
@@ -531,7 +536,12 @@ async function switchToAgent(agentId: string) {
   AgentsModule.setSelectedAgent(agentId);
   const agent = AgentsModule.getCurrentAgent();
   if (chatAgentName && agent) {
-    chatAgentName.textContent = `${agent.avatar} ${agent.name}`;
+    chatAgentName.innerHTML = `${AgentsModule.spriteAvatar(agent.avatar, 20)} ${escHtml(agent.name)}`;
+  }
+  // Update chat avatar pic
+  const chatAvatarEl = document.getElementById('chat-avatar');
+  if (chatAvatarEl && agent) {
+    chatAvatarEl.innerHTML = AgentsModule.spriteAvatar(agent.avatar, 32);
   }
   // Update dropdown selection
   if (chatAgentSelect) chatAgentSelect.value = agentId;
@@ -3072,7 +3082,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     AgentsModule.onProfileUpdated((agentId, agent) => {
       const current = AgentsModule.getCurrentAgent();
       if (current && current.id === agentId && chatAgentName) {
-        chatAgentName.textContent = `${agent.avatar} ${agent.name}`;
+        chatAgentName.innerHTML = `${AgentsModule.spriteAvatar(agent.avatar, 20)} ${escHtml(agent.name)}`;
       }
       // Refresh agent dropdown
       populateAgentSelect();

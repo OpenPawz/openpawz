@@ -1,7 +1,7 @@
 // Today View — Daily briefing with weather, calendar, tasks, and unread emails
 
 import { pawEngine } from '../engine';
-import { getCurrentAgent } from './agents';
+import { getCurrentAgent, spriteAvatar } from './agents';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -232,7 +232,7 @@ function renderToday() {
 
   const mainAgent = getCurrentAgent();
   const agentName = mainAgent?.name ?? 'Agent';
-  const agentAvatar = mainAgent?.avatar ?? '🤖';
+  const agentAvatar = mainAgent ? spriteAvatar(mainAgent.avatar, 48) : spriteAvatar('sheet5-02', 48);
 
   container.innerHTML = `
     <div class="today-header">
