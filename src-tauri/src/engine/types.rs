@@ -960,6 +960,13 @@ impl ToolDefinition {
                     tools.push(Self::coinbase_trade());
                     tools.push(Self::coinbase_transfer());
                 }
+                "dex" => {
+                    tools.push(Self::dex_wallet_create());
+                    tools.push(Self::dex_balance());
+                    tools.push(Self::dex_quote());
+                    tools.push(Self::dex_swap());
+                    tools.push(Self::dex_portfolio());
+                }
                 _ => {}
             }
         }
@@ -1101,6 +1108,140 @@ impl ToolDefinition {
                         }
                     },
                     "required": ["currency", "amount", "to_address", "reason"]
+                }),
+            },
+        }
+    }
+
+    // ── DEX / Uniswap V3 tools ─────────────────────────────────────────
+
+    pub fn dex_wallet_create() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_wallet_create".into(),
+                description: "Create a new self-custody Ethereum wallet. The private key is encrypted and stored in the OS keychain vault — you never see it. Returns the wallet address.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {},
+                    "required": []
+                }),
+            },
+        }
+    }
+
+    pub fn dex_balance() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_balance".into(),
+                description: "Check ETH and ERC-20 token balances for the DEX wallet. If no token specified, shows ETH and all tokens with non-zero balances.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token": {
+                            "type": "string",
+                            "description": "Specific token to check (e.g. 'USDC', 'WBTC', or a contract address). Omit to check all known tokens."
+                        }
+                    },
+                    "required": []
+                }),
+            },
+        }
+    }
+
+    pub fn dex_quote() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_quote".into(),
+                description: "Get a swap quote from Uniswap V3 without executing. Shows expected output amount, exchange rate, and minimum output with slippage protection. ALWAYS use this before dex_swap.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token_in": {
+                            "type": "string",
+                            "description": "Token to sell (e.g. 'ETH', 'USDC', 'WBTC', or contract address)"
+                        },
+                        "token_out": {
+                            "type": "string",
+                            "description": "Token to buy (e.g. 'USDC', 'ETH', 'UNI', or contract address)"
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Amount of token_in to swap (e.g. '0.5', '100')"
+                        },
+                        "fee_tier": {
+                            "type": "integer",
+                            "description": "Uniswap V3 fee tier in bps: 100 (0.01%), 500 (0.05%), 3000 (0.3%), 10000 (1%). Default: 3000"
+                        },
+                        "slippage_bps": {
+                            "type": "integer",
+                            "description": "Slippage tolerance in basis points. Default: 50 (0.5%). Max: 500 (5%)"
+                        }
+                    },
+                    "required": ["token_in", "token_out", "amount"]
+                }),
+            },
+        }
+    }
+
+    pub fn dex_swap() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_swap".into(),
+                description: "Execute a token swap on Uniswap V3. REQUIRES USER APPROVAL. Gets a quote, handles token approval if needed, builds and signs the transaction, then broadcasts it. The private key never leaves the vault.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token_in": {
+                            "type": "string",
+                            "description": "Token to sell (e.g. 'ETH', 'USDC', 'WBTC')"
+                        },
+                        "token_out": {
+                            "type": "string",
+                            "description": "Token to buy (e.g. 'USDC', 'ETH', 'UNI')"
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Amount of token_in to swap (e.g. '0.1', '50')"
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Reason for this swap (shown in approval modal and trade history)"
+                        },
+                        "fee_tier": {
+                            "type": "integer",
+                            "description": "Uniswap V3 fee tier: 100, 500, 3000 (default), or 10000"
+                        },
+                        "slippage_bps": {
+                            "type": "integer",
+                            "description": "Slippage tolerance in basis points. Default: 50 (0.5%). Max: 500 (5%)"
+                        }
+                    },
+                    "required": ["token_in", "token_out", "amount", "reason"]
+                }),
+            },
+        }
+    }
+
+    pub fn dex_portfolio() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_portfolio".into(),
+                description: "Get a complete portfolio view: ETH balance + all known ERC-20 token balances + network info.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "tokens": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Additional ERC-20 contract addresses to check beyond the built-in list"
+                        }
+                    },
+                    "required": []
                 }),
             },
         }

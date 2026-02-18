@@ -80,6 +80,12 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle, a
         "coinbase_wallet_create" => execute_skill_tool("coinbase", "coinbase_wallet_create", &args, app_handle).await,
         "coinbase_trade" => execute_skill_tool("coinbase", "coinbase_trade", &args, app_handle).await,
         "coinbase_transfer" => execute_skill_tool("coinbase", "coinbase_transfer", &args, app_handle).await,
+        // ── DEX / Uniswap tools ──
+        "dex_wallet_create" => execute_skill_tool("dex", "dex_wallet_create", &args, app_handle).await,
+        "dex_balance" => execute_skill_tool("dex", "dex_balance", &args, app_handle).await,
+        "dex_quote" => execute_skill_tool("dex", "dex_quote", &args, app_handle).await,
+        "dex_swap" => execute_skill_tool("dex", "dex_swap", &args, app_handle).await,
+        "dex_portfolio" => execute_skill_tool("dex", "dex_portfolio", &args, app_handle).await,
         _ => Err(format!("Unknown tool: {}", name)),
     };
 
@@ -1080,6 +1086,32 @@ async fn execute_skill_tool(
             }
             result
         }
+        // ── DEX / Uniswap ──
+        "dex_wallet_create" => crate::engine::dex::execute_dex_wallet_create(args, &creds, app_handle).await,
+        "dex_balance" => crate::engine::dex::execute_dex_balance(args, &creds).await,
+        "dex_quote" => crate::engine::dex::execute_dex_quote(args, &creds).await,
+        "dex_swap" => {
+            let result = crate::engine::dex::execute_dex_swap(args, &creds).await;
+            if result.is_ok() {
+                let _ = state.store.insert_trade(
+                    "dex_swap",
+                    Some("swap"),
+                    None,
+                    args["token_in"].as_str(),
+                    args["amount"].as_str().unwrap_or("0"),
+                    None,
+                    None,
+                    "completed",
+                    None,
+                    args["token_out"].as_str(),
+                    args["reason"].as_str().unwrap_or(""),
+                    None, None,
+                    result.as_ref().ok().map(|s| s.as_str()),
+                );
+            }
+            result
+        }
+        "dex_portfolio" => crate::engine::dex::execute_dex_portfolio(args, &creds).await,
         _ => Err(format!("Unknown skill tool: {}", tool_name)),
     }
 }

@@ -757,6 +757,45 @@ Commands: camsnap snap <url> [--output frame.jpg], camsnap discover (find camera
 camsnap stream <url> --frames 10 --interval 1s (capture multiple).
 Supports RTSP, ONVIF, and HTTP MJPEG streams."#.into(),
         },
+        // ── DEX / Uniswap Trading ──
+        SkillDefinition {
+            id: "dex".into(),
+            name: "DEX Trading (Uniswap)".into(),
+            description: "Self-custody Ethereum wallet with on-chain swaps via Uniswap V3. Private key never leaves the vault.".into(),
+            icon: "🦄".into(),
+            category: SkillCategory::Vault,
+            required_credentials: vec![
+                CredentialField { key: "DEX_RPC_URL".into(), label: "Ethereum RPC URL".into(), description: "JSON-RPC endpoint for Ethereum (from Infura, Alchemy, or your own node). Example: https://mainnet.infura.io/v3/YOUR_KEY".into(), required: true, placeholder: "https://mainnet.infura.io/v3/abc123...".into() },
+                CredentialField { key: "DEX_PRIVATE_KEY".into(), label: "Wallet Private Key".into(), description: "Auto-generated when you use dex_wallet_create. Or paste your own 0x-prefixed hex key. Stored encrypted in OS keychain vault.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
+                CredentialField { key: "DEX_WALLET_ADDRESS".into(), label: "Wallet Address".into(), description: "Auto-populated when wallet is created. Or paste your own Ethereum address if importing a key.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
+            ],
+            tool_names: vec!["dex_wallet_create".into(), "dex_balance".into(), "dex_quote".into(), "dex_swap".into(), "dex_portfolio".into()],
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Get an RPC URL at infura.io or alchemy.com (free tier works)".into(),
+            agent_instructions: r#"You have a self-custody Ethereum wallet for DEX trading via Uniswap V3.
+
+CRITICAL: Your private key is stored encrypted in the OS keychain vault. You NEVER see it — the engine signs transactions internally. Do NOT:
+- Try to read or access the private key
+- Try to export or display wallet credentials
+- Run shell commands to interact with the blockchain (use the tools below)
+
+Available tools:
+- **dex_wallet_create**: Generate a new Ethereum wallet. Private key is encrypted and stored automatically.
+- **dex_balance**: Check ETH and ERC-20 token balances for a specific token.
+- **dex_quote**: Get a swap quote from Uniswap V3 (read-only, no transaction).
+- **dex_swap**: Execute a token swap on Uniswap V3. ALWAYS requires user approval.
+- **dex_portfolio**: Check all token balances at once.
+
+Supported tokens: ETH, WETH, USDC, USDT, DAI, WBTC, UNI, LINK, PEPE, SHIB, ARB, AAVE (or any ERC-20 by contract address).
+
+Trading Rules:
+- ALWAYS get a quote (dex_quote) before proposing a swap
+- ALWAYS state your reasoning and expected outcome before swapping
+- Check balances before trading
+- Default slippage is 0.5% — warn the user if you need higher
+- For ETH→token swaps, the wallet must have enough ETH for gas + swap amount
+- For token→token swaps, the wallet must have ETH for gas fees
+- If the user hasn't set risk parameters, ask before executing large trades"#.into(),
+        },
     ]
 }
 
@@ -1065,7 +1104,7 @@ pub fn get_enabled_skill_instructions(store: &SessionStore) -> Result<String, St
 
         // For skills with credentials, inject actual values into the instructions
         // UNLESS the skill has built-in tool_executor auth (credentials stay server-side)
-        let hidden_credential_skills = ["coinbase"];
+        let hidden_credential_skills = ["coinbase", "dex"];
         let instructions = if !def.required_credentials.is_empty() && !hidden_credential_skills.contains(&def.id.as_str()) {
             inject_credentials_into_instructions(store, &def.id, &def.required_credentials, &base_instructions)
         } else {

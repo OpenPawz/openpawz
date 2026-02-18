@@ -59,3 +59,7 @@ tokio-tungstenite = { version = "0.21", features = ["rustls-tls-webpki-roots"] }
 # ── Container Sandboxing (Docker) ───────────────────────────────
 bollard = "0.16"
 
+# ── DEX / Ethereum Wallet ──────────────────────────────────────
+k256 = { version = "0.13", features = ["ecdsa"] }
+tiny-keccak = { version = "2", features = ["keccak"] }
+
