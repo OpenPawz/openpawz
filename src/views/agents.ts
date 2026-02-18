@@ -993,9 +993,12 @@ function setupMiniChatListeners(mc: MiniChatWindow) {
     }
   });
 
-  // Listen for completion
+  // Listen for completion — only finalize on the FINAL completion (no pending tool calls).
+  // Intermediate completions (tool_calls_count > 0) mean the agent is still working
+  // through tool rounds and more deltas/responses will follow.
   mc.unlistenComplete = pawEngine.on('complete', (event) => {
     if (!mc.runId || event.run_id !== mc.runId) return;
+    if (event.tool_calls_count && event.tool_calls_count > 0) return;
     finalizeMiniChatStreaming(mc);
   });
 

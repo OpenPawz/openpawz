@@ -1466,6 +1466,7 @@ pub async fn execute_task(
     let store_path = crate::engine::sessions::engine_db_path();
     let task_id_for_spawn = task_id.to_string();
     let agent_count = agent_ids.len();
+    let is_recurring = task.cron_schedule.as_ref().map_or(false, |s| !s.is_empty());
 
     // For each agent, spawn a parallel agent loop
     let mut handles = Vec::new();
@@ -1657,9 +1658,18 @@ pub async fn execute_task(
             }
         }
 
-        // Update task status based on results
+        // Update task status based on results.
+        // Recurring (cron) tasks stay "in_progress" so they remain in the
+        // correct kanban column and will be picked up on the next schedule.
+        // One-shot tasks transition to "review" (success) or "blocked" (all failed).
         if let Ok(conn) = rusqlite::Connection::open(&store_path) {
-            let new_status = if all_ok { "review" } else if any_ok { "review" } else { "blocked" };
+            let new_status = if is_recurring {
+                "in_progress"
+            } else if any_ok {
+                "review"
+            } else {
+                "blocked"
+            };
             conn.execute(
                 "UPDATE tasks SET status = ?2, updated_at = datetime('now') WHERE id = ?1",
                 rusqlite::params![task_id_for_spawn, new_status],
@@ -1667,7 +1677,13 @@ pub async fn execute_task(
 
             // Final summary activity
             let aid = uuid::Uuid::new_v4().to_string();
-            let summary = if agent_count > 1 {
+            let summary = if is_recurring {
+                if agent_count > 1 {
+                    format!("All {} agents finished (recurring). Staying in_progress for next run.", agent_count)
+                } else {
+                    format!("Cron cycle completed. Staying in_progress for next run.")
+                }
+            } else if agent_count > 1 {
                 format!("All {} agents finished. Status: {}", agent_count, new_status)
             } else {
                 format!("Task completed. Status: {}", new_status)
@@ -1681,7 +1697,7 @@ pub async fn execute_task(
         // Emit task-updated event
         app_handle_final.emit("task-updated", serde_json::json!({
             "task_id": task_id_for_spawn,
-            "status": if any_ok { "review" } else { "blocked" },
+            "status": if is_recurring { "in_progress" } else if any_ok { "review" } else { "blocked" },
         })).ok();
     });
 
