@@ -202,6 +202,8 @@ pub async fn run_agent_turn(
                 "self_info",
                 // Coinbase read-only
                 "coinbase_prices", "coinbase_balance",
+                // Coinbase trading — full autonomy (user-acknowledged $50 learning budget)
+                "coinbase_trade", "coinbase_transfer", "coinbase_wallet_create",
                 // Read-only email/slack
                 "email_read", "slack_read", "telegram_read",
                 // Task listing (read-only)
