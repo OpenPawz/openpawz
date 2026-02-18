@@ -188,15 +188,40 @@ pub async fn run_agent_turn(
         for tc in &tool_calls {
             info!("[engine] Tool call: {} id={}", tc.function.name, tc.id);
 
-            // Full autonomy mode: ALL tools are auto-approved.
-            // The agent runs with complete freedom — no HIL approval needed.
-            // Trading policy checks still apply for coinbase tools as a safety net.
-            let skip_hil = true;
+            // Per-tool autonomy: auto-approve safe/trading tools,
+            // require user approval for dangerous or side-effect-heavy tools.
+            let auto_approved_tools: &[&str] = &[
+                // ── Read-only / informational ──
+                "fetch", "read_file", "list_directory",
+                "soul_read", "soul_list", "memory_search", "self_info",
+                "web_search", "web_read", "web_screenshot", "web_browse",
+                "list_tasks", "email_read", "slack_read", "telegram_read",
+                // ── Agent memory / profile ──
+                "soul_write", "memory_store", "update_profile",
+                // ── Task management ──
+                "create_task", "manage_task",
+                // ── Trading: Solana (Jupiter) ──
+                "sol_wallet_create", "sol_balance", "sol_quote", "sol_swap",
+                "sol_portfolio", "sol_token_info", "sol_transfer",
+                // ── Trading: EVM DEX (Uniswap) ──
+                "dex_wallet_create", "dex_balance", "dex_quote", "dex_swap",
+                "dex_portfolio", "dex_token_info", "dex_check_token",
+                "dex_search_token", "dex_watch_wallet", "dex_whale_transfers",
+                "dex_top_traders", "dex_trending", "dex_transfer",
+                // ── Trading: Coinbase ──
+                "coinbase_prices", "coinbase_balance", "coinbase_wallet_create",
+                "coinbase_trade", "coinbase_transfer",
+                // ── Media ──
+                "image_generate",
+            ];
+
+            let skip_hil = auto_approved_tools.contains(&tc.function.name.as_str());
 
             let approved = if skip_hil {
                 info!("[engine] Auto-approved safe tool: {}", tc.function.name);
                 true
             } else {
+                info!("[engine] Tool requires user approval: {}", tc.function.name);
                 // Register a oneshot channel for approval
                 let (approval_tx, approval_rx) = tokio::sync::oneshot::channel::<bool>();
                 {
