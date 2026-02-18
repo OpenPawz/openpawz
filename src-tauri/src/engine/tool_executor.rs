@@ -1362,7 +1362,12 @@ fn build_cdp_jwt(
         (0..16).map(|_| (b'0' + rng.gen_range(0..10u8)) as char).collect()
     };
     let uri = format!("{} {}{}", method, host, path);
-    let secret_clean = key_secret.replace("\\n", "\n").trim().to_string();
+    // Normalize PEM newlines: handle literal \n, escaped \\n, and missing newlines
+    let secret_clean = key_secret
+        .replace("\\n", "\n")   // JSON-escaped newlines
+        .replace("\\\\n", "\n") // Double-escaped newlines
+        .trim()
+        .to_string();
 
     // Detect key type and algorithm
     let key_type = detect_key_type(&secret_clean);
@@ -1417,12 +1422,16 @@ enum KeyType {
 fn detect_key_type(secret: &str) -> KeyType {
     // If it starts with PEM header, parse as PEM
     if secret.contains("-----BEGIN") {
-        // Try Ed25519 PEM first
+        // SEC1 EC key header → definitely ES256
+        if secret.contains("BEGIN EC PRIVATE KEY") {
+            return KeyType::Es256Pem;
+        }
+        // PKCS#8 generic header — try Ed25519 first, fall back to ES256
         use ed25519_dalek::pkcs8::DecodePrivateKey;
         if ed25519_dalek::SigningKey::from_pkcs8_pem(secret).is_ok() {
             return KeyType::Ed25519Pem;
         }
-        // Otherwise assume ES256 PEM (P-256)
+        // Otherwise assume ES256 PEM (P-256 PKCS#8)
         return KeyType::Es256Pem;
     }
     // No PEM header — treat as raw base64 Ed25519 key (Coinbase default format)
@@ -1484,14 +1493,23 @@ fn sign_ed25519_pem(pem: &str, message: &[u8]) -> Result<String, String> {
 }
 
 /// Sign with ES256 (P-256 ECDSA) PEM key
+/// Supports both PKCS#8 (-----BEGIN PRIVATE KEY-----) and SEC1 (-----BEGIN EC PRIVATE KEY-----) formats.
 fn sign_es256(pem: &str, message: &[u8]) -> Result<String, String> {
     use p256::ecdsa::SigningKey;
-    use p256::pkcs8::DecodePrivateKey;
     use p256::ecdsa::signature::Signer;
     use base64::Engine as _;
 
-    let signing_key = SigningKey::from_pkcs8_pem(pem)
-        .map_err(|e| format!("Invalid EC key (must be P-256 PEM): {}", e))?;
+    // Try PKCS#8 first, then SEC1 (Coinbase uses SEC1 "BEGIN EC PRIVATE KEY")
+    let signing_key = {
+        use p256::pkcs8::DecodePrivateKey;
+        SigningKey::from_pkcs8_pem(pem)
+    }.or_else(|_| {
+        use p256::elliptic_curve::SecretKey;
+        let secret_key = SecretKey::<p256::NistP256>::from_sec1_pem(pem)
+            .map_err(|e| format!("Invalid EC key (tried PKCS#8 and SEC1): {}", e))?;
+        Ok::<SigningKey, String>(SigningKey::from(secret_key))
+    })?;
+
     let signature: p256::ecdsa::Signature = signing_key.sign(message);
     Ok(base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(signature.to_bytes()))
 }
