@@ -966,6 +966,8 @@ impl ToolDefinition {
                     tools.push(Self::dex_quote());
                     tools.push(Self::dex_swap());
                     tools.push(Self::dex_portfolio());
+                    tools.push(Self::dex_token_info());
+                    tools.push(Self::dex_check_token());
                 }
                 _ => {}
             }
@@ -1242,6 +1244,46 @@ impl ToolDefinition {
                         }
                     },
                     "required": []
+                }),
+            },
+        }
+    }
+
+    pub fn dex_token_info() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_token_info".into(),
+                description: "Get comprehensive on-chain info about any ERC-20 token by its contract address. Reads name, symbol, decimals, total supply, owner, contract code size, and tests swap viability on Uniswap V3. No website scraping — queries the blockchain directly via RPC.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token_address": {
+                            "type": "string",
+                            "description": "The ERC-20 contract address to analyze (0x-prefixed, 42 chars)"
+                        }
+                    },
+                    "required": ["token_address"]
+                }),
+            },
+        }
+    }
+
+    pub fn dex_check_token() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_check_token".into(),
+                description: "Run automated safety checks on a token contract before trading. Tests: contract verification, ERC-20 compliance, ownership renouncement, HONEYPOT detection (simulates buy AND sell on Uniswap), round-trip tax analysis. Returns a risk score 0-30 and explicit honeypot verdict. Always run this before trading any new token.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token_address": {
+                            "type": "string",
+                            "description": "The ERC-20 contract address to safety-check (0x-prefixed, 42 chars)"
+                        }
+                    },
+                    "required": ["token_address"]
                 }),
             },
         }

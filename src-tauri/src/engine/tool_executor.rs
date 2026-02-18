@@ -86,6 +86,8 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle, a
         "dex_quote" => execute_skill_tool("dex", "dex_quote", &args, app_handle).await,
         "dex_swap" => execute_skill_tool("dex", "dex_swap", &args, app_handle).await,
         "dex_portfolio" => execute_skill_tool("dex", "dex_portfolio", &args, app_handle).await,
+        "dex_token_info" => execute_skill_tool("dex", "dex_token_info", &args, app_handle).await,
+        "dex_check_token" => execute_skill_tool("dex", "dex_check_token", &args, app_handle).await,
         _ => Err(format!("Unknown tool: {}", name)),
     };
 
@@ -1112,6 +1114,8 @@ async fn execute_skill_tool(
             result
         }
         "dex_portfolio" => crate::engine::dex::execute_dex_portfolio(args, &creds).await,
+        "dex_token_info" => crate::engine::dex::execute_dex_token_info(args, &creds).await,
+        "dex_check_token" => crate::engine::dex::execute_dex_check_token(args, &creds).await,
         _ => Err(format!("Unknown skill tool: {}", tool_name)),
     }
 }
