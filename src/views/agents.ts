@@ -219,18 +219,26 @@ export async function loadAgents() {
     try {
       const backendAgents: BackendAgent[] = await pawEngine.listAllAgents();
       console.log('[agents] Backend agents:', backendAgents.length);
+      const usedSprites = new Set(_agents.map(a => a.avatar));
+      function pickUniqueSprite(preferred: string): string {
+        if (!usedSprites.has(preferred)) { usedSprites.add(preferred); return preferred; }
+        const avail = SPRITE_AVATARS.find(s => !usedSprites.has(s));
+        if (avail) { usedSprites.add(avail); return avail; }
+        return preferred; // fallback if all used
+      }
       for (const ba of backendAgents) {
         // Skip if already in local list (by agent_id)
         if (_agents.find(a => a.id === ba.agent_id)) continue;
-        // Convert backend agent to Agent format
+        // Convert backend agent to Agent format — each gets a unique sprite
         const specialtySprite: Record<string, string> = {
           coder: 'sheet3-04', researcher: 'sheet2-07', designer: 'sheet1-09', communicator: 'sheet4-06',
           security: 'sheet6-05', general: 'sheet3-10', writer: 'sheet5-07', analyst: 'sheet2-13',
         };
+        const preferredSprite = specialtySprite[ba.specialty] || 'sheet3-10';
         _agents.push({
           id: ba.agent_id,
           name: ba.agent_id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-          avatar: specialtySprite[ba.specialty] || 'sheet3-10',
+          avatar: pickUniqueSprite(preferredSprite),
           color: AVATAR_COLORS[_agents.length % AVATAR_COLORS.length],
           bio: `${ba.role} — ${ba.specialty}`,
           model: ba.model || 'default',
@@ -1114,7 +1122,7 @@ export function renderAgentDock() {
     const unread = mc?.unreadCount ?? 0;
     return `
       <div class="agent-dock-item${isOpen ? ' agent-dock-active' : ''}" data-agent-id="${a.id}" title="${escAttr(a.name)}">
-        <div class="agent-dock-avatar" style="background:${a.color}">${spriteAvatar(a.avatar, 40)}</div>
+        <div class="agent-dock-avatar">${spriteAvatar(a.avatar, 40)}</div>
         ${unread > 0 ? `<span class="agent-dock-badge">${unread > 9 ? '9+' : unread}</span>` : ''}
       </div>
     `;
