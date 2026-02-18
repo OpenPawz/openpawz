@@ -1087,11 +1087,12 @@ async function sendMessage() {
   // We create a promise that resolves when the agent 'done' event fires.
   const responsePromise = new Promise<string>((resolve) => {
     _streamingResolve = resolve;
-    // Safety: auto-resolve after 120s to prevent permanent hang
+    // Safety: auto-resolve after 10 min to prevent permanent hang
+    // (agent tool chains + trading can take a while)
     _streamingTimeout = setTimeout(() => {
       console.warn('[main] Streaming timeout — auto-finalizing');
       resolve(_streamingContent || '(Response timed out)');
-    }, 120_000);
+    }, 600_000);
   });
 
   // Declare chatOpts outside try — Safari/WebKit has TDZ bugs with let-in-try

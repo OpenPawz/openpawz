@@ -60,7 +60,9 @@ export const ALL_TOOLS = [
   // Self-awareness
   'self_info',
   // Agent management
-  'create_agent',
+  'update_profile', 'create_agent',
+  // Task / Automation management
+  'create_task', 'list_tasks', 'manage_task',
   // Skills
   'email_send', 'email_read',
   'slack_send', 'slack_read',
@@ -77,11 +79,13 @@ export const SAFE_TOOLS: readonly string[] = [
   'fetch',
 ];
 
-/** High-risk tools that modify the system. */
+/** High-risk tools that modify the system or send data externally. */
 export const HIGH_RISK_TOOLS: readonly string[] = [
   'exec', 'write_file', 'delete_file', 'append_file',
   'email_send', 'webhook_send', 'rest_api_call',
-  'slack_send', 'github_api',
+  'slack_send', 'github_api', 'image_generate',
+  'soul_write', 'update_profile', 'create_agent',
+  'create_task', 'manage_task',
 ];
 
 /** Default policy: unrestricted (backward-compatible). */

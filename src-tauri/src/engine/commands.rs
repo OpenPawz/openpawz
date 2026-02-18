@@ -270,13 +270,29 @@ pub async fn engine_chat_send(
         )
     };
 
-    // Compose the full system prompt: base + self-awareness + agent context + memory context + skill instructions
+    // Build local time context so the agent knows the user's current time
+    let local_time_context = {
+        let now = chrono::Local::now();
+        format!(
+            "## Local Time\n\
+            - **Current time**: {}\n\
+            - **Timezone**: {} (UTC{})\n\
+            - **Day of week**: {}",
+            now.format("%Y-%m-%d %H:%M:%S"),
+            now.format("%Z"),
+            now.format("%:z"),
+            now.format("%A"),
+        )
+    };
+
+    // Compose the full system prompt: base + self-awareness + local time + agent context + memory context + skill instructions
     let full_system_prompt = {
         let mut parts: Vec<String> = Vec::new();
         if let Some(sp) = &system_prompt {
             parts.push(sp.clone());
         }
         parts.push(self_awareness);
+        parts.push(local_time_context);
         if let Some(ac) = &agent_context {
             parts.push(ac.clone());
         }
@@ -1439,6 +1455,21 @@ pub async fn execute_task(
         if let Some(sp) = &base_system_prompt { parts.push(sp.clone()); }
         if let Some(ac) = agent_context { parts.push(ac); }
         if !skill_instructions.is_empty() { parts.push(skill_instructions.clone()); }
+
+        // Local time context for task agents
+        {
+            let now = chrono::Local::now();
+            parts.push(format!(
+                "## Local Time\n\
+                - **Current time**: {}\n\
+                - **Timezone**: {} (UTC{})\n\
+                - **Day of week**: {}",
+                now.format("%Y-%m-%d %H:%M:%S"),
+                now.format("%Z"),
+                now.format("%:z"),
+                now.format("%A"),
+            ));
+        }
 
         // Multi-agent context
         let agent_count_note = if agent_count > 1 {
