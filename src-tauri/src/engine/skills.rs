@@ -769,7 +769,7 @@ Supports RTSP, ONVIF, and HTTP MJPEG streams."#.into(),
                 CredentialField { key: "DEX_PRIVATE_KEY".into(), label: "Wallet Private Key".into(), description: "Auto-generated when you use dex_wallet_create. Or paste your own 0x-prefixed hex key. Stored encrypted in OS keychain vault.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
                 CredentialField { key: "DEX_WALLET_ADDRESS".into(), label: "Wallet Address".into(), description: "Auto-populated when wallet is created. Or paste your own Ethereum address if importing a key.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
             ],
-            tool_names: vec!["dex_wallet_create".into(), "dex_balance".into(), "dex_quote".into(), "dex_swap".into(), "dex_portfolio".into(), "dex_token_info".into(), "dex_check_token".into()],
+            tool_names: vec!["dex_wallet_create".into(), "dex_balance".into(), "dex_quote".into(), "dex_swap".into(), "dex_portfolio".into(), "dex_token_info".into(), "dex_check_token".into(), "dex_search_token".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Get an RPC URL at infura.io or alchemy.com (free tier works)".into(),
             agent_instructions: r#"You have a self-custody Ethereum wallet for DEX trading via Uniswap V3.
 
@@ -786,6 +786,7 @@ Available tools:
 - **dex_portfolio**: Check all token balances at once.
 - **dex_token_info**: Get comprehensive on-chain info about any ERC-20 token (name, symbol, supply, owner, swap viability). Queries the blockchain directly — no website needed.
 - **dex_check_token**: Run automated safety checks (honeypot detection, tax analysis, ownership audit, risk scoring 0-30). ALWAYS run this before trading any new/unknown token.
+- **dex_search_token**: Search for tokens by name or symbol to find contract addresses, prices, volume, and liquidity. Uses DexScreener API (not web scraping). Use this to discover contract addresses before running dex_check_token.
 
 Supported tokens: ETH, WETH, USDC, USDT, DAI, WBTC, UNI, LINK, PEPE, SHIB, ARB, AAVE (or any ERC-20 by contract address).
 

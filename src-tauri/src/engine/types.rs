@@ -968,6 +968,7 @@ impl ToolDefinition {
                     tools.push(Self::dex_portfolio());
                     tools.push(Self::dex_token_info());
                     tools.push(Self::dex_check_token());
+                    tools.push(Self::dex_search_token());
                 }
                 _ => {}
             }
@@ -1284,6 +1285,34 @@ impl ToolDefinition {
                         }
                     },
                     "required": ["token_address"]
+                }),
+            },
+        }
+    }
+
+    pub fn dex_search_token() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_search_token".into(),
+                description: "Search for tokens by name or symbol to find their contract addresses, prices, volume, and liquidity. Uses the DexScreener API (JSON, not web scraping). Returns contract addresses you can pass to dex_check_token and dex_token_info. Supports all chains (Ethereum, Base, Arbitrum, etc.).".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Token name or symbol to search for (e.g. 'KIMCHI', 'pepe', 'uniswap')"
+                        },
+                        "chain": {
+                            "type": "string",
+                            "description": "Optional: filter results to a specific chain (e.g. 'base', 'ethereum', 'arbitrum')"
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum results to return (default 10, max 25)"
+                        }
+                    },
+                    "required": ["query"]
                 }),
             },
         }
