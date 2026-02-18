@@ -478,11 +478,21 @@ async function loadSessions(opts?: { skipHistory?: boolean }) {
     const currentAgent = AgentsModule.getCurrentAgent();
     if (!currentSessionKey && currentAgent) {
       const savedKey = _agentSessionMap.get(currentAgent.id);
-      if (savedKey && sessions.some(s => s.key === savedKey)) {
+      // Only restore if the saved session actually belongs to this agent
+      const isValidSaved = savedKey && sessions.some(s =>
+        s.key === savedKey && (
+          s.agentId === currentAgent.id ||
+          (currentAgent.id === 'default' && !s.agentId)
+        )
+      );
+      if (isValidSaved) {
         currentSessionKey = savedKey;
       } else {
         // Find the most recent session belonging to this agent
-        const agentSession = sessions.find(s => s.agentId === currentAgent.id);
+        const agentSession = sessions.find(s =>
+          s.agentId === currentAgent.id ||
+          (currentAgent.id === 'default' && !s.agentId)
+        );
         if (agentSession) {
           currentSessionKey = agentSession.key;
           _agentSessionMap.set(currentAgent.id, agentSession.key);
@@ -502,39 +512,25 @@ async function loadSessions(opts?: { skipHistory?: boolean }) {
 function renderSessionSelect() {
   if (!chatSessionSelect) return;
   chatSessionSelect.innerHTML = '';
-  if (!sessions.length) {
+
+  // Only show sessions belonging to the current agent (or untagged sessions for 'default')
+  const currentAgent = AgentsModule.getCurrentAgent();
+  const agentSessions = currentAgent
+    ? sessions.filter(s =>
+        s.agentId === currentAgent.id ||
+        (currentAgent.id === 'default' && !s.agentId)
+      )
+    : sessions;
+
+  if (!agentSessions.length) {
     const opt = document.createElement('option');
     opt.value = '';
-    opt.textContent = 'No sessions';
+    opt.textContent = 'No sessions — send a message to start';
     chatSessionSelect.appendChild(opt);
     return;
   }
 
-  // Partition sessions: current agent's sessions first, then others
-  const currentAgent = AgentsModule.getCurrentAgent();
-  const agentSessions = currentAgent
-    ? sessions.filter(s => s.agentId === currentAgent.id || _agentSessionMap.get(currentAgent.id) === s.key)
-    : [];
-  const otherSessions = currentAgent
-    ? sessions.filter(s => s.agentId !== currentAgent.id && _agentSessionMap.get(currentAgent.id) !== s.key)
-    : sessions;
-
   for (const s of agentSessions) {
-    const opt = document.createElement('option');
-    opt.value = s.key;
-    opt.textContent = s.label ?? s.displayName ?? s.key;
-    if (s.key === currentSessionKey) opt.selected = true;
-    chatSessionSelect.appendChild(opt);
-  }
-
-  if (agentSessions.length && otherSessions.length) {
-    const sep = document.createElement('option');
-    sep.disabled = true;
-    sep.textContent = '─── other agents ───';
-    chatSessionSelect.appendChild(sep);
-  }
-
-  for (const s of otherSessions) {
     const opt = document.createElement('option');
     opt.value = s.key;
     opt.textContent = s.label ?? s.displayName ?? s.key;
@@ -621,19 +617,40 @@ async function switchToAgent(agentId: string) {
   const ba = $('session-budget-alert');
   if (ba) ba.style.display = 'none';
 
-  // Restore this agent's previous session, or start fresh
+  // Restore this agent's previous session, or start fresh.
+  // Only restore if the saved session actually belongs to this agent.
   const savedSessionKey = _agentSessionMap.get(agentId);
-  if (savedSessionKey) {
+  const savedSessionValid = savedSessionKey && sessions.some(s =>
+    s.key === savedSessionKey && (
+      s.agentId === agentId ||
+      (agentId === 'default' && !s.agentId)
+    )
+  );
+  if (savedSessionValid) {
     currentSessionKey = savedSessionKey;
+    renderSessionSelect();
     await loadChatHistory(savedSessionKey);
-    // Update session dropdown selection
     if (chatSessionSelect) chatSessionSelect.value = savedSessionKey;
   } else {
-    // No previous session for this agent — start a blank chat
-    messages = [];
-    currentSessionKey = null;
-    renderMessages();
-    if (chatSessionSelect) chatSessionSelect.value = '';
+    // Find the most recent session for this agent
+    const agentSession = sessions.find(s =>
+      s.agentId === agentId || (agentId === 'default' && !s.agentId)
+    );
+    if (agentSession) {
+      currentSessionKey = agentSession.key;
+      _agentSessionMap.set(agentId, agentSession.key);
+      _persistAgentSessionMap();
+      renderSessionSelect();
+      await loadChatHistory(agentSession.key);
+      if (chatSessionSelect) chatSessionSelect.value = agentSession.key;
+    } else {
+      // No sessions for this agent — start a blank chat
+      currentSessionKey = null;
+      messages = [];
+      renderSessionSelect();
+      renderMessages();
+      if (chatSessionSelect) chatSessionSelect.value = '';
+    }
   }
 
   console.log(`[main] Switched to agent "${agent?.name}" (${agentId}), session=${currentSessionKey ?? 'new'}`);
