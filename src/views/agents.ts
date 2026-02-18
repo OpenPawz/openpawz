@@ -781,9 +781,10 @@ interface MiniChatWindow {
 const _miniChats: Map<string, MiniChatWindow> = new Map();
 const MINI_CHAT_WIDTH = 320;
 const MINI_CHAT_GAP = 12;
+const DOCK_RESERVED = 72; /* 48px dock + 12px right margin + 12px gap */
 
 function getMiniChatOffset(index: number): number {
-  return MINI_CHAT_GAP + index * (MINI_CHAT_WIDTH + MINI_CHAT_GAP);
+  return DOCK_RESERVED + index * (MINI_CHAT_WIDTH + MINI_CHAT_GAP);
 }
 
 function repositionMiniChats() {
