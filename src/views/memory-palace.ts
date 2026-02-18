@@ -19,14 +19,13 @@ let _palaceInitialized = false;
 let _palaceAvailable = false;
 let _palaceSkipped = false;
 let wsConnected = false;
-let currentSessionKey: string | null = null;
 
 export function setWsConnected(connected: boolean) {
   wsConnected = connected;
 }
 
-export function setCurrentSessionKey(key: string | null) {
-  currentSessionKey = key;
+export function setCurrentSessionKey(_key: string | null) {
+  // Reserved for session-aware memory queries
 }
 
 export function isPalaceAvailable(): boolean {
@@ -42,12 +41,6 @@ export function resetPalaceState() {
 function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function showToast(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', durationMs = 3500) {

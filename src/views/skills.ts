@@ -66,7 +66,7 @@ export async function loadSkills() {
     }
     const skills = result.skills ?? [];
     if (!skills.length) {
-      if (empty) empty.style.display = 'flex';
+      if (empty) empty!.style.display = 'flex';
       return;
     }
 
@@ -135,7 +135,7 @@ export async function loadSkills() {
       if (isInstalled) {
         installed?.appendChild(card);
       } else {
-        if (availableSection) availableSection.style.display = '';
+        if (availableSection) availableSection!.style.display = '';
         available?.appendChild(card);
       }
     }
@@ -706,10 +706,10 @@ export function initSkillsEvents() {
     try {
       showSkillsToast('Skill installation coming soon to the Paw engine', 'info');
       return;
-      input.value = '';
+      input!.value = '';
       loadSkills();
       const backdrop = $('bins-modal-backdrop');
-      if (backdrop) backdrop.style.display = 'none';
+      if (backdrop) backdrop!.style.display = 'none';
     } catch (e) {
       showSkillsToast(`Install failed for "${name}": ${e}`, 'error');
     } finally {

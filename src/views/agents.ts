@@ -182,6 +182,15 @@ export async function loadAgents() {
     _agents = stored ? JSON.parse(stored) : [];
     // Tag localStorage agents as local
     _agents.forEach(a => { if (!a.source) a.source = 'local'; });
+    // Migrate old sheet* avatar IDs to new numeric avatars
+    let migrated = false;
+    _agents.forEach(a => {
+      if (/^sheet\d+-\d+$/.test(a.avatar)) {
+        a.avatar = String(Math.floor(Math.random() * 50) + 1);
+        migrated = true;
+      }
+    });
+    if (migrated) localStorage.setItem('paw-agents', JSON.stringify(_agents));
     console.log('[agents] Loaded from storage:', _agents.length, 'agents');
   } catch {
     _agents = [];

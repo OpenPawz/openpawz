@@ -87,7 +87,8 @@ export function setBudgetLimit(limit: number | null) {
   }
 }
 
-function checkBudgetAlert(currentCost: number) {
+// @ts-ignore: reserved for budget alert feature
+function checkBudgetAlert(currentCost: number) { void currentCost;
   const limit = getBudgetLimit();
   if (limit == null) return;
   const alertEl = $('budget-alert');

@@ -5,7 +5,6 @@
 import {
   SandboxConfig,
   SandboxStatus,
-  SandboxValidation,
   DEFAULT_SANDBOX_CONFIG,
   SANDBOX_PRESETS,
   validateSandboxConfig,
@@ -120,10 +119,13 @@ export function getSandboxSummary(): string {
 
 // ── Re-exports for convenience ─────────────────────────────────────────
 
-export {
+export type {
   SandboxConfig,
   SandboxStatus,
   SandboxValidation,
+} from './atoms';
+
+export {
   DEFAULT_SANDBOX_CONFIG,
   SANDBOX_PRESETS,
   validateSandboxConfig,

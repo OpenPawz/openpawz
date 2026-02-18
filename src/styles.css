@@ -532,6 +532,7 @@ body {
   flex: 1;
   flex-direction: column;
   overflow: hidden;
+  min-height: 0;
 }
 
 .view.active {
@@ -5690,6 +5691,7 @@ select.form-input {
 
 .palace-view.active {
   display: flex;
+  flex: 1;
   height: 100%;
   overflow: hidden;
   position: relative;
@@ -8184,9 +8186,11 @@ select.form-input {
 .research-empty-icon {
   width: 64px;
   height: 64px;
-  background: url('assets/avatars/5.png') center / contain no-repeat;
-  image-rendering: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   margin-bottom: 20px;
+  color: var(--text-muted);
   opacity: 0.9;
 }
 

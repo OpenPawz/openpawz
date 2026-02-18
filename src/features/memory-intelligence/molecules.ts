@@ -118,12 +118,15 @@ export async function getAgentMemoryOverview(
 
 // ── Re-exports ─────────────────────────────────────────────────────────
 
-export {
+export type {
   Memory,
   MemorySearchOptions,
   MemoryStoreOptions,
   MemoryStats,
   SearchConfig,
+} from './atoms';
+
+export {
   DEFAULT_SEARCH_CONFIG,
   MEMORY_CATEGORIES,
   temporalDecayFactor,

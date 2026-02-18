@@ -14,14 +14,15 @@ import {
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-const ENGINE_CONFIG_KEY = 'channel_routing';
+// const ENGINE_CONFIG_KEY = 'channel_routing';
 
 /**
  * Load routing config from the engine's config store.
  */
 export async function loadRoutingConfig(): Promise<RoutingConfig> {
   try {
-    const config = await pawEngine.getConfig();
+    // const config = await pawEngine.getConfig();
+    void pawEngine.getConfig();
     // The routing config is stored as a JSON string in engine_config
     // We use localStorage as a fallback if engine isn't available
     const raw = localStorage.getItem('paw_channel_routing');
