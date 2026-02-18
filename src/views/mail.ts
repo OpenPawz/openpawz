@@ -335,7 +335,7 @@ async function renderCredentialActivityLog() {
     if (entries.length === 0) {
       logSection.innerHTML = `
         <div class="mail-vault-activity-header" id="mail-vault-activity-toggle">
-          <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span class="ms ms-sm">description</span>
           Activity Log
           <span class="mail-vault-activity-count">0</span>
         </div>
@@ -347,7 +347,7 @@ async function renderCredentialActivityLog() {
     const blocked = entries.filter(e => !e.was_allowed).length;
     logSection.innerHTML = `
       <div class="mail-vault-activity-header" id="mail-vault-activity-toggle">
-        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        <span class="ms ms-sm">description</span>
         Activity Log
         <span class="mail-vault-activity-count">${entries.length}${blocked ? ` · <span class="vault-blocked-count">${blocked} blocked</span>` : ''}</span>
         <span class="mail-vault-activity-chevron">▸</span>
@@ -441,7 +441,7 @@ function showMailEmpty(show: boolean) {
     empty.style.display = show ? 'flex' : 'none';
     if (show) {
       const hasAccounts = _mailAccounts.length > 0;
-      const mailIcon = `<div class="empty-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>`;
+      const mailIcon = `<div class="empty-icon"><span class="ms" style="font-size:48px">mail</span></div>`;
 
       if (hasAccounts && _mailHimalayaReady) {
         empty.innerHTML = `
@@ -772,7 +772,7 @@ function showMailAccountForm(providerId: string) {
 
   body.innerHTML = `
     <div class="mail-setup-back" id="mail-setup-back">← Choose provider</div>
-    ${provider.hint ? `<div class="mail-setup-hint"><svg class="icon-sm" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg> ${provider.hint}</div>` : ''}
+    ${provider.hint ? `<div class="mail-setup-hint"><span class="ms ms-sm">info</span> ${provider.hint}</div>` : ''}
     <div class="form-group">
       <label class="form-label" for="ch-field-mail-email">Email Address <span class="required">*</span></label>
       <input class="form-input" id="ch-field-mail-email" type="email" placeholder="you@${providerId === 'custom' ? 'example.com' : provider.imap.replace('imap.', '')}">
@@ -846,7 +846,7 @@ function showMailAccountForm(providerId: string) {
 
     <div class="mail-security-info">
       <div class="mail-security-header">
-        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <span class="ms ms-sm">lock</span>
         How your credentials are stored &amp; used
       </div>
       <ul class="mail-security-list">

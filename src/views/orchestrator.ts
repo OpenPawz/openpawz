@@ -94,10 +94,7 @@ function renderList() {
   if (projects.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <svg viewBox="0 0 24 24" width="48" height="48" stroke="currentColor" fill="none" stroke-width="1.5">
-          <circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/>
-          <line x1="12" y1="8" x2="5" y2="16"/><line x1="12" y1="8" x2="19" y2="16"/>
-        </svg>
+        <span class="ms" style="font-size:48px">account_tree</span>
         <h3>No projects yet</h3>
         <p>Create a project to orchestrate multiple agents working together on a shared goal.</p>
       </div>`;

@@ -404,15 +404,11 @@ function renderProjectsSidebar(): void {
     <div class="projects-folder-item${_selectedFile && getProjectRoot(_selectedFile.path) === p.path ? ' active' : ''}" 
          data-path="${escapeAttr(p.path)}" title="${escapeAttr(p.path)}">
       <div class="projects-folder-row">
-        <svg class="icon-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
+        <span class="ms ms-sm">folder</span>
         <span class="projects-folder-name">${escapeHtml(p.name)}</span>
         ${dirtyDot}
         <button class="btn-icon projects-remove-btn" data-remove="${escapeAttr(p.path)}" title="Remove project">
-          <svg class="icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
+          <span class="ms" style="font-size:14px">close</span>
         </button>
       </div>
       <div class="projects-folder-path">${escapeHtml(shortenPath(p.path))}${branchHint ? ' · ' + branchHint : ''}</div>
@@ -480,9 +476,7 @@ async function selectProject(project: ProjectFolder): Promise<void> {
     viewer.innerHTML = `
       <div class="projects-viewer-welcome">
         <div class="projects-viewer-welcome-icon">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-          </svg>
+          <span class="ms" style="font-size:48px">folder</span>
         </div>
         <div class="projects-viewer-welcome-title">${escapeHtml(project.name)}</div>
         <div class="projects-viewer-welcome-sub">${dirCount} folders, ${fileCount} files</div>
@@ -538,9 +532,7 @@ function renderGitBanner(git: GitInfo, projectPath: string): string {
   return `
     <div class="git-banner" style="margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--surface-2, rgba(255,255,255,0.04))">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="flex-shrink:0;opacity:0.7">
-          <circle cx="12" cy="12" r="4"/><line x1="1.05" y1="12" x2="7" y2="12"/><line x1="17.01" y1="12" x2="22.96" y2="12"/>
-        </svg>
+        <span class="ms ms-sm" style="flex-shrink:0;opacity:0.7">commit</span>
         ${branchBadge}
         ${dirtyBadge}
         ${syncBadge}
@@ -652,14 +644,8 @@ function renderTreeEntries(entries: FileEntry[], depth: number): string {
         ? renderTreeEntries(entry.children, depth + 1) : '';
       return `
         <div class="tree-item tree-dir${isExpanded ? ' expanded' : ''}" data-path="${escapeAttr(entry.path)}" style="padding-left:${indent + 8}px">
-          <svg class="tree-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
-          <svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            ${isExpanded
-              ? '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/><line x1="2" y1="10" x2="22" y2="10"/>'
-              : '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>'}
-          </svg>
+          <span class="ms tree-chevron" style="font-size:14px">chevron_right</span>
+          <span class="ms ms-sm tree-icon">${isExpanded ? 'folder_open' : 'folder'}</span>
           <span class="tree-name">${escapeHtml(entry.name)}</span>
         </div>
         <div class="tree-children${isExpanded ? ' expanded' : ''}" data-parent="${escapeAttr(entry.path)}">
@@ -667,12 +653,10 @@ function renderTreeEntries(entries: FileEntry[], depth: number): string {
         </div>`;
     } else {
       const ext = entry.name.split('.').pop()?.toLowerCase() || '';
-      const icon = getFileIcon(ext);
+      const iconName = getFileIcon(ext);
       return `
         <div class="tree-item tree-file${_selectedFile?.path === entry.path ? ' active' : ''}" data-path="${escapeAttr(entry.path)}" style="padding-left:${indent + 22}px">
-          <svg class="tree-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
-            ${icon}
-          </svg>
+          <span class="ms ms-sm tree-icon">${iconName}</span>
           <span class="tree-name">${escapeHtml(entry.name)}</span>
           <span class="tree-ext">${ext ? `.${ext}` : ''}</span>
         </div>`;
@@ -750,10 +734,7 @@ async function openFile(filePath: string): Promise<void> {
         <span class="projects-viewer-path">${escapeHtml(shortenPath(filePath))}</span>
       </div>
       <div class="projects-viewer-binary">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32">
-          <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/>
-          <polyline points="13 2 13 9 20 9"/>
-        </svg>
+        <span class="ms" style="font-size:32px">insert_drive_file</span>
         <span>Binary file — cannot preview</span>
         <span class="projects-viewer-ext">.${ext}</span>
       </div>`;
@@ -811,9 +792,7 @@ function showProjectsEmpty(): void {
     empty.style.display = '';
     empty.innerHTML = `
       <div class="empty-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-        </svg>
+        <span class="ms" style="font-size:48px">folder</span>
       </div>
       <div class="empty-title">Your Projects</div>
       <div class="empty-subtitle" style="max-width:340px;text-align:center;line-height:1.6">
@@ -913,25 +892,29 @@ function getProjectRoot(filePath: string): string | null {
 function getFileIcon(ext: string): string {
   const icons: Record<string, string> = {
     // Code files
-    ts: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="8" y="18" font-size="7" fill="currentColor" stroke="none" font-weight="bold">TS</text>',
-    tsx: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="7" y="18" font-size="6" fill="currentColor" stroke="none" font-weight="bold">TSX</text>',
-    js: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="9" y="18" font-size="7" fill="currentColor" stroke="none" font-weight="bold">JS</text>',
-    jsx: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="7" y="18" font-size="6" fill="currentColor" stroke="none" font-weight="bold">JSX</text>',
-    py: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="8" y="18" font-size="7" fill="currentColor" stroke="none" font-weight="bold">PY</text>',
-    rs: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="8" y="18" font-size="7" fill="currentColor" stroke="none" font-weight="bold">RS</text>',
-    go: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="8" y="18" font-size="7" fill="currentColor" stroke="none" font-weight="bold">GO</text>',
+    ts: 'code', tsx: 'code', js: 'javascript', jsx: 'javascript',
+    py: 'code', rs: 'code', go: 'code', rb: 'code',
+    c: 'code', cpp: 'code', h: 'code',
+    java: 'code', kt: 'code', swift: 'code',
+    sh: 'terminal', bash: 'terminal', zsh: 'terminal',
+    sql: 'database',
     // Config/data
-    json: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 16s1-2 4-2 4 2 4 2"/>',
-    yaml: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
-    yml: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
-    toml: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>',
+    json: 'data_object', yaml: 'settings', yml: 'settings',
+    toml: 'settings', xml: 'code', svg: 'image',
     // Markup
-    md: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="16" y2="17"/>',
-    html: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="8 13 10 16 8 19"/><line x1="12" y1="19" x2="16" y2="19"/>',
-    css: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><text x="7" y="18" font-size="6" fill="currentColor" stroke="none" font-weight="bold">CSS</text>',
+    md: 'description', html: 'html', css: 'css',
+    // Media
+    png: 'image', jpg: 'image', jpeg: 'image', gif: 'image',
+    webp: 'image', ico: 'image',
+    mp3: 'audio_file', wav: 'audio_file', ogg: 'audio_file',
+    mp4: 'video_file', webm: 'video_file', mov: 'video_file',
+    // Archives
+    zip: 'folder_zip', tar: 'folder_zip', gz: 'folder_zip',
+    // Documents
+    pdf: 'picture_as_pdf', doc: 'description', docx: 'description',
+    txt: 'description',
   };
-
-  return icons[ext] || '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>';
+  return icons[ext] || 'insert_drive_file';
 }
 
 function getLanguageClass(ext: string): string {

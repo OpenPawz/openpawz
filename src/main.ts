@@ -4,23 +4,24 @@
 import type { AppConfig, Message, Session } from './types';
 import { isEngineMode, startEngineBridge, onEngineAgent, engineChatSend, onEngineToolApproval, resolveEngineToolApproval } from './engine-bridge';
 import { pawEngine, type EngineEvent } from './engine';
-// ── Inline Lucide-style SVG icons (avoids broken lucide package) ─────────────
-const _icons: Record<string, string> = {
-  'paperclip': '<path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551"/>',
-  'arrow-up': '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
-  'square': '<rect width="18" height="18" x="3" y="3" rx="2"/>',
-  'rotate-ccw': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
-  'x': '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-  'image': '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
-  'file-text': '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
-  'file': '<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>',
-  'wrench': '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>',
-  'download': '<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
-  'external-link': '<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+// ── Material Symbols icon helper ─────────────────────────────────────────────
+// Maps legacy icon names → Material Symbols ligature names
+const _iconMap: Record<string, string> = {
+  'paperclip': 'attach_file',
+  'arrow-up': 'send',
+  'square': 'stop',
+  'rotate-ccw': 'replay',
+  'x': 'close',
+  'image': 'image',
+  'file-text': 'description',
+  'file': 'insert_drive_file',
+  'wrench': 'build',
+  'download': 'download',
+  'external-link': 'open_in_new',
 };
 function icon(name: string, cls = ''): string {
-  const inner = _icons[name] || '';
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${cls ? ` class="${cls}"` : ''}>${inner}</svg>`;
+  const ligature = _iconMap[name] || name;
+  return `<span class="ms${cls ? ` ${cls}` : ''}">${ligature}</span>`;
 }
 import { initDb, initDbEncryption, listDocs, saveDoc, getDoc, deleteDoc, logCredentialActivity, logSecurityEvent } from './db';
 import * as SettingsModule from './views/settings';
@@ -2996,7 +2997,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     console.log('[main] Paw starting...');
 
-    // Render inline SVG icons in static HTML buttons
+    // Render Material Symbols icons in static HTML buttons
     for (const el of document.querySelectorAll<HTMLElement>('[data-icon]')) {
       const name = el.dataset.icon;
       if (name) el.innerHTML = icon(name);

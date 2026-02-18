@@ -5,6 +5,40 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Share+Tech+Mono&display=swap');
 
+/* ── Material Symbols Outlined (self-hosted) ───────────────────────────── */
+@font-face {
+  font-family: 'Material Symbols Outlined';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('./assets/fonts/material-symbols-outlined.woff2') format('woff2');
+}
+
+.material-symbols-outlined,
+.ms {
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: 'liga';
+  flex-shrink: 0;
+  vertical-align: middle;
+  color: currentColor;
+}
+.ms-sm { font-size: 16px; }
+.ms-lg { font-size: 24px; }
+.ms-xl { font-size: 28px; }
+
 :root {
   /* Background — deep dark CRT tones */
   --bg-primary: #0a0a14;
@@ -264,7 +298,7 @@ body::after {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ─── Icons ─── */
+/* ─── Icons (legacy SVG – kept for compat) ─── */
 .icon {
   width: 18px;
   height: 18px;
@@ -416,37 +450,42 @@ body::after {
   text-shadow: 0 0 4px rgba(57, 255, 20, 0.4);
 }
 
-/* Replace SVG icons with pixel art sprites in nav */
-.nav-item svg { display: none; }
+/* Material Symbols icons in nav */
 .nav-item::after {
-  content: '';
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  image-rendering: pixelated;
-  background-size: contain;
-  background-repeat: no-repeat;
-  background-position: center;
+  font-family: 'Material Symbols Outlined';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: 'liga';
   order: -1;
+  color: currentColor;
 }
-.nav-item[data-view="dashboard"]::after { background-image: url('assets/sprites/sm/sheet1-01.png'); }
-.nav-item[data-view="today"]::after { background-image: url('assets/sprites/sm/sheet1-03.png'); }
-.nav-item[data-view="chat"]::after { background-image: url('assets/sprites/sm/sheet4-01.png'); }
-.nav-item[data-view="agents"]::after { background-image: url('assets/sprites/sm/sheet3-01.png'); }
-.nav-item[data-view="build"]::after { background-image: url('assets/sprites/sm/sheet5-04.png'); }
-.nav-item[data-view="code"]::after { background-image: url('assets/sprites/sm/sheet5-06.png'); }
-.nav-item[data-view="content"]::after { background-image: url('assets/sprites/sm/sheet6-02.png'); }
-.nav-item[data-view="mail"]::after { background-image: url('assets/sprites/sm/sheet2-03.png'); }
-.nav-item[data-view="automations"]::after { background-image: url('assets/sprites/sm/sheet4-05.png'); }
-.nav-item[data-view="channels"]::after { background-image: url('assets/sprites/sm/sheet2-07.png'); }
-.nav-item[data-view="research"]::after { background-image: url('assets/sprites/sm/sheet6-04.png'); }
-.nav-item[data-view="nodes"]::after { background-image: url('assets/sprites/sm/sheet4-08.png'); }
-.nav-item[data-view="memory"]::after { background-image: url('assets/sprites/sm/sheet1-07.png'); }
-.nav-item[data-view="skills"]::after { background-image: url('assets/sprites/sm/sheet5-10.png'); }
-.nav-item[data-view="foundry"]::after { background-image: url('assets/sprites/sm/sheet3-09.png'); }
-.nav-item[data-view="settings"]::after { background-image: url('assets/sprites/sm/sheet4-12.png'); }
-.nav-item[data-view="tasks"]::after { background-image: url('assets/sprites/sm/sheet2-09.png'); }
-.nav-item[data-view="orchestrator"]::after { background-image: url('assets/sprites/sm/sheet3-05.png'); }
+.nav-item[data-view="dashboard"]::after { content: 'dashboard'; }
+.nav-item[data-view="today"]::after { content: 'today'; }
+.nav-item[data-view="chat"]::after { content: 'chat'; }
+.nav-item[data-view="agents"]::after { content: 'smart_toy'; }
+.nav-item[data-view="build"]::after { content: 'build'; }
+.nav-item[data-view="code"]::after { content: 'code'; }
+.nav-item[data-view="content"]::after { content: 'article'; }
+.nav-item[data-view="mail"]::after { content: 'mail'; }
+.nav-item[data-view="automations"]::after { content: 'auto_fix_high'; }
+.nav-item[data-view="channels"]::after { content: 'forum'; }
+.nav-item[data-view="research"]::after { content: 'science'; }
+.nav-item[data-view="nodes"]::after { content: 'device_hub'; }
+.nav-item[data-view="memory"]::after { content: 'psychology'; }
+.nav-item[data-view="skills"]::after { content: 'extension'; }
+.nav-item[data-view="foundry"]::after { content: 'factory'; }
+.nav-item[data-view="settings"]::after { content: 'settings'; }
+.nav-item[data-view="tasks"]::after { content: 'task'; }
+.nav-item[data-view="orchestrator"]::after { content: 'account_tree'; }
+.nav-item[data-view="trading"]::after { content: 'trending_up'; }
 
 .sidebar-footer {
   padding: 10px;

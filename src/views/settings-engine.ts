@@ -14,7 +14,6 @@ export function initEngineSettings(): void {
   const apiKeyInput = $('engine-api-key') as HTMLInputElement | null;
   const modelInput = $('engine-model') as HTMLInputElement | null;
   const baseUrlInput = $('engine-base-url') as HTMLInputElement | null;
-  const baseUrlGroup = $('engine-base-url-group');
   const saveBtn = $('engine-save-btn');
   const saveStatus = $('engine-save-status');
 
@@ -38,14 +37,20 @@ export function initEngineSettings(): void {
     }
   });
 
-  // Provider kind → show/hide base URL
-  const updateBaseUrlVisibility = () => {
-    const kind = providerKind?.value ?? '';
-    const showUrl = kind === 'custom' || kind === 'ollama';
-    if (baseUrlGroup) baseUrlGroup.style.display = showUrl ? '' : 'none';
-  };
-  providerKind?.addEventListener('change', updateBaseUrlVisibility);
-  updateBaseUrlVisibility();
+  // Provider kind change → auto-fill base URL and model from presets
+  providerKind?.addEventListener('change', () => {
+    const selected = providerKind.selectedOptions[0];
+    const presetUrl = selected?.dataset.baseUrl;
+    const presetModel = selected?.dataset.model;
+    // Auto-fill base URL if the preset has one
+    if (presetUrl !== undefined && baseUrlInput) {
+      baseUrlInput.value = presetUrl;
+    }
+    // Auto-fill model if the preset has one and field is empty
+    if (presetModel && modelInput && !modelInput.value.trim()) {
+      modelInput.value = presetModel;
+    }
+  });
 
   // Load current config from engine
   loadEngineConfig().catch(console.error);
