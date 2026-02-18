@@ -1177,6 +1177,8 @@ pub struct Session {
     pub created_at: String,
     pub updated_at: String,
     pub message_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

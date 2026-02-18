@@ -65,6 +65,7 @@ export interface EngineSession {
   created_at: string;
   updated_at: string;
   message_count: number;
+  agent_id?: string;
 }
 
 export interface EngineStoredMessage {

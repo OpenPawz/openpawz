@@ -217,6 +217,10 @@ impl SessionStore {
         conn.execute("ALTER TABLE project_agents ADD COLUMN system_prompt TEXT", []).ok();
         conn.execute("ALTER TABLE project_agents ADD COLUMN capabilities TEXT NOT NULL DEFAULT ''", []).ok();
 
+        // Add agent_id column to sessions (for per-agent session isolation)
+        conn.execute("ALTER TABLE sessions ADD COLUMN agent_id TEXT", []).ok();
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id)", []).ok();
+
         // ── Phase 2: Memory Intelligence migrations ──────────────────────
         // Add agent_id column to memories (for per-agent memory scope)
         conn.execute("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''", []).ok();
@@ -284,12 +288,12 @@ impl SessionStore {
 
     // ── Session CRUD ───────────────────────────────────────────────────
 
-    pub fn create_session(&self, id: &str, model: &str, system_prompt: Option<&str>) -> Result<Session, String> {
+    pub fn create_session(&self, id: &str, model: &str, system_prompt: Option<&str>, agent_id: Option<&str>) -> Result<Session, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         conn.execute(
-            "INSERT INTO sessions (id, model, system_prompt) VALUES (?1, ?2, ?3)",
-            params![id, model, system_prompt],
+            "INSERT INTO sessions (id, model, system_prompt, agent_id) VALUES (?1, ?2, ?3, ?4)",
+            params![id, model, system_prompt, agent_id],
         ).map_err(|e| format!("Failed to create session: {}", e))?;
 
         Ok(Session {
@@ -300,6 +304,7 @@ impl SessionStore {
             created_at: chrono::Utc::now().to_rfc3339(),
             updated_at: chrono::Utc::now().to_rfc3339(),
             message_count: 0,
+            agent_id: agent_id.map(|s| s.to_string()),
         })
     }
 
@@ -307,7 +312,7 @@ impl SessionStore {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         let mut stmt = conn.prepare(
-            "SELECT id, label, model, system_prompt, created_at, updated_at, message_count
+            "SELECT id, label, model, system_prompt, created_at, updated_at, message_count, agent_id
              FROM sessions ORDER BY updated_at DESC LIMIT ?1"
         ).map_err(|e| format!("Prepare error: {}", e))?;
 
@@ -320,6 +325,7 @@ impl SessionStore {
                 created_at: row.get(4)?,
                 updated_at: row.get(5)?,
                 message_count: row.get(6)?,
+                agent_id: row.get(7)?,
             })
         }).map_err(|e| format!("Query error: {}", e))?
         .filter_map(|r| r.ok())
@@ -332,7 +338,7 @@ impl SessionStore {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
         let result = conn.query_row(
-            "SELECT id, label, model, system_prompt, created_at, updated_at, message_count
+            "SELECT id, label, model, system_prompt, created_at, updated_at, message_count, agent_id
              FROM sessions WHERE id = ?1",
             params![id],
             |row| {
@@ -344,6 +350,7 @@ impl SessionStore {
                     created_at: row.get(4)?,
                     updated_at: row.get(5)?,
                     message_count: row.get(6)?,
+                    agent_id: row.get(7)?,
                 })
             },
         );

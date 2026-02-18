@@ -142,7 +142,7 @@ pub async fn engine_chat_send(
             } else {
                 raw
             };
-            state.store.create_session(&new_id, &model, request.system_prompt.as_deref())?;
+            state.store.create_session(&new_id, &model, request.system_prompt.as_deref(), request.agent_id.as_deref())?;
             new_id
         }
     };
@@ -1465,7 +1465,7 @@ pub async fn execute_task(
         };
 
         if state.store.get_session(&session_id).ok().flatten().is_none() {
-            state.store.create_session(&session_id, &model, None)?;
+            state.store.create_session(&session_id, &model, None, Some(&agent_id))?;
         }
 
         // Compose system prompt with agent-specific soul context

@@ -648,7 +648,7 @@ You are the **Boss Agent** orchestrating project "{}".
     // Create boss session
     let session_id = format!("eng-project-{}-boss", project_id);
     if state.store.get_session(&session_id).ok().flatten().is_none() {
-        state.store.create_session(&session_id, &model, None)?;
+        state.store.create_session(&session_id, &model, None, Some(&format!("project-boss-{}", project_id)))?;
     }
 
     // User message = project goal
@@ -1048,7 +1048,7 @@ Your boss agent has delegated this task to you.
     let run_id = uuid::Uuid::new_v4().to_string();
 
     if state.store.get_session(&session_id).ok().flatten().is_none() {
-        state.store.create_session(&session_id, &model, None)?;
+        state.store.create_session(&session_id, &model, None, Some(agent_id))?;
     }
 
     // Add the task as user message

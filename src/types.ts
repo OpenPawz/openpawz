@@ -174,6 +174,7 @@ export interface Session {
   lastAccountId?: string;
   abortedLastRun?: boolean;
   thinkingLevel?: string;
+  agentId?: string;
 }
 
 export interface SessionsListResult {

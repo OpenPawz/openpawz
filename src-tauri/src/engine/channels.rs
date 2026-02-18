@@ -131,7 +131,7 @@ pub async fn run_channel_agent(
         .map(|opt| opt.is_some())
         .unwrap_or(false);
     if !session_exists {
-        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref())?;
+        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref(), None)?;
     }
 
     // Store user message

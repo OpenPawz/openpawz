@@ -97,7 +97,18 @@ let _streamingTimeout: ReturnType<typeof setTimeout> | null = null;
 let _pendingAttachments: File[] = [];
 
 // Per-agent session mapping: remembers which session belongs to which agent
-const _agentSessionMap: Map<string, string> = new Map();
+// Persisted to localStorage so it survives page reloads.
+const _agentSessionMap: Map<string, string> = (() => {
+  try {
+    const stored = localStorage.getItem('paw_agent_sessions');
+    return stored ? new Map<string, string>(JSON.parse(stored)) : new Map<string, string>();
+  } catch { return new Map<string, string>(); }
+})();
+function _persistAgentSessionMap() {
+  try {
+    localStorage.setItem('paw_agent_sessions', JSON.stringify([..._agentSessionMap.entries()]));
+  } catch { /* ignore */ }
+}
 
 // ── Token metering state ───────────────────────────────────────────────────
 let _sessionTokensUsed = 0;         // accumulated tokens for current session
@@ -459,11 +470,30 @@ async function loadSessions(opts?: { skipHistory?: boolean }) {
       label: s.label ?? undefined,
       displayName: s.label ?? s.id,
       updatedAt: s.updated_at ? new Date(s.updated_at).getTime() : undefined,
+      agentId: s.agent_id ?? undefined,
     } satisfies Session)) as Session[];
-    renderSessionSelect();
-    if (!currentSessionKey && sessions.length) {
+
+    // Agent-aware session selection: prefer current agent's saved session
+    const currentAgent = AgentsModule.getCurrentAgent();
+    if (!currentSessionKey && currentAgent) {
+      const savedKey = _agentSessionMap.get(currentAgent.id);
+      if (savedKey && sessions.some(s => s.key === savedKey)) {
+        currentSessionKey = savedKey;
+      } else {
+        // Find the most recent session belonging to this agent
+        const agentSession = sessions.find(s => s.agentId === currentAgent.id);
+        if (agentSession) {
+          currentSessionKey = agentSession.key;
+          _agentSessionMap.set(currentAgent.id, agentSession.key);
+          _persistAgentSessionMap();
+        }
+      }
+    } else if (!currentSessionKey && sessions.length) {
+      // No agent selected: fall back to most recent session
       currentSessionKey = sessions[0].key;
     }
+
+    renderSessionSelect();
     if (!opts?.skipHistory && currentSessionKey && !isLoading) await loadChatHistory(currentSessionKey);
   } catch (e) { console.warn('Sessions load failed:', e); }
 }
@@ -478,7 +508,32 @@ function renderSessionSelect() {
     chatSessionSelect.appendChild(opt);
     return;
   }
-  for (const s of sessions) {
+
+  // Partition sessions: current agent's sessions first, then others
+  const currentAgent = AgentsModule.getCurrentAgent();
+  const agentSessions = currentAgent
+    ? sessions.filter(s => s.agentId === currentAgent.id || _agentSessionMap.get(currentAgent.id) === s.key)
+    : [];
+  const otherSessions = currentAgent
+    ? sessions.filter(s => s.agentId !== currentAgent.id && _agentSessionMap.get(currentAgent.id) !== s.key)
+    : sessions;
+
+  for (const s of agentSessions) {
+    const opt = document.createElement('option');
+    opt.value = s.key;
+    opt.textContent = s.label ?? s.displayName ?? s.key;
+    if (s.key === currentSessionKey) opt.selected = true;
+    chatSessionSelect.appendChild(opt);
+  }
+
+  if (agentSessions.length && otherSessions.length) {
+    const sep = document.createElement('option');
+    sep.disabled = true;
+    sep.textContent = '─── other agents ───';
+    chatSessionSelect.appendChild(sep);
+  }
+
+  for (const s of otherSessions) {
     const opt = document.createElement('option');
     opt.value = s.key;
     opt.textContent = s.label ?? s.displayName ?? s.key;
@@ -491,6 +546,12 @@ chatSessionSelect?.addEventListener('change', () => {
   const key = chatSessionSelect?.value;
   if (key) {
     currentSessionKey = key;
+    // Track this session for the current agent
+    const curAgent = AgentsModule.getCurrentAgent();
+    if (curAgent) {
+      _agentSessionMap.set(curAgent.id, key);
+      _persistAgentSessionMap();
+    }
     // Reset token meter for new session
     _sessionTokensUsed = 0;
     _sessionInputTokens = 0;
@@ -526,6 +587,7 @@ async function switchToAgent(agentId: string) {
   const prevAgent = AgentsModule.getCurrentAgent();
   if (prevAgent && currentSessionKey) {
     _agentSessionMap.set(prevAgent.id, currentSessionKey);
+    _persistAgentSessionMap();
   }
 
   AgentsModule.setSelectedAgent(agentId);
@@ -1144,7 +1206,10 @@ async function sendMessage() {
       currentSessionKey = result.sessionKey;
       // Track this session for the current agent
       const curAgent = AgentsModule.getCurrentAgent();
-      if (curAgent) _agentSessionMap.set(curAgent.id, result.sessionKey);
+      if (curAgent) {
+        _agentSessionMap.set(curAgent.id, result.sessionKey);
+        _persistAgentSessionMap();
+      }
     }
 
     // Try to extract usage from the send response itself
