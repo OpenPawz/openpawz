@@ -94,6 +94,7 @@ let _streamingEl: HTMLElement | null = null;  // the live-updating DOM element
 let _streamingRunId: string | null = null;
 let _streamingResolve: ((text: string) => void) | null = null;  // resolves when agent run completes
 let _streamingTimeout: ReturnType<typeof setTimeout> | null = null;
+let _streamingAgentId: string | null = null; // which agent owns the active stream
 let _pendingAttachments: File[] = [];
 
 // Per-agent session mapping: remembers which session belongs to which agent
@@ -589,6 +590,12 @@ async function switchToAgent(agentId: string) {
     _agentSessionMap.set(prevAgent.id, currentSessionKey);
     _persistAgentSessionMap();
   }
+
+  // Clean up any active streaming UI so it doesn't bleed into the new agent's view.
+  // The backend run continues — it just won't render into the wrong chat.
+  const streamingMsg = document.getElementById('streaming-message');
+  if (streamingMsg) streamingMsg.remove();
+  _streamingEl = null;
 
   AgentsModule.setSelectedAgent(agentId);
   const agent = AgentsModule.getCurrentAgent();
@@ -1142,6 +1149,7 @@ async function sendMessage() {
   // Prepare streaming UI
   _streamingContent = '';
   _streamingRunId = null;
+  _streamingAgentId = AgentsModule.getCurrentAgent()?.id ?? null;
   showStreamingMessage();
 
   // chat.send is async — it returns {runId, status:"started"} immediately.
@@ -1247,6 +1255,7 @@ async function sendMessage() {
     isLoading = false;
     _streamingRunId = null;
     _streamingResolve = null;
+    _streamingAgentId = null;
     if (_streamingTimeout) { clearTimeout(_streamingTimeout); _streamingTimeout = null; }
     if (chatSend) chatSend.disabled = false;
   }
@@ -1302,9 +1311,20 @@ function finalizeStreaming(finalContent: string, toolCalls?: import('./types').T
   const savedRunId = _streamingRunId;
   _streamingRunId = null;
   _streamingContent = '';
+  const streamingAgent = _streamingAgentId;
+  _streamingAgentId = null;
   // Hide abort button
   const abortBtn = $('chat-abort-btn');
   if (abortBtn) abortBtn.style.display = 'none';
+
+  // If the user switched to a different agent while streaming, don't render the
+  // response into the wrong chat. The message is already persisted in the DB;
+  // it will appear when the user switches back.
+  const currentAgent = AgentsModule.getCurrentAgent();
+  if (streamingAgent && currentAgent && streamingAgent !== currentAgent.id) {
+    console.log(`[main] Streaming agent (${streamingAgent}) differs from current (${currentAgent.id}) — skipping UI render`);
+    return;
+  }
 
   if (finalContent) {
     addMessage({ role: 'assistant', content: finalContent, timestamp: new Date(), toolCalls });
@@ -1394,8 +1414,8 @@ function retryMessage(content: string) {
 
 function renderMessages() {
   if (!chatMessages) return;
-  // Remove only non-streaming message elements
-  chatMessages.querySelectorAll('.message:not(#streaming-message)').forEach(m => m.remove());
+  // Remove all rendered messages (including any stale streaming bubble)
+  chatMessages.querySelectorAll('.message').forEach(m => m.remove());
 
   if (messages.length === 0) {
     if (chatEmpty) chatEmpty.style.display = 'flex';
@@ -1641,9 +1661,15 @@ function handleAgentEvent(payload: unknown): void {
     // Filter: ignore other background paw-* sessions (e.g. memory)
     if (evtSession && evtSession.startsWith('paw-')) return;
 
+    // Filter: ignore channel bridge sessions (Telegram, Discord, IRC, etc.)
+    if (evtSession && (evtSession.startsWith('eng-tg-') || evtSession.startsWith('eng-discord-') || evtSession.startsWith('eng-irc-') || evtSession.startsWith('eng-slack-') || evtSession.startsWith('eng-matrix-'))) return;
+
     // Filter: only process during active send, and match runId if known
     if (!isLoading && !_streamingEl) return;
     if (_streamingRunId && runId && runId !== _streamingRunId) return;
+
+    // Filter: only display events for the current session (prevents cross-agent bleed)
+    if (evtSession && currentSessionKey && evtSession !== currentSessionKey) return;
 
     if (stream === 'assistant' && data) {
       // data.delta = incremental text, data.text = accumulated text so far
