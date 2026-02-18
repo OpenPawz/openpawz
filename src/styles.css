@@ -1071,6 +1071,44 @@ body {
   white-space: nowrap;
 }
 
+/* Chat model selector dropdown */
+.chat-model-select {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+  background: var(--bg-tertiary, rgba(255,255,255,0.04));
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  max-width: 260px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 20px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.chat-model-select:hover {
+  border-color: var(--border);
+  background: var(--bg-secondary);
+}
+.chat-model-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.chat-model-select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.chat-model-select optgroup {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-style: normal;
+}
+
 /* ── Token Meter ────────────────────────────────────────────────────────── */
 
 .token-meter {

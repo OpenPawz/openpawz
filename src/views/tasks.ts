@@ -5,8 +5,8 @@
 import { pawEngine } from '../engine';
 import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority, TaskAgent } from '../engine';
 import { showToast } from '../components/toast';
+import { populateModelSelect } from '../components/helpers';
 import { spriteAvatar } from './agents';
-import { getAvailableModelsList } from './settings-models';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -214,7 +214,7 @@ function openTaskModal(task?: EngineTask) {
   const inputAgent = $('tasks-modal-input-agent') as HTMLSelectElement;
   const inputCron = $('tasks-modal-input-cron') as HTMLInputElement;
   const inputCronEnabled = $('tasks-modal-input-cron-enabled') as HTMLInputElement;
-  const inputModel = $('tasks-modal-input-model') as HTMLInputElement;
+  const inputModel = $('tasks-modal-input-model') as HTMLSelectElement;
   const deleteBtn = $('tasks-modal-delete');
   const runBtn = $('tasks-modal-run');
   const activitySection = $('tasks-modal-activity-section');
@@ -227,17 +227,13 @@ function openTaskModal(task?: EngineTask) {
   if (inputCronEnabled) inputCronEnabled.checked = task?.cron_enabled || false;
   if (inputModel) inputModel.value = task?.model || '';
 
-  // Dynamically populate model suggestions from configured providers
-  const modelDatalist = document.getElementById('tasks-model-suggestions');
-  if (modelDatalist) {
-    modelDatalist.innerHTML = '';
+  // Dynamically populate model dropdown from configured providers
+  if (inputModel) {
     pawEngine.getConfig().then(config => {
-      const models = getAvailableModelsList(config.providers ?? []);
-      for (const m of models) {
-        const opt = document.createElement('option');
-        opt.value = m;
-        modelDatalist.appendChild(opt);
-      }
+      populateModelSelect(inputModel, config.providers ?? [], {
+        defaultLabel: '(use default)',
+        currentValue: task?.model || '',
+      });
     }).catch(() => {});
   }
 
@@ -347,14 +343,14 @@ async function saveTask() {
   const inputPriority = $('tasks-modal-input-priority') as HTMLSelectElement;
   const inputCron = $('tasks-modal-input-cron') as HTMLInputElement;
   const inputCronEnabled = $('tasks-modal-input-cron-enabled') as HTMLInputElement;
-  const inputModel = $('tasks-modal-input-model') as HTMLInputElement;
+  const inputModel = $('tasks-modal-input-model') as HTMLSelectElement;
 
   const title = inputTitle?.value.trim();
   if (!title) { showToast('Task title is required', 'warning'); return; }
 
   const cronSchedule = inputCron?.value.trim() || undefined;
   const cronEnabled = inputCronEnabled?.checked || false;
-  const taskModel = inputModel?.value.trim() || undefined;
+  const taskModel = inputModel?.value || undefined;
 
   // Primary agent = first lead or first agent in the multi-select
   const primaryAgent = _modalSelectedAgents.find(a => a.role === 'lead')

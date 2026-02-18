@@ -44,6 +44,7 @@ import * as TodayModule from './views/today';
 import * as TasksModule from './views/tasks';
 import * as OrchestratorModule from './views/orchestrator';
 import * as TradingModule from './views/trading';
+import { populateModelSelect } from './components/helpers';
 import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, getSessionOverrideRemaining, isFilesystemWriteTool, activateSessionOverride, extractCommandString, type RiskClassification } from './security';
 import { interceptSlashCommand, getSessionOverrides as getSlashOverrides, getAutocompleteSuggestions, isSlashCommand, type CommandContext } from './features/slash-commands';
 
@@ -218,7 +219,7 @@ const chatSend = $('chat-send') as HTMLButtonElement | null;
 const chatSessionSelect = $('chat-session-select') as HTMLSelectElement | null;
 const chatAgentSelect = $('chat-agent-select') as HTMLSelectElement | null;
 const chatAgentName = $('chat-agent-name');
-const modelLabel = $('model-label');
+const chatModelSelect = $('chat-model-select') as HTMLSelectElement | null;
 
 const allViews = [
   dashboardView, setupView, manualSetupView, installView,
@@ -304,25 +305,21 @@ function showView(viewId: string) {
   $(viewId)?.classList.add('active');
 }
 
-// ── Model label — always show active model in chat header ──────────────────
+// ── Model selector — dynamic dropdown in chat header ───────────────────
 async function refreshModelLabel() {
-  if (!modelLabel) return;
+  if (!chatModelSelect) return;
   try {
     const config = await pawEngine.getConfig();
-    const modelName = config.default_model;
-    const provider = config.providers?.find(
-      (p: { id: string }) => p.id === config.default_provider
-    ) ?? config.providers?.[0];
-    const providerName = provider?.kind ?? '';
-    if (modelName) {
-      modelLabel.textContent = modelName;
-      modelLabel.title = providerName ? `Model: ${modelName} via ${providerName}` : `Model: ${modelName}`;
-    } else {
-      modelLabel.textContent = 'No model set';
-      modelLabel.title = 'Go to Settings → Models to configure';
-    }
+    const defaultModel = config.default_model || '';
+    const providers = config.providers ?? [];
+    const currentVal = chatModelSelect.value;
+    populateModelSelect(chatModelSelect, providers, {
+      defaultLabel: 'Default Model',
+      currentValue: currentVal && currentVal !== 'default' ? currentVal : 'default',
+      showDefaultModel: defaultModel || undefined,
+    });
   } catch {
-    modelLabel.textContent = 'Paw Engine';
+    // Leave the select as-is if config fetch fails
   }
 }
 // Expose globally so settings can trigger a refresh after saving
@@ -1115,7 +1112,7 @@ async function sendMessage() {
         }
       },
       reloadSessions: () => loadSessions({ skipHistory: true }),
-      getCurrentModel: () => 'default',
+      getCurrentModel: () => chatModelSelect?.value || 'default',
     };
     const result = await interceptSlashCommand(content, cmdCtx);
     if (result.handled) {
@@ -1211,6 +1208,12 @@ async function sendMessage() {
     if (attachments.length > 0) {
       chatOpts.attachments = attachments;
       console.log('[main] Sending attachments:', attachments.length, 'items, first mimeType:', attachments[0]?.mimeType, 'content length:', attachments[0]?.content?.length);
+    }
+
+    // Chat model dropdown override (overrides agent profile, but slash commands still win)
+    const chatModelVal = chatModelSelect?.value;
+    if (chatModelVal && chatModelVal !== 'default') {
+      chatOpts.model = chatModelVal;
     }
 
     // Apply slash command session overrides (highest priority)
@@ -1710,13 +1713,23 @@ function handleAgentEvent(payload: unknown): void {
         const evtUsage = (evt as Record<string, unknown>).usage as Record<string, unknown> | undefined;
         if (evtUsage) recordTokenUsage(evtUsage);
 
-        // Update model label with the API-confirmed model name
+        // Update model selector with the API-confirmed model name
         const confirmedModel = dAny.model as string | undefined;
         if (confirmedModel) {
-          const modelLabel = document.getElementById('model-label');
-          if (modelLabel) {
-            modelLabel.textContent = `✓ ${confirmedModel}`;
-            modelLabel.title = `API-confirmed model: ${confirmedModel}`;
+          const modelSel = document.getElementById('chat-model-select') as HTMLSelectElement | null;
+          if (modelSel) {
+            // If the confirmed model isn't in the list, add it
+            const exists = Array.from(modelSel.options).some(o => o.value === confirmedModel);
+            if (!exists) {
+              const opt = document.createElement('option');
+              opt.value = confirmedModel;
+              opt.textContent = `✓ ${confirmedModel}`;
+              modelSel.appendChild(opt);
+            }
+            // Don't force-select if user already picked a different model
+            if (modelSel.value === 'default' || modelSel.value === '') {
+              modelSel.value = confirmedModel;
+            }
           }
           console.log(`[main] API-confirmed model: ${confirmedModel}`);
 

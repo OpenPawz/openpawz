@@ -4,6 +4,7 @@
 
 import { pawEngine, EngineProject, EngineProjectAgent, EngineProjectMessage } from '../engine';
 import { showToast } from '../components/toast';
+import { populateModelSelect } from '../components/helpers';
 import { listen } from '@tauri-apps/api/event';
 
 let projects: EngineProject[] = [];
@@ -31,7 +32,7 @@ const els = {
   get agentModal() { return document.getElementById('orch-agent-modal')!; },
   get agentFormId() { return document.getElementById('orch-agent-form-id') as HTMLInputElement; },
   get agentFormSpecialty() { return document.getElementById('orch-agent-form-specialty') as HTMLSelectElement; },
-  get agentFormModel() { return document.getElementById('orch-agent-form-model') as HTMLInputElement | null; },
+  get agentFormModel() { return document.getElementById('orch-agent-form-model') as HTMLSelectElement | null; },
 };
 
 // ── Init ───────────────────────────────────────────────────────────────
@@ -400,6 +401,15 @@ async function runProject() {
 function openAgentModal() {
   els.agentFormId.value = '';
   els.agentFormSpecialty.value = 'general';
+  // Populate model dropdown from configured providers
+  if (els.agentFormModel) {
+    pawEngine.getConfig().then(config => {
+      populateModelSelect(els.agentFormModel!, config.providers ?? [], {
+        defaultLabel: '(use routing default)',
+        currentValue: '',
+      });
+    }).catch(() => {});
+  }
   els.agentModal.style.display = 'flex';
 }
 
@@ -429,7 +439,7 @@ async function addAgent() {
     specialty,
     status: 'idle',
     current_task: undefined,
-    model: els.agentFormModel?.value.trim() || undefined,
+    model: els.agentFormModel?.value || undefined,
   };
 
   const allAgents = [...currentProject.agents, newAgent];

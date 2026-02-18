@@ -359,7 +359,9 @@
               </div>
               <div>
                 <div class="chat-title" id="chat-agent-name">Agent</div>
-                <div class="chat-subtitle" id="model-label">Connected</div>
+                <select class="chat-model-select" id="chat-model-select" title="Switch model for this chat">
+                <option value="default">Default Model</option>
+              </select>
               </div>
               <!-- Token meter -->
               <div class="token-meter" id="token-meter" title="Session token usage">
@@ -575,11 +577,10 @@
                 </div>
                 <div class="tasks-modal-field">
                   <label>Model Override</label>
-                  <input type="text" id="tasks-modal-input-model" class="input" placeholder="(use default)" style="max-width:280px" list="tasks-model-suggestions">
-                  <datalist id="tasks-model-suggestions">
-                    <!-- Populated dynamically from configured providers -->
-                  </datalist>
-                  <div class="tasks-modal-hint">Leave empty to use the agent's default model. Set a specific model to override for this task only.</div>
+                  <select id="tasks-modal-input-model" class="input" style="max-width:320px">
+                    <option value="">(use default)</option>
+                  </select>
+                  <div class="tasks-modal-hint">Leave empty to use the agent's default model. Select a model to override for this task only.</div>
                 </div>
                 <div class="tasks-modal-field" id="tasks-modal-activity-section" style="display:none">
                   <label>Activity</label>
@@ -718,20 +719,9 @@
                 </div>
                 <div class="form-group">
                   <label>Model <span style="font-weight:normal;color:var(--text-muted)">(optional — uses routing config if blank)</span></label>
-                  <input type="text" class="form-input" id="orch-agent-form-model" placeholder="e.g. gemini-2.0-flash" list="orch-model-datalist">
-                  <datalist id="orch-model-datalist">
-                    <option value="gemini-2.5-pro">
-                    <option value="gemini-2.5-flash">
-                    <option value="gemini-2.0-flash">
-                    <option value="gemini-2.0-flash-lite">
-                    <option value="gemini-1.5-pro">
-                    <option value="gemini-1.5-flash">
-                    <option value="gpt-4o">
-                    <option value="gpt-4o-mini">
-                    <option value="claude-sonnet-4-20250514">
-                    <option value="claude-3-5-haiku-20241022">
-                    <option value="claude-opus-4-20250514">
-                  </datalist>
+                  <select class="form-input" id="orch-agent-form-model">
+                    <option value="">(use routing default)</option>
+                  </select>
                 </div>
               </div>
               <div class="modal-footer">
