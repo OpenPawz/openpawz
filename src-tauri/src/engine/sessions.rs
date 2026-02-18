@@ -309,14 +309,31 @@ impl SessionStore {
     }
 
     pub fn list_sessions(&self, limit: i64) -> Result<Vec<Session>, String> {
+        self.list_sessions_filtered(limit, None)
+    }
+
+    /// List sessions, optionally filtered by agent_id.
+    pub fn list_sessions_filtered(&self, limit: i64, agent_id: Option<&str>) -> Result<Vec<Session>, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
 
-        let mut stmt = conn.prepare(
-            "SELECT id, label, model, system_prompt, created_at, updated_at, message_count, agent_id
-             FROM sessions ORDER BY updated_at DESC LIMIT ?1"
-        ).map_err(|e| format!("Prepare error: {}", e))?;
+        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(aid) = agent_id {
+            (
+                "SELECT id, label, model, system_prompt, created_at, updated_at, message_count, agent_id \
+                 FROM sessions WHERE agent_id = ?1 ORDER BY updated_at DESC LIMIT ?2".to_string(),
+                vec![Box::new(aid.to_string()) as Box<dyn rusqlite::types::ToSql>, Box::new(limit)],
+            )
+        } else {
+            (
+                "SELECT id, label, model, system_prompt, created_at, updated_at, message_count, agent_id \
+                 FROM sessions ORDER BY updated_at DESC LIMIT ?1".to_string(),
+                vec![Box::new(limit) as Box<dyn rusqlite::types::ToSql>],
+            )
+        };
 
-        let sessions = stmt.query_map(params![limit], |row| {
+        let mut stmt = conn.prepare(&sql).map_err(|e| format!("Prepare error: {}", e))?;
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+
+        let sessions = stmt.query_map(param_refs.as_slice(), |row| {
             Ok(Session {
                 id: row.get(0)?,
                 label: row.get(1)?,

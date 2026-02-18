@@ -269,8 +269,8 @@ Each bridge has uniform commands: `start`, `stop`, `status`, `get_config`, `set_
 | **Nodes view** | 🔶 Minimal | 190 lines — basic list/invoke/pair UI, no mobile app to pair with |
 | **Trading depth** | 🔶 | 249-line view — needs more position tracking, charts |
 | **Skill discovery** | ❌ | 37 hardcoded skills, no marketplace or install-from-URL |
-| **Per-agent workspaces** | ❌ | No isolated filesystem per agent |
-| **Session isolation (dmScope)** | ❌ | No per-channel-per-peer session isolation |
+| **Per-agent workspaces** | ✅ | `~/.paw/workspaces/{agent_id}/` — relative paths scoped per agent |
+| **Session isolation (dmScope)** | ✅ | Per-channel-per-agent-per-peer session IDs | isolation |
 
 ---
 

@@ -555,8 +555,8 @@ class PawEngineClient {
 
   // ── Sessions ─────────────────────────────────────────────────────────
 
-  async sessionsList(limit?: number): Promise<EngineSession[]> {
-    return invoke<EngineSession[]>('engine_sessions_list', { limit: limit ?? 50 });
+  async sessionsList(limit?: number, agentId?: string): Promise<EngineSession[]> {
+    return invoke<EngineSession[]>('engine_sessions_list', { limit: limit ?? 50, agentId: agentId ?? null });
   }
 
   async sessionRename(sessionId: string, label: string): Promise<void> {

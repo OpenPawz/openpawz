@@ -109,8 +109,8 @@ pub async fn run_channel_agent(
         }
     }
 
-    // Per-user session: eng-{channel}-{user_id}
-    let session_id = format!("eng-{}-{}", channel_prefix, user_id);
+    // Per-user per-agent session: eng-{channel}-{agent}-{user_id}
+    let session_id = format!("eng-{}-{}-{}", channel_prefix, agent_id, user_id);
 
     // Get provider config
     let (provider_config, model, system_prompt, max_rounds, tool_timeout) = {
@@ -131,7 +131,7 @@ pub async fn run_channel_agent(
         .map(|opt| opt.is_some())
         .unwrap_or(false);
     if !session_exists {
-        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref(), None)?;
+        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref(), Some(agent_id))?;
     }
 
     // Store user message
@@ -251,6 +251,7 @@ pub async fn run_channel_agent(
         None,
         &approvals,
         tool_timeout,
+        agent_id,
     ).await;
 
     // Stop the auto-approver

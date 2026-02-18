@@ -8,6 +8,7 @@ use crate::engine::sessions::SessionStore;
 use crate::engine::agent_loop;
 use crate::engine::memory::{self, EmbeddingClient};
 use crate::engine::skills;
+use crate::engine::tool_executor;
 use log::{info, warn, error};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -313,6 +314,19 @@ pub async fn engine_chat_send(
         }
         parts.push(self_awareness);
         parts.push(local_time_context);
+
+        // Agent workspace context
+        let ws = tool_executor::agent_workspace(&agent_id_owned);
+        parts.push(format!(
+            "## Your Workspace\n\
+            - **Agent ID**: {}\n\
+            - **Workspace path**: {}\n\
+            Relative file paths (e.g. `notes.md`, `project/`) resolve within your workspace. \
+            You can also use absolute paths to access files elsewhere on the system.",
+            agent_id_owned,
+            ws.display(),
+        ));
+
         if let Some(ac) = &agent_context {
             parts.push(ac.clone());
         }
@@ -463,6 +477,7 @@ pub async fn engine_chat_send(
             temperature,
             &approvals,
             tool_timeout,
+            &agent_id_for_spawn,
         ).await {
             Ok(final_text) => {
                 info!("[engine] Agent turn complete: {} chars", final_text.len());
@@ -543,8 +558,9 @@ pub fn engine_chat_history(
 pub fn engine_sessions_list(
     state: State<'_, EngineState>,
     limit: Option<i64>,
+    agent_id: Option<String>,
 ) -> Result<Vec<Session>, String> {
-    state.store.list_sessions(limit.unwrap_or(50))
+    state.store.list_sessions_filtered(limit.unwrap_or(50), agent_id.as_deref())
 }
 
 #[tauri::command]
@@ -1581,6 +1597,7 @@ pub async fn execute_task(
                 None,
                 &pending_clone,
                 tool_timeout,
+                &agent_id,
             ).await;
 
             // Store agent result

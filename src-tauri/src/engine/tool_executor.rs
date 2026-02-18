@@ -15,25 +15,40 @@ use tauri::{Emitter, Manager};
 
 /// Execute a single tool call and return the result.
 /// This is where security policies are enforced.
-pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -> ToolResult {
+/// Get the per-agent workspace directory path.
+/// Each agent gets its own isolated workspace at ~/.paw/workspaces/{agent_id}/
+pub fn agent_workspace(agent_id: &str) -> std::path::PathBuf {
+    let base = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    base.join(".paw").join("workspaces").join(agent_id)
+}
+
+/// Ensure the agent's workspace directory exists.
+fn ensure_workspace(agent_id: &str) -> Result<std::path::PathBuf, String> {
+    let ws = agent_workspace(agent_id);
+    std::fs::create_dir_all(&ws)
+        .map_err(|e| format!("Failed to create workspace for agent '{}': {}", agent_id, e))?;
+    Ok(ws)
+}
+
+pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle, agent_id: &str) -> ToolResult {
     let name = &tool_call.function.name;
     let args_str = &tool_call.function.arguments;
 
-    info!("[engine] Executing tool: {} args={}", name, &args_str[..args_str.len().min(200)]);
+    info!("[engine] Executing tool: {} agent={} args={}", name, agent_id, &args_str[..args_str.len().min(200)]);
 
     let args: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
 
     let result = match name.as_str() {
-        "exec" => execute_exec(&args, app_handle).await,
+        "exec" => execute_exec(&args, app_handle, agent_id).await,
         "fetch" => execute_fetch(&args).await,
-        "read_file" => execute_read_file(&args).await,
-        "write_file" => execute_write_file(&args).await,
-        "list_directory" => execute_list_directory(&args).await,
-        "append_file" => execute_append_file(&args).await,
-        "delete_file" => execute_delete_file(&args).await,
-        "soul_read" => execute_soul_read(&args, app_handle).await,
-        "soul_write" => execute_soul_write(&args, app_handle).await,
-        "soul_list" => execute_soul_list(app_handle).await,
+        "read_file" => execute_read_file(&args, agent_id).await,
+        "write_file" => execute_write_file(&args, agent_id).await,
+        "list_directory" => execute_list_directory(&args, agent_id).await,
+        "append_file" => execute_append_file(&args, agent_id).await,
+        "delete_file" => execute_delete_file(&args, agent_id).await,
+        "soul_read" => execute_soul_read(&args, app_handle, agent_id).await,
+        "soul_write" => execute_soul_write(&args, app_handle, agent_id).await,
+        "soul_list" => execute_soul_list(app_handle, agent_id).await,
         "memory_store" => execute_memory_store(&args, app_handle).await,
         "memory_search" => execute_memory_search(&args, app_handle).await,
         "self_info" => execute_self_info(app_handle).await,
@@ -84,7 +99,7 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle) -
 
 // ── exec: Run shell commands ───────────────────────────────────────────
 
-async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
+async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, agent_id: &str) -> Result<String, String> {
     let command = args["command"].as_str()
         .ok_or("exec: missing 'command' argument")?;
 
@@ -123,14 +138,19 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle) -
         }
     }
 
+    // Set working directory to agent's workspace
+    let workspace = ensure_workspace(agent_id)?;
+
     // Run via sh -c (Unix) or cmd /C (Windows)
     let output = if cfg!(target_os = "windows") {
         ProcessCommand::new("cmd")
             .args(["/C", command])
+            .current_dir(&workspace)
             .output()
     } else {
         ProcessCommand::new("sh")
             .args(["-c", command])
+            .current_dir(&workspace)
             .output()
     };
 
@@ -224,11 +244,20 @@ async fn execute_fetch(args: &serde_json::Value) -> Result<String, String> {
 
 // ── read_file: Read file contents ──────────────────────────────────────
 
-async fn execute_read_file(args: &serde_json::Value) -> Result<String, String> {
-    let path = args["path"].as_str()
+async fn execute_read_file(args: &serde_json::Value, agent_id: &str) -> Result<String, String> {
+    let raw_path = args["path"].as_str()
         .ok_or("read_file: missing 'path' argument")?;
 
-    info!("[engine] read_file: {}", path);
+    // Resolve relative paths within the agent's workspace
+    let resolved = if std::path::Path::new(raw_path).is_absolute() {
+        std::path::PathBuf::from(raw_path)
+    } else {
+        let ws = ensure_workspace(agent_id)?;
+        ws.join(raw_path)
+    };
+    let path = resolved.to_string_lossy();
+
+    info!("[engine] read_file: {} (agent={})", path, agent_id);
 
     // Block reading engine source code — the agent should not introspect its own internals
     let normalized = path.replace('\\', "/").to_lowercase();
@@ -243,7 +272,7 @@ async fn execute_read_file(args: &serde_json::Value) -> Result<String, String> {
         ));
     }
 
-    let content = std::fs::read_to_string(path)
+    let content = std::fs::read_to_string(&resolved)
         .map_err(|e| format!("Failed to read file '{}': {}", path, e))?;
 
     // Truncate very long files to avoid blowing up context
@@ -257,13 +286,22 @@ async fn execute_read_file(args: &serde_json::Value) -> Result<String, String> {
 
 // ── write_file: Write file contents ────────────────────────────────────
 
-async fn execute_write_file(args: &serde_json::Value) -> Result<String, String> {
-    let path = args["path"].as_str()
+async fn execute_write_file(args: &serde_json::Value, agent_id: &str) -> Result<String, String> {
+    let raw_path = args["path"].as_str()
         .ok_or("write_file: missing 'path' argument")?;
     let content = args["content"].as_str()
         .ok_or("write_file: missing 'content' argument")?;
 
-    info!("[engine] write_file: {} ({} bytes)", path, content.len());
+    // Resolve relative paths within the agent's workspace
+    let resolved = if std::path::Path::new(raw_path).is_absolute() {
+        std::path::PathBuf::from(raw_path)
+    } else {
+        let ws = ensure_workspace(agent_id)?;
+        ws.join(raw_path)
+    };
+    let path = resolved.to_string_lossy();
+
+    info!("[engine] write_file: {} ({} bytes, agent={})", path, content.len(), agent_id);
 
     // Block writing files that contain credential-like patterns
     let content_lower = content.to_lowercase();
@@ -279,12 +317,12 @@ async fn execute_write_file(args: &serde_json::Value) -> Result<String, String> 
     }
 
     // Create parent directories if needed
-    if let Some(parent) = std::path::Path::new(path).parent() {
+    if let Some(parent) = resolved.parent() {
         std::fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create directory: {}", e))?;
     }
 
-    std::fs::write(path, content)
+    std::fs::write(&resolved, content)
         .map_err(|e| format!("Failed to write file '{}': {}", path, e))?;
 
     Ok(format!("Successfully wrote {} bytes to {}", content.len(), path))
@@ -292,18 +330,26 @@ async fn execute_write_file(args: &serde_json::Value) -> Result<String, String> 
 
 // ── list_directory: List contents of a directory ───────────────────────
 
-async fn execute_list_directory(args: &serde_json::Value) -> Result<String, String> {
-    let path = args["path"].as_str().unwrap_or(".");
+async fn execute_list_directory(args: &serde_json::Value, agent_id: &str) -> Result<String, String> {
+    let raw_path = args["path"].as_str().unwrap_or(".");
     let recursive = args["recursive"].as_bool().unwrap_or(false);
     let max_depth = args["max_depth"].as_u64().unwrap_or(3) as usize;
 
-    info!("[engine] list_directory: {} recursive={}", path, recursive);
+    // Resolve relative paths (including ".") within the agent's workspace
+    let resolved = if std::path::Path::new(raw_path).is_absolute() {
+        std::path::PathBuf::from(raw_path)
+    } else {
+        let ws = ensure_workspace(agent_id)?;
+        ws.join(raw_path)
+    };
+    let path = resolved.to_string_lossy().to_string();
 
-    let dir = std::path::Path::new(path);
-    if !dir.exists() {
+    info!("[engine] list_directory: {} recursive={} (agent={})", path, recursive, agent_id);
+
+    if !resolved.exists() {
         return Err(format!("Directory '{}' does not exist", path));
     }
-    if !dir.is_dir() {
+    if !resolved.is_dir() {
         return Err(format!("'{}' is not a directory", path));
     }
 
@@ -334,10 +380,10 @@ async fn execute_list_directory(args: &serde_json::Value) -> Result<String, Stri
     }
 
     if recursive {
-        walk_dir(dir, "", 0, max_depth, &mut entries)
+        walk_dir(&resolved, "", 0, max_depth, &mut entries)
             .map_err(|e| format!("Failed to list directory '{}': {}", path, e))?;
     } else {
-        let mut items: Vec<_> = std::fs::read_dir(dir)
+        let mut items: Vec<_> = std::fs::read_dir(&resolved)
             .map_err(|e| format!("Failed to list directory '{}': {}", path, e))?
             .filter_map(|e| e.ok())
             .collect();
@@ -365,19 +411,28 @@ async fn execute_list_directory(args: &serde_json::Value) -> Result<String, Stri
 
 // ── append_file: Append content to a file ──────────────────────────────
 
-async fn execute_append_file(args: &serde_json::Value) -> Result<String, String> {
-    let path = args["path"].as_str()
+async fn execute_append_file(args: &serde_json::Value, agent_id: &str) -> Result<String, String> {
+    let raw_path = args["path"].as_str()
         .ok_or("append_file: missing 'path' argument")?;
     let content = args["content"].as_str()
         .ok_or("append_file: missing 'content' argument")?;
 
-    info!("[engine] append_file: {} ({} bytes)", path, content.len());
+    // Resolve relative paths within the agent's workspace
+    let resolved = if std::path::Path::new(raw_path).is_absolute() {
+        std::path::PathBuf::from(raw_path)
+    } else {
+        let ws = ensure_workspace(agent_id)?;
+        ws.join(raw_path)
+    };
+    let path = resolved.to_string_lossy();
+
+    info!("[engine] append_file: {} ({} bytes, agent={})", path, content.len(), agent_id);
 
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(path)
+        .open(&resolved)
         .map_err(|e| format!("Failed to open file '{}' for append: {}", path, e))?;
 
     file.write_all(content.as_bytes())
@@ -388,30 +443,38 @@ async fn execute_append_file(args: &serde_json::Value) -> Result<String, String>
 
 // ── delete_file: Delete a file or directory ─────────────────────────────
 
-async fn execute_delete_file(args: &serde_json::Value) -> Result<String, String> {
-    let path = args["path"].as_str()
+async fn execute_delete_file(args: &serde_json::Value, agent_id: &str) -> Result<String, String> {
+    let raw_path = args["path"].as_str()
         .ok_or("delete_file: missing 'path' argument")?;
     let recursive = args["recursive"].as_bool().unwrap_or(false);
 
-    info!("[engine] delete_file: {} recursive={}", path, recursive);
+    // Resolve relative paths within the agent's workspace
+    let resolved = if std::path::Path::new(raw_path).is_absolute() {
+        std::path::PathBuf::from(raw_path)
+    } else {
+        let ws = ensure_workspace(agent_id)?;
+        ws.join(raw_path)
+    };
+    let path = resolved.to_string_lossy();
 
-    let p = std::path::Path::new(path);
-    if !p.exists() {
+    info!("[engine] delete_file: {} recursive={} (agent={})", path, recursive, agent_id);
+
+    if !resolved.exists() {
         return Err(format!("Path '{}' does not exist", path));
     }
 
-    if p.is_dir() {
+    if resolved.is_dir() {
         if recursive {
-            std::fs::remove_dir_all(path)
+            std::fs::remove_dir_all(&resolved)
                 .map_err(|e| format!("Failed to remove directory '{}': {}", path, e))?;
             Ok(format!("Deleted directory '{}' (recursive)", path))
         } else {
-            std::fs::remove_dir(path)
+            std::fs::remove_dir(&resolved)
                 .map_err(|e| format!("Failed to remove directory '{}' (not empty? use recursive=true): {}", path, e))?;
             Ok(format!("Deleted empty directory '{}'", path))
         }
     } else {
-        std::fs::remove_file(path)
+        std::fs::remove_file(&resolved)
             .map_err(|e| format!("Failed to delete file '{}': {}", path, e))?;
         Ok(format!("Deleted file '{}'", path))
     }
@@ -419,16 +482,14 @@ async fn execute_delete_file(args: &serde_json::Value) -> Result<String, String>
 
 // ── soul_read: Read a soul/persona file ────────────────────────────────
 
-async fn execute_soul_read(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
+async fn execute_soul_read(args: &serde_json::Value, app_handle: &tauri::AppHandle, agent_id: &str) -> Result<String, String> {
     let file_name = args["file_name"].as_str()
         .ok_or("soul_read: missing 'file_name' argument")?;
 
-    info!("[engine] soul_read: {}", file_name);
+    info!("[engine] soul_read: {} (agent={})", file_name, agent_id);
 
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
-
-    let agent_id = "default";
     match state.store.get_agent_file(agent_id, file_name)? {
         Some(file) => Ok(format!("# {}\n\n{}", file.file_name, file.content)),
         None => Ok(format!("File '{}' does not exist yet. You can create it with soul_write.", file_name)),
@@ -437,7 +498,7 @@ async fn execute_soul_read(args: &serde_json::Value, app_handle: &tauri::AppHand
 
 // ── soul_write: Write/update a soul/persona file ───────────────────────
 
-async fn execute_soul_write(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
+async fn execute_soul_write(args: &serde_json::Value, app_handle: &tauri::AppHandle, agent_id: &str) -> Result<String, String> {
     let file_name = args["file_name"].as_str()
         .ok_or("soul_write: missing 'file_name' argument")?;
     let content = args["content"].as_str()
@@ -453,12 +514,10 @@ async fn execute_soul_write(args: &serde_json::Value, app_handle: &tauri::AppHan
         ));
     }
 
-    info!("[engine] soul_write: {} ({} bytes)", file_name, content.len());
+    info!("[engine] soul_write: {} ({} bytes, agent={})", file_name, content.len(), agent_id);
 
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
-
-    let agent_id = "default";
     state.store.set_agent_file(agent_id, file_name, content)?;
 
     Ok(format!("Successfully updated {}. This change will take effect in future conversations.", file_name))
@@ -466,13 +525,11 @@ async fn execute_soul_write(args: &serde_json::Value, app_handle: &tauri::AppHan
 
 // ── soul_list: List all soul/persona files ─────────────────────────────
 
-async fn execute_soul_list(app_handle: &tauri::AppHandle) -> Result<String, String> {
-    info!("[engine] soul_list");
+async fn execute_soul_list(app_handle: &tauri::AppHandle, agent_id: &str) -> Result<String, String> {
+    info!("[engine] soul_list (agent={})", agent_id);
 
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
-
-    let agent_id = "default";
     let files = state.store.list_agent_files(agent_id)?;
 
     if files.is_empty() {

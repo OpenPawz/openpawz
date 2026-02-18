@@ -501,8 +501,8 @@ async fn run_telegram_agent(
     let engine_state = app_handle.try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
-    // Per-user session: eng-tg-{user_id}
-    let session_id = format!("eng-tg-{}", user_id);
+    // Per-user per-agent session: eng-tg-{agent}-{user_id}
+    let session_id = format!("eng-tg-{}-{}", agent_id, user_id);
 
     // Get provider config
     let (provider_config, model, system_prompt, max_rounds, tool_timeout) = {
@@ -523,7 +523,7 @@ async fn run_telegram_agent(
         .map(|opt| opt.is_some())
         .unwrap_or(false);
     if !session_exists {
-        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref(), None)?;
+        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref(), Some(agent_id))?;
     }
 
     // Store user message
@@ -688,6 +688,7 @@ async fn run_telegram_agent(
         None, // temperature
         &approvals,
         tool_timeout,
+        agent_id,
     ).await;
 
     // Stop the auto-approver

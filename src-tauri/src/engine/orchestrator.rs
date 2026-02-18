@@ -683,6 +683,7 @@ You are the **Boss Agent** orchestrating project "{}".
         &pending,
         tool_timeout,
         &pid,
+        &project.boss_agent,
     ).await;
 
     // Save final response
@@ -742,6 +743,7 @@ async fn run_boss_agent_loop(
     pending_approvals: &PendingApprovals,
     tool_timeout_secs: u64,
     project_id: &str,
+    agent_id: &str,
 ) -> Result<String, String> {
     let mut round = 0;
     let mut final_text = String::new();
@@ -928,7 +930,7 @@ async fn run_boss_agent_loop(
                 continue;
             }
 
-            let result = crate::engine::tool_executor::execute_tool(tc, app_handle).await;
+            let result = crate::engine::tool_executor::execute_tool(tc, app_handle, agent_id).await;
             let _ = app_handle.emit("engine-event", EngineEvent::ToolResultEvent {
                 session_id: session_id.to_string(),
                 run_id: run_id.to_string(),
@@ -1308,7 +1310,7 @@ async fn run_worker_agent_loop(
                 continue;
             }
 
-            let result = crate::engine::tool_executor::execute_tool(tc, app_handle).await;
+            let result = crate::engine::tool_executor::execute_tool(tc, app_handle, agent_id).await;
             messages.push(Message {
                 role: Role::Tool,
                 content: MessageContent::Text(result.output),
