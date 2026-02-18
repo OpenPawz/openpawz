@@ -20,9 +20,16 @@ use tauri::{Emitter, Manager, State};
 pub type PendingApprovals = Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>>;
 
 /// Resolve the correct provider for a given model name.
-/// Matches by model prefix (claude→Anthropic, gemini→Google, gpt→OpenAI)
-/// and by base URL or provider ID for OpenAI-compatible providers (Kimi, DeepSeek, xAI, Mistral).
+/// First checks if the model's default_model matches any provider exactly,
+/// then matches by model prefix (claude→Anthropic, gemini→Google, gpt→OpenAI)
+/// and by base URL or provider ID for OpenAI-compatible providers.
 fn resolve_provider_for_model(model: &str, providers: &[ProviderConfig]) -> Option<ProviderConfig> {
+    // 1. Exact match: a provider whose default_model matches exactly
+    if let Some(p) = providers.iter().find(|p| p.default_model.as_deref() == Some(model)) {
+        return Some(p.clone());
+    }
+
+    // 2. Match by model name prefix → well-known provider kind
     if model.starts_with("claude") || model.starts_with("anthropic") {
         providers.iter().find(|p| p.kind == ProviderKind::Anthropic).cloned()
     } else if model.starts_with("gemini") || model.starts_with("google") {

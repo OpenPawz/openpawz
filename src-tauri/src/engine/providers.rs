@@ -32,16 +32,19 @@ pub struct OpenAiProvider {
     client: Client,
     base_url: String,
     api_key: String,
+    is_azure: bool,
 }
 
 impl OpenAiProvider {
     pub fn new(config: &ProviderConfig) -> Self {
         let base_url = config.base_url.clone()
             .unwrap_or_else(|| config.kind.default_base_url().to_string());
+        let is_azure = base_url.contains(".azure.com");
         OpenAiProvider {
             client: Client::new(),
             base_url,
             api_key: config.api_key.clone(),
+            is_azure,
         }
     }
 
@@ -170,7 +173,17 @@ impl OpenAiProvider {
         model: &str,
         temperature: Option<f64>,
     ) -> Result<Vec<StreamChunk>, String> {
-        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+        let url = if self.is_azure {
+            // Azure AI Services: append api-version query param
+            let base = self.base_url.trim_end_matches('/');
+            if base.contains('?') {
+                format!("{}/chat/completions", base)
+            } else {
+                format!("{}/chat/completions?api-version=2024-05-01-preview", base)
+            }
+        } else {
+            format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
+        };
 
         let mut body = json!({
             "model": model,
@@ -196,10 +209,17 @@ impl OpenAiProvider {
                 warn!("[engine] OpenAI retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
             }
 
-            let response = match self.client
+            // Azure uses api-key header; everyone else uses Bearer token
+            let mut req = self.client
                 .post(&url)
-                .header("Authorization", format!("Bearer {}", self.api_key))
-                .header("Content-Type", "application/json")
+                .header("Content-Type", "application/json");
+            if self.is_azure {
+                req = req.header("api-key", &self.api_key);
+            } else {
+                req = req.header("Authorization", format!("Bearer {}", self.api_key));
+            }
+
+            let response = match req
                 .json(&body)
                 .send()
                 .await {
