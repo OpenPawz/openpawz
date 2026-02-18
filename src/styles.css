@@ -40,15 +40,15 @@
 .ms-xl { font-size: 28px; }
 
 :root {
-  /* Background — deep dark CRT tones */
-  --bg-primary: #0a0a14;
-  --bg-secondary: #12121e;
-  --bg-sidebar: #0e0e1a;
-  --bg-hover: #1a1a2e;
-  --bg-input: #16162a;
+  /* Background — VS Code neutral darks */
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-sidebar: #181818;
+  --bg-hover: #2a2d2e;
+  --bg-input: #313131;
   --bg-overlay: rgba(0, 0, 0, 0.7);
-  --bg-tertiary: #1e1e32;
-  --bg-code: #1e1e2e;
+  --bg-tertiary: #2d2d2d;
+  --bg-code: #1e1e1e;
   --bg-success: rgba(57, 255, 20, 0.12);
   --bg-danger: rgba(255, 34, 68, 0.12);
   --bg-info: rgba(0, 204, 255, 0.12);
@@ -98,20 +98,20 @@
   --status-amber: #f59e0b;
   --status-emerald: #10b981;
 
-  /* Text — CRT phosphor glow */
-  --text-primary: #e0e0f0;
-  --text-secondary: #9090b0;
-  --text-muted: #505070;
-  --text-tertiary: #666680;
-  --text-inverse: #0a0a14;
+  /* Text — neutral */
+  --text-primary: #cccccc;
+  --text-secondary: #969696;
+  --text-muted: #5a5a5a;
+  --text-tertiary: #6e6e6e;
+  --text-inverse: #1e1e1e;
   --text-code: #cdd6f4;
   --text-danger: #ff4466;
   --text-success: #39ff14;
   --text-on-accent: #ffffff;
 
-  /* Borders — subtle neon edges */
-  --border: #2a2a44;
-  --border-subtle: #1e1e38;
+  /* Borders — neutral */
+  --border: #3c3c3c;
+  --border-subtle: #2a2a2a;
   --border-focus: #ff00ff;
   --border-light: #e6e9ef;
 
@@ -122,10 +122,10 @@
   --radius-xl: 8px;
   --radius-pill: 999px;
 
-  /* Shadows — neon glow */
-  --shadow-sm: 0 0 4px rgba(255, 0, 255, 0.1);
-  --shadow-md: 0 0 8px rgba(255, 0, 255, 0.15);
-  --shadow-lg: 0 0 16px rgba(255, 0, 255, 0.2);
+  /* Shadows */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 16px rgba(0, 0, 0, 0.5);
   --glow-cyan: 0 0 10px rgba(0, 255, 255, 0.3);
   --glow-magenta: 0 0 10px rgba(255, 0, 255, 0.3);
   --glow-green: 0 0 10px rgba(57, 255, 20, 0.3);
@@ -143,8 +143,8 @@
   /* Sprite paths */
   --sprite-path: '/src/assets/sprites/';
 
-  /* Sidebar border gradient */
-  --sidebar-border-image: linear-gradient(180deg, rgba(255,0,255,0.27), rgba(0,255,255,0.27), rgba(255,0,255,0.27)) 1;
+  /* Sidebar border */
+  --sidebar-border-image: linear-gradient(180deg, rgba(255,0,255,0.15), rgba(0,255,255,0.15), rgba(255,0,255,0.15)) 1;
 
   /* CRT scanline opacity */
   --scanline-opacity: 0.08;
@@ -213,10 +213,10 @@
   --status-emerald: #059669;
 
   /* Text — high contrast on light */
-  --text-primary: #1a1a2e;
-  --text-secondary: #4a4a6a;
-  --text-muted: #8888a8;
-  --text-tertiary: #6a6a8a;
+  --text-primary: #1e1e1e;
+  --text-secondary: #4a4a4a;
+  --text-muted: #888888;
+  --text-tertiary: #6a6a6a;
   --text-inverse: #f5f3f0;
   --text-code: #2d2d3d;
   --text-danger: #dc2626;

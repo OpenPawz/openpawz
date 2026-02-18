@@ -433,26 +433,26 @@ fn build_chat_html(title: &str, token: &str, port: u16) -> String {
 <title>{title}</title>
 <style>
 *{{margin:0;padding:0;box-sizing:border-box}}
-body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0a0f;color:#e0e0e0;height:100vh;display:flex;flex-direction:column}}
-.header{{padding:16px 20px;background:#12121a;border-bottom:1px solid #222;display:flex;align-items:center;gap:12px}}
+body{{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1e1e1e;color:#cccccc;height:100vh;display:flex;flex-direction:column}}
+.header{{padding:16px 20px;background:#252526;border-bottom:1px solid #3c3c3c;display:flex;align-items:center;gap:12px}}
 .header h1{{font-size:16px;font-weight:600;color:#ff00ff}}
 .header .dot{{width:8px;height:8px;border-radius:50%;background:#333;transition:background .3s}}
 .header .dot.online{{background:#0f0}}
-.name-bar{{padding:10px 20px;background:#12121a;border-bottom:1px solid #222;display:flex;gap:8px}}
-.name-bar input{{flex:1;padding:8px 12px;border:1px solid #333;border-radius:6px;background:#1a1a2e;color:#e0e0e0;font-size:14px;outline:none}}
+.name-bar{{padding:10px 20px;background:#252526;border-bottom:1px solid #3c3c3c;display:flex;gap:8px}}
+.name-bar input{{flex:1;padding:8px 12px;border:1px solid #3c3c3c;border-radius:6px;background:#313131;color:#cccccc;font-size:14px;outline:none}}
 .name-bar input:focus{{border-color:#ff00ff}}
 .name-bar button{{padding:8px 16px;background:#ff00ff;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer}}
 .messages{{flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:10px}}
 .msg{{max-width:80%;padding:10px 14px;border-radius:12px;font-size:14px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}}
-.msg.user{{align-self:flex-end;background:#2a1a3e;border:1px solid #ff00ff33}}
-.msg.assistant{{align-self:flex-start;background:#1a1a2e;border:1px solid #333}}
+.msg.user{{align-self:flex-end;background:#2a2d2e;border:1px solid #ff00ff33}}
+.msg.assistant{{align-self:flex-start;background:#252526;border:1px solid #3c3c3c}}
 .msg.system{{align-self:center;color:#888;font-size:12px;font-style:italic}}
 .msg.error{{align-self:center;color:#f44;font-size:13px}}
 .typing{{align-self:flex-start;color:#888;font-size:13px;padding:4px 14px}}
 .typing::after{{content:'...';animation:dots 1.2s infinite}}
 @keyframes dots{{0%,20%{{content:'.'}}40%{{content:'..'}}60%,100%{{content:'...'}}}}
-.input-bar{{padding:16px 20px;background:#12121a;border-top:1px solid #222;display:flex;gap:8px}}
-.input-bar textarea{{flex:1;padding:10px 14px;border:1px solid #333;border-radius:8px;background:#1a1a2e;color:#e0e0e0;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:120px}}
+.input-bar{{padding:16px 20px;background:#252526;border-top:1px solid #3c3c3c;display:flex;gap:8px}}
+.input-bar textarea{{flex:1;padding:10px 14px;border:1px solid #3c3c3c;border-radius:8px;background:#313131;color:#cccccc;font-size:14px;font-family:inherit;resize:none;outline:none;max-height:120px}}
 .input-bar textarea:focus{{border-color:#ff00ff}}
 .input-bar button{{padding:10px 20px;background:#ff00ff;color:#fff;border:none;border-radius:8px;font-weight:600;cursor:pointer;white-space:nowrap}}
 .input-bar button:disabled{{opacity:.4;cursor:not-allowed}}
