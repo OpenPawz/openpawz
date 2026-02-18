@@ -2082,3 +2082,373 @@ struct Transfer {
     amount_str: String,
     tx_hash: String,
 }
+
+// ── Top Traders / Alpha Discovery ──────────────────────────────────────
+
+/// Analyze on-chain Transfer events for a token to identify the most profitable
+/// wallets — the "smart DEX traders", rotators, and early movers.
+/// Profiles each wallet by: buy amount, sell amount, estimated PnL, trade count,
+/// timing (early buyer vs late), and current holding.
+pub async fn execute_dex_top_traders(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> Result<String, String> {
+    let rpc_url = creds.get("DEX_RPC_URL").ok_or("Missing DEX_RPC_URL")?;
+    let token_address = args["token_address"].as_str()
+        .ok_or("dex_top_traders: missing 'token_address'")?;
+    let blocks_back = args["blocks_back"].as_u64().unwrap_or(5000);
+    let min_trades = args["min_trades"].as_u64().unwrap_or(2) as usize;
+
+    let addr_clean = token_address.trim();
+    if !addr_clean.starts_with("0x") || addr_clean.len() != 42 {
+        return Err(format!("Invalid token address: '{}'", addr_clean));
+    }
+
+    // Get token metadata
+    let symbol = match eth_call(rpc_url, addr_clean, &encode_symbol()).await {
+        Ok(s) => decode_abi_string(&s).unwrap_or_else(|_| "???".into()),
+        Err(_) => "???".into(),
+    };
+    let decimals = match eth_call(rpc_url, addr_clean, &encode_decimals()).await {
+        Ok(d) => {
+            let b = hex_decode(&d).unwrap_or_default();
+            if b.len() >= 32 { b[31] } else { 18 }
+        }
+        Err(_) => 18,
+    };
+
+    let mut output = format!("Top Traders Analysis: {} ({})\nContract: {}\n\n", symbol, decimals, addr_clean);
+
+    // Get current block
+    let block_num = match rpc_call(rpc_url, "eth_blockNumber", serde_json::json!([])).await {
+        Ok(val) => {
+            let hex = val.as_str().unwrap_or("0x0");
+            u64::from_str_radix(hex.trim_start_matches("0x"), 16).unwrap_or(0)
+        }
+        Err(e) => return Err(format!("Cannot get block number: {}", e)),
+    };
+    let from_block = block_num.saturating_sub(blocks_back);
+
+    // Fetch all Transfer events for this token
+    let logs = rpc_call(rpc_url, "eth_getLogs", serde_json::json!([{
+        "address": addr_clean,
+        "fromBlock": format!("0x{:x}", from_block),
+        "toBlock": "latest",
+        "topics": [TRANSFER_EVENT_TOPIC]
+    }])).await
+        .map_err(|e| format!("Failed to get transfer logs: {}", e))?;
+
+    let log_arr = logs.as_array().ok_or("No log array returned")?;
+
+    if log_arr.is_empty() {
+        output.push_str(&format!("No transfers found in last {} blocks.\n", blocks_back));
+        return Ok(output);
+    }
+
+    // Build per-wallet trading profile
+    struct WalletProfile {
+        address: String,
+        total_bought: f64,
+        total_sold: f64,
+        buy_count: usize,
+        sell_count: usize,
+        first_seen_block: u64,
+        last_seen_block: u64,
+    }
+
+    let mut profiles: HashMap<String, WalletProfile> = HashMap::new();
+    let zero_addr = "0x0000000000000000000000000000000000000000";
+
+    for log in log_arr {
+        let topics = match log["topics"].as_array() {
+            Some(t) if t.len() >= 3 => t,
+            _ => continue,
+        };
+
+        let from_topic = topics[1].as_str().unwrap_or("");
+        let to_topic = topics[2].as_str().unwrap_or("");
+        let data = log["data"].as_str().unwrap_or("0x");
+        let block_hex = log["blockNumber"].as_str().unwrap_or("0x0");
+        let block = u64::from_str_radix(block_hex.trim_start_matches("0x"), 16).unwrap_or(0);
+
+        let amount_str = match raw_to_amount(data, decimals) {
+            Ok(a) => a,
+            Err(_) => continue,
+        };
+        let amount_f: f64 = amount_str.parse().unwrap_or(0.0);
+        if amount_f == 0.0 { continue; }
+
+        let from_addr = if from_topic.len() >= 42 {
+            format!("0x{}", &from_topic[from_topic.len()-40..]).to_lowercase()
+        } else { continue };
+        let to_addr = if to_topic.len() >= 42 {
+            format!("0x{}", &to_topic[to_topic.len()-40..]).to_lowercase()
+        } else { continue };
+
+        // Skip mint/burn
+        if from_addr == zero_addr || to_addr == zero_addr { continue; }
+
+        // Receiver = buyer
+        let buyer = profiles.entry(to_addr.clone()).or_insert(WalletProfile {
+            address: to_addr.clone(),
+            total_bought: 0.0, total_sold: 0.0,
+            buy_count: 0, sell_count: 0,
+            first_seen_block: block, last_seen_block: block,
+        });
+        buyer.total_bought += amount_f;
+        buyer.buy_count += 1;
+        if block < buyer.first_seen_block { buyer.first_seen_block = block; }
+        if block > buyer.last_seen_block { buyer.last_seen_block = block; }
+
+        // Sender = seller
+        let seller = profiles.entry(from_addr.clone()).or_insert(WalletProfile {
+            address: from_addr.clone(),
+            total_bought: 0.0, total_sold: 0.0,
+            buy_count: 0, sell_count: 0,
+            first_seen_block: block, last_seen_block: block,
+        });
+        seller.total_sold += amount_f;
+        seller.sell_count += 1;
+        if block < seller.first_seen_block { seller.first_seen_block = block; }
+        if block > seller.last_seen_block { seller.last_seen_block = block; }
+    }
+
+    // Filter and rank traders
+    struct TraderScore {
+        address: String,
+        total_bought: f64,
+        total_sold: f64,
+        net_pnl_tokens: f64,
+        trade_count: usize,
+        win_indicator: f64,
+        first_block: u64,
+        #[allow(dead_code)]
+        last_block: u64,
+        still_holding: f64,
+        trader_type: String,
+    }
+
+    let mut scored: Vec<TraderScore> = Vec::new();
+
+    for (_, p) in &profiles {
+        let total_trades = p.buy_count + p.sell_count;
+        if total_trades < min_trades { continue; }
+
+        let net = p.total_sold - p.total_bought;
+        let still_holding = p.total_bought - p.total_sold;
+        let win_indicator = if p.total_bought > 0.0 { p.total_sold / p.total_bought } else { 0.0 };
+
+        let trader_type = if p.sell_count == 0 && p.buy_count > 0 {
+            "Accumulator".to_string()
+        } else if win_indicator > 1.5 {
+            "Profit Taker".to_string()
+        } else if win_indicator > 0.8 && win_indicator <= 1.5 {
+            "Rotator".to_string()
+        } else if p.buy_count > 0 && p.sell_count > 0 && total_trades > 5 {
+            "Active Trader".to_string()
+        } else if p.first_seen_block <= from_block + (blocks_back / 10) {
+            "Early Buyer".to_string()
+        } else {
+            "Trader".to_string()
+        };
+
+        scored.push(TraderScore {
+            address: p.address.clone(),
+            total_bought: p.total_bought,
+            total_sold: p.total_sold,
+            net_pnl_tokens: net,
+            trade_count: total_trades,
+            win_indicator,
+            first_block: p.first_seen_block,
+            last_block: p.last_seen_block,
+            still_holding,
+            trader_type,
+        });
+    }
+
+    // Sort by profit taken
+    scored.sort_by(|a, b| b.net_pnl_tokens.partial_cmp(&a.net_pnl_tokens).unwrap_or(std::cmp::Ordering::Equal));
+
+    output.push_str(&format!("Scanned blocks {} → {} ({} blocks, {} transfers)\n", from_block, block_num, blocks_back, log_arr.len()));
+    output.push_str(&format!("Unique traders: {} (min {} trades filter)\n\n", scored.len(), min_trades));
+
+    // Top profit takers
+    output.push_str("Top Profit Takers (sold more than bought — realized gains):\n");
+    let profit_takers: Vec<&TraderScore> = scored.iter().filter(|s| s.net_pnl_tokens > 0.0).take(15).collect();
+    if profit_takers.is_empty() {
+        output.push_str("  None found — all traders are still accumulating\n");
+    } else {
+        for (i, t) in profit_takers.iter().enumerate() {
+            output.push_str(&format!("  {}. {} [{}]\n", i + 1, t.address, t.trader_type));
+            output.push_str(&format!("     Bought: {} {} | Sold: {} {} | Net: +{} {}\n",
+                format_large_number(t.total_bought), symbol,
+                format_large_number(t.total_sold), symbol,
+                format_large_number(t.net_pnl_tokens), symbol));
+            output.push_str(&format!("     Trades: {} | Sell/Buy ratio: {:.2}x | First block: {}\n",
+                t.trade_count, t.win_indicator, t.first_block));
+        }
+    }
+
+    // Top accumulators
+    output.push_str("\nTop Accumulators (bought more than sold — still holding):\n");
+    let mut accumulators: Vec<&TraderScore> = scored.iter().filter(|s| s.still_holding > 0.0).collect();
+    accumulators.sort_by(|a, b| b.still_holding.partial_cmp(&a.still_holding).unwrap_or(std::cmp::Ordering::Equal));
+
+    if accumulators.is_empty() {
+        output.push_str("  None found\n");
+    } else {
+        for (i, t) in accumulators.iter().take(15).enumerate() {
+            output.push_str(&format!("  {}. {} [{}]\n", i + 1, t.address, t.trader_type));
+            output.push_str(&format!("     Bought: {} {} | Sold: {} {} | Holding: {} {}\n",
+                format_large_number(t.total_bought), symbol,
+                format_large_number(t.total_sold), symbol,
+                format_large_number(t.still_holding), symbol));
+            output.push_str(&format!("     Trades: {} | First seen: block {}\n",
+                t.trade_count, t.first_block));
+        }
+    }
+
+    // Early smart money
+    output.push_str("\nEarly Smart Money (first 10% of blocks AND took profit):\n");
+    let early_cutoff = from_block + (blocks_back / 10);
+    let mut early_winners: Vec<&TraderScore> = scored.iter()
+        .filter(|s| s.first_block <= early_cutoff && s.net_pnl_tokens > 0.0)
+        .collect();
+    early_winners.sort_by(|a, b| b.net_pnl_tokens.partial_cmp(&a.net_pnl_tokens).unwrap_or(std::cmp::Ordering::Equal));
+
+    if early_winners.is_empty() {
+        output.push_str("  No early profit-takers found in this range\n");
+    } else {
+        for (i, t) in early_winners.iter().take(10).enumerate() {
+            output.push_str(&format!("  {}. {} — in at block {}, net +{} {}, {} trades\n",
+                i + 1, t.address, t.first_block,
+                format_large_number(t.net_pnl_tokens), symbol, t.trade_count));
+        }
+        output.push_str("\n  ^ These wallets got in early AND profited. Watch them with dex_watch_wallet.\n");
+    }
+
+    // Chain info
+    if let Ok(chain_id) = eth_chain_id(rpc_url).await {
+        let chain = match chain_id {
+            1 => "Ethereum Mainnet", 8453 => "Base", 42161 => "Arbitrum",
+            10 => "Optimism", 137 => "Polygon", _ => "Unknown",
+        };
+        output.push_str(&format!("\nNetwork: {} (chain ID {})\n", chain, chain_id));
+    }
+
+    output.push_str("\nNext: Use dex_watch_wallet on promising addresses to see their full portfolio across tokens.\n");
+
+    Ok(output)
+}
+
+// ── Trending Token Discovery ───────────────────────────────────────────
+
+/// Get trending / recently boosted tokens from DexScreener.
+/// No API key needed — uses public endpoints.
+pub async fn execute_dex_trending(
+    args: &serde_json::Value,
+    _creds: &HashMap<String, String>,
+) -> Result<String, String> {
+    let chain_filter = args["chain"].as_str().unwrap_or("");
+    let max_results = args["max_results"].as_u64().unwrap_or(20).min(50) as usize;
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent("Mozilla/5.0 (compatible; PawAgent/1.0)")
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let mut output = String::from("Trending Tokens\n\n");
+
+    // 1. Token Boosts (recently promoted/trending on DexScreener)
+    let boosts_url = "https://api.dexscreener.com/token-boosts/latest/v1";
+    match client.get(boosts_url).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                if let Ok(boosts) = resp.json::<serde_json::Value>().await {
+                    if let Some(arr) = boosts.as_array() {
+                        output.push_str(&format!("Recently Boosted ({} tokens):\n", arr.len()));
+                        let mut count = 0;
+                        for boost in arr {
+                            if count >= max_results { break; }
+
+                            let chain = boost["chainId"].as_str().unwrap_or("?");
+                            if !chain_filter.is_empty() && !chain.to_lowercase().contains(&chain_filter.to_lowercase()) {
+                                continue;
+                            }
+
+                            let token_addr = boost["tokenAddress"].as_str().unwrap_or("?");
+                            let description = boost["description"].as_str().unwrap_or("");
+                            let url = boost["url"].as_str().unwrap_or("");
+                            let amount = boost["amount"].as_f64().unwrap_or(0.0);
+
+                            output.push_str(&format!("  {}. {} on {}\n", count + 1, token_addr, chain));
+                            if !description.is_empty() {
+                                output.push_str(&format!("     {}\n", &description[..description.len().min(100)]));
+                            }
+                            if amount > 0.0 {
+                                output.push_str(&format!("     Boost amount: ${:.0}\n", amount));
+                            }
+                            if !url.is_empty() {
+                                output.push_str(&format!("     {}\n", url));
+                            }
+                            count += 1;
+                        }
+                        if count == 0 {
+                            output.push_str(&format!("  No boosted tokens found for chain '{}'\n", chain_filter));
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => { output.push_str(&format!("  Boosts API error: {}\n", e)); }
+    }
+
+    // 2. Token Profiles (latest token listings with metadata)
+    let profiles_url = "https://api.dexscreener.com/token-profiles/latest/v1";
+    match client.get(profiles_url).send().await {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                if let Ok(profiles) = resp.json::<serde_json::Value>().await {
+                    if let Some(arr) = profiles.as_array() {
+                        output.push_str(&format!("\nRecent Token Profiles ({} listings):\n", arr.len()));
+                        let mut count = 0;
+                        for profile in arr {
+                            if count >= max_results { break; }
+
+                            let chain = profile["chainId"].as_str().unwrap_or("?");
+                            if !chain_filter.is_empty() && !chain.to_lowercase().contains(&chain_filter.to_lowercase()) {
+                                continue;
+                            }
+
+                            let token_addr = profile["tokenAddress"].as_str().unwrap_or("?");
+                            let description = profile["description"].as_str().unwrap_or("");
+                            let url = profile["url"].as_str().unwrap_or("");
+
+                            output.push_str(&format!("  {}. {} on {}\n", count + 1, token_addr, chain));
+                            if !description.is_empty() {
+                                let desc_trimmed = &description[..description.len().min(120)];
+                                output.push_str(&format!("     {}\n", desc_trimmed));
+                            }
+                            if !url.is_empty() {
+                                output.push_str(&format!("     {}\n", url));
+                            }
+                            count += 1;
+                        }
+                        if count == 0 {
+                            output.push_str(&format!("  No profiles found for chain '{}'\n", chain_filter));
+                        }
+                    }
+                }
+            }
+        }
+        Err(e) => { output.push_str(&format!("  Profiles API error: {}\n", e)); }
+    }
+
+    output.push_str("\nNext steps:\n");
+    output.push_str("1. Use dex_search_token to get price/volume/liquidity for interesting tokens\n");
+    output.push_str("2. Use dex_check_token to run safety audit before trading\n");
+    output.push_str("3. Use dex_top_traders to find who's trading them profitably\n");
+
+    Ok(output)
+}

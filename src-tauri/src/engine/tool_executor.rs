@@ -91,6 +91,8 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle, a
         "dex_search_token" => execute_skill_tool("dex", "dex_search_token", &args, app_handle).await,
         "dex_watch_wallet" => execute_skill_tool("dex", "dex_watch_wallet", &args, app_handle).await,
         "dex_whale_transfers" => execute_skill_tool("dex", "dex_whale_transfers", &args, app_handle).await,
+        "dex_top_traders" => execute_skill_tool("dex", "dex_top_traders", &args, app_handle).await,
+        "dex_trending" => execute_skill_tool("dex", "dex_trending", &args, app_handle).await,
         _ => Err(format!("Unknown tool: {}", name)),
     };
 
@@ -1122,6 +1124,8 @@ async fn execute_skill_tool(
         "dex_search_token" => crate::engine::dex::execute_dex_search_token(args, &creds).await,
         "dex_watch_wallet" => crate::engine::dex::execute_dex_watch_wallet(args, &creds).await,
         "dex_whale_transfers" => crate::engine::dex::execute_dex_whale_transfers(args, &creds).await,
+        "dex_top_traders" => crate::engine::dex::execute_dex_top_traders(args, &creds).await,
+        "dex_trending" => crate::engine::dex::execute_dex_trending(args, &creds).await,
         _ => Err(format!("Unknown skill tool: {}", tool_name)),
     }
 }

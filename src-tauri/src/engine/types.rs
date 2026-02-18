@@ -971,6 +971,8 @@ impl ToolDefinition {
                     tools.push(Self::dex_search_token());
                     tools.push(Self::dex_watch_wallet());
                     tools.push(Self::dex_whale_transfers());
+                    tools.push(Self::dex_top_traders());
+                    tools.push(Self::dex_trending());
                 }
                 _ => {}
             }
@@ -1372,6 +1374,58 @@ impl ToolDefinition {
                         }
                     },
                     "required": ["token_address"]
+                }),
+            },
+        }
+    }
+
+    pub fn dex_top_traders() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_top_traders".into(),
+                description: "Analyze on-chain Transfer events for a token to discover the most profitable wallets — smart DEX traders, rotators, and early movers. Profiles each wallet by: total bought, total sold, estimated PnL (tokens), trade count, sell/buy ratio, timing (early vs late entry), and trader classification (Accumulator, Profit Taker, Rotator, Active Trader, Early Buyer). Use this to find alpha wallets worth monitoring with dex_watch_wallet.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "token_address": {
+                            "type": "string",
+                            "description": "The ERC-20 token contract address to analyze traders for"
+                        },
+                        "blocks_back": {
+                            "type": "integer",
+                            "description": "How many blocks back to scan (default 5000). More blocks = deeper history but slower."
+                        },
+                        "min_trades": {
+                            "type": "integer",
+                            "description": "Minimum number of trades for a wallet to be included (default 2). Higher = filters out one-time buyers."
+                        }
+                    },
+                    "required": ["token_address"]
+                }),
+            },
+        }
+    }
+
+    pub fn dex_trending() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_trending".into(),
+                description: "Get trending and recently boosted tokens from DexScreener. Shows tokens that are gaining attention — boosted listings and new token profiles. No API key needed. Use chain filter to focus on specific networks (ethereum, base, solana, etc.). Follow up with dex_check_token for safety and dex_top_traders to find who's trading profitably.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "chain": {
+                            "type": "string",
+                            "description": "Optional: filter to a specific chain (e.g. 'ethereum', 'base', 'solana', 'arbitrum')"
+                        },
+                        "max_results": {
+                            "type": "integer",
+                            "description": "Maximum results per category (default 20, max 50)"
+                        }
+                    },
+                    "required": []
                 }),
             },
         }
