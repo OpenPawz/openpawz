@@ -5691,6 +5691,7 @@ select.form-input {
 
 .palace-view.active {
   display: flex;
+  flex-direction: row;
   flex: 1;
   height: 100%;
   overflow: hidden;

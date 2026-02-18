@@ -182,11 +182,15 @@ export async function loadAgents() {
     _agents = stored ? JSON.parse(stored) : [];
     // Tag localStorage agents as local
     _agents.forEach(a => { if (!a.source) a.source = 'local'; });
-    // Migrate old sheet* avatar IDs to new numeric avatars
+    // Migrate ANY non-numeric avatar to a new Pawz Boi avatar
     let migrated = false;
+    const usedNums = new Set<number>();
     _agents.forEach(a => {
-      if (/^sheet\d+-\d+$/.test(a.avatar)) {
-        a.avatar = String(Math.floor(Math.random() * 50) + 1);
+      if (!/^\d+$/.test(a.avatar)) {
+        let num: number;
+        do { num = Math.floor(Math.random() * 50) + 1; } while (usedNums.has(num));
+        usedNums.add(num);
+        a.avatar = String(num);
         migrated = true;
       }
     });
@@ -197,7 +201,12 @@ export async function loadAgents() {
   }
 
   // Ensure there's always a default agent
-  if (!_agents.find(a => a.id === 'default')) {
+  const existingDefault = _agents.find(a => a.id === 'default');
+  if (existingDefault && !/^\d+$/.test(existingDefault.avatar)) {
+    existingDefault.avatar = DEFAULT_AVATAR;
+    saveAgents();
+  }
+  if (!existingDefault) {
     _agents.unshift({
       id: 'default',
       name: 'Pawz',
