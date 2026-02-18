@@ -769,7 +769,7 @@ Supports RTSP, ONVIF, and HTTP MJPEG streams."#.into(),
                 CredentialField { key: "DEX_PRIVATE_KEY".into(), label: "Wallet Private Key".into(), description: "Auto-generated when you use dex_wallet_create. Or paste your own 0x-prefixed hex key. Stored encrypted in OS keychain vault.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
                 CredentialField { key: "DEX_WALLET_ADDRESS".into(), label: "Wallet Address".into(), description: "Auto-populated when wallet is created. Or paste your own Ethereum address if importing a key.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
             ],
-            tool_names: vec!["dex_wallet_create".into(), "dex_balance".into(), "dex_quote".into(), "dex_swap".into(), "dex_portfolio".into(), "dex_token_info".into(), "dex_check_token".into(), "dex_search_token".into(), "dex_watch_wallet".into(), "dex_whale_transfers".into(), "dex_top_traders".into(), "dex_trending".into()],
+            tool_names: vec!["dex_wallet_create".into(), "dex_balance".into(), "dex_quote".into(), "dex_swap".into(), "dex_transfer".into(), "dex_portfolio".into(), "dex_token_info".into(), "dex_check_token".into(), "dex_search_token".into(), "dex_watch_wallet".into(), "dex_whale_transfers".into(), "dex_top_traders".into(), "dex_trending".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Get an RPC URL at infura.io or alchemy.com (free tier works)".into(),
             agent_instructions: r#"You have a self-custody Ethereum wallet for DEX trading via Uniswap V3.
 
@@ -783,6 +783,7 @@ Available tools:
 - **dex_balance**: Check ETH and ERC-20 token balances for a specific token.
 - **dex_quote**: Get a swap quote from Uniswap V3 (read-only, no transaction).
 - **dex_swap**: Execute a token swap on Uniswap V3. ALWAYS requires user approval.
+- **dex_transfer**: Send ETH or ERC-20 tokens from your wallet to any external Ethereum address. ALWAYS requires user approval.
 - **dex_portfolio**: Check all token balances at once.
 - **dex_token_info**: Get comprehensive on-chain info about any ERC-20 token (name, symbol, supply, owner, swap viability). Queries the blockchain directly — no website needed.
 - **dex_check_token**: Run automated safety checks (honeypot detection, tax analysis, ownership audit, risk scoring 0-30). ALWAYS run this before trading any new/unknown token.
@@ -826,7 +827,7 @@ Alpha Hunting Workflow:
                 CredentialField { key: "SOLANA_PRIVATE_KEY".into(), label: "Wallet Private Key".into(), description: "Auto-generated when you use sol_wallet_create. Or paste your own base58-encoded keypair. Stored encrypted in OS keychain vault.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
                 CredentialField { key: "SOLANA_WALLET_ADDRESS".into(), label: "Wallet Address".into(), description: "Auto-populated when wallet is created. Or paste your own Solana address if importing a key.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
             ],
-            tool_names: vec!["sol_wallet_create".into(), "sol_balance".into(), "sol_quote".into(), "sol_swap".into(), "sol_portfolio".into(), "sol_token_info".into()],
+            tool_names: vec!["sol_wallet_create".into(), "sol_balance".into(), "sol_quote".into(), "sol_swap".into(), "sol_transfer".into(), "sol_portfolio".into(), "sol_token_info".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Get a Solana RPC URL at alchemy.com, helius.dev, or quicknode.com (free tier works)".into(),
             agent_instructions: r#"You have a self-custody Solana wallet for DEX trading via Jupiter aggregator.
 
@@ -840,6 +841,7 @@ Available tools:
 - **sol_balance**: Check SOL and SPL token balances.
 - **sol_quote**: Get a swap quote from Jupiter aggregator (read-only, no transaction).
 - **sol_swap**: Execute a token swap via Jupiter. REQUIRES USER APPROVAL.
+- **sol_transfer**: Send SOL or SPL tokens from your wallet to any external Solana address. Creates recipient token account if needed. REQUIRES USER APPROVAL.
 - **sol_portfolio**: Check all token balances at once.
 - **sol_token_info**: Get on-chain info about any SPL token (decimals, supply, authorities).
 

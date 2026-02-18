@@ -973,6 +973,7 @@ impl ToolDefinition {
                     tools.push(Self::dex_whale_transfers());
                     tools.push(Self::dex_top_traders());
                     tools.push(Self::dex_trending());
+                    tools.push(Self::dex_transfer());
                 }
                 "solana_dex" => {
                     tools.push(Self::sol_wallet_create());
@@ -981,6 +982,7 @@ impl ToolDefinition {
                     tools.push(Self::sol_swap());
                     tools.push(Self::sol_portfolio());
                     tools.push(Self::sol_token_info());
+                    tools.push(Self::sol_transfer());
                 }
                 _ => {}
             }
@@ -1439,6 +1441,38 @@ impl ToolDefinition {
         }
     }
 
+    pub fn dex_transfer() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "dex_transfer".into(),
+                description: "Transfer ETH or ERC-20 tokens from your DEX wallet to any external Ethereum address. For ETH: sends native ETH. For ERC-20 tokens: calls transfer() on the token contract. REQUIRES USER APPROVAL. Make sure the wallet has enough ETH for gas fees.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "currency": {
+                            "type": "string",
+                            "description": "Token to send: 'ETH' for native Ether, or a token symbol (USDC, USDT, DAI, WBTC, etc.) or ERC-20 contract address"
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Amount to send in human-readable units (e.g. '0.5' for 0.5 ETH, '100' for 100 USDC)"
+                        },
+                        "to_address": {
+                            "type": "string",
+                            "description": "Recipient Ethereum address (0x-prefixed, 42 characters)"
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Brief explanation of why this transfer is being made"
+                        }
+                    },
+                    "required": ["currency", "amount", "to_address", "reason"]
+                }),
+            },
+        }
+    }
+
     // ── Solana DEX / Jupiter tools ─────────────────────────────────────
 
     pub fn sol_wallet_create() -> Self {
@@ -1580,6 +1614,38 @@ impl ToolDefinition {
                         }
                     },
                     "required": ["mint_address"]
+                }),
+            },
+        }
+    }
+
+    pub fn sol_transfer() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "sol_transfer".into(),
+                description: "Transfer SOL or SPL tokens from your Solana wallet to any external Solana address. For SOL: sends native SOL via System Program. For SPL tokens: transfers via Token Program (creates recipient token account if needed). REQUIRES USER APPROVAL. Wallet needs SOL for transaction fees (~0.005 SOL).".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "currency": {
+                            "type": "string",
+                            "description": "Token to send: 'SOL' for native SOL, or a token symbol (USDC, USDT, BONK, JUP, etc.) or SPL mint address"
+                        },
+                        "amount": {
+                            "type": "string",
+                            "description": "Amount to send in human-readable units (e.g. '1.5' for 1.5 SOL, '100' for 100 USDC)"
+                        },
+                        "to_address": {
+                            "type": "string",
+                            "description": "Recipient Solana address (base58-encoded public key)"
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Brief explanation of why this transfer is being made"
+                        }
+                    },
+                    "required": ["currency", "amount", "to_address", "reason"]
                 }),
             },
         }
