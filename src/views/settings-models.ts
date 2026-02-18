@@ -32,12 +32,36 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
 };
 
 const POPULAR_MODELS: Record<string, string[]> = {
-  ollama: ['llama3.2:3b', 'llama3.1:8b', 'llama3.1:70b', 'mistral:7b', 'codellama:13b', 'deepseek-coder:6.7b', 'phi3:mini', 'qwen2.5:7b'],
-  openai: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
-  anthropic: ['claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-opus-4-20250514'],
-  google: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b'],
-  openrouter: ['meta-llama/llama-3.1-405b-instruct', 'anthropic/claude-sonnet-4-20250514'],
-  custom: [],
+  ollama: [
+    'llama3.2:3b', 'llama3.2:1b', 'llama3.1:8b', 'llama3.1:70b', 'llama3.3:70b',
+    'mistral:7b', 'mixtral:8x7b', 'codellama:13b', 'codellama:34b',
+    'deepseek-coder:6.7b', 'deepseek-coder-v2:16b',
+    'phi3:mini', 'phi3:medium', 'qwen2.5:7b', 'qwen2.5:32b', 'qwen2.5:72b',
+    'gemma2:9b', 'gemma2:27b', 'command-r:35b',
+  ],
+  openai: [
+    'gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
+    'o1', 'o1-mini', 'o3', 'o3-mini', 'o4-mini',
+  ],
+  anthropic: [
+    'claude-opus-4-20250514', 'claude-sonnet-4-20250514',
+    'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
+    'claude-3-opus-20240229', 'claude-3-haiku-20240307',
+  ],
+  google: [
+    'gemini-2.5-pro', 'gemini-2.5-flash',
+    'gemini-2.0-flash', 'gemini-2.0-flash-lite',
+    'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b',
+  ],
+  openrouter: [
+    'anthropic/claude-sonnet-4-20250514', 'anthropic/claude-3-5-haiku-20241022',
+    'openai/gpt-4o', 'openai/gpt-4o-mini',
+    'google/gemini-2.5-pro', 'google/gemini-2.5-flash',
+    'meta-llama/llama-3.1-405b-instruct', 'meta-llama/llama-3.1-70b-instruct',
+    'deepseek/deepseek-chat', 'deepseek/deepseek-r1',
+    'mistralai/mistral-large', 'qwen/qwen-2.5-72b-instruct',
+  ],
+  custom: ['deepseek-chat', 'deepseek-reasoner'],
 };
 
 const KIND_ICONS: Record<string, string> = {
@@ -185,6 +209,9 @@ export async function loadModelsSettings() {
     // ── Model Routing (Multi-Agent) ──────────────────────────────────────
     container.appendChild(buildModelRoutingSection(config, allModelOpts));
 
+    // ── Available Models Reference ───────────────────────────────────────
+    container.appendChild(buildAvailableModelsPanel(providers));
+
     // ── Provider Cards (edit/remove each) ────────────────────────────────
     const provHeader = document.createElement('div');
     provHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-top:24px';
@@ -211,14 +238,23 @@ export async function loadModelsSettings() {
 
 // ── Model Routing Section ───────────────────────────────────────────────────
 
-/** All model options for datalist suggestions */
-const ALL_KNOWN_MODELS = [
-  'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.0-flash-lite',
-  'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b',
-  'gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini',
-  'claude-sonnet-4-20250514', 'claude-3-5-haiku-20241022', 'claude-opus-4-20250514',
-  'llama3.1:8b', 'llama3.1:70b', 'mistral:7b', 'qwen2.5:7b',
-];
+/** Build model list dynamically from all configured providers */
+function buildAllKnownModels(providers: EngineProviderConfig[]): string[] {
+  const seen = new Set<string>();
+  const models: string[] = [];
+  const addModel = (m: string) => {
+    if (m && !seen.has(m)) { seen.add(m); models.push(m); }
+  };
+  // Add configured provider defaults first (these are what the user actually uses)
+  for (const p of providers) {
+    if (p.default_model) addModel(p.default_model);
+  }
+  // Then popular models for each configured provider kind
+  for (const p of providers) {
+    for (const m of (POPULAR_MODELS[p.kind] ?? [])) addModel(m);
+  }
+  return models;
+}
 
 const SPECIALTIES = ['coder', 'researcher', 'designer', 'communicator', 'security', 'general'];
 
@@ -234,11 +270,12 @@ function buildModelRoutingSection(
 
   const routing = config.model_routing ?? {};
 
-  // Build datalist for model suggestions
+  // Build datalist for model suggestions — dynamic from configured providers
+  const allKnownModels = buildAllKnownModels(config.providers ?? []);
   const dlId = 'routing-model-datalist';
   const dl = document.createElement('datalist');
   dl.id = dlId;
-  for (const m of ALL_KNOWN_MODELS) {
+  for (const m of allKnownModels) {
     const o = document.createElement('option');
     o.value = m;
     dl.appendChild(o);
@@ -335,6 +372,126 @@ function buildModelRoutingSection(
     },
     () => loadModelsSettings()
   ));
+
+  return section;
+}
+
+// ── Available Models Panel ──────────────────────────────────────────────────
+
+/** Exported so other views (tasks, agents) can get the dynamic model list */
+export function getAvailableModelsList(providers: EngineProviderConfig[]): string[] {
+  return buildAllKnownModels(providers);
+}
+
+const TIER_LABELS: Record<string, Record<string, string>> = {
+  anthropic: {
+    'claude-opus-4-20250514': '⚡ Flagship — best reasoning',
+    'claude-sonnet-4-20250514': '🔥 Best value — fast + smart',
+    'claude-3-5-sonnet-20241022': '✅ Previous gen — proven',
+    'claude-3-5-haiku-20241022': '💨 Fastest — great for cron/bulk',
+    'claude-3-opus-20240229': '🧠 Previous flagship',
+    'claude-3-haiku-20240307': '💨 Cheapest',
+  },
+  openai: {
+    'gpt-4o': '🔥 Best value — multimodal',
+    'gpt-4o-mini': '💨 Fast + cheap',
+    'gpt-4.1': '⚡ Latest flagship',
+    'gpt-4.1-mini': '💨 Latest mini',
+    'gpt-4.1-nano': '💨 Cheapest',
+    'o1': '🧠 Deep reasoning',
+    'o1-mini': '🧠 Reasoning — cheaper',
+    'o3': '⚡ Latest reasoning',
+    'o3-mini': '💨 Reasoning — fast',
+    'o4-mini': '💨 Latest reasoning mini',
+  },
+  google: {
+    'gemini-2.5-pro': '⚡ Flagship — best reasoning',
+    'gemini-2.5-flash': '🔥 Best value — fast + smart',
+    'gemini-2.0-flash': '💨 Previous gen — fast',
+    'gemini-2.0-flash-lite': '💨 Cheapest',
+    'gemini-1.5-pro': '✅ Previous flagship',
+    'gemini-1.5-flash': '💨 Previous fast',
+    'gemini-1.5-flash-8b': '💨 Smallest',
+  },
+};
+
+function buildAvailableModelsPanel(providers: EngineProviderConfig[]): HTMLDivElement {
+  const section = document.createElement('div');
+  section.className = 'settings-subsection';
+  section.style.marginTop = '20px';
+
+  section.innerHTML = `<h3 class="settings-subsection-title">Available Models</h3>
+    <p class="settings-section-desc">All models available from your configured providers. Click any model to copy its ID — paste it into task model overrides, agent routing, etc.</p>`;
+
+  if (providers.length === 0) {
+    section.innerHTML += `<p style="color:var(--text-muted);font-size:13px;padding:12px 0">Add a provider above to see available models.</p>`;
+    return section;
+  }
+
+  // Group models by provider
+  for (const p of providers) {
+    const models = POPULAR_MODELS[p.kind] ?? [];
+    if (!models.length) continue;
+
+    const icon = KIND_ICONS[p.kind] ?? '🔧';
+    const provBlock = document.createElement('div');
+    provBlock.style.cssText = 'margin:12px 0 16px 0';
+
+    const provTitle = document.createElement('div');
+    provTitle.style.cssText = 'font-weight:600;font-size:13px;margin-bottom:6px;display:flex;align-items:center;gap:6px';
+    provTitle.innerHTML = `<span>${icon}</span> ${esc(p.id)} <span style="font-size:11px;color:var(--text-muted);font-weight:normal">${esc(p.kind)}</span>`;
+    provBlock.appendChild(provTitle);
+
+    // Active model tag
+    if (p.default_model) {
+      const activeTag = document.createElement('div');
+      activeTag.style.cssText = 'font-size:11px;color:var(--text-muted);margin-bottom:6px';
+      activeTag.innerHTML = `Currently using: <strong style="color:var(--accent)">${esc(p.default_model)}</strong>`;
+      provBlock.appendChild(activeTag);
+    }
+
+    const chipsWrap = document.createElement('div');
+    chipsWrap.style.cssText = 'display:flex;flex-wrap:wrap;gap:6px';
+
+    const tierInfo = TIER_LABELS[p.kind] ?? {};
+
+    for (const m of models) {
+      const chip = document.createElement('button');
+      chip.className = 'btn btn-ghost btn-sm';
+
+      const isActive = m === p.default_model;
+      const tier = tierInfo[m] ?? '';
+
+      chip.style.cssText = `font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid ${isActive ? 'var(--accent)' : 'var(--border)'};font-family:monospace;cursor:pointer;position:relative;${isActive ? 'background:rgba(var(--accent-rgb,99,102,241),0.15);color:var(--accent);font-weight:600' : ''}`;
+      chip.textContent = m;
+      if (tier) chip.title = tier;
+
+      chip.addEventListener('click', () => {
+        navigator.clipboard.writeText(m).then(() => {
+          const orig = chip.textContent;
+          chip.textContent = '✓ Copied!';
+          chip.style.color = 'var(--status-success)';
+          setTimeout(() => {
+            chip.textContent = orig;
+            chip.style.color = isActive ? 'var(--accent)' : '';
+          }, 1200);
+        });
+      });
+
+      chipsWrap.appendChild(chip);
+    }
+    provBlock.appendChild(chipsWrap);
+
+    // Tier legend if available
+    if (Object.keys(tierInfo).length > 0) {
+      const legend = document.createElement('div');
+      legend.style.cssText = 'font-size:10px;color:var(--text-muted);margin-top:6px';
+      legend.textContent = 'Hover for model tier info. Click to copy model ID.';
+      provBlock.appendChild(legend);
+    }
+
+    section.appendChild(provBlock);
+  }
 
   return section;
 }

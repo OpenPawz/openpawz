@@ -6,6 +6,7 @@ import { pawEngine } from '../engine';
 import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority, TaskAgent } from '../engine';
 import { showToast } from '../components/toast';
 import { spriteAvatar } from './agents';
+import { getAvailableModelsList } from './settings-models';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -225,6 +226,21 @@ function openTaskModal(task?: EngineTask) {
   if (inputCron) inputCron.value = task?.cron_schedule || '';
   if (inputCronEnabled) inputCronEnabled.checked = task?.cron_enabled || false;
   if (inputModel) inputModel.value = task?.model || '';
+
+  // Dynamically populate model suggestions from configured providers
+  const modelDatalist = document.getElementById('tasks-model-suggestions');
+  if (modelDatalist) {
+    modelDatalist.innerHTML = '';
+    pawEngine.getConfig().then(config => {
+      const models = getAvailableModelsList(config.providers ?? []);
+      for (const m of models) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        modelDatalist.appendChild(opt);
+      }
+    }).catch(() => {});
+  }
+
   if (deleteBtn) deleteBtn.style.display = isNew ? 'none' : '';
   const hasAgents = task?.assigned_agents?.length || task?.assigned_agent;
   if (runBtn) runBtn.style.display = hasAgents ? '' : 'none';
