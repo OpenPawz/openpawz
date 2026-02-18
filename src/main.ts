@@ -340,7 +340,7 @@ async function connectEngine(): Promise<boolean> {
     statusDot?.classList.remove('error');
     if (statusText) statusText.textContent = 'Engine';
     const initAgent = AgentsModule.getCurrentAgent();
-    if (chatAgentName) chatAgentName.innerHTML = initAgent ? `${AgentsModule.spriteAvatar(initAgent.avatar, 20)} ${escHtml(initAgent.name)}` : `${AgentsModule.spriteAvatar('sheet5-02', 20)} Paw`;
+    if (chatAgentName) chatAgentName.innerHTML = initAgent ? `${AgentsModule.spriteAvatar(initAgent.avatar, 20)} ${escHtml(initAgent.name)}` : `${AgentsModule.spriteAvatar('5', 20)} Paw`;
     // Update chat avatar pic
     const chatAvatarInit = document.getElementById('chat-avatar');
     if (chatAvatarInit && initAgent) {

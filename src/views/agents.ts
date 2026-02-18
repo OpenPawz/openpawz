@@ -11,7 +11,7 @@ const $ = (id: string) => document.getElementById(id);
 export interface Agent {
   id: string;
   name: string;
-  avatar: string; // sprite ID (e.g. 'sheet1-03') or legacy emoji
+  avatar: string; // avatar ID (e.g. '5') or legacy emoji
   color: string;
   bio: string;
   model: string; // AI model to use
@@ -136,30 +136,22 @@ const AVATAR_COLORS = [
   '#0073EA', '#10b981', '#8b5cf6', '#f59e0b', '#ec4899', '#06b6d4', '#ef4444'
 ];
 
-// ── Sprite Avatars ─────────────────────────────────────────────────────────
-// Curated set of character sprites for agent avatars
-const SPRITE_AVATARS = [
-  'sheet1-03', 'sheet1-05', 'sheet1-07', 'sheet1-09', 'sheet1-11', 'sheet1-14',
-  'sheet2-02', 'sheet2-04', 'sheet2-07', 'sheet2-10', 'sheet2-13', 'sheet2-16',
-  'sheet3-01', 'sheet3-04', 'sheet3-07', 'sheet3-10', 'sheet3-14', 'sheet3-18',
-  'sheet4-03', 'sheet4-06', 'sheet4-09', 'sheet4-12', 'sheet4-15', 'sheet4-18',
-  'sheet5-01', 'sheet5-04', 'sheet5-07', 'sheet5-10', 'sheet5-14', 'sheet5-17',
-  'sheet6-02', 'sheet6-05', 'sheet6-08', 'sheet6-11', 'sheet6-14', 'sheet6-17',
-];
+// ── Avatars ────────────────────────────────────────────────────────────────
+// Pawz Boi avatar set (96×96 PNGs in /src/assets/avatars/)
+const SPRITE_AVATARS = Array.from({ length: 50 }, (_, i) => String(i + 1));
 
-/** Default avatar for new agents */
-const DEFAULT_AVATAR = 'sheet5-02';
+/** Default avatar for the main Pawz agent */
+const DEFAULT_AVATAR = '5';
 
-/** Check if avatar string is a sprite ID (e.g. 'sheet1-03') vs a legacy emoji */
-function isSprite(avatar: string): boolean {
-  return /^sheet\d+-\d+$/.test(avatar);
+/** Check if avatar string is a numeric avatar ID vs a legacy emoji */
+function isAvatar(avatar: string): boolean {
+  return /^\d+$/.test(avatar);
 }
 
-/** Render an agent avatar as an <img> (sprite) or emoji <span> */
+/** Render an agent avatar as an <img> or legacy emoji <span> */
 export function spriteAvatar(avatar: string, size = 32): string {
-  if (isSprite(avatar)) {
-    const folder = size <= 32 ? 'sm' : 'md';
-    return `<img src="/src/assets/sprites/${folder}/${avatar}.png" alt="" width="${size}" height="${size}" style="image-rendering:pixelated;display:block">`;
+  if (isAvatar(avatar)) {
+    return `<img src="/src/assets/avatars/${avatar}.png" alt="" width="${size}" height="${size}" style="display:block;border-radius:50%">`;
   }
   // Legacy emoji fallback
   return `<span style="font-size:${Math.round(size * 0.7)}px;line-height:1">${avatar}</span>`;
@@ -231,10 +223,10 @@ export async function loadAgents() {
         if (_agents.find(a => a.id === ba.agent_id)) continue;
         // Convert backend agent to Agent format — each gets a unique sprite
         const specialtySprite: Record<string, string> = {
-          coder: 'sheet3-04', researcher: 'sheet2-07', designer: 'sheet1-09', communicator: 'sheet4-06',
-          security: 'sheet6-05', general: 'sheet3-10', writer: 'sheet5-07', analyst: 'sheet2-13',
+          coder: '10', researcher: '15', designer: '20', communicator: '25',
+          security: '30', general: '35', writer: '40', analyst: '45',
         };
-        const preferredSprite = specialtySprite[ba.specialty] || 'sheet3-10';
+        const preferredSprite = specialtySprite[ba.specialty] || '35';
         _agents.push({
           id: ba.agent_id,
           name: ba.agent_id.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),

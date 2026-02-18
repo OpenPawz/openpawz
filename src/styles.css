@@ -141,7 +141,7 @@
   --font-mono: 'Droid Sans Mono', 'Cascadia Code', 'Fira Code', Menlo, Monaco, Consolas, 'Courier New', monospace;
 
   /* Sprite paths */
-  --sprite-path: '/src/assets/sprites/';
+  --avatar-path: '/src/assets/avatars/';
 
   /* Sidebar border */
   --sidebar-border-image: linear-gradient(180deg, rgba(255,0,255,0.15), rgba(0,255,255,0.15), rgba(255,0,255,0.15)) 1;
@@ -249,7 +249,7 @@
   padding: 0;
   box-sizing: border-box;
   /* Pixel-perfect rendering for retro sprites */
-  image-rendering: pixelated;
+  image-rendering: auto;
   image-rendering: -moz-crisp-edges;
   image-rendering: crisp-edges;
 }
@@ -330,7 +330,7 @@ body {
 .sidebar-logo {
   width: 36px;
   height: 36px;
-  background: url('/src/assets/sprites/md/sheet4-01.png') center/contain no-repeat;
+  background: url('/src/assets/avatars/5.png') center/contain no-repeat;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
@@ -581,7 +581,7 @@ body {
   top: 0;
   width: 52px;
   height: 52px;
-  background: url('/src/assets/sprites/md/sheet1-02.png') center/contain no-repeat;
+  background: url('/src/assets/avatars/5.png') center/contain no-repeat;
   filter: drop-shadow(0 0 8px rgba(255, 0, 255, 0.4));
 }
 
@@ -1041,7 +1041,7 @@ body {
   flex-shrink: 0;
 }
 .chat-avatar img {
-  image-rendering: pixelated;
+  image-rendering: auto;
 }
 
 .chat-title {
@@ -1054,7 +1054,7 @@ body {
   align-items: center;
   gap: 6px;
 }
-.chat-title img { image-rendering: pixelated; vertical-align: middle; }
+.chat-title img { image-rendering: auto; vertical-align: middle; }
 
 .chat-subtitle {
   font-size: 11px;
@@ -3736,13 +3736,13 @@ button:focus:not(:focus-visible) { outline: none; }
   width: 48px;
   height: 48px;
   border-radius: var(--radius-sm);
-  image-rendering: pixelated;
+  image-rendering: auto;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.today-dave-avatar img { image-rendering: pixelated; }
+.today-dave-avatar img { image-rendering: auto; }
 .today-dave-intro { flex: 1; }
 .today-dave-name { font-size: 14px; font-weight: 600; font-family: var(--font-pixel); color: #ff00ff; }
 .today-dave-role { font-size: 12px; color: var(--text-muted); }
@@ -3907,9 +3907,9 @@ button:focus:not(:focus-visible) { outline: none; }
   justify-content: center;
   flex-shrink: 0;
   overflow: hidden;
-  image-rendering: pixelated;
+  image-rendering: auto;
 }
-.agent-avatar img { image-rendering: pixelated; }
+.agent-avatar img { image-rendering: auto; }
 .agent-info { flex: 1; }
 .agent-name {
   font-size: 16px;
@@ -4084,7 +4084,7 @@ button:focus:not(:focus-visible) { outline: none; }
   justify-content: center;
   padding: 4px;
 }
-.agent-avatar-option img { image-rendering: pixelated; }
+.agent-avatar-option img { image-rendering: auto; }
 .agent-avatar-option:hover { border-color: var(--accent); }
 .agent-avatar-option.selected {
   border-color: var(--accent);
@@ -4234,7 +4234,7 @@ button:focus:not(:focus-visible) { outline: none; }
   justify-content: center;
   overflow: hidden;
 }
-.agent-avatar-large img { image-rendering: pixelated; }
+.agent-avatar-large img { image-rendering: auto; }
 
 /* ═══ Automations Board ═══ */
 .auto-view {
@@ -8184,8 +8184,8 @@ select.form-input {
 .research-empty-icon {
   width: 64px;
   height: 64px;
-  background: url('assets/sprites/md/sheet6-04.png') center / contain no-repeat;
-  image-rendering: pixelated;
+  background: url('assets/avatars/5.png') center / contain no-repeat;
+  image-rendering: auto;
   margin-bottom: 20px;
   opacity: 0.9;
 }
@@ -9256,7 +9256,7 @@ select.form-input {
   display: flex;
   align-items: center;
 }
-.mini-chat-avatar img { image-rendering: pixelated; }
+.mini-chat-avatar img { image-rendering: auto; }
 .mini-chat-name {
   flex: 1;
   font-size: 13px;
@@ -9454,7 +9454,7 @@ select.form-input {
   overflow: hidden;
   user-select: none;
 }
-.agent-dock-avatar img { image-rendering: pixelated; }
+.agent-dock-avatar img { image-rendering: auto; }
 .agent-dock-badge {
   position: absolute;
   top: -2px;
