@@ -765,7 +765,7 @@ Supports RTSP, ONVIF, and HTTP MJPEG streams."#.into(),
             icon: "🦄".into(),
             category: SkillCategory::Vault,
             required_credentials: vec![
-                CredentialField { key: "DEX_RPC_URL".into(), label: "Ethereum RPC URL".into(), description: "JSON-RPC endpoint for Ethereum (from Infura, Alchemy, or your own node). Example: https://mainnet.infura.io/v3/YOUR_KEY".into(), required: true, placeholder: "https://mainnet.infura.io/v3/abc123...".into() },
+                CredentialField { key: "DEX_RPC_URL".into(), label: "Ethereum RPC URL".into(), description: "JSON-RPC endpoint for Ethereum (from Infura, Alchemy, or your own node). Example: https://mainnet.infura.io/v3/YOUR_KEY".into(), required: false, placeholder: "https://mainnet.infura.io/v3/abc123...".into() },
                 CredentialField { key: "DEX_PRIVATE_KEY".into(), label: "Wallet Private Key".into(), description: "Auto-generated when you use dex_wallet_create. Or paste your own 0x-prefixed hex key. Stored encrypted in OS keychain vault.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
                 CredentialField { key: "DEX_WALLET_ADDRESS".into(), label: "Wallet Address".into(), description: "Auto-populated when wallet is created. Or paste your own Ethereum address if importing a key.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
             ],
