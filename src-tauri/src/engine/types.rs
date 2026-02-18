@@ -730,6 +730,100 @@ impl ToolDefinition {
         }
     }
 
+    /// Tool to create a task (optionally a recurring cron job) on the task board.
+    pub fn create_task() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "create_task".into(),
+                description: "Create a new task on the task board. If a cron_schedule is provided, it becomes a recurring automation that the heartbeat executes automatically. Use this when the user asks you to set up a scheduled job, reminder, recurring task, or automation.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Short title for the task, e.g. 'Check crypto prices', 'Daily standup summary'"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Detailed prompt/instructions for what the agent should do when this task runs"
+                        },
+                        "priority": {
+                            "type": "string",
+                            "description": "Task priority",
+                            "enum": ["low", "medium", "high", "urgent"]
+                        },
+                        "agent_id": {
+                            "type": "string",
+                            "description": "Which agent should run this task. Use 'default' for the main agent, or a specific agent ID."
+                        },
+                        "cron_schedule": {
+                            "type": "string",
+                            "description": "Optional recurring schedule: 'every 5m', 'every 1h', 'every 6h', 'daily 09:00', 'daily 18:00'. If omitted, the task is one-shot."
+                        }
+                    },
+                    "required": ["title", "description"]
+                }),
+            },
+        }
+    }
+
+    /// Tool to list tasks from the task board.
+    pub fn list_tasks() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "list_tasks".into(),
+                description: "List all tasks on the task board, including their status, schedule, and assigned agents. Use this to check existing tasks before creating duplicates, or when the user asks about their tasks/automations.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "status_filter": {
+                            "type": "string",
+                            "description": "Optional: filter by status (inbox, assigned, in_progress, review, blocked, done). Omit to list all."
+                        },
+                        "cron_only": {
+                            "type": "boolean",
+                            "description": "If true, only return tasks that have a cron schedule (automations)."
+                        }
+                    },
+                    "required": []
+                }),
+            },
+        }
+    }
+
+    /// Tool to update or delete a task on the task board.
+    pub fn manage_task() -> Self {
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "manage_task".into(),
+                description: "Update or delete an existing task. Can change its title, description, schedule, status, priority, assigned agent, or enable/disable cron. Can also delete the task entirely.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "task_id": {
+                            "type": "string",
+                            "description": "The ID of the task to update or delete. Use list_tasks first to find the ID."
+                        },
+                        "action": {
+                            "type": "string",
+                            "description": "What to do with the task",
+                            "enum": ["update", "delete", "run_now", "pause", "enable"]
+                        },
+                        "title": { "type": "string", "description": "New title (update only)" },
+                        "description": { "type": "string", "description": "New description/prompt (update only)" },
+                        "priority": { "type": "string", "description": "New priority (update only)", "enum": ["low", "medium", "high", "urgent"] },
+                        "cron_schedule": { "type": "string", "description": "New schedule (update only)" },
+                        "agent_id": { "type": "string", "description": "New agent assignment (update only)" }
+                    },
+                    "required": ["task_id", "action"]
+                }),
+            },
+        }
+    }
+
     /// Tool for the agent to update its own profile (name, avatar, bio, system prompt).
     pub fn update_profile() -> Self {
         ToolDefinition {
@@ -805,6 +899,9 @@ impl ToolDefinition {
             Self::self_info(),
             Self::update_profile(),
             Self::create_agent(),
+            Self::create_task(),
+            Self::list_tasks(),
+            Self::manage_task(),
         ]
     }
 
@@ -1334,6 +1431,7 @@ You have these capabilities:
 - **self_info**: Check your own configuration — which model you're running, provider, settings, enabled skills, and memory status. Use this proactively when asked about your own setup.
 - **update_profile**: Update your own display name, avatar emoji, bio, or system prompt. When the user asks you to change your name or identity, use this tool — it will update the UI in real-time. Use agent_id 'default' for the main agent (you).
 - **create_agent**: Create new agent personas that appear in the Agents view. When the user asks you to create an agent, use this tool — don't just describe how to do it.
+- **create_task / list_tasks / manage_task**: Create tasks and scheduled automations (cron jobs). You can set up recurring tasks with schedules like 'every 5m', 'every 1h', 'daily 09:00'. The heartbeat system auto-executes due cron tasks every 60 seconds. Use these when the user asks to set up reminders, recurring checks, automations, or scheduled workflows.
 - **Skill tools**: Email, Slack, GitHub, REST APIs, webhooks, image generation (when configured)
 
 You have FULL ACCESS — use your tools proactively to accomplish tasks. Don't just describe what you would do; actually do it. If a task requires multiple steps, chain your tool calls together. You can read files, execute code, install packages, create projects, search the web, and interact with external services.
