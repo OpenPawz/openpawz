@@ -44,9 +44,8 @@ const POPULAR_MODELS: Record<string, string[]> = {
     'o1', 'o1-mini', 'o3', 'o3-mini', 'o4-mini',
   ],
   anthropic: [
-    'claude-opus-4-20250514', 'claude-sonnet-4-20250514',
-    'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
-    'claude-3-opus-20240229', 'claude-3-haiku-20240307',
+    'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
+    'claude-sonnet-4-5-20250929', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022',
   ],
   google: [
     'gemini-2.5-pro', 'gemini-2.5-flash',
@@ -54,7 +53,7 @@ const POPULAR_MODELS: Record<string, string[]> = {
     'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-8b',
   ],
   openrouter: [
-    'anthropic/claude-sonnet-4-20250514', 'anthropic/claude-3-5-haiku-20241022',
+    'anthropic/claude-sonnet-4-6', 'anthropic/claude-haiku-4-5-20251001', 'anthropic/claude-3-5-haiku-20241022',
     'openai/gpt-4o', 'openai/gpt-4o-mini',
     'google/gemini-2.5-pro', 'google/gemini-2.5-flash',
     'meta-llama/llama-3.1-405b-instruct', 'meta-llama/llama-3.1-70b-instruct',
@@ -175,7 +174,7 @@ export async function loadModelsSettings() {
     }
 
     const defModelRow = formRow('Default Model', 'Model ID to use — or type a custom one');
-    const defModelInp = textInput(config.default_model ?? '', 'gpt-4o, claude-sonnet-4-20250514, llama3.1:8b …');
+    const defModelInp = textInput(config.default_model ?? '', 'gpt-4o, claude-sonnet-4-6, llama3.1:8b …');
     defModelInp.style.maxWidth = '400px';
     defModelInp.setAttribute('list', 'default-model-datalist');
     // Use datalist for suggestions but allow free-form input
@@ -306,7 +305,7 @@ function buildModelRoutingSection(
     { label: 'Gemini Pro + Flash Lite', boss: 'gemini-2.5-pro', worker: 'gemini-2.0-flash-lite' },
     { label: 'Gemini Flash + Flash Lite', boss: 'gemini-2.5-flash', worker: 'gemini-2.0-flash-lite' },
     { label: 'GPT-4o + 4o-mini', boss: 'gpt-4o', worker: 'gpt-4o-mini' },
-    { label: 'Claude Opus + Haiku', boss: 'claude-opus-4-20250514', worker: 'claude-3-5-haiku-20241022' },
+    { label: 'Claude Opus + Haiku', boss: 'claude-opus-4-6', worker: 'claude-haiku-4-5-20251001' },
   ];
   for (const p of presetOptions) {
     const chip = document.createElement('button');
@@ -385,12 +384,12 @@ export function getAvailableModelsList(providers: EngineProviderConfig[]): strin
 
 const TIER_LABELS: Record<string, Record<string, string>> = {
   anthropic: {
-    'claude-opus-4-20250514': '⚡ Flagship — best reasoning',
-    'claude-sonnet-4-20250514': '🔥 Best value — fast + smart',
-    'claude-3-5-sonnet-20241022': '✅ Previous gen — proven',
-    'claude-3-5-haiku-20241022': '💨 Fastest — great for cron/bulk',
-    'claude-3-opus-20240229': '🧠 Previous flagship',
-    'claude-3-haiku-20240307': '💨 Cheapest',
+    'claude-opus-4-6': '⚡ Flagship — $5/$25 per MTok — complex reasoning, coding agents',
+    'claude-sonnet-4-6': '🔥 Best value — $3/$15 per MTok — general purpose workhorse',
+    'claude-haiku-4-5-20251001': '💨 Fast + cheap — $1/$5 per MTok — bulk, cron jobs, summaries',
+    'claude-sonnet-4-5-20250929': '🤖 Agentic — strong for computer use tasks',
+    'claude-3-5-sonnet-20241022': '✅ Budget — cheaper alternative for general tasks',
+    'claude-3-5-haiku-20241022': '💨 Cheapest — bulk/cron jobs, ETL pipelines',
   },
   openai: {
     'gpt-4o': '🔥 Best value — multimodal',
