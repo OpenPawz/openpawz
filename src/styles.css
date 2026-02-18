@@ -135,10 +135,10 @@
   --transition-normal: 200ms steps(4);
   --transition-smooth: 300ms steps(6);
 
-  /* Font — pixel + terminal */
-  --font-sans: 'Share Tech Mono', 'Courier New', monospace;
+  /* Font — system UI + pixel branding */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
   --font-pixel: 'Press Start 2P', 'Share Tech Mono', monospace;
-  --font-mono: 'Share Tech Mono', 'Fira Code', 'Cascadia Code', monospace;
+  --font-mono: 'Droid Sans Mono', 'Cascadia Code', 'Fira Code', Menlo, Monaco, Consolas, 'Courier New', monospace;
 
   /* Sprite paths */
   --sprite-path: '/src/assets/sprites/';
@@ -262,8 +262,9 @@ body {
   overflow: hidden;
   font-size: 13px;
   line-height: 1.6;
-  -webkit-font-smoothing: none;  /* Keep pixel fonts crisp */
-  letter-spacing: 0.02em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: normal;
 }
 
 /* CRT Scanline overlay — subtle retro TV effect (disabled in light mode via --scanline-opacity) */
