@@ -36,12 +36,16 @@ pub fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
 impl ProviderKind {
     pub fn default_base_url(&self) -> &str {
         match self {
-            ProviderKind::OpenAI => "https://api.openai.com/v1",
-            ProviderKind::Anthropic => "https://api.anthropic.com",
-            ProviderKind::Google => "https://generativelanguage.googleapis.com/v1beta",
-            ProviderKind::Ollama => "http://localhost:11434",
-            ProviderKind::OpenRouter => "https://openrouter.ai/api/v1",
-            ProviderKind::Custom => "",
+            ProviderKind::OpenAI      => "https://api.openai.com/v1",
+            ProviderKind::Anthropic   => "https://api.anthropic.com",
+            ProviderKind::Google      => "https://generativelanguage.googleapis.com/v1beta",
+            ProviderKind::Ollama      => "http://localhost:11434",
+            ProviderKind::OpenRouter  => "https://openrouter.ai/api/v1",
+            ProviderKind::Custom      => "",
+            ProviderKind::DeepSeek    => "https://api.deepseek.com/v1",
+            ProviderKind::Grok        => "https://api.x.ai/v1",
+            ProviderKind::Mistral     => "https://api.mistral.ai/v1",
+            ProviderKind::Moonshot    => "https://api.moonshot.cn/v1",
         }
     }
 }

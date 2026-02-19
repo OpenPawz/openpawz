@@ -27,6 +27,10 @@ pub enum ProviderKind {
     Ollama,
     OpenRouter,
     Custom,
+    DeepSeek,
+    Grok,
+    Mistral,
+    Moonshot,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

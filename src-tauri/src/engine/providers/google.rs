@@ -1,0 +1,427 @@
+// Paw Agent Engine — Google Gemini Provider
+// Implements the AiProvider golden trait.
+// Preserves the two-pass thought-part parsing for Gemini thinking models.
+
+use crate::engine::types::*;
+use crate::atoms::traits::{AiProvider, ProviderError};
+use crate::engine::providers::openai::{MAX_RETRIES, is_retryable_status, retry_delay, parse_retry_after};
+use async_trait::async_trait;
+use futures::StreamExt;
+use log::{info, warn, error};
+use reqwest::Client;
+use serde_json::{json, Value};
+
+// ── Struct ────────────────────────────────────────────────────────────────────
+
+pub struct GoogleProvider {
+    client: Client,
+    base_url: String,
+    api_key: String,
+}
+
+impl GoogleProvider {
+    pub fn new(config: &ProviderConfig) -> Self {
+        let base_url = config.base_url.clone()
+            .unwrap_or_else(|| config.kind.default_base_url().to_string());
+        GoogleProvider {
+            client: Client::new(),
+            base_url,
+            api_key: config.api_key.clone(),
+        }
+    }
+
+    fn format_messages(messages: &[Message]) -> (Option<Value>, Vec<Value>) {
+        let mut system_instruction = None;
+        let mut contents = Vec::new();
+
+        for msg in messages {
+            if msg.role == Role::System {
+                system_instruction = Some(json!({
+                    "parts": [{"text": msg.content.as_text()}]
+                }));
+                continue;
+            }
+
+            let role = match msg.role {
+                Role::User | Role::Tool => "user",
+                Role::Assistant => "model",
+                _ => "user",
+            };
+
+            if msg.role == Role::Tool {
+                if let Some(tc_id) = &msg.tool_call_id {
+                    let fn_name = msg.name.clone().unwrap_or_else(|| tc_id.clone());
+                    contents.push(json!({
+                        "role": "function",
+                        "parts": [{
+                            "functionResponse": {
+                                "name": fn_name,
+                                "response": {
+                                    "result": msg.content.as_text()
+                                }
+                            }
+                        }]
+                    }));
+                }
+            } else if msg.role == Role::Assistant {
+                if let Some(tool_calls) = &msg.tool_calls {
+                    let mut parts: Vec<Value> = vec![];
+                    let text = msg.content.as_text();
+                    if !text.is_empty() {
+                        parts.push(json!({"text": text}));
+                    }
+                    // Echo back thought parts (from thinking models) before functionCall parts
+                    for tc in tool_calls {
+                        for tp in &tc.thought_parts {
+                            let mut thought_part = json!({
+                                "thought": true,
+                                "text": tp.text,
+                            });
+                            if !tp.thought_signature.is_empty() {
+                                thought_part["thoughtSignature"] = json!(tp.thought_signature);
+                            }
+                            parts.push(thought_part);
+                        }
+                    }
+                    for tc in tool_calls {
+                        let args: Value = serde_json::from_str(&tc.function.arguments)
+                            .unwrap_or(json!({}));
+                        let mut fc_part = json!({
+                            "functionCall": {
+                                "name": tc.function.name,
+                                "args": args,
+                            }
+                        });
+                        if let Some(sig) = &tc.thought_signature {
+                            fc_part["thoughtSignature"] = json!(sig);
+                        }
+                        parts.push(fc_part);
+                    }
+                    contents.push(json!({
+                        "role": "model",
+                        "parts": parts,
+                    }));
+                } else {
+                    contents.push(json!({
+                        "role": role,
+                        "parts": [{"text": msg.content.as_text()}]
+                    }));
+                }
+            } else {
+                // Handle user messages — support vision (image) blocks
+                match &msg.content {
+                    MessageContent::Blocks(blocks) => {
+                        let mut parts: Vec<Value> = Vec::new();
+                        for block in blocks {
+                            match block {
+                                ContentBlock::Text { text } => {
+                                    parts.push(json!({"text": text}));
+                                }
+                                ContentBlock::ImageUrl { image_url } => {
+                                    // Gemini uses inlineData format for base64 images
+                                    if let Some(rest) = image_url.url.strip_prefix("data:") {
+                                        if let Some((mime_type, b64)) = rest.split_once(";base64,") {
+                                            parts.push(json!({
+                                                "inlineData": {
+                                                    "mimeType": mime_type,
+                                                    "data": b64,
+                                                }
+                                            }));
+                                        }
+                                    } else {
+                                        // External URL — use fileData
+                                        parts.push(json!({
+                                            "fileData": {
+                                                "fileUri": image_url.url,
+                                            }
+                                        }));
+                                    }
+                                }
+                                ContentBlock::Document { mime_type, data, name: _ } => {
+                                    // Gemini supports PDFs natively via inlineData
+                                    parts.push(json!({
+                                        "inlineData": {
+                                            "mimeType": mime_type,
+                                            "data": data,
+                                        }
+                                    }));
+                                }
+                            }
+                        }
+                        contents.push(json!({
+                            "role": role,
+                            "parts": parts,
+                        }));
+                    }
+                    MessageContent::Text(s) => {
+                        contents.push(json!({
+                            "role": role,
+                            "parts": [{"text": s}]
+                        }));
+                    }
+                }
+            }
+        }
+
+        (system_instruction, contents)
+    }
+
+    /// Strip schema fields that Gemini doesn't support (additionalProperties, etc.)
+    fn sanitize_schema(val: &Value) -> Value {
+        match val {
+            Value::Object(map) => {
+                let mut clean = serde_json::Map::new();
+                for (k, v) in map {
+                    // Gemini rejects these OpenAPI fields
+                    if k == "additionalProperties" || k == "$schema" || k == "$ref" {
+                        continue;
+                    }
+                    clean.insert(k.clone(), Self::sanitize_schema(v));
+                }
+                Value::Object(clean)
+            }
+            Value::Array(arr) => Value::Array(arr.iter().map(|v| Self::sanitize_schema(v)).collect()),
+            other => other.clone(),
+        }
+    }
+
+    fn format_tools(tools: &[ToolDefinition]) -> Value {
+        let function_declarations: Vec<Value> = tools.iter().map(|t| {
+            json!({
+                "name": t.function.name,
+                "description": t.function.description,
+                "parameters": Self::sanitize_schema(&t.function.parameters),
+            })
+        }).collect();
+
+        json!([{
+            "functionDeclarations": function_declarations
+        }])
+    }
+
+    /// Inner implementation returning `Result<_, String>` — wraps full SSE + retry logic.
+    async fn chat_stream_inner(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        model: &str,
+        temperature: Option<f64>,
+    ) -> Result<Vec<StreamChunk>, String> {
+        let url = format!(
+            "{}/models/{}:streamGenerateContent?alt=sse&key={}",
+            self.base_url.trim_end_matches('/'),
+            model,
+            self.api_key
+        );
+
+        let (system_instruction, contents) = Self::format_messages(messages);
+
+        let mut body = json!({
+            "contents": contents,
+        });
+
+        if let Some(sys) = system_instruction {
+            body["systemInstruction"] = sys;
+        }
+        if !tools.is_empty() {
+            body["tools"] = Self::format_tools(tools);
+        }
+        if let Some(temp) = temperature {
+            body["generationConfig"] = json!({"temperature": temp});
+        }
+
+        info!("[engine] Google request model={}", model);
+
+        let mut last_error = String::new();
+        let mut retry_after: Option<u64> = None;
+        for attempt in 0..=MAX_RETRIES {
+            if attempt > 0 {
+                let delay = retry_delay(attempt - 1, retry_after.take()).await;
+                warn!("[engine] Google retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
+            }
+
+            let response = match self.client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .json(&body)
+                .send()
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    last_error = format!("HTTP request failed: {}", e);
+                    if attempt < MAX_RETRIES { continue; }
+                    return Err(last_error);
+                }
+            };
+
+            if !response.status().is_success() {
+                let status = response.status().as_u16();
+                retry_after = response.headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(parse_retry_after);
+                let body_text = response.text().await.unwrap_or_default();
+                last_error = format!("API error {}: {}", status, &body_text[..body_text.len().min(200)]);
+                error!("[engine] Google error {}: {}", status, &body_text[..body_text.len().min(500)]);
+                if is_retryable_status(status) && attempt < MAX_RETRIES {
+                    continue;
+                }
+                return Err(last_error);
+            }
+
+            let mut chunks = Vec::new();
+            let mut byte_stream = response.bytes_stream();
+            let mut buffer = String::new();
+
+            while let Some(result) = byte_stream.next().await {
+                let bytes = result.map_err(|e| format!("Stream read error: {}", e))?;
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+                while let Some(line_end) = buffer.find('\n') {
+                    let line = buffer[..line_end].trim().to_string();
+                    buffer = buffer[line_end + 1..].to_string();
+
+                    if line.starts_with("data: ") {
+                        let data = &line[6..];
+                        if let Ok(v) = serde_json::from_str::<Value>(data) {
+                            // Extract actual model version from Google's response
+                            let api_model = v["modelVersion"].as_str().map(|s| s.to_string());
+
+                            // Parse Google's streaming format
+                            if let Some(candidates) = v["candidates"].as_array() {
+                                for candidate in candidates {
+                                    let content = &candidate["content"];
+                                    let finish_reason = candidate["finishReason"].as_str()
+                                        .map(|s| s.to_string());
+
+                                    if let Some(parts) = content["parts"].as_array() {
+                                        // First pass: collect thought parts (they accompany function calls)
+                                        let mut collected_thoughts: Vec<ThoughtPart> = Vec::new();
+                                        for part in parts {
+                                            if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                                if let (Some(text), Some(sig)) = (
+                                                    part["text"].as_str(),
+                                                    part.get("thoughtSignature")
+                                                        .or_else(|| part.get("thought_signature"))
+                                                        .and_then(|v| v.as_str())
+                                                ) {
+                                                    info!("[engine] Google: captured thought part with signature (len={})", text.len());
+                                                    collected_thoughts.push(ThoughtPart {
+                                                        text: text.to_string(),
+                                                        thought_signature: sig.to_string(),
+                                                    });
+                                                }
+                                            }
+                                        }
+
+                                        // Second pass: process text and functionCall parts
+                                        for part in parts {
+                                            // Skip thought parts (already collected)
+                                            if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                                continue;
+                                            }
+                                            if let Some(text) = part["text"].as_str() {
+                                                chunks.push(StreamChunk {
+                                                    delta_text: Some(text.to_string()),
+                                                    tool_calls: vec![],
+                                                    finish_reason: finish_reason.clone(),
+                                                    usage: None,
+                                                    model: api_model.clone(),
+                                                    thought_parts: vec![],
+                                                });
+                                            }
+                                            if let Some(fc) = part.get("functionCall") {
+                                                let name = fc["name"].as_str().unwrap_or("").to_string();
+                                                let args = fc["args"].clone();
+                                                // thought_signature can be at the part level OR inside functionCall
+                                                let thought_sig = part.get("thoughtSignature")
+                                                    .or_else(|| part.get("thought_signature"))
+                                                    .or_else(|| fc.get("thoughtSignature"))
+                                                    .or_else(|| fc.get("thought_signature"))
+                                                    .and_then(|v| v.as_str())
+                                                    .map(|s| s.to_string());
+                                                if thought_sig.is_some() {
+                                                    info!("[engine] Google: captured thoughtSignature for fn={}", name);
+                                                } else {
+                                                    warn!("[engine] Google: NO thoughtSignature found for fn={} (part keys: {:?})", name, part.as_object().map(|o| o.keys().collect::<Vec<_>>()));
+                                                }
+                                                chunks.push(StreamChunk {
+                                                    delta_text: None,
+                                                    tool_calls: vec![ToolCallDelta {
+                                                        index: 0,
+                                                        id: Some(format!("call_{}", uuid::Uuid::new_v4())),
+                                                        function_name: Some(name),
+                                                        arguments_delta: Some(serde_json::to_string(&args).unwrap_or_default()),
+                                                        thought_signature: thought_sig,
+                                                    }],
+                                                    finish_reason: finish_reason.clone(),
+                                                    usage: None,
+                                                    model: api_model.clone(),
+                                                    // Attach thought parts to the first functionCall chunk
+                                                    thought_parts: collected_thoughts.clone(),
+                                                });
+                                                // Only attach thoughts to first function call chunk
+                                                collected_thoughts.clear();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Gemini reports usage in usageMetadata
+                            if let Some(um) = v.get("usageMetadata") {
+                                let input = um["promptTokenCount"].as_u64().unwrap_or(0);
+                                let output = um["candidatesTokenCount"].as_u64().unwrap_or(0);
+                                if input > 0 || output > 0 {
+                                    chunks.push(StreamChunk {
+                                        delta_text: None,
+                                        tool_calls: vec![],
+                                        finish_reason: None,
+                                        usage: Some(TokenUsage {
+                                            input_tokens: input,
+                                            output_tokens: output,
+                                            total_tokens: um["totalTokenCount"].as_u64().unwrap_or(input + output),
+                                            ..Default::default()
+                                        }),
+                                        model: api_model.clone(),
+                                        thought_parts: vec![],
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            return Ok(chunks);
+        }
+
+        Err(last_error)
+    }
+}
+
+// ── AiProvider trait implementation ───────────────────────────────────────────
+
+#[async_trait]
+impl AiProvider for GoogleProvider {
+    fn name(&self) -> &str {
+        "google"
+    }
+
+    fn kind(&self) -> ProviderKind {
+        ProviderKind::Google
+    }
+
+    async fn chat_stream(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+        model: &str,
+        temperature: Option<f64>,
+    ) -> Result<Vec<StreamChunk>, ProviderError> {
+        self.chat_stream_inner(messages, tools, model, temperature)
+            .await
+            .map_err(ProviderError::Transport)
+    }
+}

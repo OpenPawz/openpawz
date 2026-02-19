@@ -18,17 +18,17 @@ use std::time::Duration;
 // pub(super) so AnthropicProvider and GoogleProvider in the parent mod.rs
 // can use them without duplication.
 
-pub(super) const MAX_RETRIES: u32 = 3;
+pub(crate) const MAX_RETRIES: u32 = 3;
 const INITIAL_RETRY_DELAY_MS: u64 = 1000;
 
 /// Check if an HTTP status code should trigger a retry.
-pub(super) fn is_retryable_status(status: u16) -> bool {
+pub(crate) fn is_retryable_status(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 529)
 }
 
 /// Sleep with exponential backoff + jitter.
 /// Respects Retry-After header if the provider sent one.
-pub(super) async fn retry_delay(attempt: u32, retry_after_secs: Option<u64>) -> Duration {
+pub(crate) async fn retry_delay(attempt: u32, retry_after_secs: Option<u64>) -> Duration {
     let base_ms = INITIAL_RETRY_DELAY_MS * 2u64.pow(attempt);
     let delay_ms = if let Some(secs) = retry_after_secs {
         (secs.min(60) * 1000).max(base_ms)
@@ -54,7 +54,7 @@ fn rand_jitter() -> i64 {
 }
 
 /// Parse Retry-After header value (integer seconds).
-pub(super) fn parse_retry_after(header_value: &str) -> Option<u64> {
+pub(crate) fn parse_retry_after(header_value: &str) -> Option<u64> {
     if let Ok(secs) = header_value.trim().parse::<u64>() {
         return Some(secs);
     }
