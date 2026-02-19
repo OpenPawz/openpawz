@@ -1,29 +1,15 @@
-// Paw — Main Application
-// Pawz AI command center — calls AI APIs directly, no gateway needed
-
-import type { AppConfig, Message, Session } from './types';
-import { isEngineMode, setEngineMode, startEngineBridge, onEngineAgent, engineChatSend, onEngineToolApproval, resolveEngineToolApproval } from './engine-bridge';
-import { pawEngine, type EngineEvent } from './engine';
-// ── Material Symbols icon helper ─────────────────────────────────────────────
-// Maps legacy icon names → Material Symbols ligature names
-const _iconMap: Record<string, string> = {
-  'paperclip': 'attach_file',
-  'arrow-up': 'send',
-  'square': 'stop',
-  'rotate-ccw': 'replay',
-  'x': 'close',
-  'image': 'image',
-  'file-text': 'description',
-  'file': 'insert_drive_file',
-  'wrench': 'build',
-  'download': 'download',
-  'external-link': 'open_in_new',
-};
-function icon(name: string, cls = ''): string {
-  const ligature = _iconMap[name] || name;
-  return `<span class="ms${cls ? ` ${cls}` : ''}">${ligature}</span>`;
-}
-import { initDb, initDbEncryption, listDocs, saveDoc, getDoc, deleteDoc, logCredentialActivity, logSecurityEvent } from './db';
+// Paw — Application Entry Point
+import type { AppConfig } from './types';
+import { isEngineMode, setEngineMode, startEngineBridge } from './engine-bridge';
+import { pawEngine } from './engine';
+import { initDb, initDbEncryption } from './db';
+import { appState } from './state/index';
+import { escHtml, populateModelSelect, promptModal, icon } from './components/helpers';
+import { initHILModal } from './components/molecules/hil_modal';
+import { initChatListeners, loadSessions, populateAgentSelect, switchToAgent } from './engine/organisms/chat_controller';
+import './engine/molecules/event_bus';
+import { initChannels, loadChannels, getChannelConfig, getChannelStatus, startChannel, closeChannelSetup, loadDashboardCron, loadSpaceCron, loadMemory, openMemoryFile } from './views/channels';
+import { initContent, loadContentDocs } from './views/content';
 import * as SettingsModule from './views/settings';
 import * as ModelsSettings from './views/settings-models';
 import * as AgentDefaultsSettings from './views/settings-agent-defaults';
@@ -44,16 +30,22 @@ import * as TodayModule from './views/today';
 import * as TasksModule from './views/tasks';
 import * as OrchestratorModule from './views/orchestrator';
 import * as TradingModule from './views/trading';
-import { populateModelSelect } from './components/helpers';
-import { classifyCommandRisk, isPrivilegeEscalation, loadSecuritySettings, matchesAllowlist, matchesDenylist, auditNetworkRequest, getSessionOverrideRemaining, isFilesystemWriteTool, activateSessionOverride, extractCommandString, type RiskClassification } from './security';
-import { interceptSlashCommand, getSessionOverrides as getSlashOverrides, getAutocompleteSuggestions, isSlashCommand, type CommandContext } from './features/slash-commands';
+
+// ── Tauri bridge ───────────────────────────────────────────────────────────
+interface TauriWindow {
+  __TAURI__?: {
+    core: { invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> };
+    event: { listen: <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void> };
+  };
+}
+const tauriWindow = window as unknown as TauriWindow;
+const listen = tauriWindow.__TAURI__?.event?.listen;
 
 // ── Global error handlers ──────────────────────────────────────────────────
 function crashLog(msg: string) {
   try {
     const log = JSON.parse(localStorage.getItem('paw-crash-log') || '[]') as string[];
     log.push(`${new Date().toISOString()} ${msg}`);
-    // Keep last 50 entries
     while (log.length > 50) log.shift();
     localStorage.setItem('paw-crash-log', JSON.stringify(log));
   } catch { /* localStorage might be full */ }
@@ -70,168 +62,13 @@ window.addEventListener('error', (event) => {
   console.error('Uncaught error:', msg);
 });
 
-// ── Tauri bridge ───────────────────────────────────────────────────────────
-interface TauriWindow {
-  __TAURI__?: {
-    core: { invoke: <T>(cmd: string, args?: Record<string, unknown>) => Promise<T> };
-    event: { listen: <T>(event: string, handler: (event: { payload: T }) => void) => Promise<() => void> };
-  };
-}
-const tauriWindow = window as unknown as TauriWindow;
-const listen = tauriWindow.__TAURI__?.event?.listen;
-
-// ── State ──────────────────────────────────────────────────────────────────
-let config: AppConfig = {
-  configured: false,
-};
-
-let messages: MessageWithAttachments[] = [];
-let isLoading = false;
-let currentSessionKey: string | null = null;
-let sessions: Session[] = [];
-let wsConnected = false;
-let _streamingContent = '';  // accumulates deltas for current streaming response
-let _streamingEl: HTMLElement | null = null;  // the live-updating DOM element
-let _streamingRunId: string | null = null;
-let _streamingResolve: ((text: string) => void) | null = null;  // resolves when agent run completes
-let _streamingTimeout: ReturnType<typeof setTimeout> | null = null;
-let _streamingAgentId: string | null = null; // which agent owns the active stream
-let _pendingAttachments: File[] = [];
-
-// Per-agent session mapping: remembers which session belongs to which agent
-// Persisted to localStorage so it survives page reloads.
-const _agentSessionMap: Map<string, string> = (() => {
-  try {
-    const stored = localStorage.getItem('paw_agent_sessions');
-    return stored ? new Map<string, string>(JSON.parse(stored)) : new Map<string, string>();
-  } catch { return new Map<string, string>(); }
-})();
-function _persistAgentSessionMap() {
-  try {
-    localStorage.setItem('paw_agent_sessions', JSON.stringify([..._agentSessionMap.entries()]));
-  } catch { /* ignore */ }
-}
-
-// ── Token metering state ───────────────────────────────────────────────────
-let _sessionTokensUsed = 0;         // accumulated tokens for current session
-let _sessionInputTokens = 0;
-let _sessionOutputTokens = 0;
-let _sessionCost = 0;               // estimated session cost in USD
-let _modelContextLimit = 128_000;   // default context window (updated from confirmed model name)
-const COMPACTION_WARN_THRESHOLD = 0.80; // warn at 80% context usage
-
-// Known context window sizes for common models (tokens)
-const _MODEL_CONTEXT_SIZES: Record<string, number> = {
-  // Gemini
-  'gemini-2.5-pro':           1_048_576,
-  'gemini-2.5-flash':         1_048_576,
-  'gemini-2.0-flash':         1_048_576,
-  'gemini-2.0-pro':           1_048_576,
-  'gemini-1.5-pro':           2_097_152,
-  'gemini-1.5-flash':         1_048_576,
-  // OpenAI
-  'gpt-4o':                   128_000,
-  'gpt-4o-mini':              128_000,
-  'gpt-4-turbo':              128_000,
-  'gpt-4':                    8_192,
-  'gpt-3.5-turbo':            16_385,
-  'o1':                       200_000,
-  'o1-mini':                  128_000,
-  'o1-pro':                   200_000,
-  'o3':                       200_000,
-  'o3-mini':                  200_000,
-  'o4-mini':                  200_000,
-  // Anthropic
-  'claude-opus-4':            200_000,
-  'claude-sonnet-4':          200_000,
-  'claude-haiku-4':           200_000,
-  'claude-sonnet-4-5':        200_000,
-  'claude-3-5-sonnet':        200_000,
-  'claude-3-5-haiku':         200_000,
-  'claude-3-opus':            200_000,
-  // DeepSeek
-  'deepseek-chat':            128_000,
-  'deepseek-reasoner':        128_000,
-  // Llama
-  'llama-3':                  128_000,
-  'llama-4':                  128_000,
-};
-let _compactionDismissed = false;
-let _lastRecordedTotal = 0; // tracks last real usage recording to detect fallback need
-
-// Rough per-token cost estimates (USD) for common model families
-const _MODEL_COST_PER_TOKEN: Record<string, { input: number; output: number }> = {
-  'gpt-4o':       { input: 2.5e-6,  output: 10e-6 },
-  'gpt-4o-mini':  { input: 0.15e-6, output: 0.6e-6 },
-  'gpt-4-turbo':  { input: 10e-6,   output: 30e-6 },
-  'gpt-4':        { input: 30e-6,   output: 60e-6 },
-  'gpt-3.5':      { input: 0.5e-6,  output: 1.5e-6 },
-  'claude-opus-4':      { input: 5e-6,   output: 25e-6 },
-  'claude-sonnet-4':    { input: 3e-6,   output: 15e-6 },
-  'claude-haiku-4':     { input: 1e-6,   output: 5e-6 },
-  'claude-sonnet-4-5':  { input: 3e-6,   output: 15e-6 },
-  'claude-3-5-sonnet':  { input: 3e-6,   output: 15e-6 },
-  'claude-3-5-haiku':   { input: 1e-6,   output: 5e-6 },
-  'claude-3-opus':      { input: 15e-6,  output: 75e-6 },
-  'default':          { input: 3e-6,   output: 15e-6 },
-};
-let _activeModelKey = 'default';
-
-/** Extended Message type with optional attachments (gateway may include these) */
-interface ChatAttachmentLocal {
-  name: string;
-  mimeType: string;
-  url?: string;
-  data?: string; // base64
-}
-interface MessageWithAttachments extends Message {
-  attachments?: ChatAttachmentLocal[];
-}
-
-
-// ── DOM refs ───────────────────────────────────────────────────────────────
+// ── DOM convenience ────────────────────────────────────────────────────────
 const $ = (id: string) => document.getElementById(id);
-const dashboardView = $('dashboard-view');
-const setupView = $('setup-view');
-const manualSetupView = $('manual-setup-view');
-const installView = $('install-view');
-const chatView = $('chat-view');
-const tasksView = $('tasks-view');
-const codeView = $('code-view');
-const contentView = $('content-view');
-const mailView = $('mail-view');
-const automationsView = $('automations-view');
-const channelsView = $('channels-view');
-const researchView = $('research-view');
-const memoryView = $('memory-view');
-const skillsView = $('skills-view');
-const foundryView = $('foundry-view');
-const settingsView = $('settings-view');
-const nodesView = $('nodes-view');
-const agentsView = $('agents-view');
-const todayView = $('today-view');
-const orchestratorView = $('orchestrator-view');
-const tradingView = $('trading-view');
-const statusDot = $('status-dot');
-const statusText = $('status-text');
-const chatMessages = $('chat-messages');
-const chatEmpty = $('chat-empty');
-const chatInput = $('chat-input') as HTMLTextAreaElement | null;
-const chatSend = $('chat-send') as HTMLButtonElement | null;
-const chatSessionSelect = $('chat-session-select') as HTMLSelectElement | null;
-const chatAgentSelect = $('chat-agent-select') as HTMLSelectElement | null;
-const chatAgentName = $('chat-agent-name');
-const chatModelSelect = $('chat-model-select') as HTMLSelectElement | null;
 
-const allViews = [
-  dashboardView, setupView, manualSetupView, installView,
-  chatView, tasksView, codeView, contentView, mailView,
-  automationsView, channelsView, researchView, memoryView,
-  skillsView, foundryView, settingsView, nodesView, agentsView, todayView,
-  orchestratorView, tradingView,
-].filter(Boolean);
+// ── App-level config (persisted) ───────────────────────────────────────────
+let config: AppConfig = { configured: false };
 
-// ── Navigation ─────────────────────────────────────────────────────────────
+// ── View management ────────────────────────────────────────────────────────
 document.querySelectorAll('[data-view]').forEach((item) => {
   item.addEventListener('click', () => {
     const view = item.getAttribute('data-view');
@@ -239,34 +76,40 @@ document.querySelectorAll('[data-view]').forEach((item) => {
   });
 });
 
+const allViewIds = [
+  'dashboard-view', 'setup-view', 'manual-setup-view', 'install-view',
+  'chat-view', 'tasks-view', 'code-view', 'content-view', 'mail-view',
+  'automations-view', 'channels-view', 'research-view', 'memory-view',
+  'skills-view', 'foundry-view', 'settings-view', 'nodes-view', 'agents-view',
+  'today-view', 'orchestrator-view', 'trading-view',
+];
+
 function switchView(viewName: string) {
   if (!config.configured && viewName !== 'settings') return;
 
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.classList.toggle('active', item.getAttribute('data-view') === viewName);
   });
-  allViews.forEach((v) => v?.classList.remove('active'));
+  allViewIds.forEach((id) => $(id)?.classList.remove('active'));
 
-  const viewMap: Record<string, HTMLElement | null> = {
-    dashboard: dashboardView, chat: chatView, tasks: tasksView, code: codeView,
-    content: contentView, mail: mailView, automations: automationsView,
-    channels: channelsView, research: researchView, memory: memoryView,
-    skills: skillsView, foundry: foundryView, settings: settingsView,
-    nodes: nodesView, agents: agentsView, today: todayView,
-    orchestrator: orchestratorView, trading: tradingView,
+  const viewMap: Record<string, string> = {
+    dashboard: 'dashboard-view', chat: 'chat-view', tasks: 'tasks-view', code: 'code-view',
+    content: 'content-view', mail: 'mail-view', automations: 'automations-view',
+    channels: 'channels-view', research: 'research-view', memory: 'memory-view',
+    skills: 'skills-view', foundry: 'foundry-view', settings: 'settings-view',
+    nodes: 'nodes-view', agents: 'agents-view', today: 'today-view',
+    orchestrator: 'orchestrator-view', trading: 'trading-view',
   };
-  const target = viewMap[viewName];
-  if (target) target.classList.add('active');
+  $(viewMap[viewName] ?? '')?.classList.add('active');
 
-  // Auto-load data when switching to a data view
-  if (wsConnected) {
+  if (appState.wsConnected) {
     switch (viewName) {
       case 'dashboard': loadDashboardCron(); break;
       case 'chat': loadSessions(); populateAgentSelect(); break;
       case 'channels': loadChannels(); break;
       case 'automations': {
-        const agentsList = AgentsModule.getAgents();
-        AutomationsModule.setAgents(agentsList.map(a => ({ id: a.id, name: a.name, avatar: a.avatar })));
+        const al = AgentsModule.getAgents();
+        AutomationsModule.setAgents(al.map(a => ({ id: a.id, name: a.name, avatar: a.avatar })));
         AutomationsModule.loadCron();
         break;
       }
@@ -277,9 +120,8 @@ function switchView(viewName: string) {
       case 'nodes': NodesModule.loadNodes(); NodesModule.loadPairingRequests(); break;
       case 'memory': MemoryPalaceModule.loadMemoryPalace(); loadMemory(); break;
       case 'tasks': {
-        // Pass agents list to tasks module before loading
-        const agentsList = AgentsModule.getAgents();
-        TasksModule.setAgents(agentsList.map(a => ({ id: a.id, name: a.name, avatar: a.avatar })));
+        const al = AgentsModule.getAgents();
+        TasksModule.setAgents(al.map(a => ({ id: a.id, name: a.name, avatar: a.avatar })));
         TasksModule.loadTasks();
         break;
       }
@@ -290,12 +132,10 @@ function switchView(viewName: string) {
       default: break;
     }
   }
-  // Stop usage auto-refresh when leaving settings
   if (viewName !== 'settings') SettingsModule.stopUsageAutoRefresh();
-  // Local-only views
   switch (viewName) {
-    case 'content': loadContentDocs(); if (wsConnected) loadSpaceCron('content'); break;
-    case 'research': ResearchModule.loadResearchProjects(); if (wsConnected) loadSpaceCron('research'); break;
+    case 'content': loadContentDocs(); if (appState.wsConnected) loadSpaceCron('content'); break;
+    case 'research': ResearchModule.loadResearchProjects(); if (appState.wsConnected) loadSpaceCron('research'); break;
     case 'code': ProjectsModule.loadProjects(); break;
     default: break;
   }
@@ -303,37 +143,34 @@ function switchView(viewName: string) {
 }
 
 function showView(viewId: string) {
-  allViews.forEach((v) => v?.classList.remove('active'));
+  allViewIds.forEach((id) => $(id)?.classList.remove('active'));
   $(viewId)?.classList.add('active');
 }
 
-// ── Model selector — dynamic dropdown in chat header ───────────────────
+// ── Model selector ─────────────────────────────────────────────────────────
 async function refreshModelLabel() {
+  const chatModelSelect = $('chat-model-select') as HTMLSelectElement | null;
   if (!chatModelSelect) return;
   try {
-    const config = await pawEngine.getConfig();
-    const defaultModel = config.default_model || '';
-    const providers = config.providers ?? [];
+    const cfg = await pawEngine.getConfig();
+    const defaultModel = cfg.default_model || '';
+    const providers = cfg.providers ?? [];
     const currentVal = chatModelSelect.value;
     populateModelSelect(chatModelSelect, providers, {
       defaultLabel: 'Default Model',
       currentValue: currentVal && currentVal !== 'default' ? currentVal : 'default',
       showDefaultModel: defaultModel || undefined,
     });
-  } catch {
-    // Leave the select as-is if config fetch fails
-  }
+  } catch { /* leave as-is */ }
 }
-// Expose globally so settings can trigger a refresh after saving
 (window as unknown as Record<string, unknown>).__refreshModelLabel = refreshModelLabel;
 
-// ── Engine connection ─────────────────────────────────────────────────────
+// ── Engine connection ──────────────────────────────────────────────────────
 async function connectEngine(): Promise<boolean> {
-  // ── Engine mode: skip WebSocket entirely, connect via Tauri IPC ──
   if (isEngineMode()) {
-    console.log('[main] Engine mode — skipping WebSocket, using Tauri IPC');
+    console.log('[main] Engine mode — using Tauri IPC');
     await startEngineBridge();
-    wsConnected = true;
+    appState.wsConnected = true;
     setSettingsConnected(true);
     SettingsModule.setWsConnected(true);
     MemoryPalaceModule.setWsConnected(true);
@@ -344,21 +181,27 @@ async function connectEngine(): Promise<boolean> {
     NodesModule.setWsConnected(true);
     AutomationsModule.setWsConnected(true);
     TradingModule.setWsConnected(true);
+
+    const statusDot = $('status-dot');
+    const statusText = $('status-text');
+    const chatAgentName = $('chat-agent-name');
+    const chatAvatarEl = $('chat-avatar');
+
     statusDot?.classList.add('connected');
     statusDot?.classList.remove('error');
     if (statusText) statusText.textContent = 'Engine';
+
     const initAgent = AgentsModule.getCurrentAgent();
-    if (chatAgentName) chatAgentName.innerHTML = initAgent ? `${AgentsModule.spriteAvatar(initAgent.avatar, 20)} ${escHtml(initAgent.name)}` : `${AgentsModule.spriteAvatar('5', 20)} Paw`;
-    // Update chat avatar pic
-    const chatAvatarInit = document.getElementById('chat-avatar');
-    if (chatAvatarInit && initAgent) {
-      chatAvatarInit.innerHTML = AgentsModule.spriteAvatar(initAgent.avatar, 32);
+    if (chatAgentName) {
+      chatAgentName.innerHTML = initAgent
+        ? `${AgentsModule.spriteAvatar(initAgent.avatar, 20)} ${escHtml(initAgent.name)}`
+        : `${AgentsModule.spriteAvatar('5', 20)} Paw`;
+    }
+    if (chatAvatarEl && initAgent) {
+      chatAvatarEl.innerHTML = AgentsModule.spriteAvatar(initAgent.avatar, 32);
     }
 
-    // Show the active model in the chat header
     refreshModelLabel();
-
-    // Start Tasks cron timer & listen for task-updated events
     TasksModule.startCronTimer();
     if (listen) {
       listen<{ task_id: string; status: string }>('task-updated', (event) => {
@@ -366,43 +209,29 @@ async function connectEngine(): Promise<boolean> {
       });
     }
 
-    // Auto-setup: detect Ollama on first run and add it as a provider
     pawEngine.autoSetup().then(result => {
       if (result.action === 'ollama_added') {
         console.log(`[main] Auto-setup: ${result.message}`);
         showToast(result.message || `Ollama detected! Using model '${result.model}'.`, 'success');
-        // Refresh models settings if visible
         ModelsSettings.loadModelsSettings();
       } else if (result.action === 'none' && result.message) {
         console.log('[main] Auto-setup:', result.message);
       }
     }).catch(e => console.warn('[main] Auto-setup failed (non-fatal):', e));
 
-    // Auto-initialize Ollama for semantic memory (fire and forget)
-    // This starts Ollama if needed and pulls the embedding model
     pawEngine.ensureEmbeddingReady().then(status => {
       if (status.error) {
         console.warn('[main] Ollama embedding setup:', status.error);
       } else {
-        console.log(`[main] Ollama ready: model=${status.model_name} dims=${status.embedding_dims}` +
-          (status.was_auto_started ? ' (auto-started)' : '') +
-          (status.was_auto_pulled ? ' (model auto-pulled)' : ''));
+        console.log(`[main] Ollama ready: model=${status.model_name} dims=${status.embedding_dims}`);
       }
     }).catch(e => console.warn('[main] Ollama auto-init failed (non-fatal):', e));
 
     return true;
   }
-
-  // Engine mode is always on
-  console.warn('[main] connectEngine called but engine mode should have handled it above');
+  console.warn('[main] connectEngine: engine mode should have handled it above');
   return false;
 }
-
-// (Gateway lifecycle events removed — engine mode manages connection via Tauri IPC)
-
-// (Gateway watchdog and polling removed — engine mode manages connection via Tauri IPC)
-
-// (Gateway setup/detect/install handlers removed — engine mode auto-connects)
 
 // ── Config persistence ─────────────────────────────────────────────────────
 function loadConfigFromStorage() {
@@ -412,11 +241,9 @@ function loadConfigFromStorage() {
   }
 }
 
-// ── Settings tab switching ──────────────────────────────────────────────────
-
+// ── Settings tabs ──────────────────────────────────────────────────────────
 let _activeSettingsTab = 'general';
 
-/** Load data for whichever settings tab is currently active. */
 function loadActiveSettingsTab() {
   switch (_activeSettingsTab) {
     case 'models': ModelsSettings.loadModelsSettings(); break;
@@ -424,7 +251,7 @@ function loadActiveSettingsTab() {
     case 'sessions': SessionsSettings.loadSessionsSettings(); break;
     case 'voice': VoiceSettings.loadVoiceSettings(); break;
     case 'skills': SkillsSettings.loadSkillsSettings(); break;
-    default: break; // general + security load via existing SettingsModule
+    default: break;
   }
 }
 
@@ -436,2766 +263,23 @@ function initSettingsTabs() {
     if (!btn) return;
     const tab = btn.dataset.settingsTab;
     if (!tab || tab === _activeSettingsTab) return;
-
-    // Toggle active class
     bar.querySelectorAll('.settings-tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-
-    // Toggle panel visibility
     document.querySelectorAll('.settings-tab-panel').forEach(p => {
       (p as HTMLElement).style.display = 'none';
     });
     const panel = $(`settings-panel-${tab}`);
     if (panel) panel.style.display = '';
-
     _activeSettingsTab = tab;
     loadActiveSettingsTab();
   });
 }
 
-// (Gateway raw config editor removed — engine config managed through Settings panels)
-
-// ══════════════════════════════════════════════════════════════════════════
-// ═══ DATA VIEWS ════════════════════════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════════════════
-
-// ── Sessions / Chat ────────────────────────────────────────────────────────
-async function loadSessions(opts?: { skipHistory?: boolean }) {
-  if (!wsConnected) return;
-  try {
-    const engineSessions = await pawEngine.sessionsList(50);
-    sessions = engineSessions.map(s => ({
-      key: s.id,
-      kind: 'direct' as const,
-      label: s.label ?? undefined,
-      displayName: s.label ?? s.id,
-      updatedAt: s.updated_at ? new Date(s.updated_at).getTime() : undefined,
-      agentId: s.agent_id ?? undefined,
-    } satisfies Session)) as Session[];
-
-    // Agent-aware session selection: prefer current agent's saved session
-    const currentAgent = AgentsModule.getCurrentAgent();
-    if (!currentSessionKey && currentAgent) {
-      const savedKey = _agentSessionMap.get(currentAgent.id);
-      // Only restore if the saved session actually belongs to this agent
-      const isValidSaved = savedKey && sessions.some(s =>
-        s.key === savedKey && (
-          s.agentId === currentAgent.id ||
-          (currentAgent.id === 'default' && !s.agentId)
-        )
-      );
-      if (isValidSaved) {
-        currentSessionKey = savedKey;
-      } else {
-        // Find the most recent session belonging to this agent
-        const agentSession = sessions.find(s =>
-          s.agentId === currentAgent.id ||
-          (currentAgent.id === 'default' && !s.agentId)
-        );
-        if (agentSession) {
-          currentSessionKey = agentSession.key;
-          _agentSessionMap.set(currentAgent.id, agentSession.key);
-          _persistAgentSessionMap();
-        }
-      }
-    } else if (!currentSessionKey && sessions.length) {
-      // No agent selected: fall back to most recent session
-      currentSessionKey = sessions[0].key;
-    }
-
-    renderSessionSelect();
-    if (!opts?.skipHistory && currentSessionKey && !isLoading) await loadChatHistory(currentSessionKey);
-  } catch (e) { console.warn('Sessions load failed:', e); }
-}
-
-function renderSessionSelect() {
-  if (!chatSessionSelect) return;
-  chatSessionSelect.innerHTML = '';
-
-  // Only show sessions belonging to the current agent (or untagged sessions for 'default')
-  const currentAgent = AgentsModule.getCurrentAgent();
-  const agentSessions = currentAgent
-    ? sessions.filter(s =>
-        s.agentId === currentAgent.id ||
-        (currentAgent.id === 'default' && !s.agentId)
-      )
-    : sessions;
-
-  if (!agentSessions.length) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'No sessions — send a message to start';
-    chatSessionSelect.appendChild(opt);
-    return;
-  }
-
-  for (const s of agentSessions) {
-    const opt = document.createElement('option');
-    opt.value = s.key;
-    opt.textContent = s.label ?? s.displayName ?? s.key;
-    if (s.key === currentSessionKey) opt.selected = true;
-    chatSessionSelect.appendChild(opt);
-  }
-}
-
-chatSessionSelect?.addEventListener('change', () => {
-  const key = chatSessionSelect?.value;
-  if (key) {
-    currentSessionKey = key;
-    // Track this session for the current agent
-    const curAgent = AgentsModule.getCurrentAgent();
-    if (curAgent) {
-      _agentSessionMap.set(curAgent.id, key);
-      _persistAgentSessionMap();
-    }
-    // Reset token meter for new session
-    _sessionTokensUsed = 0;
-    _sessionInputTokens = 0;
-    _sessionOutputTokens = 0;
-    _sessionCost = 0;
-    _lastRecordedTotal = 0;
-    _compactionDismissed = false;
-    updateTokenMeter();
-    const ba1 = $('session-budget-alert');
-    if (ba1) ba1.style.display = 'none';
-    loadChatHistory(key);
-  }
-});
-
-/** Populate the agent picker dropdown in the chat header */
-function populateAgentSelect() {
-  if (!chatAgentSelect) return;
-  const agents = AgentsModule.getAgents();
-  const currentAgent = AgentsModule.getCurrentAgent();
-  chatAgentSelect.innerHTML = '';
-  for (const a of agents) {
-    const opt = document.createElement('option');
-    opt.value = a.id;
-    opt.textContent = a.name;
-    if (currentAgent && a.id === currentAgent.id) opt.selected = true;
-    chatAgentSelect.appendChild(opt);
-  }
-}
-
-/** Switch the active agent — saves current session, restores target agent's session */
-async function switchToAgent(agentId: string) {
-  // Save current agent's session before switching
-  const prevAgent = AgentsModule.getCurrentAgent();
-  if (prevAgent && currentSessionKey) {
-    _agentSessionMap.set(prevAgent.id, currentSessionKey);
-    _persistAgentSessionMap();
-  }
-
-  // Clean up any active streaming UI so it doesn't bleed into the new agent's view.
-  // The backend run continues — it just won't render into the wrong chat.
-  const streamingMsg = document.getElementById('streaming-message');
-  if (streamingMsg) streamingMsg.remove();
-  _streamingEl = null;
-
-  AgentsModule.setSelectedAgent(agentId);
-  const agent = AgentsModule.getCurrentAgent();
-  if (chatAgentName && agent) {
-    chatAgentName.innerHTML = `${AgentsModule.spriteAvatar(agent.avatar, 20)} ${escHtml(agent.name)}`;
-  }
-  // Update chat avatar pic
-  const chatAvatarEl = document.getElementById('chat-avatar');
-  if (chatAvatarEl && agent) {
-    chatAvatarEl.innerHTML = AgentsModule.spriteAvatar(agent.avatar, 32);
-  }
-  // Update dropdown selection
-  if (chatAgentSelect) chatAgentSelect.value = agentId;
-
-  // Reset token meter
-  _sessionTokensUsed = 0;
-  _sessionInputTokens = 0;
-  _sessionOutputTokens = 0;
-  _sessionCost = 0;
-  _lastRecordedTotal = 0;
-  _compactionDismissed = false;
-  updateTokenMeter();
-  const ba = $('session-budget-alert');
-  if (ba) ba.style.display = 'none';
-
-  // Restore this agent's previous session, or start fresh.
-  // Only restore if the saved session actually belongs to this agent.
-  const savedSessionKey = _agentSessionMap.get(agentId);
-  const savedSessionValid = savedSessionKey && sessions.some(s =>
-    s.key === savedSessionKey && (
-      s.agentId === agentId ||
-      (agentId === 'default' && !s.agentId)
-    )
-  );
-  if (savedSessionValid) {
-    currentSessionKey = savedSessionKey;
-    renderSessionSelect();
-    await loadChatHistory(savedSessionKey);
-    if (chatSessionSelect) chatSessionSelect.value = savedSessionKey;
-  } else {
-    // Find the most recent session for this agent
-    const agentSession = sessions.find(s =>
-      s.agentId === agentId || (agentId === 'default' && !s.agentId)
-    );
-    if (agentSession) {
-      currentSessionKey = agentSession.key;
-      _agentSessionMap.set(agentId, agentSession.key);
-      _persistAgentSessionMap();
-      renderSessionSelect();
-      await loadChatHistory(agentSession.key);
-      if (chatSessionSelect) chatSessionSelect.value = agentSession.key;
-    } else {
-      // No sessions for this agent — start a blank chat
-      currentSessionKey = null;
-      messages = [];
-      renderSessionSelect();
-      renderMessages();
-      if (chatSessionSelect) chatSessionSelect.value = '';
-    }
-  }
-
-  console.log(`[main] Switched to agent "${agent?.name}" (${agentId}), session=${currentSessionKey ?? 'new'}`);
-}
-
-// Wire agent dropdown change event
-chatAgentSelect?.addEventListener('change', () => {
-  const agentId = chatAgentSelect?.value;
-  if (agentId) switchToAgent(agentId);
-});
-
-async function loadChatHistory(sessionKey: string) {
-  if (!wsConnected) return;
-  try {
-    const stored = await pawEngine.chatHistory(sessionKey, 200);
-    messages = stored
-      .filter(m => m.role === 'user' || m.role === 'assistant')
-      .map(m => ({
-        id: m.id,
-        role: m.role as 'user' | 'assistant' | 'system',
-        content: m.content,
-        timestamp: new Date(m.created_at),
-      }));
-    renderMessages();
-  } catch (e) {
-    console.warn('Chat history load failed:', e);
-    messages = [];
-    renderMessages();
-  }
-}
-
-/** Extract readable text from Anthropic-style content blocks or plain strings */
-function extractContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return content
-      .filter((block: Record<string, unknown>) => block.type === 'text' && typeof block.text === 'string')
-      .map((block: Record<string, unknown>) => block.text as string)
-      .join('\n');
-  }
-  if (content && typeof content === 'object') {
-    const obj = content as Record<string, unknown>;
-    if (obj.type === 'text' && typeof obj.text === 'string') return obj.text;
-  }
-  if (content == null) return '';
-  return String(content);
-}
-
-
-// Chat send
-chatSend?.addEventListener('click', sendMessage);
-chatInput?.addEventListener('keydown', (e) => {
-  // If autocomplete popup is visible, handle arrow keys and enter
-  const popup = $('slash-autocomplete');
-  if (popup && popup.style.display !== 'none') {
-    if (e.key === 'Escape') { popup.style.display = 'none'; e.preventDefault(); return; }
-    if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-      const selected = popup.querySelector('.slash-ac-item.selected') as HTMLElement | null;
-      if (selected) {
-        e.preventDefault();
-        const cmd = selected.dataset.command ?? '';
-        if (chatInput) { chatInput.value = cmd + ' '; chatInput.focus(); }
-        popup.style.display = 'none';
-        return;
-      }
-    }
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const items = Array.from(popup.querySelectorAll('.slash-ac-item')) as HTMLElement[];
-      const cur = items.findIndex(el => el.classList.contains('selected'));
-      items.forEach(el => el.classList.remove('selected'));
-      const next = e.key === 'ArrowDown' ? (cur + 1) % items.length : (cur - 1 + items.length) % items.length;
-      items[next]?.classList.add('selected');
-      return;
-    }
-  }
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
-chatInput?.addEventListener('input', () => {
-  if (chatInput) {
-    chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
-
-    // Slash command autocomplete
-    const val = chatInput.value;
-    let popup = $('slash-autocomplete') as HTMLElement | null;
-    if (val.startsWith('/') && !val.includes(' ')) {
-      const suggestions = getAutocompleteSuggestions(val);
-      if (suggestions.length > 0) {
-        if (!popup) {
-          popup = document.createElement('div');
-          popup.id = 'slash-autocomplete';
-          popup.className = 'slash-autocomplete-popup';
-          chatInput.parentElement?.insertBefore(popup, chatInput);
-        }
-        popup.innerHTML = suggestions.map((s, i) =>
-          `<div class="slash-ac-item${i === 0 ? ' selected' : ''}" data-command="${s.command}">
-            <span class="slash-ac-cmd">${s.command}</span>
-            <span class="slash-ac-desc">${s.description}</span>
-          </div>`
-        ).join('');
-        popup.style.display = 'block';
-        // Click handler for items
-        popup.querySelectorAll('.slash-ac-item').forEach(item => {
-          item.addEventListener('click', () => {
-            const cmd = (item as HTMLElement).dataset.command ?? '';
-            if (chatInput) { chatInput.value = cmd + ' '; chatInput.focus(); }
-            if (popup) popup.style.display = 'none';
-          });
-        });
-      } else if (popup) {
-        popup.style.display = 'none';
-      }
-    } else if (popup) {
-      popup.style.display = 'none';
-    }
-  }
-});
-
-// ── Attachment picker ────────────────────────────────────────────────────────
-const chatAttachBtn = $('chat-attach-btn');
-const chatFileInput = $('chat-file-input') as HTMLInputElement | null;
-const chatAttachmentPreview = $('chat-attachment-preview');
-
-chatAttachBtn?.addEventListener('click', () => chatFileInput?.click());
-
-chatFileInput?.addEventListener('change', () => {
-  if (!chatFileInput.files) return;
-  for (const file of Array.from(chatFileInput.files)) {
-    _pendingAttachments.push(file);
-  }
-  chatFileInput.value = ''; // reset so same file can be re-selected
-  renderAttachmentPreview();
-});
-
-/** Get the right icon name for a file type */
-function fileTypeIcon(mimeType: string): string {
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType === 'application/pdf' || mimeType.startsWith('text/')) return 'file-text';
-  return 'file';
-}
-
-function renderAttachmentPreview() {
-  if (!chatAttachmentPreview) return;
-  if (_pendingAttachments.length === 0) {
-    chatAttachmentPreview.style.display = 'none';
-    chatAttachmentPreview.innerHTML = '';
-    return;
-  }
-  chatAttachmentPreview.style.display = 'flex';
-  chatAttachmentPreview.innerHTML = '';
-  for (let i = 0; i < _pendingAttachments.length; i++) {
-    const file = _pendingAttachments[i];
-    const chip = document.createElement('div');
-    chip.className = 'attachment-chip';
-    if (file.type.startsWith('image/')) {
-      const img = document.createElement('img');
-      img.src = URL.createObjectURL(file);
-      img.className = 'attachment-chip-thumb';
-      img.onload = () => URL.revokeObjectURL(img.src);
-      chip.appendChild(img);
-    } else {
-      const iconWrap = document.createElement('span');
-      iconWrap.className = 'attachment-chip-icon';
-      iconWrap.innerHTML = icon(fileTypeIcon(file.type));
-      chip.appendChild(iconWrap);
-    }
-    const meta = document.createElement('div');
-    meta.className = 'attachment-chip-meta';
-    const nameEl = document.createElement('span');
-    nameEl.className = 'attachment-chip-name';
-    nameEl.textContent = file.name.length > 24 ? file.name.slice(0, 21) + '...' : file.name;
-    nameEl.title = file.name;
-    meta.appendChild(nameEl);
-    const sizeEl = document.createElement('span');
-    sizeEl.className = 'attachment-chip-size';
-    sizeEl.textContent = file.size < 1024 ? `${file.size} B` : file.size < 1048576 ? `${(file.size / 1024).toFixed(1)} KB` : `${(file.size / 1048576).toFixed(1)} MB`;
-    meta.appendChild(sizeEl);
-    chip.appendChild(meta);
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'attachment-chip-remove';
-    removeBtn.innerHTML = icon('x');
-    removeBtn.title = 'Remove';
-    const idx = i;
-    removeBtn.addEventListener('click', () => {
-      _pendingAttachments.splice(idx, 1);
-      renderAttachmentPreview();
-    });
-    chip.appendChild(removeBtn);
-    chatAttachmentPreview.appendChild(chip);
-  }
-}
-
-function clearPendingAttachments() {
-  _pendingAttachments = [];
-  renderAttachmentPreview();
-}
-
-$('new-chat-btn')?.addEventListener('click', () => {
-  messages = [];
-  currentSessionKey = null;
-  // Reset token meter for new conversation
-  _sessionTokensUsed = 0;
-  _sessionInputTokens = 0;
-  _sessionOutputTokens = 0;
-  _sessionCost = 0;
-  _lastRecordedTotal = 0;
-  _compactionDismissed = false;
-  updateTokenMeter();
-  const ba2 = $('session-budget-alert');
-  if (ba2) ba2.style.display = 'none';
-  renderMessages();
-  if (chatSessionSelect) chatSessionSelect.value = '';
-});
-
-// Abort running agent
-$('chat-abort-btn')?.addEventListener('click', async () => {
-  const key = currentSessionKey ?? 'default';
-  try {
-    await pawEngine.chatAbort(key);
-    showToast('Agent stopped', 'info');
-  } catch (e) {
-    console.warn('[main] Abort failed:', e);
-  }
-  // Let the lifecycle 'end' event or timeout finalize the stream
-});
-
-// Session rename
-$('session-rename-btn')?.addEventListener('click', async () => {
-  if (!currentSessionKey || !wsConnected) return;
-  const name = await promptModal('Rename session', 'New name…');
-  if (!name) return;
-  try {
-    await pawEngine.sessionRename(currentSessionKey, name);
-    showToast('Session renamed', 'success');
-    await loadSessions();
-  } catch (e) {
-    showToast(`Rename failed: ${e instanceof Error ? e.message : e}`, 'error');
-  }
-});
-
-// Session delete
-$('session-delete-btn')?.addEventListener('click', async () => {
-  if (!currentSessionKey || !wsConnected) return;
-  if (!confirm('Delete this session? This cannot be undone.')) return;
-  try {
-    await pawEngine.sessionDelete(currentSessionKey);
-    currentSessionKey = null;
-    messages = [];
-    renderMessages();
-    showToast('Session deleted', 'success');
-    await loadSessions();
-  } catch (e) {
-    showToast(`Delete failed: ${e instanceof Error ? e.message : e}`, 'error');
-  }
-});
-
-// Session clear history (reset)
-$('session-clear-btn')?.addEventListener('click', async () => {
-  if (!currentSessionKey || !wsConnected) return;
-  if (!confirm('Clear all messages in this session? The session itself will remain.')) return;
-  try {
-    await pawEngine.sessionClear(currentSessionKey);
-    messages = [];
-    _sessionTokensUsed = 0;
-    _sessionInputTokens = 0;
-    _sessionOutputTokens = 0;
-    _sessionCost = 0;
-    _lastRecordedTotal = 0;
-    updateTokenMeter();
-    renderMessages();
-    showToast('Session history cleared', 'success');
-  } catch (e) {
-    showToast(`Clear failed: ${e instanceof Error ? e.message : e}`, 'error');
-  }
-});
-
-// Session compact (compress storage)
-$('session-compact-btn')?.addEventListener('click', async () => {
-  if (!wsConnected) return;
-  try {
-    // Engine compaction clears old messages beyond the context window
-    if (currentSessionKey) await pawEngine.sessionClear(currentSessionKey);
-    showToast('Session compacted', 'success');
-    // Reset token meter after compaction
-    _sessionTokensUsed = 0;
-    _sessionInputTokens = 0;
-    _sessionOutputTokens = 0;
-    _sessionCost = 0;
-    _lastRecordedTotal = 0;
-    _compactionDismissed = false;
-    updateTokenMeter();
-    const budgetAlert = $('session-budget-alert');
-    if (budgetAlert) budgetAlert.style.display = 'none';
-  } catch (e) {
-    showToast(`Compact failed: ${e instanceof Error ? e.message : e}`, 'error');
-  }
-});
-
-// ── Token Meter ────────────────────────────────────────────────────────────
-
-/** Update the token meter bar + label in the chat header */
-function updateTokenMeter() {
-  const meter = $('token-meter');
-  const fill = $('token-meter-fill');
-  const label = $('token-meter-label');
-  if (!meter || !fill || !label) return;
-
-  // Always show the meter so users know tracking is active
-  meter.style.display = '';
-
-  if (_sessionTokensUsed <= 0) {
-    fill.style.width = '0%';
-    fill.className = 'token-meter-fill';
-    const limit = _modelContextLimit >= 1000 ? `${(_modelContextLimit / 1000).toFixed(0)}k` : `${_modelContextLimit}`;
-    label.textContent = `0 / ${limit} tokens`;
-    meter.title = 'Token tracking active — send a message to see usage';
-    return;
-  }
-
-  const pct = Math.min((_sessionTokensUsed / _modelContextLimit) * 100, 100);
-  fill.style.width = `${pct}%`;
-
-  // Color coding: green < 60%, yellow 60-80%, red > 80%
-  if (pct >= 80) {
-    fill.className = 'token-meter-fill danger';
-  } else if (pct >= 60) {
-    fill.className = 'token-meter-fill warning';
-  } else {
-    fill.className = 'token-meter-fill';
-  }
-
-  // Label: "12.4k / 128k tokens"
-  const used = _sessionTokensUsed >= 1000 ? `${(_sessionTokensUsed / 1000).toFixed(1)}k` : `${_sessionTokensUsed}`;
-  const limit = _modelContextLimit >= 1000 ? `${(_modelContextLimit / 1000).toFixed(0)}k` : `${_modelContextLimit}`;
-  const costStr = _sessionCost > 0 ? ` · $${_sessionCost.toFixed(4)}` : '';
-  label.textContent = `${used} / ${limit} tokens${costStr}`;
-  meter.title = `Session tokens: ${_sessionTokensUsed.toLocaleString()} / ${_modelContextLimit.toLocaleString()} (In: ${_sessionInputTokens.toLocaleString()} / Out: ${_sessionOutputTokens.toLocaleString()}) — Est. cost: $${_sessionCost.toFixed(4)}`;
-
-  // Compaction warning
-  updateCompactionWarning(pct);
-}
-
-/** Show/hide compaction warning based on context fill percentage */
-function updateCompactionWarning(pct: number) {
-  const warning = $('compaction-warning');
-  if (!warning) return;
-
-  if (pct >= COMPACTION_WARN_THRESHOLD * 100 && !_compactionDismissed) {
-    warning.style.display = '';
-    const text = $('compaction-warning-text');
-    if (text) {
-      if (pct >= 95) {
-        text.textContent = `Context window ${pct.toFixed(0)}% full — messages will be compacted imminently`;
-      } else {
-        text.textContent = `Context window ${pct.toFixed(0)}% full — older messages may be compacted soon`;
-      }
-    }
-  } else {
-    warning.style.display = 'none';
-  }
-}
-
-/** Update context limit based on the confirmed model name from the API */
-function updateContextLimitFromModel(modelName: string) {
-  const lower = modelName.toLowerCase();
-  // Match against known prefixes (models often have suffixes like -preview, -latest, etc.)
-  for (const [prefix, limit] of Object.entries(_MODEL_CONTEXT_SIZES)) {
-    if (lower.includes(prefix)) {
-      if (_modelContextLimit !== limit) {
-        console.log(`[token-meter] Updated context limit: ${_modelContextLimit.toLocaleString()} → ${limit.toLocaleString()} (model: ${modelName})`);
-        _modelContextLimit = limit;
-        updateTokenMeter();
-      }
-      // Also update the active model key for cost estimation
-      _activeModelKey = prefix;
-      return;
-    }
-  }
-  console.log(`[token-meter] No context size known for model "${modelName}", keeping ${_modelContextLimit.toLocaleString()}`);
-}
-
-/** Record token usage from a chat/agent event and update the meter */
-function recordTokenUsage(usage: Record<string, unknown> | undefined) {
-  if (!usage) return;
-  // Try multiple paths — different providers nest usage differently
-  const uAny = usage as Record<string, unknown>;
-  const nested = (uAny.response as Record<string, unknown> | undefined);
-  const inner = (uAny.usage ?? nested?.usage ?? usage) as Record<string, unknown>;
-  const totalTokens = (inner.totalTokens ?? inner.total_tokens ?? inner.totalTokenCount ?? 0) as number;
-  const inputTokens = (inner.promptTokens ?? inner.prompt_tokens ?? inner.inputTokens ?? inner.input_tokens ?? inner.prompt_token_count ?? 0) as number;
-  const outputTokens = (inner.completionTokens ?? inner.completion_tokens ?? inner.outputTokens ?? inner.output_tokens ?? inner.completion_token_count ?? 0) as number;
-
-
-  if (totalTokens > 0) {
-    // input_tokens = current context size (not cumulative across turns)
-    // output_tokens = new tokens generated this turn
-    // For the context meter, input_tokens already includes all prior messages,
-    // so we SET it (not add) to show actual context window usage.
-    _sessionInputTokens = inputTokens;
-    _sessionOutputTokens += outputTokens;
-    _sessionTokensUsed = inputTokens + _sessionOutputTokens;
-    _lastRecordedTotal = _sessionTokensUsed;
-  } else if (inputTokens > 0 || outputTokens > 0) {
-    _sessionInputTokens = inputTokens;
-    _sessionOutputTokens += outputTokens;
-    _sessionTokensUsed = inputTokens + _sessionOutputTokens;
-    _lastRecordedTotal = _sessionTokensUsed;
-  }
-
-  // Estimate cost from token counts
-  const rate = _MODEL_COST_PER_TOKEN[_activeModelKey] ?? _MODEL_COST_PER_TOKEN['default'];
-  _sessionCost += inputTokens * rate.input + outputTokens * rate.output;
-
-  // Check budget after each usage recording
-  const budgetLimit = SettingsModule.getBudgetLimit();
-  if (budgetLimit != null && _sessionCost >= budgetLimit * 0.8) {
-    const budgetAlert = $('session-budget-alert');
-    if (budgetAlert) {
-      budgetAlert.style.display = '';
-      const alertText = $('session-budget-alert-text');
-      if (alertText) {
-        if (_sessionCost >= budgetLimit) {
-          alertText.textContent = `Session budget exceeded: $${_sessionCost.toFixed(4)} / $${budgetLimit.toFixed(2)}`;
-        } else {
-          alertText.textContent = `Nearing session budget: $${_sessionCost.toFixed(4)} / $${budgetLimit.toFixed(2)}`;
-        }
-      }
-    }
-  }
-
-  updateTokenMeter();
-}
-
-
-// Dismiss compaction warning
-$('compaction-warning-dismiss')?.addEventListener('click', () => {
-  _compactionDismissed = true;
-  const warning = $('compaction-warning');
-  if (warning) warning.style.display = 'none';
-});
-
-async function sendMessage() {
-  let content = chatInput?.value.trim();
-  if (!content || isLoading) return;
-
-  // ── Slash command interception ───────────────────────────────────
-  if (isSlashCommand(content)) {
-    const cmdCtx: CommandContext = {
-      sessionKey: currentSessionKey,
-      addSystemMessage: (text: string) => addMessage({ role: 'assistant', content: text, timestamp: new Date() }),
-      clearChatUI: () => { const el = $('chat-messages'); if (el) el.innerHTML = ''; messages = []; },
-      newSession: async (label?: string) => {
-        currentSessionKey = null;
-        if (label) {
-          const newId = `session_${Date.now()}`;
-          const result = await pawEngine.chatSend({ session_id: newId, message: '', model: '' });
-          if (result.session_id) {
-            currentSessionKey = result.session_id;
-            await pawEngine.sessionRename(result.session_id, label);
-          }
-        }
-      },
-      reloadSessions: () => loadSessions({ skipHistory: true }),
-      getCurrentModel: () => chatModelSelect?.value || 'default',
-    };
-    const result = await interceptSlashCommand(content, cmdCtx);
-    if (result.handled) {
-      if (chatInput) { chatInput.value = ''; chatInput.style.height = 'auto'; }
-      if (result.systemMessage) {
-        cmdCtx.addSystemMessage(result.systemMessage);
-      }
-      if (result.refreshSessions) loadSessions({ skipHistory: true }).catch(() => {});
-      if (result.preventDefault && !result.rewrittenInput) return;
-      // If rewrittenInput, continue the normal flow with the rewritten text
-      if (result.rewrittenInput) content = result.rewrittenInput;
-    }
-  }
-
-  // Convert pending File[] to attachments (matching webchat format)
-  const attachments: Array<{ type: string; mimeType: string; content: string; name?: string }> = [];
-  if (_pendingAttachments.length > 0) {
-    for (const file of _pendingAttachments) {
-      try {
-        const base64 = await fileToBase64(file);
-        const mime = file.type || (file.name?.match(/\.(txt|md|csv|json|xml|html|css|js|ts|py|rs|sh|yaml|yml|toml|log)$/i) ? 'text/plain' : 'application/octet-stream');
-        attachments.push({
-          type: mime.startsWith('image/') ? 'image' : 'file',
-          mimeType: mime,
-          content: base64,
-          name: file.name,
-        });
-      } catch (e) {
-        console.error('[Chat] Failed to encode attachment:', file.name, e);
-      }
-    }
-  }
-
-  // Add user message with attachments to UI
-  const userMsg: import('./types').Message = { role: 'user', content, timestamp: new Date() };
-  if (attachments.length > 0) {
-    (userMsg as unknown as Record<string, unknown>).attachments = attachments.map(a => ({
-      mimeType: a.mimeType,
-      data: a.content,
-    }));
-  }
-  addMessage(userMsg);
-  if (chatInput) { chatInput.value = ''; chatInput.style.height = 'auto'; }
-  clearPendingAttachments();
-  isLoading = true;
-  if (chatSend) chatSend.disabled = true;
-
-  // Prepare streaming UI
-  _streamingContent = '';
-  _streamingRunId = null;
-  _streamingAgentId = AgentsModule.getCurrentAgent()?.id ?? null;
-  showStreamingMessage();
-
-  // chat.send is async — it returns {runId, status:"started"} immediately.
-  // The actual response arrives via 'agent' events (deltas) and 'chat' events.
-  // We create a promise that resolves when the agent 'done' event fires.
-  const responsePromise = new Promise<string>((resolve) => {
-    _streamingResolve = resolve;
-    // Safety: auto-resolve after 10 min to prevent permanent hang
-    // (agent tool chains + trading can take a while)
-    _streamingTimeout = setTimeout(() => {
-      console.warn('[main] Streaming timeout — auto-finalizing');
-      resolve(_streamingContent || '(Response timed out)');
-    }, 600_000);
-  });
-
-  // Declare chatOpts outside try — Safari/WebKit has TDZ bugs with let-in-try
-  let chatOpts: {
-    model?: string;
-    thinkingLevel?: string;
-    temperature?: number;
-    attachments?: import('./types').ChatAttachment[];
-    agentProfile?: Partial<import('./types').Agent>;
-  } = {};
-
-  try {
-    const sessionKey = currentSessionKey ?? 'default';
-
-    // -- Agent Profile Injection --
-    // Priority order: slash overrides > agent > global default
-    const currentAgent = AgentsModule.getCurrentAgent();
-    if (currentAgent) {
-      // Use the agent's model as the base (if not default)
-      if (currentAgent.model && currentAgent.model !== 'default') {
-        chatOpts.model = currentAgent.model;
-      }
-      // Pass the full profile to build the system prompt in engine-bridge
-      (chatOpts as Record<string, unknown>).agentProfile = currentAgent;
-      console.log(`[main] Injecting agent profile for "${currentAgent.name}"`, currentAgent);
-    }
-    
-    // Include attachments if any
-    if (attachments.length > 0) {
-      chatOpts.attachments = attachments;
-      console.log('[main] Sending attachments:', attachments.length, 'items, first mimeType:', attachments[0]?.mimeType, 'content length:', attachments[0]?.content?.length);
-    }
-
-    // Chat model dropdown override (overrides agent profile, but slash commands still win)
-    const chatModelVal = chatModelSelect?.value;
-    if (chatModelVal && chatModelVal !== 'default') {
-      chatOpts.model = chatModelVal;
-    }
-
-    // Apply slash command session overrides (highest priority)
-    const slashOverrides = getSlashOverrides();
-    if (slashOverrides.model) chatOpts.model = slashOverrides.model;
-    if (slashOverrides.thinkingLevel) chatOpts.thinkingLevel = slashOverrides.thinkingLevel;
-    if (slashOverrides.temperature !== undefined) chatOpts.temperature = slashOverrides.temperature;
-
-    const result = await engineChatSend(sessionKey, content, {
-          ...chatOpts,
-          attachments: chatOpts.attachments as Array<{ type?: string; mimeType: string; content: string }> | undefined,
-        });
-    console.log('[main] chat.send ack:', JSON.stringify(result).slice(0, 300));
-
-    // Store the runId so we can filter events precisely
-    if (result.runId) _streamingRunId = result.runId;
-    if (result.sessionKey) {
-      currentSessionKey = result.sessionKey;
-      // Track this session for the current agent
-      const curAgent = AgentsModule.getCurrentAgent();
-      if (curAgent) {
-        _agentSessionMap.set(curAgent.id, result.sessionKey);
-        _persistAgentSessionMap();
-      }
-    }
-
-    // Try to extract usage from the send response itself
-    const sendUsage = (result as unknown as Record<string, unknown>).usage as Record<string, unknown> | undefined;
-    if (sendUsage) recordTokenUsage(sendUsage);
-
-    // Engine mode streams results via events; the ack only has run_id/session_id.
-    // If a future backend returns inline text, handle it here.
-    const resultAny = result as unknown as Record<string, unknown>;
-    const ackText = (resultAny.text as string | undefined)
-      ?? (typeof resultAny.response === 'string' ? resultAny.response as string : null)
-      ?? extractContent(resultAny.response);
-    if (ackText && _streamingResolve) {
-      console.log(`[main] chat.send ack contained response (${ackText.length} chars) — resolving`);
-      appendStreamingDelta(ackText);
-      _streamingResolve(ackText);
-      _streamingResolve = null;
-    }
-
-    // Now wait for the agent events to deliver the full response
-    const finalText = await responsePromise;
-    finalizeStreaming(finalText);
-    // Refresh session list only — don't re-load chat history since we already have
-    // the local messages array up to date from the streaming pipeline
-    loadSessions({ skipHistory: true }).catch(() => {});
-  } catch (error) {
-    console.error('Chat error:', error);
-    // Don't show raw WS errors like "connection closed" — the disconnect handler
-    // already resolved with partial content. Only finalize if not already done.
-    if (_streamingEl) {
-      const errMsg = error instanceof Error ? error.message : 'Failed to get response';
-      finalizeStreaming(_streamingContent || `Error: ${errMsg}`);
-    }
-  } finally {
-    isLoading = false;
-    _streamingRunId = null;
-    _streamingResolve = null;
-    _streamingAgentId = null;
-    if (_streamingTimeout) { clearTimeout(_streamingTimeout); _streamingTimeout = null; }
-    if (chatSend) chatSend.disabled = false;
-  }
-}
-
-/** Show an empty assistant bubble for streaming content */
-function showStreamingMessage() {
-  if (chatEmpty) chatEmpty.style.display = 'none';
-  const div = document.createElement('div');
-  div.className = 'message assistant';
-  div.id = 'streaming-message';
-  const contentEl = document.createElement('div');
-  contentEl.className = 'message-content';
-  contentEl.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
-  const time = document.createElement('div');
-  time.className = 'message-time';
-  time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  div.appendChild(contentEl);
-  div.appendChild(time);
-  chatMessages?.appendChild(div);
-  _streamingEl = contentEl;
-  // Show abort button
-  const abortBtn = $('chat-abort-btn');
-  if (abortBtn) abortBtn.style.display = '';
-  scrollToBottom();
-}
-
-/** Append a text delta to the streaming bubble */
-let _scrollRafPending = false;
-function scrollToBottom() {
-  if (_scrollRafPending || !chatMessages) return;
-  _scrollRafPending = true;
-  requestAnimationFrame(() => {
-    if (chatMessages) chatMessages.scrollTop = chatMessages.scrollHeight;
-    _scrollRafPending = false;
-  });
-}
-
-function appendStreamingDelta(text: string) {
-  _streamingContent += text;
-  if (_streamingEl) {
-    // During streaming: render markdown so user gets formatted output live
-    _streamingEl.innerHTML = formatMarkdown(_streamingContent);
-    scrollToBottom();
-  }
-}
-
-/** Finalize streaming: replace the live bubble with a permanent message */
-function finalizeStreaming(finalContent: string, toolCalls?: import('./types').ToolCall[]) {
-  // Remove the streaming element
-  $('streaming-message')?.remove();
-  _streamingEl = null;
-  const savedRunId = _streamingRunId;
-  _streamingRunId = null;
-  _streamingContent = '';
-  const streamingAgent = _streamingAgentId;
-  _streamingAgentId = null;
-  // Hide abort button
-  const abortBtn = $('chat-abort-btn');
-  if (abortBtn) abortBtn.style.display = 'none';
-
-  // If the user switched to a different agent while streaming, don't render the
-  // response into the wrong chat. The message is already persisted in the DB;
-  // it will appear when the user switches back.
-  const currentAgent = AgentsModule.getCurrentAgent();
-  if (streamingAgent && currentAgent && streamingAgent !== currentAgent.id) {
-    console.log(`[main] Streaming agent (${streamingAgent}) differs from current (${currentAgent.id}) — skipping UI render`);
-    return;
-  }
-
-  if (finalContent) {
-    addMessage({ role: 'assistant', content: finalContent, timestamp: new Date(), toolCalls });
-
-    // Auto-speak if enabled
-    autoSpeakIfEnabled(finalContent);
-
-    // Fallback token estimation: if no real usage data came through events,
-    // estimate from character count (~4 chars per token is a rough average).
-    // This ensures the token meter always shows something useful.
-    if (_sessionTokensUsed === 0 || _lastRecordedTotal === _sessionTokensUsed) {
-      const userMsg = messages.filter(m => m.role === 'user').pop();
-      const userChars = userMsg?.content?.length ?? 0;
-      const assistantChars = finalContent.length;
-      const estInput = Math.ceil(userChars / 4);
-      const estOutput = Math.ceil(assistantChars / 4);
-      _sessionInputTokens += estInput;
-      _sessionOutputTokens += estOutput;
-      _sessionTokensUsed += estInput + estOutput;
-      // Estimate cost
-      const rate = _MODEL_COST_PER_TOKEN[_activeModelKey] ?? _MODEL_COST_PER_TOKEN['default'];
-      _sessionCost += estInput * rate.input + estOutput * rate.output;
-      console.log(`[token-meter] Fallback estimate: ~${estInput + estOutput} tokens (${userChars + assistantChars} chars)`);
-      updateTokenMeter();
-    }
-  } else {
-    // No content received — try fetching the latest history from the engine
-    // to recover the response (it may have been stored even though
-    // the streaming events didn't deliver it).
-    console.warn(`[main] finalizeStreaming called with empty content (runId=${savedRunId?.slice(0,12) ?? 'null'}). Fetching history fallback...`);
-    const sk = currentSessionKey;
-    if (sk) {
-      pawEngine.chatHistory(sk, 10).then(stored => {
-        // Find the last assistant message
-        for (let i = stored.length - 1; i >= 0; i--) {
-          if (stored[i].role === 'assistant') {
-            const text = stored[i].content;
-            if (text) {
-              console.log(`[main] History fallback recovered ${text.length} chars`);
-              addMessage({ role: 'assistant', content: text, timestamp: new Date() });
-              return;
-            }
-            break;
-          }
-        }
-        console.warn('[main] History fallback: no usable assistant message found');
-        addMessage({ role: 'assistant', content: '*(No response received — the agent may not be configured or the model returned empty output)*', timestamp: new Date() });
-      }).catch(e => {
-        console.warn('[main] History fallback failed:', e);
-        addMessage({ role: 'assistant', content: '*(No response received)*', timestamp: new Date() });
-      });
-    } else {
-      addMessage({ role: 'assistant', content: '*(No response received)*', timestamp: new Date() });
-    }
-  }
-}
-
-function addMessage(message: MessageWithAttachments) {
-  messages.push(message);
-  renderMessages();
-}
-
-/** Find last index matching predicate */
-function findLastIndex<T>(arr: T[], pred: (item: T) => boolean): number {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (pred(arr[i])) return i;
-  }
-  return -1;
-}
-
-/** Retry a message: remove everything from the retried user message onward and resend */
-function retryMessage(content: string) {
-  if (isLoading || !content) return;
-  // Remove last user message + any assistant reply after it
-  const lastUserIdx = findLastIndex(messages, m => m.role === 'user');
-  if (lastUserIdx >= 0) {
-    messages.splice(lastUserIdx);
-  }
-  renderMessages();
-  // Inject content into input and send
-  if (chatInput) {
-    chatInput.value = content;
-    chatInput.style.height = 'auto';
-  }
-  sendMessage();
-}
-
-function renderMessages() {
-  if (!chatMessages) return;
-  // Remove all rendered messages (including any stale streaming bubble)
-  chatMessages.querySelectorAll('.message').forEach(m => m.remove());
-
-  if (messages.length === 0) {
-    if (chatEmpty) chatEmpty.style.display = 'flex';
-    return;
-  }
-  if (chatEmpty) chatEmpty.style.display = 'none';
-
-  // Build all nodes in a fragment to avoid repeated reflows
-  const frag = document.createDocumentFragment();
-  const lastUserIdx = findLastIndex(messages, m => m.role === 'user');
-  const lastAssistantIdx = findLastIndex(messages, m => m.role === 'assistant');
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-    const div = document.createElement('div');
-    div.className = `message ${msg.role}`;
-    const contentEl = document.createElement('div');
-    contentEl.className = 'message-content';
-    // Render markdown for assistant messages, plain text for user
-    if (msg.role === 'assistant' || msg.role === 'system') {
-      contentEl.innerHTML = formatMarkdown(msg.content);
-    } else {
-      contentEl.textContent = msg.content;
-    }
-    const time = document.createElement('div');
-    time.className = 'message-time';
-    time.textContent = msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    div.appendChild(contentEl);
-
-    // Render image attachments inline if present
-    if (msg.attachments?.length) {
-      const attachStrip = document.createElement('div');
-      attachStrip.className = 'message-attachments';
-      for (const att of msg.attachments) {
-        if (att.mimeType?.startsWith('image/')) {
-          const card = document.createElement('div');
-          card.className = 'message-attachment-card';
-          const img = document.createElement('img');
-          img.className = 'message-attachment-img';
-          img.alt = att.name || 'attachment';
-          if (att.url) {
-            img.src = att.url;
-          } else if (att.data) {
-            img.src = `data:${att.mimeType};base64,${att.data}`;
-          }
-          card.appendChild(img);
-          const overlay = document.createElement('div');
-          overlay.className = 'message-attachment-overlay';
-          overlay.innerHTML = icon('external-link');
-          card.appendChild(overlay);
-          card.addEventListener('click', () => window.open(img.src, '_blank'));
-          if (att.name) {
-            const label = document.createElement('div');
-            label.className = 'message-attachment-label';
-            label.textContent = att.name;
-            card.appendChild(label);
-          }
-          attachStrip.appendChild(card);
-        } else {
-          const docChip = document.createElement('div');
-          docChip.className = 'message-attachment-doc';
-          const iconName = att.mimeType?.startsWith('text/') || att.mimeType === 'application/pdf' ? 'file-text' : 'file';
-          docChip.innerHTML = `${icon(iconName)}<span>${att.name || 'file'}</span>`;
-          attachStrip.appendChild(docChip);
-        }
-      }
-      div.appendChild(attachStrip);
-    }
-
-    div.appendChild(time);
-
-    if (msg.toolCalls?.length) {
-      const badge = document.createElement('div');
-      badge.className = 'tool-calls-badge';
-      badge.innerHTML = `${icon('wrench')} ${msg.toolCalls.length} tool call${msg.toolCalls.length > 1 ? 's' : ''}`;
-      div.appendChild(badge);
-    }
-
-    // Retry button on the last user message, and on the last assistant message if it errored
-    const isLastUser = i === lastUserIdx;
-    const isErroredAssistant = i === lastAssistantIdx && msg.content.startsWith('Error:');
-    if ((isLastUser || isErroredAssistant) && !isLoading) {
-      const retryBtn = document.createElement('button');
-      retryBtn.className = 'message-retry-btn';
-      retryBtn.title = 'Retry';
-      retryBtn.innerHTML = `${icon('rotate-ccw')} Retry`;
-      const retryContent = isLastUser ? msg.content : (lastUserIdx >= 0 ? messages[lastUserIdx].content : '');
-      retryBtn.addEventListener('click', () => retryMessage(retryContent));
-      div.appendChild(retryBtn);
-    }
-
-    // TTS speak button on assistant messages
-    if (msg.role === 'assistant' && msg.content && !msg.content.startsWith('Error:')) {
-      const ttsBtn = document.createElement('button');
-      ttsBtn.className = 'message-tts-btn';
-      ttsBtn.title = 'Read aloud';
-      ttsBtn.innerHTML = `<span class="ms">volume_up</span>`;
-      const msgContent = msg.content;
-      ttsBtn.addEventListener('click', () => speakMessage(msgContent, ttsBtn));
-      div.appendChild(ttsBtn);
-    }
-
-    frag.appendChild(div);
-  }
-  // Insert before any streaming message, or at end
-  const streamingEl = $('streaming-message');
-  if (streamingEl) {
-    chatMessages.insertBefore(frag, streamingEl);
-  } else {
-    chatMessages.appendChild(frag);
-  }
-  scrollToBottom();
-}
-
-// ── TTS Audio Playback ─────────────────────────────────────────────────────
-let _ttsAudio: HTMLAudioElement | null = null;
-let _ttsActiveBtn: HTMLButtonElement | null = null;
-
-async function speakMessage(text: string, btn: HTMLButtonElement) {
-  // If already playing, stop
-  if (_ttsAudio && _ttsActiveBtn === btn) {
-    _ttsAudio.pause();
-    _ttsAudio = null;
-    btn.innerHTML = `<span class="ms">volume_up</span>`;
-    btn.classList.remove('tts-playing');
-    _ttsActiveBtn = null;
-    return;
-  }
-
-  // Stop any other playing audio
-  if (_ttsAudio) {
-    _ttsAudio.pause();
-    _ttsAudio = null;
-    if (_ttsActiveBtn) {
-      _ttsActiveBtn.innerHTML = `<span class="ms">volume_up</span>`;
-      _ttsActiveBtn.classList.remove('tts-playing');
-    }
-  }
-
-  btn.innerHTML = `<span class="ms">hourglass_top</span>`;
-  btn.classList.add('tts-loading');
-
-  try {
-    const base64Audio = await pawEngine.ttsSpeak(text);
-    const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-    const blob = new Blob([audioBytes], { type: 'audio/mp3' });
-    const url = URL.createObjectURL(blob);
-
-    _ttsAudio = new Audio(url);
-    _ttsActiveBtn = btn;
-
-    btn.innerHTML = `<span class="ms">stop_circle</span>`;
-    btn.classList.remove('tts-loading');
-    btn.classList.add('tts-playing');
-
-    _ttsAudio.addEventListener('ended', () => {
-      btn.innerHTML = `<span class="ms">volume_up</span>`;
-      btn.classList.remove('tts-playing');
-      URL.revokeObjectURL(url);
-      _ttsAudio = null;
-      _ttsActiveBtn = null;
-    });
-
-    _ttsAudio.addEventListener('error', () => {
-      btn.innerHTML = `<span class="ms">volume_up</span>`;
-      btn.classList.remove('tts-playing');
-      URL.revokeObjectURL(url);
-      _ttsAudio = null;
-      _ttsActiveBtn = null;
-    });
-
-    _ttsAudio.play();
-  } catch (e) {
-    console.error('[tts] Error:', e);
-    btn.innerHTML = `<span class="ms">volume_up</span>`;
-    btn.classList.remove('tts-loading', 'tts-playing');
-    const { showToast } = await import('./components/toast');
-    showToast(e instanceof Error ? e.message : 'TTS failed — check Voice settings', 'error');
-  }
-}
-
-/** Auto-speak new assistant responses if enabled in TTS config */
-async function autoSpeakIfEnabled(text: string) {
-  try {
-    const config = await pawEngine.ttsGetConfig();
-    if (!config.auto_speak) return;
-    const base64Audio = await pawEngine.ttsSpeak(text);
-    const audioBytes = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-    const blob = new Blob([audioBytes], { type: 'audio/mp3' });
-    const url = URL.createObjectURL(blob);
-    if (_ttsAudio) { _ttsAudio.pause(); }
-    _ttsAudio = new Audio(url);
-    _ttsAudio.addEventListener('ended', () => { URL.revokeObjectURL(url); _ttsAudio = null; });
-    _ttsAudio.play();
-  } catch (e) {
-    console.warn('[tts] Auto-speak failed:', e);
-  }
-}
-
-// Listen for streaming agent events — update chat bubble in real-time
-// Actual format: { runId, stream: "assistant"|"lifecycle"|"tool", data: {...}, sessionKey, seq, ts }
-function handleAgentEvent(payload: unknown): void {
-  try {
-    const evt = payload as Record<string, unknown>;
-    const stream = evt.stream as string | undefined;
-    const data = evt.data as Record<string, unknown> | undefined;
-    const runId = evt.runId as string | undefined;
-    const evtSession = evt.sessionKey as string | undefined;
-
-    // Debug: log routing state for non-delta events
-    if (stream !== 'assistant') {
-      console.log(`[main] agent evt: stream=${stream} session=${evtSession} runId=${String(runId).slice(0,12)} isLoading=${isLoading} hasStreamingEl=${!!_streamingEl} streamingRunId=${_streamingRunId?.slice(0,12) ?? 'null'}`);
-    }
-
-    // Route paw-research-* events to the Research view
-    if (evtSession && evtSession.startsWith('paw-research-')) {
-      if (!ResearchModule.isStreaming()) return;
-      if (ResearchModule.getRunId() && runId && runId !== ResearchModule.getRunId()) return;
-
-      if (stream === 'assistant' && data) {
-        const delta = data.delta as string | undefined;
-        if (delta) ResearchModule.appendDelta(delta);
-      } else if (stream === 'lifecycle' && data) {
-        const phase = data.phase as string | undefined;
-        if (phase === 'end') ResearchModule.resolveStream();
-      } else if (stream === 'tool' && data) {
-        const tool = (data.name ?? data.tool) as string | undefined;
-        const phase = data.phase as string | undefined;
-        if (phase === 'start' && tool) ResearchModule.appendDelta(`\n\n▶ ${tool}...`);
-      } else if (stream === 'error' && data) {
-        const error = (data.message ?? data.error ?? '') as string;
-        if (error) ResearchModule.appendDelta(`\n\nError: ${error}`);
-        ResearchModule.resolveStream();
-      }
-      return;
-    }
-
-    // Route background task events: only drop eng-task-* events if the user
-    // is NOT currently viewing that task session (they can chat on task sessions).
-    if (evtSession && evtSession.startsWith('eng-task-') && evtSession !== currentSessionKey) {
-      return;
-    }
-
-    // Filter: ignore other background paw-* sessions (e.g. memory)
-    if (evtSession && evtSession.startsWith('paw-')) return;
-
-    // Filter: ignore channel bridge sessions (Telegram, Discord, IRC, etc.)
-    if (evtSession && (evtSession.startsWith('eng-tg-') || evtSession.startsWith('eng-discord-') || evtSession.startsWith('eng-irc-') || evtSession.startsWith('eng-slack-') || evtSession.startsWith('eng-matrix-'))) return;
-
-    // Filter: only process during active send, and match runId if known
-    if (!isLoading && !_streamingEl) return;
-    if (_streamingRunId && runId && runId !== _streamingRunId) return;
-
-    // Filter: only display events for the current session (prevents cross-agent bleed)
-    if (evtSession && currentSessionKey && evtSession !== currentSessionKey) return;
-
-    if (stream === 'assistant' && data) {
-      // data.delta = incremental text, data.text = accumulated text so far
-      const delta = data.delta as string | undefined;
-      if (delta) {
-        appendStreamingDelta(delta);
-      }
-    } else if (stream === 'lifecycle' && data) {
-      const phase = data.phase as string | undefined;
-      if (phase === 'start') {
-        if (!_streamingRunId && runId) _streamingRunId = runId;
-        console.log(`[main] Agent run started: ${runId}`);
-      } else if (phase === 'end') {
-        console.log(`[main] Agent run ended: ${runId} content-length=${_streamingContent.length}`, data ? JSON.stringify(data).slice(0, 500) : '(no data)');
-        // Capture usage from lifecycle end event — try multiple paths
-        const dAny = data as Record<string, unknown>;
-        const dNested = (dAny.response as Record<string, unknown> | undefined);
-        const agentUsage = (dAny.usage ?? dNested?.usage ?? data) as Record<string, unknown> | undefined;
-        recordTokenUsage(agentUsage);
-        // Also try root-level usage on the event itself
-        const evtUsage = (evt as Record<string, unknown>).usage as Record<string, unknown> | undefined;
-        if (evtUsage) recordTokenUsage(evtUsage);
-
-        // Update model selector with the API-confirmed model name
-        const confirmedModel = dAny.model as string | undefined;
-        if (confirmedModel) {
-          const modelSel = document.getElementById('chat-model-select') as HTMLSelectElement | null;
-          if (modelSel) {
-            // If the confirmed model isn't in the list, add it
-            const exists = Array.from(modelSel.options).some(o => o.value === confirmedModel);
-            if (!exists) {
-              const opt = document.createElement('option');
-              opt.value = confirmedModel;
-              opt.textContent = `✓ ${confirmedModel}`;
-              modelSel.appendChild(opt);
-            }
-            // Don't force-select if user already picked a different model
-            if (modelSel.value === 'default' || modelSel.value === '') {
-              modelSel.value = confirmedModel;
-            }
-          }
-          console.log(`[main] API-confirmed model: ${confirmedModel}`);
-
-          // Update context limit from confirmed model name
-          updateContextLimitFromModel(confirmedModel);
-        }
-        if (_streamingResolve) {
-          // If we already have content from deltas, resolve immediately.
-          // Otherwise give the 'chat' final event a 3s grace period to arrive
-          // (the chat.final event carries the assembled response and may arrive
-          // slightly after the lifecycle-end event).
-          if (_streamingContent) {
-            console.log('[main] Resolving with streamed content:', _streamingContent.length, 'chars');
-            _streamingResolve(_streamingContent);
-            _streamingResolve = null;
-          } else {
-            console.log('[main] No content at lifecycle end — waiting 3s for chat.final event...');
-            const savedResolve = _streamingResolve;
-            setTimeout(() => {
-              // Only resolve if the chat.final handler hasn't already done it
-              if (_streamingResolve === savedResolve && _streamingResolve) {
-                console.warn('[main] Grace period expired — resolving with empty content');
-                _streamingResolve(_streamingContent || '');
-                _streamingResolve = null;
-              }
-            }, 3000);
-          }
-        }
-      }
-    } else if (stream === 'tool' && data) {
-      const tool = (data.name ?? data.tool) as string | undefined;
-      const phase = data.phase as string | undefined;
-      if (phase === 'start' && tool) {
-        console.log(`[main] Tool: ${tool}`);
-        if (_streamingEl) appendStreamingDelta(`\n\n▶ ${tool}...`);
-      }
-    } else if (stream === 'error' && data) {
-      const error = (data.message ?? data.error ?? '') as string;
-      console.error(`[main] Agent error: ${error}`);
-      crashLog(`agent-error: ${error}`);
-      if (error && _streamingEl) appendStreamingDelta(`\n\nError: ${error}`);
-      if (_streamingResolve) {
-        _streamingResolve(_streamingContent);
-        _streamingResolve = null;
-      }
-    }
-  } catch (e) {
-    console.warn('[main] Agent event handler error:', e);
-  }
-}
-
-// Register engine bridge (Tauri IPC) agent events
-onEngineAgent(handleAgentEvent);
-
-// (Gateway 'chat' event handler removed — engine mode delivers events through Tauri bridge)
-
-// ── Channels — Connection Hub ──────────────────────────────────────────────
-const CHANNEL_CLASSES: Record<string, string> = {
-  telegram: 'telegram',
-  discord: 'discord',
-  irc: 'irc',
-  slack: 'slack',
-  matrix: 'matrix',
-  mattermost: 'mattermost',
-  nextcloud: 'nextcloud',
-  nostr: 'nostr',
-  twitch: 'twitch',
-};
-
-// ── Channel Setup Definitions ──────────────────────────────────────────────
-interface ChannelField {
-  key: string;
-  label: string;
-  type: 'text' | 'password' | 'select' | 'toggle';
-  placeholder?: string;
-  hint?: string;
-  required?: boolean;
-  options?: { value: string; label: string }[];
-  defaultValue?: string | boolean;
-  sensitive?: boolean;
-}
-
-interface ChannelSetupDef {
-  id: string;
-  name: string;
-  icon: string;
-  description: string;
-  fields: ChannelField[];
-  /** Build the config patch from form values */
-  buildConfig: (values: Record<string, string | boolean>) => Record<string, unknown>;
-}
-
-const CHANNEL_SETUPS: ChannelSetupDef[] = [
-  {
-    id: 'telegram',
-    name: 'Telegram',
-    icon: 'TG',
-    description: 'Connect your agent to Telegram via a Bot token from @BotFather. No gateway or public URL needed — uses long polling.',
-    fields: [
-      { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11', hint: 'Get this from @BotFather on Telegram', required: true, sensitive: true },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'pairing', label: 'Pairing (new users must be approved)' },
-        { value: 'allowlist', label: 'Allowlist only (pre-approved IDs)' },
-        { value: 'open', label: 'Open (anyone can message)' },
-      ], defaultValue: 'pairing' },
-      { key: 'allowFrom', label: 'Allowed User IDs', type: 'text', placeholder: '123456789, 987654321', hint: 'Telegram user IDs (numbers), comma-separated. Leave blank for pairing mode.' },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '', hint: 'Use a specific agent config. Leave blank for default.' },
-    ],
-    buildConfig: (v) => ({ bot_token: v.botToken as string, enabled: true, dm_policy: v.dmPolicy as string || 'pairing' }),
-  },
-  {
-    id: 'discord',
-    name: 'Discord',
-    icon: 'DC',
-    description: 'Connect to Discord via the Bot Gateway (outbound WebSocket). Create a bot at discord.com/developers → New Application → Bot → Copy Token.',
-    fields: [
-      { key: 'botToken', label: 'Bot Token', type: 'password', placeholder: 'MTIzNDU2Nzg5MA.XXXXXX.XXXXXXXX', hint: 'Discord Developer Portal → Bot → Reset Token', required: true, sensitive: true },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'pairing', label: 'Pairing (new users must be approved)' },
-        { value: 'allowlist', label: 'Allowlist only' },
-        { value: 'open', label: 'Open (anyone can DM)' },
-      ], defaultValue: 'pairing' },
-      { key: 'respondToMentions', label: 'Respond to @mentions in servers', type: 'toggle', defaultValue: true },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ bot_token: v.botToken as string, enabled: true, dm_policy: v.dmPolicy as string || 'pairing', respond_to_mentions: v.respondToMentions !== false }),
-  },
-  {
-    id: 'irc',
-    name: 'IRC',
-    icon: 'IRC',
-    description: 'Connect to any IRC server via outbound TCP/TLS. The simplest chat protocol — text-based, no special API.',
-    fields: [
-      { key: 'server', label: 'Server', type: 'text', placeholder: 'irc.libera.chat', required: true },
-      { key: 'port', label: 'Port', type: 'text', placeholder: '6697', defaultValue: '6697' },
-      { key: 'tls', label: 'Use TLS', type: 'toggle', defaultValue: true },
-      { key: 'nick', label: 'Nickname', type: 'text', placeholder: 'paw-bot', required: true },
-      { key: 'password', label: 'Server Password (optional)', type: 'password', placeholder: '' },
-      { key: 'channels', label: 'Channels to Join', type: 'text', placeholder: '#general, #paw', hint: 'Comma-separated channel names' },
-    ],
-    buildConfig: (v) => ({ server: v.server as string, port: parseInt(v.port as string) || 6697, tls: v.tls !== false, nick: v.nick as string, enabled: true, dm_policy: 'pairing' }),
-  },
-  {
-    id: 'slack',
-    name: 'Slack',
-    icon: 'SL',
-    description: 'Connect to Slack via Socket Mode (outbound WebSocket). Create an app at api.slack.com → Enable Socket Mode → get Bot + App tokens.',
-    fields: [
-      { key: 'botToken', label: 'Bot Token (xoxb-...)', type: 'password', placeholder: 'xoxb-...', hint: 'OAuth & Permissions → Bot User OAuth Token', required: true, sensitive: true },
-      { key: 'appToken', label: 'App Token (xapp-...)', type: 'password', placeholder: 'xapp-...', hint: 'Basic Information → App-Level Tokens (connections:write scope)', required: true, sensitive: true },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'pairing', label: 'Pairing (new users must be approved)' },
-        { value: 'allowlist', label: 'Allowlist only' },
-        { value: 'open', label: 'Open (anyone can DM)' },
-      ], defaultValue: 'pairing' },
-      { key: 'respondToMentions', label: 'Respond to @mentions in channels', type: 'toggle', defaultValue: true },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ bot_token: v.botToken as string, app_token: v.appToken as string, enabled: true, dm_policy: v.dmPolicy as string || 'pairing', respond_to_mentions: v.respondToMentions !== false }),
-  },
-  {
-    id: 'matrix',
-    name: 'Matrix',
-    icon: 'MX',
-    description: 'Connect to any Matrix homeserver via the Client-Server API (HTTP long-polling). Works with matrix.org, Synapse, Dendrite, etc.',
-    fields: [
-      { key: 'homeserver', label: 'Homeserver URL', type: 'text', placeholder: 'https://matrix.org', required: true },
-      { key: 'accessToken', label: 'Access Token', type: 'password', placeholder: 'syt_...', hint: 'Element → Settings → Help & About → Access Token, or use a bot account', required: true, sensitive: true },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'pairing', label: 'Pairing (new users must be approved)' },
-        { value: 'allowlist', label: 'Allowlist only' },
-        { value: 'open', label: 'Open (anyone can DM)' },
-      ], defaultValue: 'pairing' },
-      { key: 'respondInRooms', label: 'Respond in group rooms (when mentioned)', type: 'toggle', defaultValue: false },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ homeserver: v.homeserver as string, access_token: v.accessToken as string, enabled: true, dm_policy: v.dmPolicy as string || 'pairing', respond_in_rooms: !!v.respondInRooms }),
-  },
-  {
-    id: 'mattermost',
-    name: 'Mattermost',
-    icon: 'MM',
-    description: 'Connect to a Mattermost server via WebSocket + REST API. Use a Personal Access Token or Bot Account token.',
-    fields: [
-      { key: 'serverUrl', label: 'Server URL', type: 'text', placeholder: 'https://chat.example.com', required: true },
-      { key: 'token', label: 'Access Token', type: 'password', placeholder: '', hint: 'Mattermost → Settings → Security → Personal Access Tokens, or Integrations → Bot Accounts', required: true, sensitive: true },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'pairing', label: 'Pairing (new users must be approved)' },
-        { value: 'allowlist', label: 'Allowlist only' },
-        { value: 'open', label: 'Open (anyone can DM)' },
-      ], defaultValue: 'pairing' },
-      { key: 'respondToMentions', label: 'Respond to @mentions in channels', type: 'toggle', defaultValue: true },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ server_url: v.serverUrl as string, token: v.token as string, enabled: true, dm_policy: v.dmPolicy as string || 'pairing', respond_to_mentions: v.respondToMentions !== false }),
-  },
-  {
-    id: 'nextcloud',
-    name: 'Nextcloud Talk',
-    icon: 'NC',
-    description: 'Connect to Nextcloud Talk via HTTP polling. Uses Basic Auth with an app password.',
-    fields: [
-      { key: 'serverUrl', label: 'Nextcloud URL', type: 'text', placeholder: 'https://cloud.example.com', required: true },
-      { key: 'username', label: 'Username', type: 'text', placeholder: 'paw-bot', required: true },
-      { key: 'password', label: 'App Password', type: 'password', placeholder: '', hint: 'Nextcloud → Settings → Security → Create App Password', required: true, sensitive: true },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'pairing', label: 'Pairing (new users must be approved)' },
-        { value: 'allowlist', label: 'Allowlist only' },
-        { value: 'open', label: 'Open (anyone can message)' },
-      ], defaultValue: 'pairing' },
-      { key: 'respondInGroups', label: 'Respond in group conversations', type: 'toggle', defaultValue: false },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ server_url: v.serverUrl as string, username: v.username as string, password: v.password as string, enabled: true, dm_policy: v.dmPolicy as string || 'pairing', respond_in_groups: !!v.respondInGroups }),
-  },
-  {
-    id: 'nostr',
-    name: 'Nostr',
-    icon: 'NS',
-    description: 'Connect to the Nostr network via relay WebSockets. The bot listens for mentions and replies with signed kind-1 notes.',
-    fields: [
-      { key: 'privateKeyHex', label: 'Private Key (hex)', type: 'password', placeholder: '64 hex characters', hint: 'Your Nostr private key in hex format (not nsec). Keep this secret!', required: true, sensitive: true },
-      { key: 'relays', label: 'Relay URLs', type: 'text', placeholder: 'wss://relay.damus.io, wss://nos.lol', hint: 'Comma-separated relay WebSocket URLs', defaultValue: 'wss://relay.damus.io, wss://nos.lol' },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'open', label: 'Open (respond to all mentions)' },
-        { value: 'allowlist', label: 'Allowlist only (by pubkey)' },
-        { value: 'pairing', label: 'Pairing (approve first-time users)' },
-      ], defaultValue: 'open' },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ private_key_hex: v.privateKeyHex as string, relays: (v.relays as string || '').split(',').map(s => s.trim()).filter(Boolean), enabled: true, dm_policy: v.dmPolicy as string || 'open' }),
-  },
-  {
-    id: 'twitch',
-    name: 'Twitch',
-    icon: 'TW',
-    description: 'Connect to Twitch chat via IRC-over-WebSocket. Get an OAuth token from dev.twitch.tv or twitchapps.com/tmi/.',
-    fields: [
-      { key: 'oauthToken', label: 'OAuth Token', type: 'password', placeholder: 'oauth:xxxxxxxxxxxxx', hint: 'Get from dev.twitch.tv or twitchapps.com/tmi/', required: true, sensitive: true },
-      { key: 'botUsername', label: 'Bot Username', type: 'text', placeholder: 'my_paw_bot', hint: 'Twitch username for the bot account', required: true },
-      { key: 'channels', label: 'Channels to Join', type: 'text', placeholder: '#mychannel, #friend', hint: 'Comma-separated Twitch channel names', required: true },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'open', label: 'Open (respond to all)' },
-        { value: 'allowlist', label: 'Allowlist only' },
-        { value: 'pairing', label: 'Pairing (approve first-time users)' },
-      ], defaultValue: 'open' },
-      { key: 'requireMention', label: 'Only respond when @mentioned', type: 'toggle', defaultValue: true },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ oauth_token: v.oauthToken as string, bot_username: v.botUsername as string, channels_to_join: (v.channels as string || '').split(',').map(s => s.trim()).filter(Boolean), enabled: true, dm_policy: v.dmPolicy as string || 'open', require_mention: v.requireMention !== false }),
-  },
-  {
-    id: 'webchat',
-    name: 'Web Chat',
-    icon: '🌐',
-    description: 'Share a link so friends can chat with your agent from their browser. No accounts needed — just a URL and access token.',
-    fields: [
-      { key: 'port', label: 'Port', type: 'text', placeholder: '3939', defaultValue: '3939' },
-      { key: 'bindAddress', label: 'Bind Address', type: 'select', options: [
-        { value: '0.0.0.0', label: '0.0.0.0 (LAN accessible)' },
-        { value: '127.0.0.1', label: '127.0.0.1 (localhost only)' },
-      ], defaultValue: '0.0.0.0' },
-      { key: 'accessToken', label: 'Access Token', type: 'text', placeholder: 'Auto-generated if empty', hint: 'Share this token with friends so they can connect' },
-      { key: 'pageTitle', label: 'Page Title', type: 'text', placeholder: 'Paw Chat', defaultValue: 'Paw Chat' },
-      { key: 'dmPolicy', label: 'Access Policy', type: 'select', options: [
-        { value: 'open', label: 'Open (anyone with the link + token)' },
-        { value: 'pairing', label: 'Pairing (approve first-time users)' },
-        { value: 'allowlist', label: 'Allowlist only' },
-      ], defaultValue: 'open' },
-      { key: 'agentId', label: 'Agent ID (optional)', type: 'text', placeholder: '' },
-    ],
-    buildConfig: (v) => ({ port: parseInt(v.port as string) || 3939, bind_address: v.bindAddress as string || '0.0.0.0', access_token: v.accessToken as string || '', page_title: v.pageTitle as string || 'Paw Chat', enabled: true, dm_policy: v.dmPolicy as string || 'open' }),
-  },
-];
-
-let _channelSetupType: string | null = null;
-
-async function openChannelSetup(channelType: string) {
-  const def = CHANNEL_SETUPS.find(c => c.id === channelType);
-  if (!def) return;
-  _channelSetupType = channelType;
-
-  const title = $('channel-setup-title');
-  const body = $('channel-setup-body');
-  const modal = $('channel-setup-modal');
-  if (!title || !body || !modal) return;
-
-  title.textContent = `Set Up ${def.name}`;
-
-  // Try to load existing config to pre-populate fields
-  let existingValues: Record<string, string> = {};
-  try {
-    if (channelType === 'telegram') {
-      const cfg = await pawEngine.telegramGetConfig();
-      if (cfg.bot_token) existingValues['botToken'] = cfg.bot_token;
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.allowed_users?.length) existingValues['allowFrom'] = cfg.allowed_users.join(', ');
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    } else if (channelType === 'discord') {
-      const cfg = await pawEngine.discordGetConfig();
-      if (cfg.bot_token) existingValues['botToken'] = cfg.bot_token;
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    } else if (channelType === 'irc') {
-      const cfg = await pawEngine.ircGetConfig();
-      if (cfg.server) existingValues['server'] = cfg.server;
-      if (cfg.port) existingValues['port'] = String(cfg.port);
-      if (cfg.nick) existingValues['nick'] = cfg.nick;
-      if (cfg.password) existingValues['password'] = cfg.password;
-      if (cfg.channels_to_join?.length) existingValues['channels'] = cfg.channels_to_join.join(', ');
-    } else if (channelType === 'slack') {
-      const cfg = await pawEngine.slackGetConfig();
-      if (cfg.bot_token) existingValues['botToken'] = cfg.bot_token;
-      if (cfg.app_token) existingValues['appToken'] = cfg.app_token;
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    } else if (channelType === 'matrix') {
-      const cfg = await pawEngine.matrixGetConfig();
-      if (cfg.homeserver) existingValues['homeserver'] = cfg.homeserver;
-      if (cfg.access_token) existingValues['accessToken'] = cfg.access_token;
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    } else if (channelType === 'mattermost') {
-      const cfg = await pawEngine.mattermostGetConfig();
-      if (cfg.server_url) existingValues['serverUrl'] = cfg.server_url;
-      if (cfg.token) existingValues['token'] = cfg.token;
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    } else if (channelType === 'nextcloud') {
-      const cfg = await pawEngine.nextcloudGetConfig();
-      if (cfg.server_url) existingValues['serverUrl'] = cfg.server_url;
-      if (cfg.username) existingValues['username'] = cfg.username;
-      if (cfg.password) existingValues['password'] = cfg.password;
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    } else if (channelType === 'nostr') {
-      const cfg = await pawEngine.nostrGetConfig();
-      if (cfg.private_key_hex) existingValues['privateKeyHex'] = cfg.private_key_hex;
-      if (cfg.relays?.length) existingValues['relays'] = cfg.relays.join(', ');
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    } else if (channelType === 'twitch') {
-      const cfg = await pawEngine.twitchGetConfig();
-      if (cfg.oauth_token) existingValues['oauthToken'] = cfg.oauth_token;
-      if (cfg.bot_username) existingValues['botUsername'] = cfg.bot_username;
-      if (cfg.channels_to_join?.length) existingValues['channels'] = cfg.channels_to_join.join(', ');
-      if (cfg.dm_policy) existingValues['dmPolicy'] = cfg.dm_policy;
-      if (cfg.agent_id) existingValues['agentId'] = cfg.agent_id;
-    }
-  } catch { /* no existing config */ }
-
-  let html = `<p class="channel-setup-desc">${escHtml(def.description)}</p>`;
-  for (const field of def.fields) {
-    html += `<div class="form-group">`;
-    html += `<label class="form-label" for="ch-field-${field.key}">${escHtml(field.label)}${field.required ? ' <span class="required">*</span>' : ''}</label>`;
-
-    // Use existing value if available, otherwise default
-    const existVal = existingValues[field.key];
-
-    if (field.type === 'select' && field.options) {
-      html += `<select class="form-input" id="ch-field-${field.key}" data-ch-field="${field.key}">`;
-      for (const opt of field.options) {
-        const selVal = existVal ?? (field.defaultValue ?? '');
-        const sel = opt.value === selVal ? ' selected' : '';
-        html += `<option value="${escAttr(opt.value)}"${sel}>${escHtml(opt.label)}</option>`;
-      }
-      html += `</select>`;
-    } else if (field.type === 'toggle') {
-      const checked = field.defaultValue ? ' checked' : '';
-      html += `<label class="toggle-label"><input type="checkbox" id="ch-field-${field.key}" data-ch-field="${field.key}"${checked}> Enabled</label>`;
-    } else {
-      const inputType = field.type === 'password' ? 'password' : 'text';
-      const populateVal = existVal ?? (typeof field.defaultValue === 'string' ? field.defaultValue : '');
-      const val = populateVal ? ` value="${escAttr(populateVal)}"` : '';
-      html += `<input class="form-input" id="ch-field-${field.key}" data-ch-field="${field.key}" type="${inputType}" placeholder="${escAttr(field.placeholder ?? '')}"${val}>`;
-    }
-
-    if (field.hint) {
-      html += `<div class="form-hint">${escHtml(field.hint)}</div>`;
-    }
-    html += `</div>`;
-  }
-
-  body.innerHTML = html;
-  modal.style.display = '';
-}
-
-function closeChannelSetup() {
-  const modal = $('channel-setup-modal');
-  if (modal) modal.style.display = 'none';
-  _channelSetupType = null;
-}
-
-async function saveChannelSetup() {
-  console.log('[mail-debug] saveChannelSetup called, _channelSetupType=', _channelSetupType, 'mailType=', MailModule.getChannelSetupType());
-  // Mail IMAP setup is handled by the mail module — check BEFORE the null guard
-  if (_channelSetupType === '__mail_imap__' || MailModule.getChannelSetupType() === '__mail_imap__') {
-    console.log('[mail-debug] Routing to MailModule.saveMailImapSetup()');
-    await MailModule.saveMailImapSetup();
-    MailModule.clearChannelSetupType();
-    _channelSetupType = null;
-    return;
-  }
-
-  if (!_channelSetupType) return;
-
-  // ── Telegram (engine-native) ─────────────────────────────────────
-  if (_channelSetupType === 'telegram') {
-    const saveBtn = $('channel-setup-save') as HTMLButtonElement | null;
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
-
-    try {
-      const botToken = ($('ch-field-botToken') as HTMLInputElement)?.value?.trim() ?? '';
-      const dmPolicy = ($('ch-field-dmPolicy') as HTMLSelectElement)?.value ?? 'pairing';
-      const allowFrom = ($('ch-field-allowFrom') as HTMLInputElement)?.value?.trim() ?? '';
-      const agentId = ($('ch-field-agentId') as HTMLInputElement)?.value?.trim() ?? '';
-
-      if (!botToken) {
-        showToast('Bot token is required', 'error');
-        if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & Connect'; }
-        return;
-      }
-
-      // Load existing config to preserve allowed users
-      let existing;
-      try { existing = await pawEngine.telegramGetConfig(); } catch { existing = null; }
-
-      const allowedUsers = allowFrom
-        ? allowFrom.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n))
-        : (existing?.allowed_users ?? []);
-
-      const config = {
-        bot_token: botToken,
-        enabled: true,
-        dm_policy: dmPolicy,
-        allowed_users: allowedUsers,
-        pending_users: existing?.pending_users ?? [],
-        agent_id: agentId || undefined,
-      };
-
-      await pawEngine.telegramSetConfig(config);
-      showToast('Telegram configured!', 'success');
-      closeChannelSetup();
-
-      // Auto-start the bridge
-      try {
-        await pawEngine.telegramStart();
-        showToast('Telegram bridge started', 'success');
-      } catch (e) {
-        console.warn('Auto-start failed:', e);
-      }
-
-      setTimeout(() => loadChannels(), 1000);
-    } catch (e) {
-      showToast(`Failed to save: ${e instanceof Error ? e.message : e}`, 'error');
-    } finally {
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & Connect'; }
-    }
-    return;
-  }
-
-  // ── Generic channel save (Discord, IRC, Slack, Matrix, etc.) ──────
-  const _chDef = CHANNEL_SETUPS.find(c => c.id === _channelSetupType);
-  if (_chDef) {
-    const saveBtn = $('channel-setup-save') as HTMLButtonElement | null;
-    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving...'; }
-
-    try {
-      // Gather form values
-      const values: Record<string, string | boolean> = {};
-      for (const field of _chDef.fields) {
-        const el = $(`ch-field-${field.key}`);
-        if (!el) continue;
-        if (field.type === 'toggle') {
-          values[field.key] = (el as HTMLInputElement).checked;
-        } else {
-          values[field.key] = ((el as HTMLInputElement).value ?? '').trim();
-        }
-      }
-
-      // Check required fields
-      for (const field of _chDef.fields) {
-        if (field.required && !values[field.key]) {
-          showToast(`${field.label} is required`, 'error');
-          if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & Connect'; }
-          return;
-        }
-      }
-
-      // Build config from the definition's buildConfig function
-      const configPatch = _chDef.buildConfig(values);
-
-      // Load existing config to preserve allowed/pending users
-      const channelType = _channelSetupType;
-      const existingConfig = await _getChannelConfig(channelType);
-      const finalConfig: Record<string, unknown> = {
-        ...existingConfig,
-        ...configPatch,
-        enabled: true,
-        allowed_users: existingConfig?.allowed_users ?? [],
-        pending_users: existingConfig?.pending_users ?? [],
-      };
-      if (values['agentId']) finalConfig.agent_id = values['agentId'] as string;
-
-      await _setChannelConfig(channelType, finalConfig);
-      showToast(`${_chDef.name} configured!`, 'success');
-      closeChannelSetup();
-
-      // Auto-start the bridge
-      try {
-        await _startChannel(channelType);
-        showToast(`${_chDef.name} bridge started`, 'success');
-      } catch (e) {
-        console.warn('Auto-start failed:', e);
-      }
-
-      setTimeout(() => loadChannels(), 1000);
-    } catch (e) {
-      showToast(`Failed to save: ${e instanceof Error ? e.message : e}`, 'error');
-    } finally {
-      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save & Connect'; }
-    }
-    return;
-  }
-
-  showToast(`Unknown channel type: ${_channelSetupType}`, 'error');
-}
-
-// ── Channel Operation Helpers ──────────────────────────────────────────
-
-async function _getChannelConfig(ch: string): Promise<Record<string, unknown> | null> {
-  try {
-    switch (ch) {
-      case 'discord': return await pawEngine.discordGetConfig() as unknown as Record<string, unknown>;
-      case 'irc': return await pawEngine.ircGetConfig() as unknown as Record<string, unknown>;
-      case 'slack': return await pawEngine.slackGetConfig() as unknown as Record<string, unknown>;
-      case 'matrix': return await pawEngine.matrixGetConfig() as unknown as Record<string, unknown>;
-      case 'mattermost': return await pawEngine.mattermostGetConfig() as unknown as Record<string, unknown>;
-      case 'nextcloud': return await pawEngine.nextcloudGetConfig() as unknown as Record<string, unknown>;
-      case 'nostr': return await pawEngine.nostrGetConfig() as unknown as Record<string, unknown>;
-      case 'twitch': return await pawEngine.twitchGetConfig() as unknown as Record<string, unknown>;
-      default: return null;
-    }
-  } catch { return null; }
-}
-
-async function _setChannelConfig(ch: string, config: Record<string, unknown>): Promise<void> {
-  switch (ch) {
-    case 'discord': return pawEngine.discordSetConfig(config as any);
-    case 'irc': return pawEngine.ircSetConfig(config as any);
-    case 'slack': return pawEngine.slackSetConfig(config as any);
-    case 'matrix': return pawEngine.matrixSetConfig(config as any);
-    case 'mattermost': return pawEngine.mattermostSetConfig(config as any);
-    case 'nextcloud': return pawEngine.nextcloudSetConfig(config as any);
-    case 'nostr': return pawEngine.nostrSetConfig(config as any);
-    case 'twitch': return pawEngine.twitchSetConfig(config as any);
-  }
-}
-
-async function _startChannel(ch: string): Promise<void> {
-  switch (ch) {
-    case 'discord': return pawEngine.discordStart();
-    case 'irc': return pawEngine.ircStart();
-    case 'slack': return pawEngine.slackStart();
-    case 'matrix': return pawEngine.matrixStart();
-    case 'mattermost': return pawEngine.mattermostStart();
-    case 'nextcloud': return pawEngine.nextcloudStart();
-    case 'nostr': return pawEngine.nostrStart();
-    case 'twitch': return pawEngine.twitchStart();
-  }
-}
-
-async function _stopChannel(ch: string): Promise<void> {
-  switch (ch) {
-    case 'discord': return pawEngine.discordStop();
-    case 'irc': return pawEngine.ircStop();
-    case 'slack': return pawEngine.slackStop();
-    case 'matrix': return pawEngine.matrixStop();
-    case 'mattermost': return pawEngine.mattermostStop();
-    case 'nextcloud': return pawEngine.nextcloudStop();
-    case 'nostr': return pawEngine.nostrStop();
-    case 'twitch': return pawEngine.twitchStop();
-  }
-}
-
-async function _getChannelStatus(ch: string): Promise<import('./engine').ChannelStatus | null> {
-  try {
-    switch (ch) {
-      case 'discord': return await pawEngine.discordStatus();
-      case 'irc': return await pawEngine.ircStatus();
-      case 'slack': return await pawEngine.slackStatus();
-      case 'matrix': return await pawEngine.matrixStatus();
-      case 'mattermost': return await pawEngine.mattermostStatus();
-      case 'nextcloud': return await pawEngine.nextcloudStatus();
-      case 'nostr': return await pawEngine.nostrStatus();
-      case 'twitch': return await pawEngine.twitchStatus();
-      default: return null;
-    }
-  } catch { return null; }
-}
-
-async function _approveChannelUser(ch: string, userId: string): Promise<void> {
-  switch (ch) {
-    case 'discord': return pawEngine.discordApproveUser(userId);
-    case 'irc': return pawEngine.ircApproveUser(userId);
-    case 'slack': return pawEngine.slackApproveUser(userId);
-    case 'matrix': return pawEngine.matrixApproveUser(userId);
-    case 'mattermost': return pawEngine.mattermostApproveUser(userId);
-    case 'nextcloud': return pawEngine.nextcloudApproveUser(userId);
-    case 'nostr': return pawEngine.nostrApproveUser(userId);
-    case 'twitch': return pawEngine.twitchApproveUser(userId);
-  }
-}
-
-async function _denyChannelUser(ch: string, userId: string): Promise<void> {
-  switch (ch) {
-    case 'discord': return pawEngine.discordDenyUser(userId);
-    case 'irc': return pawEngine.ircDenyUser(userId);
-    case 'slack': return pawEngine.slackDenyUser(userId);
-    case 'matrix': return pawEngine.matrixDenyUser(userId);
-    case 'mattermost': return pawEngine.mattermostDenyUser(userId);
-    case 'nextcloud': return pawEngine.nextcloudDenyUser(userId);
-    case 'nostr': return pawEngine.nostrDenyUser(userId);
-    case 'twitch': return pawEngine.twitchDenyUser(userId);
-  }
-}
-
-// Wire up channel setup UI
-$('channel-setup-close')?.addEventListener('click', closeChannelSetup);
-$('channel-setup-cancel')?.addEventListener('click', closeChannelSetup);
-const _saveBtn = $('channel-setup-save');
-console.log('[mail-debug] Binding save button, element found:', !!_saveBtn);
-_saveBtn?.addEventListener('click', saveChannelSetup);
-$('channel-setup-modal')?.addEventListener('click', (e) => {
-  if ((e.target as HTMLElement).id === 'channel-setup-modal') closeChannelSetup();
-});
-
-// "Add Channel" button in header opens a picker
-$('add-channel-btn')?.addEventListener('click', () => {
-  // If there are no channels shown, the empty-state picker is already visible.
-  // Otherwise, show a quick-pick via the setup modal with channel selection.
-  const body = $('channel-setup-body');
-  const title = $('channel-setup-title');
-  const modal = $('channel-setup-modal');
-  const footer = $('channel-setup-save') as HTMLButtonElement | null;
-  if (!body || !title || !modal) return;
-
-  _channelSetupType = null;
-  title.textContent = 'Add Channel';
-  if (footer) footer.style.display = 'none';
-
-  let html = '<div class="channel-picker-grid">';
-  for (const def of CHANNEL_SETUPS) {
-    html += `<button class="channel-pick-btn" data-ch-pick="${def.id}">
-      <span class="channel-pick-icon ${CHANNEL_CLASSES[def.id] ?? 'default'}">${def.icon}</span>
-      <span>${escHtml(def.name)}</span>
-    </button>`;
-  }
-  html += '</div>';
-  body.innerHTML = html;
-
-  // Wire picks
-  body.querySelectorAll('[data-ch-pick]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (footer) footer.style.display = '';
-      openChannelSetup((btn as HTMLElement).dataset.chPick!);
-    });
-  });
-
-  modal.style.display = '';
-});
-
-// Wire empty-state channel picker buttons
-document.querySelectorAll('#channels-picker-empty .channel-pick-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const chType = (btn as HTMLElement).dataset.chType;
-    if (chType) openChannelSetup(chType);
-  });
-});
-
-async function loadChannels() {
-  const list = $('channels-list');
-  const empty = $('channels-empty');
-  const loading = $('channels-loading');
-  if (!list) return;
-
-  if (loading) loading.style.display = '';
-  if (empty) empty.style.display = 'none';
-  list.innerHTML = '';
-
-  try {
-    let anyConfigured = false;
-
-    // ── Telegram (special — uses i64 user IDs) ──────────────────────
-    try {
-      const tgStatus = await pawEngine.telegramStatus();
-      const tgConfig = await pawEngine.telegramGetConfig();
-      const tgConfigured = !!tgConfig.bot_token;
-      if (tgConfigured) {
-        anyConfigured = true;
-        const tgConnected = tgStatus.running && tgStatus.connected;
-        const cardId = 'ch-telegram';
-        const tgCard = document.createElement('div');
-        tgCard.className = 'channel-card';
-        tgCard.innerHTML = `
-          <div class="channel-card-header">
-            <div class="channel-card-icon telegram">TG</div>
-            <div>
-              <div class="channel-card-title">Telegram${tgStatus.bot_username ? ` — @${escHtml(tgStatus.bot_username)}` : ''}</div>
-              <div class="channel-card-status">
-                <span class="status-dot ${tgConnected ? 'connected' : 'error'}"></span>
-                <span>${tgConnected ? 'Connected' : 'Not running'}</span>
-              </div>
-            </div>
-          </div>
-          ${tgConnected ? `<div class="channel-card-accounts" style="font-size:12px;color:var(--text-muted)">${tgStatus.message_count} messages · Policy: ${escHtml(tgStatus.dm_policy)}</div>` : ''}
-          <div class="channel-card-actions">
-            ${!tgConnected ? `<button class="btn btn-primary btn-sm" id="${cardId}-start">Start</button>` : ''}
-            ${tgConnected ? `<button class="btn btn-ghost btn-sm" id="${cardId}-stop">Stop</button>` : ''}
-            <button class="btn btn-ghost btn-sm" id="${cardId}-edit">Edit</button>
-            <button class="btn btn-ghost btn-sm" id="${cardId}-remove">Remove</button>
-          </div>`;
-        list.appendChild(tgCard);
-
-        $(`${cardId}-start`)?.addEventListener('click', async () => {
-          try { await pawEngine.telegramStart(); showToast('Telegram started', 'success'); setTimeout(() => loadChannels(), 1000); }
-          catch (e) { showToast(`Start failed: ${e}`, 'error'); }
-        });
-        $(`${cardId}-stop`)?.addEventListener('click', async () => {
-          try { await pawEngine.telegramStop(); showToast('Telegram stopped', 'success'); setTimeout(() => loadChannels(), 500); }
-          catch (e) { showToast(`Stop failed: ${e}`, 'error'); }
-        });
-        $(`${cardId}-edit`)?.addEventListener('click', () => openChannelSetup('telegram'));
-        $(`${cardId}-remove`)?.addEventListener('click', async () => {
-          if (!confirm('Remove Telegram configuration?')) return;
-          try {
-            await pawEngine.telegramStop();
-            await pawEngine.telegramSetConfig({ bot_token: '', enabled: false, dm_policy: 'pairing', allowed_users: [], pending_users: [] });
-            showToast('Telegram removed', 'success'); loadChannels();
-          } catch (e) { showToast(`Remove failed: ${e}`, 'error'); }
-        });
-
-        // Telegram pending users
-        if (tgStatus.pending_users.length > 0) {
-          const section = document.createElement('div');
-          section.className = 'channel-pairing-section';
-          section.style.cssText = 'margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:12px;';
-          section.innerHTML = `<h4 style="font-size:13px;font-weight:600;margin:0 0 8px 0">🔒 Telegram — Pending Requests</h4>`;
-          for (const p of tgStatus.pending_users) {
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-light,rgba(255,255,255,0.06))';
-            row.innerHTML = `<div><strong>${escHtml(p.first_name)}</strong> <span style="color:var(--text-muted);font-size:12px">@${escHtml(p.username)} · ${p.user_id}</span></div>
-              <div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm tg-approve" data-uid="${p.user_id}">Approve</button><button class="btn btn-danger btn-sm tg-deny" data-uid="${p.user_id}">Deny</button></div>`;
-            section.appendChild(row);
-          }
-          list.appendChild(section);
-          section.querySelectorAll('.tg-approve').forEach(btn => btn.addEventListener('click', async () => {
-            try { await pawEngine.telegramApproveUser(parseInt((btn as HTMLElement).dataset.uid!)); showToast('Approved', 'success'); loadChannels(); } catch (e) { showToast(`${e}`, 'error'); }
-          }));
-          section.querySelectorAll('.tg-deny').forEach(btn => btn.addEventListener('click', async () => {
-            try { await pawEngine.telegramDenyUser(parseInt((btn as HTMLElement).dataset.uid!)); showToast('Denied', 'success'); loadChannels(); } catch (e) { showToast(`${e}`, 'error'); }
-          }));
-        }
-      }
-    } catch { /* no telegram */ }
-
-    // ── Generic Channels (Discord, IRC, Slack, Matrix, etc.) ────────
-    const genericChannels = ['discord', 'irc', 'slack', 'matrix', 'mattermost', 'nextcloud', 'nostr', 'twitch'];
-
-    for (const ch of genericChannels) {
-      try {
-        const status = await _getChannelStatus(ch);
-        const config = await _getChannelConfig(ch);
-        if (!status || !config) continue;
-
-        // Determine if this channel is configured (has required credential)
-        const isConfigured = _isChannelConfigured(ch, config);
-        if (!isConfigured) continue;
-
-        anyConfigured = true;
-        const isConnected = status.running && status.connected;
-        const def = CHANNEL_SETUPS.find(c => c.id === ch);
-        const name = def?.name ?? ch;
-        const icon = def?.icon ?? ch.substring(0, 2).toUpperCase();
-        const cardId = `ch-${ch}`;
-
-        const card = document.createElement('div');
-        card.className = 'channel-card';
-        card.innerHTML = `
-          <div class="channel-card-header">
-            <div class="channel-card-icon ${CHANNEL_CLASSES[ch] ?? 'default'}">${icon}</div>
-            <div>
-              <div class="channel-card-title">${escHtml(name)}${status.bot_name ? ` — ${escHtml(status.bot_name)}` : ''}</div>
-              <div class="channel-card-status">
-                <span class="status-dot ${isConnected ? 'connected' : 'error'}"></span>
-                <span>${isConnected ? 'Connected' : 'Not running'}</span>
-              </div>
-            </div>
-          </div>
-          ${isConnected ? `<div class="channel-card-accounts" style="font-size:12px;color:var(--text-muted)">${status.message_count} messages · Policy: ${escHtml(status.dm_policy)}</div>` : ''}
-          <div class="channel-card-actions">
-            ${!isConnected ? `<button class="btn btn-primary btn-sm" id="${cardId}-start">Start</button>` : ''}
-            ${isConnected ? `<button class="btn btn-ghost btn-sm" id="${cardId}-stop">Stop</button>` : ''}
-            <button class="btn btn-ghost btn-sm" id="${cardId}-edit">Edit</button>
-            <button class="btn btn-ghost btn-sm" id="${cardId}-remove">Remove</button>
-          </div>`;
-        list.appendChild(card);
-
-        // Wire buttons
-        $(`${cardId}-start`)?.addEventListener('click', async () => {
-          try { await _startChannel(ch); showToast(`${name} started`, 'success'); setTimeout(() => loadChannels(), 1000); }
-          catch (e) { showToast(`Start failed: ${e}`, 'error'); }
-        });
-        $(`${cardId}-stop`)?.addEventListener('click', async () => {
-          try { await _stopChannel(ch); showToast(`${name} stopped`, 'success'); setTimeout(() => loadChannels(), 500); }
-          catch (e) { showToast(`Stop failed: ${e}`, 'error'); }
-        });
-        $(`${cardId}-edit`)?.addEventListener('click', () => openChannelSetup(ch));
-        $(`${cardId}-remove`)?.addEventListener('click', async () => {
-          if (!confirm(`Remove ${name} configuration?`)) return;
-          try {
-            await _stopChannel(ch);
-            // Set empty config to clear credentials
-            const emptyConfig = _emptyChannelConfig(ch);
-            await _setChannelConfig(ch, emptyConfig);
-            showToast(`${name} removed`, 'success'); loadChannels();
-          } catch (e) { showToast(`Remove failed: ${e}`, 'error'); }
-        });
-
-        // Pending pairing requests
-        if (status.pending_users.length > 0) {
-          const section = document.createElement('div');
-          section.className = 'channel-pairing-section';
-          section.style.cssText = 'margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:12px;';
-          section.innerHTML = `<h4 style="font-size:13px;font-weight:600;margin:0 0 8px 0">🔒 ${escHtml(name)} — Pending Requests</h4>`;
-          for (const p of status.pending_users) {
-            const row = document.createElement('div');
-            row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border-light,rgba(255,255,255,0.06))';
-            row.innerHTML = `<div><strong>${escHtml(p.display_name || p.username)}</strong> <span style="color:var(--text-muted);font-size:12px">${escHtml(p.user_id)}</span></div>
-              <div style="display:flex;gap:6px"><button class="btn btn-primary btn-sm ch-approve" data-ch="${ch}" data-uid="${escAttr(p.user_id)}">Approve</button><button class="btn btn-danger btn-sm ch-deny" data-ch="${ch}" data-uid="${escAttr(p.user_id)}">Deny</button></div>`;
-            section.appendChild(row);
-          }
-          list.appendChild(section);
-          section.querySelectorAll('.ch-approve').forEach(btn => btn.addEventListener('click', async () => {
-            const _ch = (btn as HTMLElement).dataset.ch!;
-            const _uid = (btn as HTMLElement).dataset.uid!;
-            try { await _approveChannelUser(_ch, _uid); showToast('Approved', 'success'); loadChannels(); } catch (e) { showToast(`${e}`, 'error'); }
-          }));
-          section.querySelectorAll('.ch-deny').forEach(btn => btn.addEventListener('click', async () => {
-            const _ch = (btn as HTMLElement).dataset.ch!;
-            const _uid = (btn as HTMLElement).dataset.uid!;
-            try { await _denyChannelUser(_ch, _uid); showToast('Denied', 'success'); loadChannels(); } catch (e) { showToast(`${e}`, 'error'); }
-          }));
-        }
-      } catch { /* skip erroring channel */ }
-    }
-
-    if (loading) loading.style.display = 'none';
-    if (!anyConfigured) {
-      if (empty) empty.style.display = 'flex';
-    }
-
-    const sendSection = $('channel-send-section');
-    if (sendSection) sendSection.style.display = 'none';
-  } catch (e) {
-    console.warn('Channels load failed:', e);
-    if (loading) loading.style.display = 'none';
-    if (empty) empty.style.display = 'flex';
-  }
-}
-
-/** Check if a channel has been configured with required credentials */
-function _isChannelConfigured(ch: string, config: Record<string, unknown>): boolean {
-  switch (ch) {
-    case 'discord': return !!config.bot_token;
-    case 'irc': return !!config.server && !!config.nick;
-    case 'slack': return !!config.bot_token && !!config.app_token;
-    case 'matrix': return !!config.homeserver && !!config.access_token;
-    case 'mattermost': return !!config.server_url && !!config.token;
-    case 'nextcloud': return !!config.server_url && !!config.username && !!config.password;
-    case 'nostr': return !!config.private_key_hex;
-    case 'twitch': return !!config.oauth_token && !!config.bot_username;
-    default: return false;
-  }
-}
-
-/** Return an empty/reset config for a channel */
-function _emptyChannelConfig(ch: string): Record<string, unknown> {
-  const base = { enabled: false, dm_policy: 'pairing', allowed_users: [], pending_users: [] };
-  switch (ch) {
-    case 'discord': return { ...base, bot_token: '', respond_to_mentions: true };
-    case 'irc': return { ...base, server: '', port: 6697, tls: true, nick: '', channels_to_join: [], respond_in_channels: false };
-    case 'slack': return { ...base, bot_token: '', app_token: '', respond_to_mentions: true };
-    case 'matrix': return { ...base, homeserver: '', access_token: '', respond_in_rooms: false };
-    case 'mattermost': return { ...base, server_url: '', token: '', respond_to_mentions: true };
-    case 'nextcloud': return { ...base, server_url: '', username: '', password: '', respond_in_groups: false };
-    case 'nostr': return { ...base, private_key_hex: '', relays: [], dm_policy: 'open' };
-    case 'twitch': return { ...base, oauth_token: '', bot_username: '', channels_to_join: [], dm_policy: 'open', require_mention: true };
-    default: return base;
-  }
-}
-$('refresh-channels-btn')?.addEventListener('click', () => loadChannels());
-
-// Direct channel send (engine mode — uses Tauri IPC)
-$('channel-send-btn')?.addEventListener('click', async () => {
-  const target = ($('channel-send-target') as HTMLSelectElement)?.value;
-  const msgInput = $('channel-send-message') as HTMLInputElement;
-  const message = msgInput?.value.trim();
-  if (!target || !message || !wsConnected) return;
-  try {
-    await pawEngine.chatSend(target, message);
-    showToast(`Sent to ${target}`, 'success');
-    if (msgInput) msgInput.value = '';
-  } catch (e) {
-    showToast(`Send failed: ${e instanceof Error ? e.message : e}`, 'error');
-  }
-});
-
-
-// Cron modal logic
-function showCronModal() {
-  const modal = $('cron-modal');
-  if (modal) modal.style.display = 'flex';
-  // Reset form
-  const label = $('cron-form-label') as HTMLInputElement;
-  const schedule = $('cron-form-schedule') as HTMLInputElement;
-  const prompt_ = $('cron-form-prompt') as HTMLTextAreaElement;
-  const preset = $('cron-form-schedule-preset') as HTMLSelectElement;
-  if (label) label.value = '';
-  if (schedule) schedule.value = '';
-  if (prompt_) prompt_.value = '';
-  if (preset) preset.value = '';
-}
-function hideCronModal() {
-  const modal = $('cron-modal');
-  if (modal) modal.style.display = 'none';
-}
-
-$('add-cron-btn')?.addEventListener('click', showCronModal);
-$('cron-empty-add')?.addEventListener('click', showCronModal);
-$('cron-modal-close')?.addEventListener('click', hideCronModal);
-$('cron-modal-cancel')?.addEventListener('click', hideCronModal);
-
-$('cron-form-schedule-preset')?.addEventListener('change', () => {
-  const preset = ($('cron-form-schedule-preset') as HTMLSelectElement).value;
-  const scheduleInput = $('cron-form-schedule') as HTMLInputElement;
-  if (preset && scheduleInput) scheduleInput.value = preset;
-});
-
-$('cron-modal-save')?.addEventListener('click', async () => {
-  showToast('Automations scheduler coming soon', 'info');
-  hideCronModal();
-});
-
-// ── Memory / Agent Files — Split View ──────────────────────────────────────
-// TODO: Implement engine-native agent files via Tauri IPC
-async function loadMemory() {
-  const list = $('memory-list');
-  const empty = $('memory-empty');
-  const loading = $('memory-loading');
-  if (loading) loading.style.display = 'none';
-  if (list) list.innerHTML = '';
-  if (empty) { empty.style.display = 'flex'; empty.textContent = 'Agent files managed via Memory Palace'; }
-}
-
-async function openMemoryFile(filePath: string) {
-  console.log('[main] openMemoryFile:', filePath);
-  // Memory files are now managed via the Memory Palace module
-}
-
-$('memory-editor-save')?.addEventListener('click', async () => {
-  showToast('Use Memory Palace for file management', 'info');
-});
-
-$('memory-editor-close')?.addEventListener('click', () => {
-  const editor = $('memory-editor');
-  if (editor) editor.style.display = 'none';
-});
-
-$('refresh-memory-btn')?.addEventListener('click', () => loadMemory());
-
-// ── Dashboard Cron Widget ──────────────────────────────────────────────────
-async function loadDashboardCron() {
-  const section = $('dashboard-cron-section');
-  if (section) section.style.display = 'none';
-}
-
-// ── Space Cron Mini-Widgets ────────────────────────────────────────────────
-async function loadSpaceCron(_space: string) {
-  // TODO: engine-native cron
-}
-// ══════════════════════════════════════════════════════════════════════════
-// ═══ LOCAL APPLICATION SPACES ═══════════════════════════════════════════
-// ══════════════════════════════════════════════════════════════════════════
-
-// ── Content / Create Studio ────────────────────────────────────────────────
-let _activeDocId: string | null = null;
-
-async function loadContentDocs() {
-  const list = $('content-doc-list');
-  const empty = $('content-empty');
-  const toolbar = $('content-toolbar');
-  const body = $('content-body') as HTMLTextAreaElement | null;
-  const wordCount = $('content-word-count');
-  if (!list) return;
-
-  const docs = await listDocs();
-  list.innerHTML = '';
-
-  if (!docs.length && !_activeDocId) {
-    if (empty) empty.style.display = 'flex';
-    if (toolbar) toolbar.style.display = 'none';
-    if (body) body.style.display = 'none';
-    if (wordCount) wordCount.style.display = 'none';
-    return;
-  }
-
-  for (const doc of docs) {
-    const item = document.createElement('div');
-    item.className = `studio-doc-item${doc.id === _activeDocId ? ' active' : ''}`;
-    item.innerHTML = `
-      <div class="studio-doc-title">${escHtml(doc.title || 'Untitled')}</div>
-      <div class="studio-doc-meta">${doc.word_count} words · ${new Date(doc.updated_at).toLocaleDateString()}</div>
-    `;
-    item.addEventListener('click', () => openContentDoc(doc.id));
-    list.appendChild(item);
-  }
-}
-
-async function openContentDoc(docId: string) {
-  const doc = await getDoc(docId);
-  if (!doc) return;
-  _activeDocId = docId;
-
-  const empty = $('content-empty');
-  const toolbar = $('content-toolbar');
-  const body = $('content-body') as HTMLTextAreaElement;
-  const titleInput = $('content-title') as HTMLInputElement;
-  const typeSelect = $('content-type') as HTMLSelectElement;
-  const wordCount = $('content-word-count');
-
-  if (empty) empty.style.display = 'none';
-  if (toolbar) toolbar.style.display = 'flex';
-  if (body) { body.style.display = ''; body.value = doc.content; }
-  if (titleInput) titleInput.value = doc.title;
-  if (typeSelect) typeSelect.value = doc.content_type;
-  if (wordCount) {
-    wordCount.style.display = '';
-    wordCount.textContent = `${doc.word_count} words`;
-  }
-  loadContentDocs();
-}
-
-async function createNewDoc() {
-  const id = crypto.randomUUID();
-  await saveDoc({ id, title: 'Untitled document', content: '', content_type: 'markdown' });
-  await openContentDoc(id);
-}
-
-$('content-new-doc')?.addEventListener('click', createNewDoc);
-$('content-create-first')?.addEventListener('click', createNewDoc);
-
-$('content-save')?.addEventListener('click', async () => {
-  if (!_activeDocId) return;
-  const title = ($('content-title') as HTMLInputElement).value.trim() || 'Untitled';
-  const content = ($('content-body') as HTMLTextAreaElement).value;
-  const contentType = ($('content-type') as HTMLSelectElement).value;
-  await saveDoc({ id: _activeDocId, title, content, content_type: contentType });
-  const wordCount = $('content-word-count');
-  if (wordCount) wordCount.textContent = `${content.split(/\s+/).filter(Boolean).length} words`;
-  loadContentDocs();
-});
-
-$('content-body')?.addEventListener('input', () => {
-  const body = $('content-body') as HTMLTextAreaElement;
-  const wordCount = $('content-word-count');
-  if (wordCount && body) {
-    wordCount.textContent = `${body.value.split(/\s+/).filter(Boolean).length} words`;
-  }
-});
-
-$('content-ai-improve')?.addEventListener('click', async () => {
-  if (!_activeDocId || !wsConnected) { showToast('Not connected', 'error'); return; }
-  const bodyEl = $('content-body') as HTMLTextAreaElement;
-  const body = bodyEl?.value.trim();
-  if (!body) return;
-
-  const btn = $('content-ai-improve') as HTMLButtonElement | null;
-  if (btn) btn.disabled = true;
-  showToast('AI improving your text…', 'info');
-
-  try {
-    // Use engine chat for one-shot improve — response streams via events, so this just gets run_id
-    const result = await pawEngine.chatSend('paw-improve', `Improve this text. Return only the improved version, no explanations:\n\n${body}`);
-    const text = (result as unknown as Record<string, unknown>).text as string | undefined;
-    if (text && bodyEl) {
-      bodyEl.value = text;
-      showToast('Text improved!', 'success');
-    } else {
-      showToast('Agent returned no text', 'error');
-    }
-  } catch (e) {
-    showToast(`Failed: ${e instanceof Error ? e.message : e}`, 'error');
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-});
-
-$('content-delete-doc')?.addEventListener('click', async () => {
-  if (!_activeDocId) return;
-  if (!confirm('Delete this document?')) return;
-  await deleteDoc(_activeDocId);
-  _activeDocId = null;
-  loadContentDocs();
-});
-
-// ── Research Notebook ──────────────────────────────────────────────────────
-
-
-// Tauri 2 WKWebView (macOS) does not support window.prompt() — it returns null.
-// This custom modal replaces all prompt() usage in the app.
-function promptModal(title: string, placeholder?: string): Promise<string | null> {
-  return new Promise(resolve => {
-    const overlay = $('prompt-modal');
-    const titleEl = $('prompt-modal-title');
-    const input = $('prompt-modal-input') as HTMLInputElement | null;
-    const okBtn = $('prompt-modal-ok');
-    const cancelBtn = $('prompt-modal-cancel');
-    const closeBtn = $('prompt-modal-close');
-    if (!overlay || !input) { resolve(null); return; }
-
-    if (titleEl) titleEl.textContent = title;
-    input.placeholder = placeholder ?? '';
-    input.value = '';
-    overlay.style.display = 'flex';
-    input.focus();
-
-    function cleanup() {
-      overlay!.style.display = 'none';
-      okBtn?.removeEventListener('click', onOk);
-      cancelBtn?.removeEventListener('click', onCancel);
-      closeBtn?.removeEventListener('click', onCancel);
-      input?.removeEventListener('keydown', onKey);
-      overlay?.removeEventListener('click', onBackdrop);
-    }
-    function onOk() {
-      const val = input!.value.trim();
-      cleanup();
-      resolve(val || null);
-    }
-    function onCancel() { cleanup(); resolve(null); }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === 'Enter') { e.preventDefault(); onOk(); }
-      else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-    }
-    function onBackdrop(e: MouseEvent) {
-      if (e.target === overlay) onCancel();
-    }
-
-    okBtn?.addEventListener('click', onOk);
-    cancelBtn?.addEventListener('click', onCancel);
-    closeBtn?.addEventListener('click', onCancel);
-    input.addEventListener('keydown', onKey);
-    overlay.addEventListener('click', onBackdrop);
-  });
-}
-
-function escHtml(s: string): string {
-  const d = document.createElement('div');
-  d.textContent = s;
-  return d.innerHTML;
-}
-
-/** Convert a File to base64 data string */
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      // Strip data URL prefix to get raw base64
-      const base64 = result.split(',')[1] || result;
-      resolve(base64);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
-function escAttr(s: string): string {
-  return s.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-/** Render markdown-like text to HTML (used for chat messages) */
-function formatMarkdown(text: string): string {
-  let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
-    return `<pre class="code-block" data-lang="${escHtml(lang)}"><code>${escHtml(code.trimEnd())}</code></pre>`;
-  });
-  const parts = html.split(/(<pre class="code-block"[\s\S]*?<\/pre>)/);
-  html = parts.map((part, i) => {
-    if (i % 2 === 1) return part;
-    return escHtml(part)
-      .replace(/`([^`]+)`/g, '<code class="inline-code">$1</code>')
-      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*(.*?)\*/g, '<em>$1</em>')
-      .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-      .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-      .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-      .replace(/^[-•] (.+)$/gm, '<div class="md-bullet">• $1</div>')
-      .replace(/^\d+\. (.+)$/gm, '<div class="md-bullet">$&</div>')
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-      .replace(/\n/g, '<br>');
-  }).join('');
-  return html;
-}
-
-
-// ── Global Toast Notification ──────────────────────────────────────────────
-function showToast(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', durationMs = 3500) {
-  const container = $('global-toast');
-  if (!container) return;
-  container.textContent = message;
-  container.className = `global-toast toast-${type}`;
-  container.style.display = '';
-  container.style.opacity = '1';
-  // Auto dismiss
-  setTimeout(() => {
-    container.style.opacity = '0';
-    setTimeout(() => { container.style.display = 'none'; }, 300);
-  }, durationMs);
-}
-
-// Settings view is now in src/views/settings.ts
-
-
-// (Gateway node/device/exec.approval events removed — engine mode uses Tauri listeners)
-
-// ── Engine HIL (Human-In-the-Loop) Tool Approval ───────────────────────────
-// When engine mode requests tool execution, show the same approval modal
-// but resolve via engine IPC instead of gateway WebSocket.
-onEngineToolApproval((event: EngineEvent) => {
-  const tc = event.tool_call;
-  if (!tc) return;
-
-  const toolCallId = tc.id;
-  const toolName = tc.function?.name ?? 'unknown';
-  let args: Record<string, unknown> | undefined;
-  try { args = JSON.parse(tc.function?.arguments ?? '{}'); } catch { args = undefined; }
-  const desc = `The agent wants to use tool: ${toolName}`;
-  const sessionKey = event.session_id ?? '';
-
-  const modal = $('approval-modal');
-  const modalCard = $('approval-modal-card');
-  const modalTitle = $('approval-modal-title');
-  const descEl = $('approval-modal-desc');
-  const detailsEl = $('approval-modal-details');
-  const riskBanner = $('approval-risk-banner');
-  const riskIcon = $('approval-risk-icon');
-  const riskLabel = $('approval-risk-label');
-  const riskReason = $('approval-risk-reason');
-  const typeConfirm = $('approval-type-confirm');
-  const typeInput = $('approval-type-input') as HTMLInputElement | null;
-  const allowBtn = $('approval-allow-btn') as HTMLButtonElement | null;
-  if (!modal || !descEl) return;
-
-  // ── Security: Risk classification (same as gateway path) ──
-  const secSettings = loadSecuritySettings();
-  const risk: RiskClassification | null = classifyCommandRisk(toolName, args);
-
-  // Build a command string for allowlist/denylist matching
-  // Only use actual command content for exec tools to avoid false positives
-  const cmdStr = extractCommandString(toolName, args);
-
-  // ── Network request auditing ──
-  const netAudit = auditNetworkRequest(toolName, args);
-  if (netAudit.isNetworkRequest) {
-    const targetStr = netAudit.targets.length > 0 ? netAudit.targets.join(', ') : '(unknown destination)';
-    logSecurityEvent({
-      eventType: 'network_request',
-      riskLevel: netAudit.isExfiltration ? 'critical' : (netAudit.allTargetsLocal ? null : 'medium'),
-      toolName, command: cmdStr,
-      detail: `[Engine] Outbound request → ${targetStr}${netAudit.isExfiltration ? ' [EXFILTRATION SUSPECTED]' : ''}`,
-      sessionKey, wasAllowed: true, matchedPattern: netAudit.isExfiltration ? `exfiltration:${netAudit.exfiltrationReason}` : 'network_tool',
-    });
-  }
-
-  // ── Session override: "Allow all for this session" ──
-  const overrideRemaining = getSessionOverrideRemaining();
-  if (overrideRemaining > 0) {
-    if (!(secSettings.autoDenyPrivilegeEscalation && isPrivilegeEscalation(toolName, args))) {
-      resolveEngineToolApproval(toolCallId, true);
-      const minsLeft = Math.ceil(overrideRemaining / 60000);
-      logCredentialActivity({ action: 'approved', toolName, detail: `[Engine] Session override (${minsLeft}min): ${toolName}`, sessionKey, wasAllowed: true });
-      return;
-    }
-  }
-
-  // ── Read-only project mode ──
-  if (secSettings.readOnlyProjects) {
-    const writeCheck = isFilesystemWriteTool(toolName, args);
-    if (writeCheck.isWrite) {
-      resolveEngineToolApproval(toolCallId, false);
-      logCredentialActivity({ action: 'blocked', toolName, detail: `[Engine] Read-only mode: filesystem write blocked`, sessionKey, wasAllowed: false });
-      showToast('Blocked: filesystem writes are disabled (read-only project mode)', 'warning');
-      return;
-    }
-  }
-
-  // ── Auto-deny: privilege escalation ──
-  if (secSettings.autoDenyPrivilegeEscalation && isPrivilegeEscalation(toolName, args)) {
-    resolveEngineToolApproval(toolCallId, false);
-    logCredentialActivity({ action: 'blocked', toolName, detail: `[Engine] Auto-denied: privilege escalation`, sessionKey, wasAllowed: false });
-    showToast('Auto-denied: privilege escalation command blocked by security policy', 'warning');
-    return;
-  }
-
-  // ── Auto-deny: critical-risk commands ──
-  if (secSettings.autoDenyCritical && risk?.level === 'critical') {
-    resolveEngineToolApproval(toolCallId, false);
-    logCredentialActivity({ action: 'blocked', toolName, detail: `[Engine] Auto-denied: critical risk — ${risk.label}`, sessionKey, wasAllowed: false });
-    showToast(`Auto-denied: ${risk.label} — ${risk.reason}`, 'warning');
-    return;
-  }
-
-  // ── Auto-deny: command denylist ──
-  if (secSettings.commandDenylist.length > 0 && matchesDenylist(cmdStr, secSettings.commandDenylist)) {
-    resolveEngineToolApproval(toolCallId, false);
-    logCredentialActivity({ action: 'blocked', toolName, detail: `[Engine] Auto-denied: matched denylist`, sessionKey, wasAllowed: false });
-    showToast('Auto-denied: command matched your denylist', 'warning');
-    return;
-  }
-
-  // ── Auto-approve: command allowlist (only if no risk detected) ──
-  if (!risk && secSettings.commandAllowlist.length > 0 && matchesAllowlist(cmdStr, secSettings.commandAllowlist)) {
-    resolveEngineToolApproval(toolCallId, true);
-    logCredentialActivity({ action: 'approved', toolName, detail: `[Engine] Auto-approved: allowlist match`, sessionKey, wasAllowed: true });
-    return;
-  }
-
-  // ── Show approval modal ──
-  const isDangerous = risk && (risk.level === 'critical' || risk.level === 'high');
-  const isCritical = risk?.level === 'critical';
-
-  modalCard?.classList.remove('danger-modal');
-  riskBanner?.classList.remove('risk-critical', 'risk-high', 'risk-medium');
-  if (riskBanner) riskBanner.style.display = 'none';
-  if (typeConfirm) typeConfirm.style.display = 'none';
-  if (typeInput) typeInput.value = '';
-  if (allowBtn) { allowBtn.disabled = false; allowBtn.textContent = 'Allow'; }
-  if (modalTitle) modalTitle.textContent = 'Tool Approval Required';
-
-  if (risk) {
-    if (isDangerous) {
-      modalCard?.classList.add('danger-modal');
-      if (modalTitle) modalTitle.textContent = '⚠ Dangerous Command Detected';
-    }
-    if (riskBanner && riskLabel && riskReason && riskIcon) {
-      riskBanner.style.display = 'flex';
-      riskBanner.classList.add(`risk-${risk.level}`);
-      riskLabel.textContent = `${risk.level.toUpperCase()}: ${risk.label}`;
-      riskReason.textContent = risk.reason;
-      riskIcon.textContent = isCritical ? '☠' : risk.level === 'high' ? '⚠' : '⚡';
-    }
-    if (isCritical && secSettings.requireTypeToCritical && typeConfirm && typeInput && allowBtn) {
-      typeConfirm.style.display = 'block';
-      allowBtn.disabled = true;
-      allowBtn.textContent = 'Type ALLOW first';
-      const onTypeInput = () => {
-        const val = typeInput.value.trim().toUpperCase();
-        allowBtn.disabled = val !== 'ALLOW';
-        allowBtn.textContent = val === 'ALLOW' ? 'Allow' : 'Type ALLOW first';
-      };
-      typeInput.addEventListener('input', onTypeInput);
-      (typeInput as unknown as Record<string, unknown>)._secCleanup = onTypeInput;
-    }
-  }
-
-  descEl.textContent = desc;
-
-  // Network audit banner
-  const netBanner = $('approval-network-banner');
-  if (netBanner) netBanner.style.display = 'none';
-  if (netAudit.isNetworkRequest && netBanner) {
-    netBanner.style.display = 'block';
-    const targetStr = netAudit.targets.length > 0 ? netAudit.targets.join(', ') : 'unknown destination';
-    if (netAudit.isExfiltration) {
-      netBanner.className = 'network-banner network-exfiltration';
-      netBanner.innerHTML = `<strong>⚠ Possible Data Exfiltration</strong><br>Outbound data transfer detected → ${escHtml(targetStr)}`;
-    } else if (!netAudit.allTargetsLocal) {
-      netBanner.className = 'network-banner network-external';
-      netBanner.innerHTML = `<strong>🌐 External Network Request</strong><br>Destination: ${escHtml(targetStr)}`;
-    } else {
-      netBanner.className = 'network-banner network-local';
-      netBanner.innerHTML = `<strong>🔒 Localhost Request</strong><br>Destination: ${escHtml(targetStr)}`;
-    }
-  }
-
-  if (detailsEl) {
-    detailsEl.innerHTML = args
-      ? `<pre class="code-block"><code>${escHtml(JSON.stringify(args, null, 2))}</code></pre>`
-      : '';
-  }
-  modal.style.display = 'flex';
-
-  const cleanup = () => {
-    modal.style.display = 'none';
-    if (typeInput) {
-      const fn = (typeInput as unknown as Record<string, unknown>)._secCleanup as (() => void) | undefined;
-      if (fn) typeInput.removeEventListener('input', fn);
-    }
-    $('approval-allow-btn')?.removeEventListener('click', onAllow);
-    $('approval-deny-btn')?.removeEventListener('click', onDeny);
-    $('approval-modal-close')?.removeEventListener('click', onDeny);
-  };
-  const onAllow = () => {
-    cleanup();
-    resolveEngineToolApproval(toolCallId, true);
-    const riskNote = risk ? ` (${risk.level}: ${risk.label})` : '';
-    logCredentialActivity({ action: 'approved', toolName, detail: `[Engine] User approved${riskNote}: ${toolName}`, sessionKey, wasAllowed: true });
-    logSecurityEvent({ eventType: 'exec_approval', riskLevel: risk?.level ?? null, toolName, command: cmdStr, detail: `[Engine] User approved${riskNote}`, sessionKey, wasAllowed: true, matchedPattern: risk?.matchedPattern });
-    showToast('Tool approved', 'success');
-  };
-  const onDeny = () => {
-    cleanup();
-    resolveEngineToolApproval(toolCallId, false);
-    const riskNote = risk ? ` (${risk.level}: ${risk.label})` : '';
-    logCredentialActivity({ action: 'denied', toolName, detail: `[Engine] User denied${riskNote}: ${toolName}`, sessionKey, wasAllowed: false });
-    logSecurityEvent({ eventType: 'exec_approval', riskLevel: risk?.level ?? null, toolName, command: cmdStr, detail: `[Engine] User denied${riskNote}`, sessionKey, wasAllowed: false, matchedPattern: risk?.matchedPattern });
-    showToast('Tool denied', 'warning');
-  };
-  $('approval-allow-btn')?.addEventListener('click', onAllow);
-  $('approval-deny-btn')?.addEventListener('click', onDeny);
-  $('approval-modal-close')?.addEventListener('click', onDeny);
-
-  // Session override dropdown
-  const overrideBtn = $('session-override-btn');
-  const overrideMenu = $('session-override-menu');
-  if (overrideBtn && overrideMenu) {
-    const toggleMenu = (e: Event) => {
-      e.stopPropagation();
-      overrideMenu.style.display = overrideMenu.style.display === 'none' ? 'flex' : 'none';
-    };
-    overrideBtn.addEventListener('click', toggleMenu);
-    overrideMenu.querySelectorAll('.session-override-opt').forEach(opt => {
-      opt.addEventListener('click', () => {
-        const mins = parseInt((opt as HTMLElement).dataset.minutes ?? '30', 10);
-        activateSessionOverride(mins);
-        overrideMenu.style.display = 'none';
-        cleanup();
-        resolveEngineToolApproval(toolCallId, true);
-        logCredentialActivity({ action: 'approved', toolName, detail: `[Engine] Session override (${mins}min): ${toolName}`, sessionKey, wasAllowed: true });
-        showToast(`Session override active for ${mins} minutes — all tool requests auto-approved`, 'info');
-      });
-    });
-  }
-});
-
-// (Gateway presence/cron/shutdown events removed — engine mode uses Tauri listeners)
-
-// ── Theme Toggle ───────────────────────────────────────────────────────────
+// ── Theme ──────────────────────────────────────────────────────────────────
 const THEME_KEY = 'paw-theme';
-
 function getTheme(): 'dark' | 'light' {
   return (localStorage.getItem(THEME_KEY) as 'dark' | 'light') || 'dark';
 }
-
 function setTheme(theme: 'dark' | 'light') {
   if (theme === 'dark') {
     document.documentElement.removeAttribute('data-theme');
@@ -3206,18 +290,25 @@ function setTheme(theme: 'dark' | 'light') {
   const label = document.getElementById('theme-label');
   if (label) label.textContent = theme === 'dark' ? 'Dark' : 'Light';
 }
-
 function initTheme() {
-  const saved = getTheme();
-  setTheme(saved);
+  setTheme(getTheme());
+  $('theme-toggle')?.addEventListener('click', () => {
+    setTheme(getTheme() === 'dark' ? 'light' : 'dark');
+  });
+}
 
-  const toggle = document.getElementById('theme-toggle');
-  if (toggle) {
-    toggle.addEventListener('click', () => {
-      const current = getTheme();
-      setTheme(current === 'dark' ? 'light' : 'dark');
-    });
-  }
+// ── Toast ──────────────────────────────────────────────────────────────────
+function showToast(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', durationMs = 3500) {
+  const container = $('global-toast');
+  if (!container) return;
+  container.textContent = message;
+  container.className = `global-toast toast-${type}`;
+  container.style.display = '';
+  container.style.opacity = '1';
+  setTimeout(() => {
+    container.style.opacity = '0';
+    setTimeout(() => { container.style.display = 'none'; }, 300);
+  }, durationMs);
 }
 
 // ── Initialize ─────────────────────────────────────────────────────────────
@@ -3225,124 +316,88 @@ document.addEventListener('DOMContentLoaded', async () => {
   try {
     console.log('[main] Paw starting...');
 
-    // Render Material Symbols icons in static HTML buttons
     for (const el of document.querySelectorAll<HTMLElement>('[data-icon]')) {
       const name = el.dataset.icon;
       if (name) el.innerHTML = icon(name);
     }
 
-    // ── Theme: restore saved preference ──
     initTheme();
 
-    // Check for crash log from previous run
     try {
       const prevLog = localStorage.getItem('paw-crash-log');
       if (prevLog) {
         const entries = JSON.parse(prevLog) as string[];
-        if (entries.length) {
-          console.warn(`[main] Previous crash log (${entries.length} entries):`);
-          entries.slice(-5).forEach(e => console.warn('  ', e));
-        }
+        if (entries.length) entries.slice(-5).forEach(e => console.warn('  ', e));
       }
     } catch { /* ignore */ }
     crashLog('startup');
 
-    // Initialise local SQLite database
     await initDb().catch(e => console.warn('[main] DB init failed:', e));
-
-    // C2: Initialise field-level encryption key from OS keychain
     await initDbEncryption().catch(e => console.warn('[main] DB encryption init failed:', e));
 
-    // Initialize Memory Palace module events
     MemoryPalaceModule.initPalaceEvents();
-
-    // Handle palace-open-file event from memory-palace module
     window.addEventListener('palace-open-file', (e: Event) => {
-      const filePath = (e as CustomEvent).detail as string;
-      openMemoryFile(filePath);
+      openMemoryFile((e as CustomEvent).detail as string);
     });
 
-    // Initialize Mail module
     MailModule.configure({
       switchView,
-      setCurrentSession: (key) => { currentSessionKey = key; },
-      getChatInput: () => chatInput,
+      setCurrentSession: (key) => { appState.currentSessionKey = key; },
+      getChatInput: () => document.getElementById('chat-input') as HTMLTextAreaElement | null,
       closeChannelSetup,
     });
     MailModule.initMailEvents();
 
-    // Initialize Skills — Pawz uses the engine vault, not gateway plugins
-    // Override the refresh button to use the vault loader
     $('refresh-skills-btn')?.addEventListener('click', () => SkillsSettings.loadSkillsSettings());
 
-    // Initialize Foundry module events
     FoundryModule.initFoundryEvents();
-
-    // Initialize Research module events
     ResearchModule.configure({ promptModal });
     ResearchModule.initResearchEvents();
 
-    // ── Pawz: Always engine mode — no gateway needed ──
-    // Force engine mode in localStorage so isEngineMode() returns true everywhere
-    // Must be set BEFORE initAgents() so backend agents are loaded on first call
     localStorage.setItem('paw-runtime-mode', 'engine');
 
-    // Initialize Agents module
     AgentsModule.configure({
       switchView,
-      setCurrentAgent: (agentId) => {
-        if (agentId) switchToAgent(agentId);
-      },
+      setCurrentAgent: (agentId) => { if (agentId) switchToAgent(agentId); },
     });
     AgentsModule.initAgents();
 
-    // Listen for agent profile updates (from update_profile tool)
     AgentsModule.onProfileUpdated((agentId, agent) => {
       const current = AgentsModule.getCurrentAgent();
+      const chatAgentName = $('chat-agent-name');
       if (current && current.id === agentId && chatAgentName) {
         chatAgentName.innerHTML = `${AgentsModule.spriteAvatar(agent.avatar, 20)} ${escHtml(agent.name)}`;
       }
-      // Refresh agent dropdown
       populateAgentSelect();
     });
 
-    // Initialize Nodes module events
     NodesModule.initNodesEvents();
-
-    // Initialize Settings module (wires approvals save/refresh/add-rule buttons)
     SettingsModule.initSettings();
-
-    // Initialize new settings tab modules
     initSettingsTabs();
     ModelsSettings.initModelsSettings();
     AgentDefaultsSettings.initAgentDefaultsSettings();
     SessionsSettings.initSessionsSettings();
     VoiceSettings.initVoiceSettings();
 
-    // Ensure engine mode is always active (Pawz runs exclusively in engine mode)
     setEngineMode(true);
 
-    // Initialize Projects module events
     ProjectsModule.bindEvents();
-
-    // Initialize Tasks module events
     TasksModule.bindTaskEvents();
-
-    // Initialize Orchestrator module
     OrchestratorModule.initOrchestrator();
 
+    initChannels();
+    initContent();
+    initChatListeners();
+    initHILModal();
+
     loadConfigFromStorage();
-    console.log(`[main] Pawz engine mode — starting...`);
-
-    // Go straight to dashboard and start engine bridge
+    console.log('[main] Pawz engine mode — starting...');
     switchView('dashboard');
-    await connectEngine(); // starts the Tauri IPC bridge
+    await connectEngine();
 
-    // ── Auto-reconnect configured channels on startup ──────────────
-    // Fire-and-forget: start any channel that was previously configured & enabled
+    // Auto-reconnect configured channels on startup
     (async () => {
       try {
-        // Telegram (special — uses its own config/start API)
         const tgCfg = await pawEngine.telegramGetConfig();
         if (tgCfg.enabled && tgCfg.bot_token) {
           const tgStatus = await pawEngine.telegramStatus();
@@ -3353,15 +408,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
       } catch (e) { console.warn('[main] Telegram auto-start skipped:', e); }
 
-      // Generic channels
       const channels = ['discord', 'irc', 'slack', 'matrix', 'mattermost', 'nextcloud', 'nostr', 'twitch'] as const;
       for (const ch of channels) {
         try {
-          const cfg = await _getChannelConfig(ch);
+          const cfg = await getChannelConfig(ch);
           if (cfg && (cfg as Record<string, unknown>).enabled) {
-            const status = await _getChannelStatus(ch);
+            const status = await getChannelStatus(ch);
             if (status && !status.running) {
-              await _startChannel(ch);
+              await startChannel(ch);
               console.log(`[main] Auto-started ${ch} bridge`);
             }
           }

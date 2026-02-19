@@ -2,6 +2,27 @@
 
 export const $ = (id: string) => document.getElementById(id);
 
+// ── Material Symbols icon helper ───────────────────────────────────────────
+const _iconMap: Record<string, string> = {
+  'paperclip': 'attach_file',
+  'arrow-up': 'send',
+  'square': 'stop',
+  'rotate-ccw': 'replay',
+  'x': 'close',
+  'image': 'image',
+  'file-text': 'description',
+  'file': 'insert_drive_file',
+  'wrench': 'build',
+  'download': 'download',
+  'external-link': 'open_in_new',
+};
+
+/** Render a Material Symbols icon span. */
+export function icon(name: string, cls = ''): string {
+  const ligature = _iconMap[name] || name;
+  return `<span class="ms${cls ? ` ${cls}` : ''}">${ligature}</span>`;
+}
+
 export function escHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
