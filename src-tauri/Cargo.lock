@@ -3451,6 +3451,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-shell",
  "tauri-plugin-sql",
+ "thiserror 1.0.69",
  "tiny-keccak",
  "tokio",
  "tokio-stream",

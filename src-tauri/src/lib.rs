@@ -9,6 +9,10 @@ use ed25519_dalek::{SigningKey, Signer, VerifyingKey};
 use sha2::{Sha256, Digest};
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use crate::atoms::constants::{DB_KEY_SERVICE, DB_KEY_USER};
+
+// ── Paw Atoms (constants, error types) ────────────────────────────────────
+pub mod atoms;
 
 // ── Paw Agent Engine ───────────────────────────────────────────────────
 pub mod engine;
@@ -1676,9 +1680,7 @@ fn keyring_delete_password(account_name: String, email: String) -> Result<bool, 
 }
 
 // ── Database encryption key (C2) ─────────────────────────────────────────────
-
-const DB_KEY_SERVICE: &str = "paw-db-encryption";
-const DB_KEY_USER: &str = "paw-db-key";
+// DB_KEY_SERVICE and DB_KEY_USER are defined in crate::atoms::constants.
 
 /// Get or create a 256-bit database encryption key stored in the OS keychain.
 /// On first call, generates a random key and stores it. Subsequent calls return

@@ -14,6 +14,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{Emitter, Manager, State};
+use crate::atoms::constants::{CRON_SESSION_KEEP_MESSAGES, CRON_MAX_TOOL_ROUNDS};
 
 /// Pending tool approvals: maps tool_call_id → oneshot sender.
 /// The agent loop registers a sender before emitting ToolRequest,
@@ -1760,12 +1761,8 @@ pub async fn execute_task(
     let task_daily_tokens = state.daily_tokens.clone();
 
     // ── Cost control constants for cron/background tasks ──
-    // Cron sessions reuse the same session_id across runs, causing context to
-    // grow unboundedly (up to 500 messages / 100k tokens). This is the #1
-    // driver of runaway API costs. We prune old messages before each run and
-    // cap the number of tool rounds to keep costs predictable.
-    const CRON_SESSION_KEEP_MESSAGES: i64 = 20;   // keep ~2-3 runs of context
-    const CRON_MAX_TOOL_ROUNDS: u32 = 10;         // prevent runaway tool loops
+    // (CRON_SESSION_KEEP_MESSAGES and CRON_MAX_TOOL_ROUNDS imported from
+    //  crate::atoms::constants — see src/atoms/constants.rs for rationale.)
 
     // For each agent, spawn a parallel agent loop
     let mut handles = Vec::new();
