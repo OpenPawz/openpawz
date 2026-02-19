@@ -563,7 +563,105 @@ impl SessionStore {
                 messages.len(), drop_tokens, total_tokens);
         }
 
+        // ── Sanitize tool_use / tool_result pairing ────────────────────
+        // After truncation (or corruption from previous crashes), ensure every
+        // assistant message with tool_calls has matching tool_result messages.
+        // The Anthropic API returns 400 if tool_use IDs appear without a
+        // corresponding tool_result immediately after.
+        Self::sanitize_tool_pairs(&mut messages);
+
         Ok(messages)
+    }
+
+    /// Ensure every assistant message with tool_calls has matching tool_result
+    /// messages immediately after it.  Orphaned tool_use IDs (from context
+    /// truncation or prior crashes) cause Anthropic to return HTTP 400.
+    ///
+    /// Strategy:
+    /// 1. Remove leading orphaned tool-result messages that have no preceding
+    ///    assistant message with tool_calls.
+    /// 2. For each assistant message with tool_calls, collect the set of
+    ///    tool_call IDs and check the immediately following messages.  Inject
+    ///    a synthetic tool_result for any missing ID.
+    fn sanitize_tool_pairs(messages: &mut Vec<Message>) {
+        use std::collections::HashSet;
+
+        // ── Pass 1: strip leading orphan tool results ──────────────────
+        // After truncation the first non-system messages might be tool results
+        // whose parent assistant message was dropped.
+        let first_non_system = messages.iter().position(|m| m.role != Role::System).unwrap_or(0);
+        let mut strip_end = first_non_system;
+        while strip_end < messages.len() && messages[strip_end].role == Role::Tool {
+            strip_end += 1;
+        }
+        if strip_end > first_non_system {
+            let removed = strip_end - first_non_system;
+            log::warn!("[engine] Removing {} orphaned leading tool_result messages", removed);
+            messages.drain(first_non_system..strip_end);
+        }
+
+        // ── Pass 2: ensure every assistant+tool_calls has matching results ─
+        let mut i = 0;
+        while i < messages.len() {
+            let has_tc = messages[i].role == Role::Assistant
+                && messages[i].tool_calls.as_ref().map(|tc| !tc.is_empty()).unwrap_or(false);
+
+            if !has_tc {
+                i += 1;
+                continue;
+            }
+
+            // Collect expected tool_call IDs from this assistant message
+            let expected_ids: Vec<String> = messages[i]
+                .tool_calls
+                .as_ref()
+                .unwrap()
+                .iter()
+                .map(|tc| tc.id.clone())
+                .collect();
+
+            // Scan immediately following tool-result messages
+            let mut found_ids = HashSet::new();
+            let mut j = i + 1;
+            while j < messages.len() && messages[j].role == Role::Tool {
+                if let Some(ref tcid) = messages[j].tool_call_id {
+                    found_ids.insert(tcid.clone());
+                }
+                j += 1;
+            }
+
+            // Inject synthetic results for any missing tool_call IDs
+            let mut injected = 0;
+            for expected_id in &expected_ids {
+                if !found_ids.contains(expected_id) {
+                    let synthetic = Message {
+                        role: Role::Tool,
+                        content: MessageContent::Text(
+                            "[Tool execution was interrupted or result was lost.]".into(),
+                        ),
+                        tool_calls: None,
+                        tool_call_id: Some(expected_id.clone()),
+                        name: Some("_synthetic".into()),
+                    };
+                    // Insert right after the assistant message (at position i+1+injected)
+                    messages.insert(i + 1 + injected, synthetic);
+                    injected += 1;
+                }
+            }
+
+            if injected > 0 {
+                log::warn!(
+                    "[engine] Injected {} synthetic tool_result(s) for orphaned tool_use IDs",
+                    injected
+                );
+            }
+
+            // Advance past this assistant message + all following tool results
+            i += 1;
+            while i < messages.len() && messages[i].role == Role::Tool {
+                i += 1;
+            }
+        }
     }
 
     // ── Config storage ─────────────────────────────────────────────────
