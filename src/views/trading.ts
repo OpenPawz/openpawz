@@ -1,7 +1,7 @@
 // Trading Dashboard — Portfolio, P&L, Trade History, Auto-Trade Policy
 // Visual representation of Coinbase + DEX trading activity and automated guidelines.
 
-import { pawEngine, type TradeRecord, type TradingSummary, type TradingPolicy } from '../engine';
+import { pawEngine, type TradeRecord, type TradingSummary, type TradingPolicy, type Position } from '../engine';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -83,13 +83,14 @@ export async function loadTrading() {
   if (!container) return;
 
   try {
-    const [trades, summary, policy] = await Promise.all([
+    const [trades, summary, policy, positions] = await Promise.all([
       pawEngine.tradingHistory(100),
       pawEngine.tradingSummary(),
       pawEngine.tradingPolicyGet(),
+      pawEngine.positionsList(),
     ]);
 
-    renderDashboard(container, trades, summary, policy);
+    renderDashboard(container, trades, summary, policy, positions);
   } catch (err) {
     container.innerHTML = `<div class="trading-error">Failed to load trading data: ${escHtml(String(err))}</div>`;
   }
@@ -101,6 +102,7 @@ function renderDashboard(
   trades: TradeRecord[],
   summary: TradingSummary,
   policy: TradingPolicy,
+  positions: Position[],
 ) {
   const totalOps = summary.trade_count + summary.transfer_count + summary.dex_swap_count;
   const hasDex = summary.dex_swap_count > 0;
@@ -161,6 +163,9 @@ function renderDashboard(
       ${summary.dex_pairs.map((p: string) => `<span class="trading-dex-pair-tag">${escHtml(p)}</span>`).join('')}
     </div>
     ` : ''}
+
+    <!-- Open Positions (Stop-Loss / Take-Profit) -->
+    ${renderPositionsPanel(positions)}
 
     <!-- Auto-Trade Policy -->
     <div class="trading-section">
@@ -249,6 +254,7 @@ function renderDashboard(
 
   // Wire up event listeners
   bindPolicyEvents();
+  bindPositionEvents();
 }
 
 // ── Policy Form Events ─────────────────────────────────────────────────────
@@ -292,6 +298,128 @@ function bindPolicyEvents() {
       }
     });
   }
+}
+
+// ── Positions Panel ────────────────────────────────────────────────────────
+function renderPositionsPanel(positions: Position[]): string {
+  const openPositions = positions.filter(p => p.status === 'open');
+  const closedPositions = positions.filter(p => p.status !== 'open').slice(0, 10);
+
+  if (positions.length === 0) {
+    return `
+    <div class="trading-section">
+      <div class="trading-section-header">
+        <h3>Positions</h3>
+        <span class="trading-history-count">Stop-Loss &amp; Take-Profit</span>
+      </div>
+      <div class="trading-empty">No positions yet. When your agent buys a token, a position with stop-loss and take-profit will be created automatically.</div>
+    </div>`;
+  }
+
+  return `
+  <div class="trading-section">
+    <div class="trading-section-header">
+      <h3>Open Positions (${openPositions.length})</h3>
+      <span class="trading-history-count">Auto-managed stop-loss &amp; take-profit</span>
+    </div>
+    ${openPositions.length === 0
+      ? '<div class="trading-empty">No open positions. Closed positions shown below.</div>'
+      : `<div class="trading-table-wrap">
+          <table class="trading-table">
+            <thead>
+              <tr>
+                <th>Token</th>
+                <th>Entry Price</th>
+                <th>Current Price</th>
+                <th>P&L</th>
+                <th>Amount</th>
+                <th>SOL In</th>
+                <th>Stop-Loss</th>
+                <th>Take-Profit</th>
+                <th>Last Check</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${openPositions.map(p => {
+                const pnlPct = p.entry_price_usd > 0 ? ((p.last_price_usd / p.entry_price_usd) - 1) * 100 : 0;
+                const pnlClass = pnlPct > 0 ? 'trading-positive' : pnlPct < 0 ? 'trading-negative' : 'trading-neutral';
+                const pnlSign = pnlPct >= 0 ? '+' : '';
+                return `
+                <tr class="trading-row position-row" data-id="${escHtml(p.id)}">
+                  <td class="trading-pair"><strong>${escHtml(p.symbol)}</strong><br><span class="trading-usd">${escHtml(p.mint.slice(0, 8))}…</span></td>
+                  <td>$${formatPrice(p.entry_price_usd)}</td>
+                  <td>$${formatPrice(p.last_price_usd)}</td>
+                  <td class="${pnlClass}"><strong>${pnlSign}${pnlPct.toFixed(1)}%</strong></td>
+                  <td class="trading-amount">${formatAmount(p.current_amount)}</td>
+                  <td>${p.entry_sol.toFixed(4)}</td>
+                  <td>${(p.stop_loss_pct * 100).toFixed(0)}%</td>
+                  <td>${p.take_profit_pct.toFixed(1)}x</td>
+                  <td class="trading-time">${p.last_checked_at ? formatTime(p.last_checked_at) : '—'}</td>
+                  <td>
+                    <button class="btn-sm btn-danger pos-close-btn" data-id="${escHtml(p.id)}" data-symbol="${escHtml(p.symbol)}">Close</button>
+                  </td>
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`
+    }
+    ${closedPositions.length > 0 ? `
+      <div style="margin-top: 12px; opacity: 0.7;">
+        <details>
+          <summary style="cursor: pointer; font-size: 0.85em;">Closed positions (${closedPositions.length})</summary>
+          <div class="trading-table-wrap" style="margin-top: 8px;">
+            <table class="trading-table">
+              <thead>
+                <tr><th>Token</th><th>Entry</th><th>Status</th><th>Opened</th><th>Closed</th></tr>
+              </thead>
+              <tbody>
+                ${closedPositions.map(p => {
+                  const statusLabel = p.status === 'closed_sl' ? '🛑 Stop-Loss'
+                    : p.status === 'closed_tp' ? '🎯 Take-Profit'
+                    : '✋ Manual';
+                  return `<tr>
+                    <td>${escHtml(p.symbol)}</td>
+                    <td>$${formatPrice(p.entry_price_usd)}</td>
+                    <td>${statusLabel}</td>
+                    <td class="trading-time">${formatTime(p.created_at)}</td>
+                    <td class="trading-time">${p.closed_at ? formatTime(p.closed_at) : '—'}</td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      </div>
+    ` : ''}
+  </div>`;
+}
+
+function formatPrice(price: number): string {
+  if (price === 0) return '0';
+  if (price >= 1) return price.toFixed(4);
+  if (price >= 0.001) return price.toFixed(6);
+  return price.toExponential(4);
+}
+
+function bindPositionEvents() {
+  document.querySelectorAll('.pos-close-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const el = e.target as HTMLElement;
+      const id = el.dataset.id;
+      const symbol = el.dataset.symbol;
+      if (!id) return;
+      if (!confirm(`Close position for ${symbol}? This does NOT auto-sell — it just stops monitoring.`)) return;
+      try {
+        await pawEngine.positionClose(id);
+        showTradingToast(`Position for ${symbol} closed`, 'success');
+        loadTrading();
+      } catch (err) {
+        showTradingToast(`Failed to close: ${err}`, 'error');
+      }
+    });
+  });
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────

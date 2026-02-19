@@ -1425,6 +1425,36 @@ pub fn engine_trading_policy_set(
     state.store.set_config("trading_policy", &json)
 }
 
+// ── Position commands (Stop-Loss / Take-Profit) ────────────────────────
+
+#[tauri::command]
+pub fn engine_positions_list(
+    state: State<'_, EngineState>,
+    status: Option<String>,
+) -> Result<Vec<Position>, String> {
+    state.store.list_positions(status.as_deref())
+}
+
+#[tauri::command]
+pub fn engine_position_close(
+    state: State<'_, EngineState>,
+    id: String,
+) -> Result<(), String> {
+    info!("[engine] Manually closing position {}", id);
+    state.store.close_position(&id, "closed_manual", None)
+}
+
+#[tauri::command]
+pub fn engine_position_update_targets(
+    state: State<'_, EngineState>,
+    id: String,
+    stop_loss_pct: f64,
+    take_profit_pct: f64,
+) -> Result<(), String> {
+    info!("[engine] Updating position {} targets: SL={:.0}%, TP={:.1}x", id, stop_loss_pct * 100.0, take_profit_pct);
+    state.store.update_position_targets(&id, stop_loss_pct, take_profit_pct)
+}
+
 // ── Task commands ──────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -2023,11 +2053,177 @@ fn compute_next_run(schedule: &Option<String>, from: &chrono::DateTime<chrono::U
 
 // ── Cron Heartbeat (background autonomous execution) ───────────────────
 
+/// Check all open positions against current prices.
+/// If stop-loss or take-profit thresholds are crossed, auto-sell.
+async fn check_positions(app_handle: &tauri::AppHandle) {
+    let state = app_handle.state::<EngineState>();
+
+    let positions = match state.store.list_positions(Some("open")) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("[positions] Failed to load open positions: {}", e);
+            return;
+        }
+    };
+
+    if positions.is_empty() {
+        return;
+    }
+
+    // Get Solana credentials for selling
+    let creds = match skills::get_skill_credentials(&state.store, "solana") {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("[positions] Cannot load Solana credentials: {}", e);
+            return;
+        }
+    };
+
+    if !creds.contains_key("SOLANA_WALLET_ADDRESS") || !creds.contains_key("SOLANA_PRIVATE_KEY") {
+        return; // No wallet configured — skip silently
+    }
+
+    info!("[positions] Checking {} open position(s)", positions.len());
+
+    for pos in &positions {
+        // Rate-limit: skip if checked within the last 55 seconds
+        if let Some(ref last) = pos.last_checked_at {
+            if let Ok(last_dt) = chrono::NaiveDateTime::parse_from_str(last, "%Y-%m-%d %H:%M:%S") {
+                let now = chrono::Utc::now().naive_utc();
+                if (now - last_dt).num_seconds() < 55 {
+                    continue;
+                }
+            }
+        }
+
+        // Fetch current price from DexScreener
+        let current_price = match crate::engine::sol_dex::get_token_price_usd(&pos.mint).await {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("[positions] Price lookup failed for {} ({}): {}", pos.symbol, &pos.mint[..std::cmp::min(8, pos.mint.len())], e);
+                continue;
+            }
+        };
+
+        // Update tracked price
+        let _ = state.store.update_position_price(&pos.id, current_price);
+
+        // Calculate price change ratio
+        if pos.entry_price_usd <= 0.0 {
+            continue;
+        }
+        let ratio = current_price / pos.entry_price_usd;
+
+        // ── Stop-loss: price dropped below threshold ──
+        if ratio <= (1.0 - pos.stop_loss_pct) {
+            info!("[positions] 🛑 STOP-LOSS triggered for {} — entry ${:.8}, now ${:.8} ({:.1}% loss)",
+                pos.symbol, pos.entry_price_usd, current_price, (1.0 - ratio) * 100.0);
+
+            let sell_result = execute_position_sell(app_handle, &creds, &pos.mint, &pos.symbol, pos.current_amount).await;
+
+            match sell_result {
+                Ok(tx) => {
+                    let _ = state.store.close_position(&pos.id, "closed_sl", Some(&tx));
+                    let _ = state.store.insert_trade(
+                        "sol_swap", Some("sell"), Some(&format!("{} → SOL", pos.symbol)),
+                        Some(&pos.mint), &pos.current_amount.to_string(),
+                        None, None, "completed", None, Some("SOL"),
+                        &format!("Auto stop-loss at {:.1}% loss", (1.0 - ratio) * 100.0),
+                        None, None, Some(&tx),
+                    );
+                    app_handle.emit("position-closed", serde_json::json!({
+                        "id": pos.id, "symbol": pos.symbol, "reason": "stop_loss",
+                        "entry_price": pos.entry_price_usd, "exit_price": current_price,
+                    })).ok();
+                    info!("[positions] ✅ Stop-loss sell executed for {} — tx: {}", pos.symbol, &tx[..std::cmp::min(16, tx.len())]);
+                }
+                Err(e) => {
+                    error!("[positions] ❌ Stop-loss sell FAILED for {}: {}", pos.symbol, e);
+                }
+            }
+        }
+        // ── Take-profit: price rose above threshold ──
+        else if ratio >= pos.take_profit_pct {
+            info!("[positions] 🎯 TAKE-PROFIT triggered for {} — entry ${:.8}, now ${:.8} ({:.1}x)",
+                pos.symbol, pos.entry_price_usd, current_price, ratio);
+
+            // Sell half on take-profit (lock in gains, let the rest ride)
+            let sell_amount = pos.current_amount / 2.0;
+            let sell_result = execute_position_sell(app_handle, &creds, &pos.mint, &pos.symbol, sell_amount).await;
+
+            match sell_result {
+                Ok(tx) => {
+                    let remaining = pos.current_amount - sell_amount;
+                    if remaining < 1.0 {
+                        // Effectively closed
+                        let _ = state.store.close_position(&pos.id, "closed_tp", Some(&tx));
+                    } else {
+                        // Partial sell — reduce position, raise stop-loss to break-even
+                        let _ = state.store.reduce_position(&pos.id, remaining);
+                        let _ = state.store.update_position_targets(&pos.id, 0.05, pos.take_profit_pct * 1.5);
+                    }
+                    let _ = state.store.insert_trade(
+                        "sol_swap", Some("sell"), Some(&format!("{} → SOL", pos.symbol)),
+                        Some(&pos.mint), &sell_amount.to_string(),
+                        None, None, "completed", None, Some("SOL"),
+                        &format!("Auto take-profit at {:.1}x", ratio),
+                        None, None, Some(&tx),
+                    );
+                    app_handle.emit("position-closed", serde_json::json!({
+                        "id": pos.id, "symbol": pos.symbol, "reason": "take_profit",
+                        "entry_price": pos.entry_price_usd, "exit_price": current_price,
+                    })).ok();
+                    info!("[positions] ✅ Take-profit sell executed for {} — tx: {}", pos.symbol, &tx[..std::cmp::min(16, tx.len())]);
+                }
+                Err(e) => {
+                    error!("[positions] ❌ Take-profit sell FAILED for {}: {}", pos.symbol, e);
+                }
+            }
+        }
+    }
+}
+
+/// Execute a sell of `amount` tokens of `mint` for SOL via the existing swap infrastructure.
+/// Returns the transaction signature on success.
+async fn execute_position_sell(
+    app_handle: &tauri::AppHandle,
+    creds: &HashMap<String, String>,
+    mint: &str,
+    symbol: &str,
+    amount: f64,
+) -> Result<String, String> {
+    // Build args in the same format as agent tool calls
+    let args = serde_json::json!({
+        "token_in": mint,
+        "token_out": "SOL",
+        "amount": format!("{}", amount as u64), // raw token amount for sells
+        "reason": format!("Auto position management for {}", symbol),
+        "slippage_bps": 300  // 3% slippage for automated sells
+    });
+
+    let result = crate::engine::sol_dex::execute_sol_swap(&args, creds).await?;
+
+    // Extract tx hash from the markdown result
+    // Format: "| Transaction | [hash](https://solscan.io/tx/FULL_HASH) |"
+    if let Some(start) = result.find("solscan.io/tx/") {
+        let after = &result[start + 14..];
+        if let Some(end) = after.find(')') {
+            return Ok(after[..end].to_string());
+        }
+    }
+
+    // Fallback: return the full result (swap succeeded but couldn't parse tx)
+    Ok(format!("swap_ok_{}", chrono::Utc::now().timestamp()))
+}
+
 /// Background cron heartbeat — called every 60 seconds from the Tauri
 /// setup hook. Finds due cron tasks, updates their timestamps, and
 /// auto-executes each one via `execute_task`.
 pub async fn run_cron_heartbeat(app_handle: &tauri::AppHandle) {
     let state = app_handle.state::<EngineState>();
+
+    // 0) Check open positions (stop-loss / take-profit)
+    check_positions(app_handle).await;
 
     // 1) Find all due cron tasks
     let due_tasks = match state.store.get_due_cron_tasks() {

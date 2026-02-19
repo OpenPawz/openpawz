@@ -1186,6 +1186,55 @@ async fn execute_skill_tool(
                     None, None,
                     result.as_ref().ok().map(|s| s.as_str()),
                 );
+
+                // Auto-open position on BUY (when spending SOL to get a token)
+                let is_buy = {
+                    let tin = token_in.trim().to_uppercase();
+                    tin == "SOL" || tin == "SO11111111111111111111111111111111111111112"
+                };
+                if is_buy {
+                    let amount_sol_str = args["amount"].as_str().unwrap_or("0");
+                    let amount_sol: f64 = amount_sol_str.parse().unwrap_or(0.0);
+                    let output_mint = token_out.trim().to_string();
+                    let symbol = token_out.trim().to_uppercase();
+                    let app = app_handle.clone();
+
+                    // Parse received amount from the swap result markdown
+                    let result_text = result.as_ref().unwrap().clone();
+                    tokio::spawn(async move {
+                        // Get current price from DexScreener
+                        let price = crate::engine::sol_dex::get_token_price_usd(&output_mint).await.unwrap_or(0.0);
+
+                        // Parse "Received (est.) | AMOUNT TOKEN" from result
+                        let received_amount: f64 = result_text
+                            .lines()
+                            .find(|l| l.contains("Received"))
+                            .and_then(|l| {
+                                let parts: Vec<&str> = l.split('|').collect();
+                                if parts.len() >= 3 {
+                                    parts[2].trim().split_whitespace().next()
+                                        .and_then(|s| s.replace(',', "").parse::<f64>().ok())
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(0.0);
+
+                        if received_amount > 0.0 && price > 0.0 {
+                            if let Some(st) = app.try_state::<EngineState>() {
+                                match st.store.insert_position(
+                                    &output_mint, &symbol, price, amount_sol,
+                                    received_amount, 0.30, 2.0, None,
+                                ) {
+                                    Ok(id) => log::info!("[positions] Auto-opened position {} for {} tokens of {}", id, received_amount, symbol),
+                                    Err(e) => log::warn!("[positions] Failed to auto-open position: {}", e),
+                                }
+                            }
+                        } else {
+                            log::info!("[positions] Skipped position for {} — price={}, amount={}", symbol, price, received_amount);
+                        }
+                    });
+                }
             }
             result
         }

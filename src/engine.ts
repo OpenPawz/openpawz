@@ -233,6 +233,25 @@ export interface TradingPolicy {
   max_transfer_usd: number;
 }
 
+export interface Position {
+  id: string;
+  mint: string;
+  symbol: string;
+  entry_price_usd: number;
+  entry_sol: number;
+  amount: number;
+  current_amount: number;
+  stop_loss_pct: number;
+  take_profit_pct: number;
+  status: string;
+  last_price_usd: number;
+  last_checked_at: string | null;
+  created_at: string;
+  closed_at: string | null;
+  close_tx: string | null;
+  agent_id: string | null;
+}
+
 // ── Text-to-Speech ─────────────────────────────────────────────────────
 
 export interface TtsConfig {
@@ -749,6 +768,20 @@ class PawEngineClient {
 
   async tradingPolicySet(policy: TradingPolicy): Promise<void> {
     return invoke('engine_trading_policy_set', { policy });
+  }
+
+  // ── Positions (Stop-Loss / Take-Profit) ──────────────────────────────
+
+  async positionsList(status?: string): Promise<Position[]> {
+    return invoke<Position[]>('engine_positions_list', { status: status ?? null });
+  }
+
+  async positionClose(id: string): Promise<void> {
+    return invoke('engine_position_close', { id });
+  }
+
+  async positionUpdateTargets(id: string, stopLossPct: number, takeProfitPct: number): Promise<void> {
+    return invoke('engine_position_update_targets', { id, stopLossPct, takeProfitPct });
   }
 
   // ── Text-to-Speech ──────────────────────────────────────────────────

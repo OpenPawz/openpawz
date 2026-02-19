@@ -2715,6 +2715,10 @@ pub fn run() {
             engine::commands::engine_trading_summary,
             engine::commands::engine_trading_policy_get,
             engine::commands::engine_trading_policy_set,
+            // ── Positions (Stop-Loss / Take-Profit) ──
+            engine::commands::engine_positions_list,
+            engine::commands::engine_position_close,
+            engine::commands::engine_position_update_targets,
             // ── Text-to-Speech ──
             engine::commands::engine_tts_speak,
             engine::commands::engine_tts_get_config,

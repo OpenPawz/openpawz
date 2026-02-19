@@ -1869,6 +1869,38 @@ pub struct Memory {
     pub agent_id: Option<String>,
 }
 
+/// An open trading position with stop-loss / take-profit targets.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Position {
+    pub id: String,
+    pub mint: String,
+    pub symbol: String,
+    pub entry_price_usd: f64,
+    pub entry_sol: f64,
+    pub amount: f64,
+    /// Current amount (may decrease after partial take-profit sells)
+    pub current_amount: f64,
+    /// Stop-loss trigger as a fraction (e.g. 0.30 = sell if price drops 30%)
+    pub stop_loss_pct: f64,
+    /// Take-profit trigger as a fraction (e.g. 2.0 = sell half at 2x)
+    pub take_profit_pct: f64,
+    /// "open" | "closed_sl" | "closed_tp" | "closed_manual"
+    pub status: String,
+    /// Last known price from price check
+    #[serde(default)]
+    pub last_price_usd: f64,
+    /// Timestamp of last price check
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_checked_at: Option<String>,
+    pub created_at: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub close_tx: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+}
+
 /// Trading policy for auto-approve guidelines.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingPolicy {
