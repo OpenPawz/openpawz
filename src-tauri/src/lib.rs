@@ -2599,7 +2599,7 @@ pub fn run() {
         .manage(engine_state)
         .plugin(tauri_plugin_log::Builder::new()
             .target(tauri_plugin_log::Target::new(
-                tauri_plugin_log::TargetKind::LogDir { file_name: Some("claw".into()) },
+                tauri_plugin_log::TargetKind::LogDir { file_name: Some("openpawz".into()) },
             ))
             .max_file_size(5_000_000) // 5MB max per log file
             .build())

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Claw Desktop",
+  "productName": "Open Pawz Desktop",
   "version": "0.1.0",
   "identifier": "com.elibury.paw",
   "build": {
@@ -13,7 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
-        "title": "Claw Desktop",
+        "title": "Open Pawz Desktop",
         "width": 800,
         "height": 600,
         "resizable": true,
