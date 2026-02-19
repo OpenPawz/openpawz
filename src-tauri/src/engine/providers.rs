@@ -669,10 +669,18 @@ impl AnthropicProvider {
         // gives ~90% discount on input tokens for the cached portion.
         Self::add_turn_cache_breakpoints(&mut formatted_messages);
 
+        // Model-aware max_tokens: claude-3-haiku caps at 4096,
+        // most other Anthropic models support 8192+.
+        let max_tokens = if model.contains("claude-3-haiku") {
+            4096
+        } else {
+            8192
+        };
+
         let mut body = json!({
             "model": model,
             "messages": formatted_messages,
-            "max_tokens": 8192,
+            "max_tokens": max_tokens,
             "stream": true,
         });
 
