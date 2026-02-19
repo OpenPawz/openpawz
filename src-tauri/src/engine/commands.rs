@@ -24,7 +24,7 @@ pub type PendingApprovals = Arc<Mutex<HashMap<String, tokio::sync::oneshot::Send
 /// First checks if the model's default_model matches any provider exactly,
 /// then matches by model prefix (claude→Anthropic, gemini→Google, gpt→OpenAI)
 /// and by base URL or provider ID for OpenAI-compatible providers.
-fn resolve_provider_for_model(model: &str, providers: &[ProviderConfig]) -> Option<ProviderConfig> {
+pub fn resolve_provider_for_model(model: &str, providers: &[ProviderConfig]) -> Option<ProviderConfig> {
     // 1. Exact match: a provider whose default_model matches exactly
     if let Some(p) = providers.iter().find(|p| p.default_model.as_deref() == Some(model)) {
         return Some(p.clone());

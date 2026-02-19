@@ -504,17 +504,24 @@ async fn run_telegram_agent(
     // Per-user per-agent session: eng-tg-{agent}-{user_id}
     let session_id = format!("eng-tg-{}-{}", agent_id, user_id);
 
-    // Get provider config
+    // Get provider config — use model_routing.resolve() so the worker_model
+    // setting is respected for Telegram (instead of burning the expensive
+    // default_model on every DM)
     let (provider_config, model, system_prompt, max_rounds, tool_timeout) = {
         let cfg = engine_state.config.lock().map_err(|e| format!("Lock: {}", e))?;
 
-        let model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".into());
-        let provider = cfg.default_provider.as_ref()
-            .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned())
+        let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".into());
+        let model = cfg.model_routing.resolve(agent_id, "worker", "", &default_model);
+        let provider = crate::engine::commands::resolve_provider_for_model(&model, &cfg.providers)
+            .or_else(|| {
+                cfg.default_provider.as_ref()
+                    .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned())
+            })
             .or_else(|| cfg.providers.first().cloned())
             .ok_or("No AI provider configured")?;
 
         let sp = cfg.default_system_prompt.clone();
+        info!("[telegram] Resolved model for agent '{}': {} (default: {})", agent_id, model, default_model);
         (provider, model, sp, cfg.max_tool_rounds, cfg.tool_timeout_secs)
     };
 
