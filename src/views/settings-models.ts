@@ -45,7 +45,7 @@ const POPULAR_MODELS: Record<string, string[]> = {
   ],
   anthropic: [
     'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001',
-    'claude-sonnet-4-5-20250929',
+    'claude-sonnet-4-5-20250929', 'claude-3-haiku-20240307',
   ],
   google: [
     'gemini-2.5-pro', 'gemini-2.5-flash',
@@ -54,6 +54,7 @@ const POPULAR_MODELS: Record<string, string[]> = {
   ],
   openrouter: [
     'anthropic/claude-sonnet-4-6', 'anthropic/claude-haiku-4-5-20251001',
+    'anthropic/claude-3-haiku-20240307',
     'openai/gpt-4o', 'openai/gpt-4o-mini',
     'google/gemini-2.5-pro', 'google/gemini-2.5-flash',
     'meta-llama/llama-3.1-405b-instruct', 'meta-llama/llama-3.1-70b-instruct',
@@ -387,6 +388,7 @@ const TIER_LABELS: Record<string, Record<string, string>> = {
     'claude-opus-4-6': '⚡ Flagship — $5/$25 per MTok — complex reasoning, coding agents',
     'claude-sonnet-4-6': '🔥 Best value — $3/$15 per MTok — general purpose workhorse',
     'claude-haiku-4-5-20251001': '💨 Fast + cheap — $1/$5 per MTok — bulk, cron jobs, summaries',
+    'claude-3-haiku-20240307': '💰 Cheapest — $0.25/$1.25 per MTok — cron jobs, simple tasks',
     'claude-sonnet-4-5-20250929': '🤖 Agentic — strong for computer use tasks',
   },
   openai: {

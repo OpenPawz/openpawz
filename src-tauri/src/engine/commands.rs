@@ -83,12 +83,14 @@ impl DailyTokenTracker {
 /// This lets old task configs and agent overrides stored in the DB keep working.
 pub fn normalize_model_name(model: &str) -> &str {
     match model {
-        // Anthropic retired 3.5 model IDs
-        "claude-3-5-haiku-20241022" => "claude-haiku-4-5-20251001",
+        // Anthropic retired 3.5 model IDs — remap to cheapest available
+        // Haiku 3.5 ($0.80/$4) retired → Haiku 3 ($0.25/$1.25) is cheapest
+        "claude-3-5-haiku-20241022" => "claude-3-haiku-20240307",
+        // Sonnet 3.5 retired → Sonnet 4.6 (same price tier $3/$15)
         "claude-3-5-sonnet-20241022" => "claude-sonnet-4-6",
         "claude-3-5-sonnet-20240620" => "claude-sonnet-4-6",
         // OpenRouter prefixed variants
-        "anthropic/claude-3-5-haiku-20241022" => "anthropic/claude-haiku-4-5-20251001",
+        "anthropic/claude-3-5-haiku-20241022" => "anthropic/claude-3-haiku-20240307",
         "anthropic/claude-3-5-sonnet-20241022" => "anthropic/claude-sonnet-4-6",
         _ => model,
     }
