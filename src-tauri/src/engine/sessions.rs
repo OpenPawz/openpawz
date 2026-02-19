@@ -800,7 +800,9 @@ impl SessionStore {
     pub fn daily_trade_summary(&self) -> Result<serde_json::Value, String> {
         let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
         let today = Utc::now().format("%Y-%m-%d").to_string();
-        let today_start = format!("{}T00:00:00", today);
+        // SQLite datetime('now') uses space separator: "2026-02-19 00:00:00"
+        // Must match that format, NOT ISO 8601 'T' separator
+        let today_start = format!("{} 00:00:00", today);
 
         // Coinbase trades
         let trade_count: i64 = conn.query_row(
