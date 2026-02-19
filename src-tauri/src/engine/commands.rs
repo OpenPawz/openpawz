@@ -31,6 +31,16 @@ pub struct DailyTokenTracker {
     pub input_tokens: AtomicU64,
     /// Cumulative output tokens today
     pub output_tokens: AtomicU64,
+    /// Cumulative cache read tokens today (Anthropic — 90% cheaper)
+    pub cache_read_tokens: AtomicU64,
+    /// Cumulative cache creation tokens today (Anthropic — 25% cheaper)
+    pub cache_create_tokens: AtomicU64,
+    /// Accumulated USD cost today (stored as micro-dollars for atomic ops)
+    pub cost_microdollars: AtomicU64,
+    /// Last model name used (for fallback pricing when model unknown)
+    pub last_model: Mutex<String>,
+    /// Budget warning thresholds already emitted (50, 75, 90)
+    pub warnings_emitted: Mutex<Vec<u8>>,
 }
 
 impl DailyTokenTracker {
@@ -39,44 +49,79 @@ impl DailyTokenTracker {
             date: Mutex::new(chrono::Utc::now().format("%Y-%m-%d").to_string()),
             input_tokens: AtomicU64::new(0),
             output_tokens: AtomicU64::new(0),
+            cache_read_tokens: AtomicU64::new(0),
+            cache_create_tokens: AtomicU64::new(0),
+            cost_microdollars: AtomicU64::new(0),
+            last_model: Mutex::new("unknown".into()),
+            warnings_emitted: Mutex::new(Vec::new()),
         }
     }
 
-    /// Add tokens from a completed round.  Auto-resets if the UTC date changed.
-    pub fn record(&self, input: u64, output: u64) {
+    fn maybe_reset(&self) {
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         if let Ok(mut d) = self.date.lock() {
             if *d != today {
                 *d = today;
                 self.input_tokens.store(0, Ordering::Relaxed);
                 self.output_tokens.store(0, Ordering::Relaxed);
+                self.cache_read_tokens.store(0, Ordering::Relaxed);
+                self.cache_create_tokens.store(0, Ordering::Relaxed);
+                self.cost_microdollars.store(0, Ordering::Relaxed);
+                if let Ok(mut w) = self.warnings_emitted.lock() {
+                    w.clear();
+                }
             }
         }
-        self.input_tokens.fetch_add(input, Ordering::Relaxed);
-        self.output_tokens.fetch_add(output, Ordering::Relaxed);
     }
 
-    /// Estimate today's USD spend using approximate per-model pricing.
+    /// Add tokens from a completed round with model-aware pricing.
+    pub fn record(&self, model: &str, input: u64, output: u64, cache_read: u64, cache_create: u64) {
+        self.maybe_reset();
+        self.input_tokens.fetch_add(input, Ordering::Relaxed);
+        self.output_tokens.fetch_add(output, Ordering::Relaxed);
+        self.cache_read_tokens.fetch_add(cache_read, Ordering::Relaxed);
+        self.cache_create_tokens.fetch_add(cache_create, Ordering::Relaxed);
+        // Calculate cost for this round using per-model pricing
+        let cost = crate::engine::types::estimate_cost_usd(model, input, output, cache_read, cache_create);
+        let micro = (cost * 1_000_000.0) as u64;
+        self.cost_microdollars.fetch_add(micro, Ordering::Relaxed);
+        if let Ok(mut m) = self.last_model.lock() {
+            *m = model.to_string();
+        }
+    }
+
+    /// Estimate today's USD spend using accumulated per-model costs.
     /// Returns (input_tokens, output_tokens, estimated_usd).
     pub fn estimated_spend_usd(&self) -> (u64, u64, f64) {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
-        if let Ok(d) = self.date.lock() {
-            if *d != today {
-                return (0, 0, 0.0);
-            }
-        }
+        self.maybe_reset();
         let inp = self.input_tokens.load(Ordering::Relaxed);
         let out = self.output_tokens.load(Ordering::Relaxed);
-        // Conservative estimate: blend of Sonnet ($3/$15) and Haiku ($0.80/$4) pricing
-        // Use Sonnet rates as worst case since that's what usually runs
-        let usd = (inp as f64 * 3.0 / 1_000_000.0) + (out as f64 * 15.0 / 1_000_000.0);
-        (inp, out, usd)
+        let micro = self.cost_microdollars.load(Ordering::Relaxed);
+        (inp, out, micro as f64 / 1_000_000.0)
     }
 
     /// Check if today's spend exceeds the budget.  Returns Some(spend_usd) if over budget.
     pub fn check_budget(&self, budget_usd: f64) -> Option<f64> {
         let (_, _, usd) = self.estimated_spend_usd();
         if usd >= budget_usd { Some(usd) } else { None }
+    }
+
+    /// Check budget warning thresholds (50%, 75%, 90%).
+    /// Returns the threshold percentage if a NEW warning should be emitted.
+    pub fn check_budget_warning(&self, budget_usd: f64) -> Option<u8> {
+        if budget_usd <= 0.0 { return None; }
+        let (_, _, usd) = self.estimated_spend_usd();
+        let pct = (usd / budget_usd * 100.0) as u8;
+        let thresholds = [90u8, 75, 50]; // check highest first
+        if let Ok(mut emitted) = self.warnings_emitted.lock() {
+            for &t in &thresholds {
+                if pct >= t && !emitted.contains(&t) {
+                    emitted.push(t);
+                    return Some(t);
+                }
+            }
+        }
+        None
     }
 }
 /// Map retired / renamed model IDs to their current replacements.
@@ -244,11 +289,27 @@ pub async fn engine_chat_send(
 
         let raw_model = request.model.clone().unwrap_or_default();
         // Treat empty string or "default" as "use the configured default"
-        let model = if raw_model.is_empty() || raw_model.eq_ignore_ascii_case("default") {
+        let base_model = if raw_model.is_empty() || raw_model.eq_ignore_ascii_case("default") {
             cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string())
         } else {
             raw_model
         };
+
+        // ── Smart model tier routing ──
+        // When auto_tier is enabled and no explicit model was requested,
+        // classify the user message and use cheap_model for simple tasks.
+        let user_explicitly_chose_model = request.model.as_ref().map_or(false, |m| {
+            !m.is_empty() && !m.eq_ignore_ascii_case("default")
+        });
+        let (model, was_downgraded) = if !user_explicitly_chose_model {
+            cfg.model_routing.resolve_auto_tier(&request.message, &base_model)
+        } else {
+            (base_model, false)
+        };
+        if was_downgraded {
+            info!("[engine] Auto-tier: simple task → using cheap model '{}' instead of default", model);
+        }
+
         // Remap retired model IDs to current equivalents
         let model = normalize_model_name(&model).to_string();
 
@@ -789,15 +850,21 @@ pub fn engine_get_daily_spend(
     state: State<'_, EngineState>,
 ) -> Result<serde_json::Value, String> {
     let (input_tokens, output_tokens, estimated_usd) = state.daily_tokens.estimated_spend_usd();
+    let cache_read = state.daily_tokens.cache_read_tokens.load(Ordering::Relaxed);
+    let cache_create = state.daily_tokens.cache_create_tokens.load(Ordering::Relaxed);
     let budget = {
         let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
         cfg.daily_budget_usd
     };
+    let budget_pct = if budget > 0.0 { (estimated_usd / budget * 100.0).min(100.0) } else { 0.0 };
     Ok(serde_json::json!({
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read,
+        "cache_create_tokens": cache_create,
         "estimated_usd": format!("{:.2}", estimated_usd),
         "budget_usd": budget,
+        "budget_pct": format!("{:.0}", budget_pct),
         "over_budget": budget > 0.0 && estimated_usd >= budget,
     }))
 }

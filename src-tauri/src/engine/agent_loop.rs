@@ -134,21 +134,44 @@ pub async fn run_agent_turn(
             }
         }
 
+        // Gather cache token usage from all chunks for accurate cost tracking
+        let round_cache_read: u64 = chunks.iter()
+            .filter_map(|c| c.usage.as_ref())
+            .map(|u| u.cache_read_tokens)
+            .sum();
+        let round_cache_create: u64 = chunks.iter()
+            .filter_map(|c| c.usage.as_ref())
+            .map(|u| u.cache_creation_tokens)
+            .sum();
+
         // ── Record this round's token usage against the daily budget tracker
         if let Some(tracker) = daily_tokens {
-            // Record the round's actual token consumption.
-            // input: for non-first rounds in a session, prompt caching means
-            // real spend is lower, but we track raw tokens for safety.
             let round_input = last_input_tokens;
             let round_output = chunks.iter()
                 .filter_map(|c| c.usage.as_ref())
                 .map(|u| u.output_tokens)
                 .sum::<u64>();
-            tracker.record(round_input, round_output);
+            tracker.record(model, round_input, round_output, round_cache_read, round_cache_create);
             let (total_in, total_out, est_usd) = tracker.estimated_spend_usd();
             if round == 1 || round % 5 == 0 {
-                info!("[engine] Daily spend: ~${:.2} ({} in / {} out tokens today)",
-                    est_usd, total_in, total_out);
+                info!("[engine] Daily spend: ~${:.2} ({} in / {} out tokens today, cache read={} create={})",
+                    est_usd, total_in, total_out, round_cache_read, round_cache_create);
+            }
+
+            // ── Budget warnings: emit events at 50%, 75%, 90% thresholds
+            if daily_budget_usd > 0.0 {
+                if let Some(pct) = tracker.check_budget_warning(daily_budget_usd) {
+                    let msg = format!(
+                        "Budget warning: {}% of daily budget used (${:.2} of ${:.2})",
+                        pct, est_usd, daily_budget_usd
+                    );
+                    warn!("[engine] {}", msg);
+                    let _ = app_handle.emit("engine-event", EngineEvent::Error {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        message: msg,
+                    });
+                }
             }
         }
 
@@ -171,6 +194,8 @@ pub async fn run_agent_turn(
                     input_tokens: last_input_tokens,
                     output_tokens: total_output_tokens,
                     total_tokens: last_input_tokens + total_output_tokens,
+                    cache_creation_tokens: round_cache_create,
+                    cache_read_tokens: round_cache_read,
                 })
             } else {
                 None

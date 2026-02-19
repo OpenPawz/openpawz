@@ -266,7 +266,7 @@ function buildModelRoutingSection(
   section.className = 'settings-subsection';
   section.style.marginTop = '20px';
   section.innerHTML = `<h3 class="settings-subsection-title">Model Routing (Multi-Agent)</h3>
-    <p class="settings-section-desc">Use different models for different roles. With a single API key (e.g. Gemini), route your boss agent to a powerful model and sub-agents to cheaper, faster models.</p>`;
+    <p class="settings-section-desc">Use different models for different roles. Enable <strong>Smart Auto-Tier</strong> to automatically use the cheapest model for simple tasks and upgrade for complex ones.</p>`;
 
   const routing = config.model_routing ?? {};
 
@@ -281,6 +281,36 @@ function buildModelRoutingSection(
     dl.appendChild(o);
   }
   section.appendChild(dl);
+
+  // ── Smart Auto-Tier Toggle ──
+  const autoTierRow = formRow('Smart Auto-Tier', 'Automatically use cheap model for simple tasks, upgrade for complex ones');
+  const autoTierCheck = document.createElement('input');
+  autoTierCheck.type = 'checkbox';
+  autoTierCheck.checked = routing.auto_tier ?? false;
+  autoTierCheck.style.cssText = 'width:18px;height:18px;cursor:pointer';
+  const autoTierLabel = document.createElement('span');
+  autoTierLabel.textContent = routing.auto_tier ? 'Enabled — saves cost on simple tasks' : 'Disabled — always uses default model';
+  autoTierLabel.style.cssText = 'font-size:12px;color:var(--text-muted);margin-left:8px';
+  autoTierCheck.addEventListener('change', () => {
+    autoTierLabel.textContent = autoTierCheck.checked ? 'Enabled — saves cost on simple tasks' : 'Disabled — always uses default model';
+    // Show/hide cheap model row
+    cheapRow.style.display = autoTierCheck.checked ? '' : 'none';
+  });
+  const autoTierWrap = document.createElement('div');
+  autoTierWrap.style.cssText = 'display:flex;align-items:center';
+  autoTierWrap.appendChild(autoTierCheck);
+  autoTierWrap.appendChild(autoTierLabel);
+  autoTierRow.appendChild(autoTierWrap);
+  section.appendChild(autoTierRow);
+
+  // Cheap Model (for auto-tier)
+  const cheapRow = formRow('Cheap Model (for simple tasks)', 'Model used for greetings, status checks, single-tool calls');
+  const cheapInp = textInput(routing.cheap_model ?? '', 'e.g. claude-3-haiku-20240307, gemini-2.0-flash');
+  cheapInp.style.maxWidth = '320px';
+  cheapInp.setAttribute('list', dlId);
+  cheapRow.appendChild(cheapInp);
+  cheapRow.style.display = routing.auto_tier ? '' : 'none';
+  section.appendChild(cheapRow);
 
   // Boss Model
   const bossRow = formRow('Boss / Orchestrator Model', 'Powerful model for the master agent that plans and delegates');
@@ -361,6 +391,8 @@ function buildModelRoutingSection(
         worker_model: workerInp.value.trim() || undefined,
         specialty_models: Object.keys(specialtyModels).length > 0 ? specialtyModels : undefined,
         agent_models: routing.agent_models, // preserve existing per-agent overrides
+        cheap_model: cheapInp.value.trim() || undefined,
+        auto_tier: autoTierCheck.checked,
       };
 
       const updated: EngineConfig = {

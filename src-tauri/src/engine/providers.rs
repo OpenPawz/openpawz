@@ -18,11 +18,41 @@ fn is_retryable_status(status: u16) -> bool {
     matches!(status, 429 | 500 | 502 | 503 | 529)
 }
 
-/// Sleep with exponential backoff. Returns delay used.
-async fn retry_delay(attempt: u32) -> Duration {
-    let delay = Duration::from_millis(INITIAL_RETRY_DELAY_MS * 2u64.pow(attempt));
+/// Sleep with exponential backoff + jitter.
+/// If the provider sent a Retry-After header, honour it (capped at 60s).
+async fn retry_delay(attempt: u32, retry_after_secs: Option<u64>) -> Duration {
+    let base_ms = INITIAL_RETRY_DELAY_MS * 2u64.pow(attempt);
+    // Use Retry-After if provided (convert to ms), otherwise use exponential backoff
+    let delay_ms = if let Some(secs) = retry_after_secs {
+        (secs.min(60) * 1000).max(base_ms) // at least as much as our backoff
+    } else {
+        base_ms
+    };
+    // Add jitter: ±25% to prevent thundering herd
+    let jitter = (delay_ms / 4) as i64;
+    let jittered = delay_ms as i64 + (rand_jitter() % (2 * jitter + 1)) - jitter;
+    let delay = Duration::from_millis(jittered.max(100) as u64);
     tokio::time::sleep(delay).await;
     delay
+}
+
+/// Simple deterministic jitter source (no extra crate needed).
+fn rand_jitter() -> i64 {
+    use std::time::SystemTime;
+    let nanos = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .subsec_nanos();
+    (nanos % 1000) as i64
+}
+
+/// Parse Retry-After header value (seconds or HTTP-date → seconds).
+fn parse_retry_after(header_value: &str) -> Option<u64> {
+    // Try as integer seconds first
+    if let Ok(secs) = header_value.trim().parse::<u64>() {
+        return Some(secs);
+    }
+    None // HTTP-date parsing not implemented — fallback to backoff
 }
 
 // ── OpenAI-compatible provider ─────────────────────────────────────────
@@ -148,6 +178,7 @@ impl OpenAiProvider {
                     input_tokens: input,
                     output_tokens: output,
                     total_tokens: u["total_tokens"].as_u64().unwrap_or(input + output),
+                    ..Default::default()
                 })
             } else {
                 None
@@ -203,9 +234,10 @@ impl OpenAiProvider {
 
         // Retry loop for transient errors
         let mut last_error = String::new();
+        let mut retry_after: Option<u64> = None;
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
-                let delay = retry_delay(attempt - 1).await;
+                let delay = retry_delay(attempt - 1, retry_after.take()).await;
                 warn!("[engine] OpenAI retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
             }
 
@@ -233,6 +265,11 @@ impl OpenAiProvider {
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
+                // Parse Retry-After header before consuming body
+                retry_after = response.headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(parse_retry_after);
                 let body_text = response.text().await.unwrap_or_default();
                 last_error = format!("API error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 200));
                 error!("[engine] OpenAI error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 500));
@@ -419,6 +456,47 @@ impl AnthropicProvider {
         (system, formatted)
     }
 
+    /// Post-process formatted messages to add cache_control breakpoints
+    /// for multi-turn conversations. Marks the second-to-last user turn
+    /// so Anthropic caches the conversation prefix (system + tools + history).
+    fn add_turn_cache_breakpoints(messages: &mut Vec<Value>) {
+        if messages.len() < 4 { return; } // Need enough turns for caching to matter
+
+        // Find the second-to-last user message (the breakpoint)
+        // This ensures all messages up to this point are cached,
+        // and only the last user message + response are billed at full rate.
+        let mut user_indices: Vec<usize> = Vec::new();
+        for (i, msg) in messages.iter().enumerate() {
+            if msg["role"].as_str() == Some("user") {
+                user_indices.push(i);
+            }
+        }
+        if user_indices.len() < 2 { return; }
+        let breakpoint_idx = user_indices[user_indices.len() - 2];
+
+        // Add cache_control to the last content block of the breakpoint message
+        if let Some(msg) = messages.get_mut(breakpoint_idx) {
+            if let Some(content) = msg.get_mut("content") {
+                if let Some(arr) = content.as_array_mut() {
+                    // Add cache_control to last block in the content array
+                    if let Some(last_block) = arr.last_mut() {
+                        if let Some(obj) = last_block.as_object_mut() {
+                            obj.insert("cache_control".into(), json!({"type": "ephemeral"}));
+                        }
+                    }
+                } else if content.is_string() {
+                    // Convert string content to content blocks with cache_control
+                    let text = content.as_str().unwrap_or("").to_string();
+                    *content = json!([{
+                        "type": "text",
+                        "text": text,
+                        "cache_control": {"type": "ephemeral"}
+                    }]);
+                }
+            }
+        }
+    }
+
     fn format_tools(tools: &[ToolDefinition]) -> Vec<Value> {
         tools.iter().map(|t| {
             json!({
@@ -501,6 +579,7 @@ impl AnthropicProvider {
                             input_tokens: 0, // Anthropic reports input in message_start
                             output_tokens: output,
                             total_tokens: output,
+                            ..Default::default()
                         })
                     } else {
                         None
@@ -532,6 +611,8 @@ impl AnthropicProvider {
                             input_tokens: input,
                             output_tokens: 0,
                             total_tokens: input,
+                            cache_creation_tokens: cache_create,
+                            cache_read_tokens: cache_read,
                         })
                     } else {
                         None
@@ -581,7 +662,12 @@ impl AnthropicProvider {
             format!("{}/v1/messages", self.base_url.trim_end_matches('/'))
         };
 
-        let (system, formatted_messages) = Self::format_messages(messages);
+        let (system, mut formatted_messages) = Self::format_messages(messages);
+
+        // ── Multi-turn conversation caching: mark a breakpoint in the
+        // conversation history so Anthropic caches the prefix. This
+        // gives ~90% discount on input tokens for the cached portion.
+        Self::add_turn_cache_breakpoints(&mut formatted_messages);
 
         let mut body = json!({
             "model": model,
@@ -622,9 +708,10 @@ impl AnthropicProvider {
 
         // Retry loop for transient errors
         let mut last_error = String::new();
+        let mut retry_after: Option<u64> = None;
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
-                let delay = retry_delay(attempt - 1).await;
+                let delay = retry_delay(attempt - 1, retry_after.take()).await;
                 warn!("[engine] Anthropic retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
             }
 
@@ -655,6 +742,11 @@ impl AnthropicProvider {
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
+                // Parse Retry-After header before consuming body
+                retry_after = response.headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(parse_retry_after);
                 let body_text = response.text().await.unwrap_or_default();
                 last_error = format!("API error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 200));
                 error!("[engine] Anthropic error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 500));
@@ -918,9 +1010,10 @@ impl GoogleProvider {
 
         // Retry loop for transient errors
         let mut last_error = String::new();
+        let mut retry_after: Option<u64> = None;
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
-                let delay = retry_delay(attempt - 1).await;
+                let delay = retry_delay(attempt - 1, retry_after.take()).await;
                 warn!("[engine] Google retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
             }
 
@@ -940,6 +1033,10 @@ impl GoogleProvider {
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
+                retry_after = response.headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(parse_retry_after);
                 let body_text = response.text().await.unwrap_or_default();
                 last_error = format!("API error {}: {}", status, &body_text[..body_text.len().min(200)]);
                 error!("[engine] Google error {}: {}", status, &body_text[..body_text.len().min(500)]);
@@ -1059,6 +1156,7 @@ impl GoogleProvider {
                                         input_tokens: input,
                                         output_tokens: output,
                                         total_tokens: um["totalTokenCount"].as_u64().unwrap_or(input + output),
+                                        ..Default::default()
                                     }),
                                     model: api_model.clone(),
                                     thought_parts: vec![],

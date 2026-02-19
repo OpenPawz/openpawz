@@ -40,6 +40,10 @@ export interface ModelRouting {
   specialty_models?: Record<string, string>;
   /** Per-agent overrides (highest priority): e.g. { 'agent-123': 'gemini-2.5-pro' } */
   agent_models?: Record<string, string>;
+  /** Cheapest model for simple tasks (used when auto_tier is enabled) */
+  cheap_model?: string;
+  /** Enable automatic model tier selection: simple → cheap, complex → default */
+  auto_tier?: boolean;
 }
 
 export interface EngineChatRequest {
