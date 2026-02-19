@@ -695,6 +695,13 @@ async fn run_telegram_agent(
     const TG_MAX_TOOL_ROUNDS: u32 = 15;
     let effective_max_rounds = max_rounds.min(TG_MAX_TOOL_ROUNDS);
 
+    // Get daily budget config
+    let daily_budget = {
+        let cfg = engine_state.config.lock().map_err(|e| format!("Lock: {}", e))?;
+        cfg.daily_budget_usd
+    };
+    let daily_tokens_tracker = engine_state.daily_tokens.clone();
+
     // Run the agent loop
     let result = agent_loop::run_agent_turn(
         app_handle,
@@ -709,6 +716,8 @@ async fn run_telegram_agent(
         &approvals,
         tool_timeout,
         agent_id,
+        daily_budget,
+        Some(&daily_tokens_tracker),
     ).await;
 
     // Stop the auto-approver

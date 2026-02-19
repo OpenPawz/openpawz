@@ -27,6 +27,8 @@ pub async fn run_agent_turn(
     pending_approvals: &PendingApprovals,
     tool_timeout_secs: u64,
     agent_id: &str,
+    daily_budget_usd: f64,
+    daily_tokens: Option<&crate::engine::commands::DailyTokenTracker>,
 ) -> Result<String, String> {
     let mut round = 0;
     let mut final_text = String::new();
@@ -41,6 +43,26 @@ pub async fn run_agent_turn(
         }
 
         info!("[engine] Agent round {}/{} session={} run={}", round, max_rounds, session_id, run_id);
+
+        // ── Budget check: stop before making the API call if over daily limit
+        if daily_budget_usd > 0.0 {
+            if let Some(tracker) = daily_tokens {
+                if let Some(spent) = tracker.check_budget(daily_budget_usd) {
+                    let msg = format!(
+                        "Daily budget exceeded (${:.2} spent, ${:.2} limit). Stopping to prevent further costs. \
+                        You can adjust your daily budget in Settings → Engine.",
+                        spent, daily_budget_usd
+                    );
+                    warn!("[engine] {}", msg);
+                    let _ = app_handle.emit("engine-event", EngineEvent::Error {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        message: msg.clone(),
+                    });
+                    return Err(msg);
+                }
+            }
+        }
 
         // ── 1. Call the AI model ──────────────────────────────────────
         let chunks = provider.chat_stream(messages, tools, model, temperature).await?;
@@ -109,6 +131,24 @@ pub async fn run_agent_turn(
             if let Some(usage) = &chunk.usage {
                 last_input_tokens = usage.input_tokens; // overwrite, not accumulate
                 total_output_tokens += usage.output_tokens;
+            }
+        }
+
+        // ── Record this round's token usage against the daily budget tracker
+        if let Some(tracker) = daily_tokens {
+            // Record the round's actual token consumption.
+            // input: for non-first rounds in a session, prompt caching means
+            // real spend is lower, but we track raw tokens for safety.
+            let round_input = last_input_tokens;
+            let round_output = chunks.iter()
+                .filter_map(|c| c.usage.as_ref())
+                .map(|u| u.output_tokens)
+                .sum::<u64>();
+            tracker.record(round_input, round_output);
+            let (total_in, total_out, est_usd) = tracker.estimated_spend_usd();
+            if round == 1 || round % 5 == 0 {
+                info!("[engine] Daily spend: ~${:.2} ({} in / {} out tokens today)",
+                    est_usd, total_in, total_out);
             }
         }
 

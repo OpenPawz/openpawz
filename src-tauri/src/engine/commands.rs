@@ -12,6 +12,7 @@ use crate::engine::tool_executor;
 use log::{info, warn, error};
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{Emitter, Manager, State};
 
 /// Pending tool approvals: maps tool_call_id → oneshot sender.
@@ -20,6 +21,64 @@ use tauri::{Emitter, Manager, State};
 /// resolves it from the frontend.
 pub type PendingApprovals = Arc<Mutex<HashMap<String, tokio::sync::oneshot::Sender<bool>>>>;
 
+/// Daily token spend tracker.  Tracks cumulative input & output tokens
+/// for the current UTC date.  Resets automatically on new day.
+/// All fields are atomic so the tracker can be shared across tasks cheaply.
+pub struct DailyTokenTracker {
+    /// UTC date string "YYYY-MM-DD" of the current tracking day
+    pub date: Mutex<String>,
+    /// Cumulative input tokens today
+    pub input_tokens: AtomicU64,
+    /// Cumulative output tokens today
+    pub output_tokens: AtomicU64,
+}
+
+impl DailyTokenTracker {
+    pub fn new() -> Self {
+        DailyTokenTracker {
+            date: Mutex::new(chrono::Utc::now().format("%Y-%m-%d").to_string()),
+            input_tokens: AtomicU64::new(0),
+            output_tokens: AtomicU64::new(0),
+        }
+    }
+
+    /// Add tokens from a completed round.  Auto-resets if the UTC date changed.
+    pub fn record(&self, input: u64, output: u64) {
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        if let Ok(mut d) = self.date.lock() {
+            if *d != today {
+                *d = today;
+                self.input_tokens.store(0, Ordering::Relaxed);
+                self.output_tokens.store(0, Ordering::Relaxed);
+            }
+        }
+        self.input_tokens.fetch_add(input, Ordering::Relaxed);
+        self.output_tokens.fetch_add(output, Ordering::Relaxed);
+    }
+
+    /// Estimate today's USD spend using approximate per-model pricing.
+    /// Returns (input_tokens, output_tokens, estimated_usd).
+    pub fn estimated_spend_usd(&self) -> (u64, u64, f64) {
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        if let Ok(d) = self.date.lock() {
+            if *d != today {
+                return (0, 0, 0.0);
+            }
+        }
+        let inp = self.input_tokens.load(Ordering::Relaxed);
+        let out = self.output_tokens.load(Ordering::Relaxed);
+        // Conservative estimate: blend of Sonnet ($3/$15) and Haiku ($0.80/$4) pricing
+        // Use Sonnet rates as worst case since that's what usually runs
+        let usd = (inp as f64 * 3.0 / 1_000_000.0) + (out as f64 * 15.0 / 1_000_000.0);
+        (inp, out, usd)
+    }
+
+    /// Check if today's spend exceeds the budget.  Returns Some(spend_usd) if over budget.
+    pub fn check_budget(&self, budget_usd: f64) -> Option<f64> {
+        let (_, _, usd) = self.estimated_spend_usd();
+        if usd >= budget_usd { Some(usd) } else { None }
+    }
+}
 /// Resolve the correct provider for a given model name.
 /// First checks if the model's default_model matches any provider exactly,
 /// then matches by model prefix (claude→Anthropic, gemini→Google, gpt→OpenAI)
@@ -61,6 +120,8 @@ pub struct EngineState {
     pub run_semaphore: Arc<tokio::sync::Semaphore>,
     /// Track task IDs currently being executed to prevent duplicate cron fires.
     pub inflight_tasks: Arc<Mutex<HashSet<String>>>,
+    /// Daily token spend tracker — shared across all agent runs.
+    pub daily_tokens: Arc<DailyTokenTracker>,
 }
 
 impl EngineState {
@@ -116,6 +177,7 @@ impl EngineState {
             pending_approvals: Arc::new(Mutex::new(HashMap::new())),
             run_semaphore: Arc::new(tokio::sync::Semaphore::new(max_concurrent as usize)),
             inflight_tasks: Arc::new(Mutex::new(HashSet::new())),
+            daily_tokens: Arc::new(DailyTokenTracker::new()),
         })
     }
 
@@ -494,6 +556,13 @@ pub async fn engine_chat_send(
     let panic_run_id = run_id.clone();
     let panic_app = app_handle.clone();
 
+    // Daily budget tracking
+    let daily_budget = {
+        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        cfg.daily_budget_usd
+    };
+    let daily_tokens = state.daily_tokens.clone();
+
     let handle = tauri::async_runtime::spawn(async move {
         // Acquire semaphore — chat gets priority so use a short timeout then proceed anyway
         let _permit = match tokio::time::timeout(
@@ -522,6 +591,8 @@ pub async fn engine_chat_send(
             &approvals,
             tool_timeout,
             &agent_id_for_spawn,
+            daily_budget,
+            Some(&daily_tokens),
         ).await {
             Ok(final_text) => {
                 info!("[engine] Agent turn complete: {} chars", final_text.len());
@@ -715,6 +786,25 @@ pub fn engine_get_config(
 ) -> Result<EngineConfig, String> {
     let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
     Ok(cfg.clone())
+}
+
+/// Get the current daily token spend and budget status.
+#[tauri::command]
+pub fn engine_get_daily_spend(
+    state: State<'_, EngineState>,
+) -> Result<serde_json::Value, String> {
+    let (input_tokens, output_tokens, estimated_usd) = state.daily_tokens.estimated_spend_usd();
+    let budget = {
+        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        cfg.daily_budget_usd
+    };
+    Ok(serde_json::json!({
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "estimated_usd": format!("{:.2}", estimated_usd),
+        "budget_usd": budget,
+        "over_budget": budget > 0.0 && estimated_usd >= budget,
+    }))
 }
 
 #[tauri::command]
@@ -1529,6 +1619,13 @@ pub async fn execute_task(
     let sem = state.run_semaphore.clone();
     let inflight = state.inflight_tasks.clone();
 
+    // Daily budget tracking for tasks
+    let task_daily_budget = {
+        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        cfg.daily_budget_usd
+    };
+    let task_daily_tokens = state.daily_tokens.clone();
+
     // ── Cost control constants for cron/background tasks ──
     // Cron sessions reuse the same session_id across runs, causing context to
     // grow unboundedly (up to 500 messages / 100k tokens). This is the #1
@@ -1701,6 +1798,10 @@ pub async fn execute_task(
         let model_clone = model.clone();
         let sem_clone = sem.clone();
 
+        // Clone Arc for this task's agent
+        let task_daily_tokens_clone = task_daily_tokens.clone();
+        let task_daily_budget_clone = task_daily_budget;
+
         // Cap tool rounds for cron tasks to prevent runaway agent loops
         let effective_max_rounds = if is_recurring {
             max_rounds.min(CRON_MAX_TOOL_ROUNDS)
@@ -1728,6 +1829,8 @@ pub async fn execute_task(
                 &pending_clone,
                 tool_timeout,
                 &agent_id,
+                task_daily_budget_clone,
+                Some(&task_daily_tokens_clone),
             ).await;
 
             // Store agent result

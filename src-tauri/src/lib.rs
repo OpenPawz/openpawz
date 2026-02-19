@@ -2677,6 +2677,7 @@ pub fn run() {
             engine::commands::engine_sandbox_get_config,
             engine::commands::engine_sandbox_set_config,
             engine::commands::engine_get_config,
+            engine::commands::engine_get_daily_spend,
             engine::commands::engine_set_config,
             engine::commands::engine_upsert_provider,
             engine::commands::engine_remove_provider,

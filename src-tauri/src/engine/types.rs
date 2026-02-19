@@ -2024,7 +2024,13 @@ pub struct EngineConfig {
     /// Maximum simultaneous agent runs (chat + cron + manual). Chat always gets priority.
     #[serde(default = "default_max_concurrent_runs")]
     pub max_concurrent_runs: u32,
+    /// Daily budget in USD.  When estimated spend exceeds this, new API calls
+    /// are blocked and an error is returned.  Set to 0 to disable.
+    #[serde(default = "default_daily_budget_usd")]
+    pub daily_budget_usd: f64,
 }
+
+fn default_daily_budget_usd() -> f64 { 10.0 }
 
 fn default_max_concurrent_runs() -> u32 { 4 }
 
@@ -2059,6 +2065,7 @@ Be thorough, resourceful, and action-oriented. When the user asks you to do some
             user_timezone: default_user_timezone(),
             model_routing: ModelRouting::default(),
             max_concurrent_runs: default_max_concurrent_runs(),
+            daily_budget_usd: default_daily_budget_usd(),
         }
     }
 }

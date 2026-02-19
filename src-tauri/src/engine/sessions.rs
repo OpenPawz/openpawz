@@ -516,7 +516,7 @@ impl SessionStore {
     pub fn load_conversation(&self, session_id: &str, system_prompt: Option<&str>) -> Result<Vec<Message>, String> {
         // Load messages with a reasonable limit. We'll further truncate by
         // estimated token count below to avoid exceeding model context windows.
-        let stored = self.get_messages(session_id, 500)?;
+        let stored = self.get_messages(session_id, 200)?;
         let mut messages = Vec::new();
 
         // Add system prompt if provided
@@ -553,9 +553,11 @@ impl SessionStore {
 
         // ── Context window truncation ──────────────────────────────────
         // Estimate tokens (~4 chars per token) and keep only the most recent
-        // messages that fit within ~100k tokens to leave room for the response.
-        // Always keep the system prompt (first message) and the last user message.
-        const MAX_CONTEXT_TOKENS: usize = 100_000;
+        // messages that fit within ~30k tokens to leave room for the response.
+        // 30k tokens is ~120KB of text — plenty of context while keeping input
+        // costs manageable. At $3/MTok (Sonnet), 30k = $0.09/round vs $0.30
+        // at 100k. Always keep system prompt (first message).
+        const MAX_CONTEXT_TOKENS: usize = 30_000;
         let estimate_tokens = |m: &Message| -> usize {
             let text_len = match &m.content {
                 MessageContent::Text(t) => t.len(),

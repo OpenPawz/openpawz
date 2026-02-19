@@ -24,6 +24,8 @@ export interface EngineConfig {
   model_routing?: ModelRouting;
   /** Max simultaneous agent runs (chat + cron + tasks). Chat always gets priority. Default: 4 */
   max_concurrent_runs?: number;
+  /** Daily budget in USD. When estimated spend exceeds this, new API calls are blocked. 0 = disabled. Default: 10 */
+  daily_budget_usd?: number;
 }
 
 /** Model routing for multi-agent orchestration.

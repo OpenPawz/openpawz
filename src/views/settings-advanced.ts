@@ -338,6 +338,12 @@ export async function loadAdvancedSettings() {
     concurrencyRow.appendChild(concurrencyInp);
     engSection.appendChild(concurrencyRow);
 
+    const budgetRow = formRow('Daily Budget (USD)', 'Estimated daily spend limit. Agent stops when exceeded. Set to 0 to disable.');
+    const budgetInp = numberInput(config.daily_budget_usd ?? 10, { min: 0, step: 1, placeholder: '10' });
+    budgetInp.style.maxWidth = '120px';
+    budgetRow.appendChild(budgetInp);
+    engSection.appendChild(budgetRow);
+
     container.appendChild(engSection);
 
     // ── System Prompt ────────────────────────────────────────────────────
@@ -363,6 +369,7 @@ export async function loadAdvancedSettings() {
           cfg.max_tool_rounds = parseInt(roundsInp.value) || 20;
           cfg.tool_timeout_secs = parseInt(timeoutInp.value) || 120;
           cfg.max_concurrent_runs = parseInt(concurrencyInp.value) || 4;
+          cfg.daily_budget_usd = parseFloat(budgetInp.value) || 0;
           cfg.default_system_prompt = promptArea.value.trim() || undefined;
           await pawEngine.setConfig(cfg);
           showToast('Engine settings saved', 'success');

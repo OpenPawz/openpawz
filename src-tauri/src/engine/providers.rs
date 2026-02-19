@@ -584,11 +584,29 @@ impl AnthropicProvider {
             "stream": true,
         });
 
+        // ── Prompt caching: send system prompt as content blocks with
+        // cache_control on the last block.  Anthropic caches the entire
+        // prefix up to and including the marked block, giving a 90%
+        // discount on input tokens for subsequent requests within 5 min.
         if let Some(sys) = system {
-            body["system"] = json!(sys);
+            body["system"] = json!([
+                {
+                    "type": "text",
+                    "text": sys,
+                    "cache_control": { "type": "ephemeral" }
+                }
+            ]);
         }
         if !tools.is_empty() {
-            body["tools"] = json!(Self::format_tools(tools));
+            let mut tool_list = Self::format_tools(tools);
+            // Mark the last tool for caching so the entire tools prefix is
+            // included in the cached segment along with the system prompt.
+            if let Some(last) = tool_list.last_mut() {
+                if let Some(obj) = last.as_object_mut() {
+                    obj.insert("cache_control".into(), json!({ "type": "ephemeral" }));
+                }
+            }
+            body["tools"] = json!(tool_list);
         }
         if let Some(temp) = temperature {
             body["temperature"] = json!(temp);
@@ -608,7 +626,9 @@ impl AnthropicProvider {
             let mut req = self.client
                 .post(&url)
                 .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json");
+                .header("Content-Type", "application/json")
+                // Enable prompt caching — 90% discount on cached input tokens
+                .header("anthropic-beta", "prompt-caching-2024-07-31");
             if self.is_azure {
                 req = req.header("api-key", &self.api_key);
             } else {
