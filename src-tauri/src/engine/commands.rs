@@ -294,46 +294,31 @@ pub async fn engine_chat_send(
         cfg.default_system_prompt.clone()
     });
 
-    // Compose agent context (soul files) into the system prompt
+    // ── Lean session init: load only core soul files ───────────────
+    // Only IDENTITY.md, SOUL.md, USER.md get auto-injected. All other
+    // soul files (AGENTS.md, TOOLS.md, custom) remain accessible via
+    // `soul_read` / `soul_list` tools on demand.
     let agent_id_owned = request.agent_id.clone().unwrap_or_else(|| "default".to_string());
-    let agent_context = state.store.compose_agent_context(&agent_id_owned).unwrap_or(None);
-    if let Some(ref ac) = agent_context {
-        info!("[engine] Agent context loaded ({} chars) for agent '{}'", ac.len(), agent_id_owned);
+    let core_context = state.store.compose_core_context(&agent_id_owned).unwrap_or(None);
+    if let Some(ref cc) = core_context {
+        info!("[engine] Core soul context loaded ({} chars) for agent '{}'", cc.len(), agent_id_owned);
     } else {
-        info!("[engine] No agent context files found for agent '{}'", agent_id_owned);
+        info!("[engine] No core soul files found for agent '{}'", agent_id_owned);
     }
 
-    // Auto-recall: search memory for context relevant to the user's message
-    let (auto_recall_on, auto_capture_on, recall_limit, recall_threshold) = {
-        let mcfg = state.memory_config.lock().ok();
-        (
-            mcfg.as_ref().map(|c| c.auto_recall).unwrap_or(false),
-            mcfg.as_ref().map(|c| c.auto_capture).unwrap_or(false),
-            mcfg.as_ref().map(|c| c.recall_limit).unwrap_or(5),
-            mcfg.as_ref().map(|c| c.recall_threshold).unwrap_or(0.3),
-        )
-    };
+    // ── Today's memory notes (lightweight daily context) ───────────
+    // Instead of auto-recall searching the full memory store on every
+    // message, inject only memories created today. For deeper recall,
+    // the agent calls `memory_search` explicitly.
+    let todays_memories = state.store.get_todays_memories(&agent_id_owned).unwrap_or(None);
+    if let Some(ref tm) = todays_memories {
+        info!("[engine] Today's memory notes injected ({} chars)", tm.len());
+    }
 
-    let memory_context = if auto_recall_on {
-        let emb_client = state.embedding_client();
-        match memory::search_memories(
-            &state.store, &request.message, recall_limit, recall_threshold, emb_client.as_ref(), Some(&agent_id_owned)
-        ).await {
-            Ok(mems) if !mems.is_empty() => {
-                let ctx: Vec<String> = mems.iter().map(|m| {
-                    format!("- [{}] {}", m.category, m.content)
-                }).collect();
-                info!("[engine] Auto-recall: {} memories injected", mems.len());
-                Some(format!("## Relevant Memories\n{}", ctx.join("\n")))
-            }
-            Ok(_) => None,
-            Err(e) => {
-                warn!("[engine] Auto-recall failed: {}", e);
-                None
-            }
-        }
-    } else {
-        None
+    // Auto-capture flag (still used at end of turn)
+    let auto_capture_on = {
+        let mcfg = state.memory_config.lock().ok();
+        mcfg.as_ref().map(|c| c.auto_capture).unwrap_or(false)
     };
 
     // Collect skill instructions from enabled skills
@@ -342,101 +327,70 @@ pub async fn engine_chat_send(
         info!("[engine] Skill instructions injected ({} chars)", skill_instructions.len());
     }
 
-    // Build self-awareness context: tell the agent what model/provider it's running on
-    let self_awareness = {
+    // Build compact runtime context (model, session, time — all in one block)
+    let runtime_context = {
         let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
         let provider_name = cfg.providers.iter()
             .find(|p| Some(p.id.clone()) == cfg.default_provider)
             .or_else(|| cfg.providers.first())
             .map(|p| format!("{} ({:?})", p.id, p.kind))
             .unwrap_or_else(|| "unknown".into());
+
+        let user_tz = cfg.user_timezone.clone();
+        let now_utc = chrono::Utc::now();
+        let time_str = if let Ok(tz) = user_tz.parse::<chrono_tz::Tz>() {
+            let local: chrono::DateTime<chrono_tz::Tz> = now_utc.with_timezone(&tz);
+            format!("{} {} ({})", local.format("%Y-%m-%d %H:%M"), local.format("%A"), tz.name())
+        } else {
+            let local = chrono::Local::now();
+            format!("{} {}", local.format("%Y-%m-%d %H:%M"), local.format("%A"))
+        };
+
+        let ws = tool_executor::agent_workspace(&agent_id_owned);
+
         format!(
-            "## Your Runtime Identity\n\
-            - **Current model**: {}\n\
-            - **Provider**: {}\n\
-            - **Session**: {}\n\
-            - **Max tool rounds**: {}\n\
-            - **Tool timeout**: {}s\n\
-            You know exactly which model you are and can tell the user. \
-            If you need detailed config info, use the `self_info` tool.",
-            model, provider_name, session_id, cfg.max_tool_rounds, cfg.tool_timeout_secs
+            "## Runtime\n\
+            Model: {} | Provider: {} | Session: {} | Agent: {}\n\
+            Time: {}\n\
+            Workspace: {}",
+            model, provider_name, session_id, agent_id_owned,
+            time_str,
+            ws.display(),
         )
     };
 
-    // Build local time context so the agent knows the user's current time
-    let local_time_context = {
-        let user_tz = {
-            let cfg = state.config.lock().map_err(|e| format!("Lock: {}", e))?;
-            cfg.user_timezone.clone()
-        };
-        let now_utc = chrono::Utc::now();
-        let display = if let Ok(tz) = user_tz.parse::<chrono_tz::Tz>() {
-            let local: chrono::DateTime<chrono_tz::Tz> = now_utc.with_timezone(&tz);
-            format!(
-                "## Local Time\n\
-                - **Current time**: {}\n\
-                - **Timezone**: {} (UTC{})\n\
-                - **Day of week**: {}",
-                local.format("%Y-%m-%d %H:%M:%S"),
-                tz.name(),
-                local.format("%:z"),
-                local.format("%A"),
-            )
-        } else {
-            let local = chrono::Local::now();
-            format!(
-                "## Local Time\n\
-                - **Current time**: {}\n\
-                - **Timezone**: {} (UTC{})\n\
-                - **Day of week**: {}",
-                local.format("%Y-%m-%d %H:%M:%S"),
-                local.format("%Z"),
-                local.format("%:z"),
-                local.format("%A"),
-            )
-        };
-        display
-    };
-
-    // Compose the full system prompt: base + self-awareness + local time + agent context + memory context + skill instructions
+    // Compose the full system prompt — lean init: base + runtime + core files + today's memories + skills
     let full_system_prompt = {
         let mut parts: Vec<String> = Vec::new();
         if let Some(sp) = &system_prompt {
             parts.push(sp.clone());
         }
-        parts.push(self_awareness);
-        parts.push(local_time_context);
+        parts.push(runtime_context);
 
-        // Agent workspace context + soul file guidance
-        let ws = tool_executor::agent_workspace(&agent_id_owned);
-        let has_soul_files = agent_context.is_some();
+        // Soul file guidance
+        let has_soul_files = core_context.is_some();
         let soul_hint = if has_soul_files {
-            "Your soul files (IDENTITY.md, SOUL.md, USER.md, etc.) are loaded below. \
-            Use `soul_write` to update them when you learn new things about yourself or the user.".to_string()
+            "Your core soul files (IDENTITY.md, SOUL.md, USER.md) are loaded below. \
+            Use `soul_write` to update them. Use `soul_read` / `soul_list` to access other files (AGENTS.md, TOOLS.md, etc.) on demand."
         } else {
-            "You have no soul files yet. Use `soul_list` to see available files, then \
-            `soul_write` to create IDENTITY.md (who you are), SOUL.md (your personality), \
-            and USER.md (what you know about the user). These persist across conversations \
-            and define your identity.".to_string()
+            "You have no soul files yet. Use `soul_write` to create IDENTITY.md (who you are), \
+            SOUL.md (your personality), and USER.md (what you know about the user). \
+            These persist across conversations and define your identity."
         };
         parts.push(format!(
-            "## Your Workspace\n\
-            - **Agent ID**: {}\n\
-            - **Workspace path**: {}\n\
-            Relative file paths (e.g. `notes.md`, `project/`) resolve within your workspace. \
-            You can also use absolute paths to access files elsewhere on the system.\n\n\
-            ## Your Soul Files\n\
-            {}",
-            agent_id_owned,
-            ws.display(),
+            "## Soul Files\n{}\n\n\
+            ## Memory\n\
+            Use `memory_search` to recall past conversations, facts, and context. \
+            Use `memory_store` to save important information for future sessions. \
+            Your memory is NOT pre-loaded — search explicitly when you need historical context.",
             soul_hint,
         ));
 
-        if let Some(ac) = &agent_context {
-            parts.push(ac.clone());
+        if let Some(cc) = &core_context {
+            parts.push(cc.clone());
         }
-        if let Some(mc) = &memory_context {
-            parts.push(mc.clone());
+        if let Some(tm) = &todays_memories {
+            parts.push(tm.clone());
         }
         if !skill_instructions.is_empty() {
             parts.push(skill_instructions.clone());
@@ -444,10 +398,9 @@ pub async fn engine_chat_send(
         if parts.is_empty() { None } else { Some(parts.join("\n\n---\n\n")) }
     };
 
-    info!("[engine] System prompt: {} parts, total {} chars",
-        [&system_prompt, &agent_context, &memory_context].iter().filter(|p| p.is_some()).count()
-            + if skill_instructions.is_empty() { 0 } else { 1 },
-        full_system_prompt.as_ref().map(|s| s.len()).unwrap_or(0));
+    info!("[engine] System prompt: {} chars (core_ctx={}, today_mem={}, skills={})",
+        full_system_prompt.as_ref().map(|s| s.len()).unwrap_or(0),
+        core_context.is_some(), todays_memories.is_some(), !skill_instructions.is_empty());
 
     let mut messages = state.store.load_conversation(
         &session_id,
@@ -656,6 +609,28 @@ pub async fn engine_chat_send(
                                     Err(e) => warn!("[engine] Auto-capture failed: {}", e),
                                 }
                             }
+                        }
+                    }
+
+                    // Session-end summary: store a compact memory of what was worked on.
+                    // This powers the "Today's Memory Notes" injection in future sessions.
+                    if !final_text.is_empty() {
+                        let summary = if final_text.len() > 300 {
+                            format!("{}…", &final_text[..300])
+                        } else {
+                            final_text.clone()
+                        };
+                        let session_summary = format!(
+                            "Session work: User asked: \"{}\". Agent responded: {}",
+                            crate::engine::types::truncate_utf8(&user_message_for_capture, 150),
+                            summary,
+                        );
+                        let emb_client = engine_state.embedding_client();
+                        match memory::store_memory(
+                            &engine_state.store, &session_summary, "session", 3, emb_client.as_ref(), Some(&agent_id_for_spawn)
+                        ).await {
+                            Ok(_) => info!("[engine] Session summary stored ({} chars)", session_summary.len()),
+                            Err(e) => warn!("[engine] Session summary store failed: {}", e),
                         }
                     }
                 }
@@ -1751,8 +1726,8 @@ pub async fn execute_task(
             state.store.create_session(&session_id, &model, None, Some(&agent_id))?;
         }
 
-        // Compose system prompt with agent-specific soul context
-        let agent_context = state.store.compose_agent_context(&agent_id).unwrap_or(None);
+        // Compose system prompt with agent-specific soul context (core files only)
+        let agent_context = state.store.compose_core_context(&agent_id).unwrap_or(None);
 
         let mut parts: Vec<String> = Vec::new();
         if let Some(sp) = &base_system_prompt { parts.push(sp.clone()); }

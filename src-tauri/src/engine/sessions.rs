@@ -538,9 +538,9 @@ impl SessionStore {
 
     /// Convert stored messages to engine Message types for sending to AI provider.
     pub fn load_conversation(&self, session_id: &str, system_prompt: Option<&str>) -> Result<Vec<Message>, String> {
-        // Load messages with a reasonable limit. We'll further truncate by
-        // estimated token count below to avoid exceeding model context windows.
-        let stored = self.get_messages(session_id, 200)?;
+        // Load recent messages only — lean sessions rely on memory_search for
+        // historical context rather than carrying the full conversation.
+        let stored = self.get_messages(session_id, 50)?;
         let mut messages = Vec::new();
 
         // Add system prompt if provided
@@ -577,11 +577,12 @@ impl SessionStore {
 
         // ── Context window truncation ──────────────────────────────────
         // Estimate tokens (~4 chars per token) and keep only the most recent
-        // messages that fit within ~30k tokens to leave room for the response.
-        // 30k tokens is ~120KB of text — plenty of context while keeping input
-        // costs manageable. At $3/MTok (Sonnet), 30k = $0.09/round vs $0.30
-        // at 100k. Always keep system prompt (first message).
-        const MAX_CONTEXT_TOKENS: usize = 30_000;
+        // messages that fit within ~16k tokens to leave room for the response.
+        // With lean session init (core soul files only + today's memories),
+        // 16k tokens is plenty of context. At $3/MTok (Sonnet), 16k = $0.048
+        // per round vs $0.09 at 30k. Agent uses memory_search for deeper context.
+        // Always keep system prompt (first message).
+        const MAX_CONTEXT_TOKENS: usize = 16_000;
         let estimate_tokens = |m: &Message| -> usize {
             let text_len = match &m.content {
                 MessageContent::Text(t) => t.len(),
@@ -1092,6 +1093,57 @@ impl SessionStore {
             return Ok(None);
         }
         Ok(Some(sections.join("\n\n---\n\n")))
+    }
+
+    /// Lean session init — load ONLY the three core soul files.
+    /// Everything else (AGENTS.md, TOOLS.md, custom files) is available
+    /// on-demand via `soul_read` / `soul_list`.
+    pub fn compose_core_context(&self, agent_id: &str) -> Result<Option<String>, String> {
+        let core_files = ["IDENTITY.md", "SOUL.md", "USER.md"];
+        let mut sections = Vec::new();
+        for name in &core_files {
+            if let Ok(Some(f)) = self.get_agent_file(agent_id, name) {
+                if !f.content.trim().is_empty() {
+                    sections.push(f.content.clone());
+                }
+            }
+        }
+        if sections.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(sections.join("\n\n---\n\n")))
+    }
+
+    /// Get memories created today — lightweight daily context injection.
+    /// Returns a compact summary string (max 10 entries, highest importance first).
+    pub fn get_todays_memories(&self, agent_id: &str) -> Result<Option<String>, String> {
+        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today_start = format!("{} 00:00:00", today);
+        let mut stmt = conn.prepare(
+            "SELECT content, category FROM memories
+             WHERE created_at >= ?1 AND (agent_id = ?2 OR agent_id = '')
+             ORDER BY importance DESC, created_at DESC
+             LIMIT 10"
+        ).map_err(|e| format!("Prepare error: {}", e))?;
+
+        let rows: Vec<(String, String)> = stmt.query_map(params![today_start, agent_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        }).map_err(|e| format!("Query error: {}", e))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        if rows.is_empty() {
+            return Ok(None);
+        }
+
+        let mut lines = Vec::new();
+        for (content, category) in &rows {
+            // Truncate long entries to keep the block compact
+            let short = if content.len() > 200 { format!("{}…", &content[..200]) } else { content.clone() };
+            lines.push(format!("- [{}] {}", category, short));
+        }
+        Ok(Some(format!("## Today's Memory Notes ({})\n{}", today, lines.join("\n"))))
     }
 
     // ── Memory CRUD ────────────────────────────────────────────────────
