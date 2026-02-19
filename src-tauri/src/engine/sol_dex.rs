@@ -616,19 +616,17 @@ pub async fn execute_sol_swap(
         Err("No JUPITER_API_KEY — skipping Jupiter, trying PumpPortal".into())
     };
 
-    let jupiter_err_msg = match &jupiter_result {
-        Ok(_) => unreachable!(),
-        Err(e) => e.clone(),
-    };
-
+    let jupiter_err_msg;
     match jupiter_result {
         Ok(result) => return Ok(result),
         Err(ref e) if is_jupiter_route_error(e) => {
             info!("[sol_dex] Jupiter route failed: {} — falling back to PumpPortal", e);
+            jupiter_err_msg = e.clone();
         }
         Err(ref e) => {
             // Non-routing error from Jupiter — still try PumpPortal as last resort
             info!("[sol_dex] Jupiter error: {} — attempting PumpPortal fallback", e);
+            jupiter_err_msg = e.clone();
         }
     }
 
