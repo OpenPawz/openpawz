@@ -1,5 +1,5 @@
-// Paw Agent Engine — Solana DEX Trading (Jupiter Aggregator)
-// Self-custody Solana wallet with on-chain swap execution via Jupiter.
+// Paw Agent Engine — Solana DEX Trading (Jupiter + PumpPortal)
+// Self-custody Solana wallet with on-chain swap execution.
 //
 // Architecture:
 // - Private key stored encrypted in the Skill Vault (OS keychain + SQLite)
@@ -8,11 +8,18 @@
 // - All swaps go through the Human-in-the-Loop approval modal
 // - Trading policy limits enforced server-side
 //
+// Routing strategy:
+// 1. Try Jupiter aggregator first (best prices across all DEXes)
+// 2. If Jupiter has no route (error 0x1788 / "No route found"), fall back to
+//    PumpPortal local-trade API which routes through pump.fun bonding curve,
+//    PumpSwap AMM, Raydium, and more — critical for pump.fun tokens that
+//    Jupiter can't route (the "buy-but-can't-sell" trap).
+//
 // Supported operations:
 // - sol_wallet_create: Generate ed25519 keypair, store in vault, return address
 // - sol_balance: Check SOL + SPL token balances via JSON-RPC
-// - sol_quote: Get swap quote from Jupiter aggregator
-// - sol_swap: Execute swap via Jupiter: quote → transaction → sign → broadcast
+// - sol_quote: Get swap quote (Jupiter → PumpPortal fallback)
+// - sol_swap: Execute swap (Jupiter → PumpPortal fallback)
 // - sol_portfolio: Multi-token balance scan
 // - sol_token_info: Get on-chain token metadata
 
@@ -39,6 +46,10 @@ const KNOWN_TOKENS: &[(&str, &str, u8)] = &[
 
 /// Jupiter API base URL (Metis Swap API v1 — requires API key from jup.ag)
 const JUPITER_API: &str = "https://api.jup.ag/swap/v1";
+
+/// PumpPortal local-trade API — routes through pump.fun bonding curve + PumpSwap + Raydium
+/// Returns a serialized versioned transaction for local signing (no private key sent)
+const PUMPPORTAL_API: &str = "https://pumpportal.fun/api/trade-local";
 
 /// Solana Token Program IDs
 const TOKEN_PROGRAM_ID: &str = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
@@ -355,15 +366,15 @@ pub async fn execute_sol_balance(
     Ok(output)
 }
 
-/// sol_quote — Get swap quote from Jupiter aggregator
+/// sol_quote — Get swap quote (Jupiter → PumpPortal availability check)
 pub async fn execute_sol_quote(
     args: &serde_json::Value,
     creds: &HashMap<String, String>,
 ) -> Result<String, String> {
-    let _rpc_url = creds.get("SOLANA_RPC_URL")
+    let rpc_url = creds.get("SOLANA_RPC_URL")
         .ok_or("Missing SOLANA_RPC_URL.")?;
-    let api_key = creds.get("JUPITER_API_KEY")
-        .ok_or("Missing JUPITER_API_KEY. Get one free at jup.ag/developers")?;
+    let api_key = creds.get("JUPITER_API_KEY");
+    // JUPITER_API_KEY is optional — PumpPortal doesn't need one
 
     let token_in_str = args["token_in"].as_str().ok_or("sol_quote: missing 'token_in'")?;
     let token_out_str = args["token_out"].as_str().ok_or("sol_quote: missing 'token_out'")?;
@@ -378,10 +389,98 @@ pub async fn execute_sol_quote(
     let (output_mint, _output_decimals) = resolve_token(token_out_str)?;
 
     // Resolve actual decimals on-chain for unknown tokens (critical for correct amount)
-    let in_decimals = resolve_decimals_on_chain(_rpc_url, &input_mint, input_decimals).await;
-
+    let in_decimals = resolve_decimals_on_chain(rpc_url, &input_mint, input_decimals).await;
     let amount_raw = amount_to_lamports(amount_str, in_decimals)?;
 
+    // ── Try Jupiter first ──────────────────────────────────────────────
+    let jupiter_result = if let Some(api_key) = api_key {
+        execute_sol_quote_jupiter(
+            rpc_url, api_key, &input_mint, &output_mint,
+            amount_str, amount_raw, in_decimals, _output_decimals,
+            slippage_bps, token_in_str, token_out_str,
+        ).await
+    } else {
+        Err("No JUPITER_API_KEY — skipping Jupiter".into())
+    };
+
+    let jupiter_err_msg = match &jupiter_result {
+        Ok(_) => String::new(),
+        Err(e) => e.clone(),
+    };
+
+    match jupiter_result {
+        Ok(result) => return Ok(result),
+        Err(ref e) if is_jupiter_route_error(e) => {
+            info!("[sol_dex] Jupiter quote route failed: {} — checking PumpPortal", e);
+        }
+        Err(ref e) => {
+            info!("[sol_dex] Jupiter quote error: {} — checking PumpPortal", e);
+        }
+    }
+
+    // ── PumpPortal fallback: check if the token is tradeable ──────────
+    let sol_mint = "So11111111111111111111111111111111111111112";
+    let dummy_wallet = String::from("11111111111111111111111111111111");
+    let wallet = creds.get("SOLANA_WALLET_ADDRESS")
+        .unwrap_or(&dummy_wallet); // dummy for quote
+
+    let (action, mint, pp_amount, denom_in_sol) = if input_mint == sol_mint {
+        ("buy", output_mint.as_str(), amount_str.to_string(), true)
+    } else if output_mint == sol_mint {
+        ("sell", input_mint.as_str(), amount_raw.to_string(), false)
+    } else {
+        return Err(format!("No route found on Jupiter ({}) and PumpPortal only supports SOL pairs.", jupiter_err_msg));
+    };
+
+    let slippage_pct = std::cmp::max(slippage_bps / 100, 1);
+
+    // Try to get a transaction from PumpPortal — if it succeeds, the token is tradeable
+    match pumpportal_get_tx(wallet, action, mint, &pp_amount, denom_in_sol, slippage_pct).await {
+        Ok(tx_bytes) => {
+            let token_in_upper = token_in_str.to_uppercase();
+            let token_out_upper = token_out_str.to_uppercase();
+            Ok(format!(
+                "## Quote: {} {} → {} (via PumpPortal)\n\n\
+                | Field | Value |\n|-------|-------|\n\
+                | Input | {} {} |\n\
+                | Output | {} |\n\
+                | Route | PumpPortal auto ({}) |\n\
+                | Slippage | {}% |\n\
+                | Status | ✅ Route available (tx: {} bytes) |\n\n\
+                _Jupiter had no route — PumpPortal can execute this via pump.fun/PumpSwap/Raydium._\n\
+                _Exact output amount determined at execution time. Use **sol_swap** to execute._",
+                amount_str, token_in_upper, token_out_upper,
+                amount_str, token_in_upper,
+                token_out_upper,
+                action,
+                slippage_pct,
+                tx_bytes.len(),
+            ))
+        }
+        Err(pump_err) => {
+            Err(format!(
+                "No route found on any DEX:\n• Jupiter: {}\n• PumpPortal: {}\n\n\
+                This token may have zero liquidity.",
+                jupiter_err_msg, pump_err
+            ))
+        }
+    }
+}
+
+/// Jupiter-specific quote execution
+async fn execute_sol_quote_jupiter(
+    rpc_url: &str,
+    api_key: &str,
+    input_mint: &str,
+    output_mint: &str,
+    amount_str: &str,
+    amount_raw: u64,
+    in_decimals: u8,
+    output_decimals_hint: u8,
+    slippage_bps: u64,
+    token_in_str: &str,
+    token_out_str: &str,
+) -> Result<String, String> {
     // Call Jupiter Quote API (Metis v1)
     let client = reqwest::Client::new();
     let url = format!(
@@ -420,7 +519,7 @@ pub async fn execute_sol_quote(
     let price_impact_pct = body.get("priceImpactPct").and_then(|v| v.as_str()).unwrap_or("0");
 
     // Get output token decimals — resolve on-chain for unknown tokens
-    let out_decimals = resolve_decimals_on_chain(_rpc_url, &output_mint, _output_decimals).await;
+    let out_decimals = resolve_decimals_on_chain(rpc_url, output_mint, output_decimals_hint).await;
 
     let out_human = lamports_to_amount(out_amount, out_decimals);
     let min_human = lamports_to_amount(min_out, out_decimals);
@@ -465,7 +564,7 @@ pub async fn execute_sol_quote(
     ))
 }
 
-/// sol_swap — Execute a swap via Jupiter (quote → tx → sign → send)
+/// sol_swap — Execute a swap via Jupiter → PumpPortal fallback
 pub async fn execute_sol_swap(
     args: &serde_json::Value,
     creds: &HashMap<String, String>,
@@ -476,8 +575,8 @@ pub async fn execute_sol_swap(
         .ok_or("No Solana wallet. Use sol_wallet_create first.")?;
     let private_key_b58 = creds.get("SOLANA_PRIVATE_KEY")
         .ok_or("No Solana private key. Use sol_wallet_create first.")?;
-    let api_key = creds.get("JUPITER_API_KEY")
-        .ok_or("Missing JUPITER_API_KEY. Get one free at jup.ag/developers")?;
+    let api_key = creds.get("JUPITER_API_KEY");
+    // JUPITER_API_KEY is optional now — we can still trade via PumpPortal without it
 
     let token_in_str = args["token_in"].as_str().ok_or("sol_swap: missing 'token_in'")?;
     let token_out_str = args["token_out"].as_str().ok_or("sol_swap: missing 'token_out'")?;
@@ -496,6 +595,82 @@ pub async fn execute_sol_swap(
     let in_decimals = resolve_decimals_on_chain(rpc_url, &input_mint, input_decimals).await;
     let amount_raw = amount_to_lamports(amount_str, in_decimals)?;
 
+    // Parse private key early (needed for both Jupiter and PumpPortal paths)
+    let keypair_bytes = bs58::decode(private_key_b58).into_vec()
+        .map_err(|e| format!("Invalid private key encoding: {}", e))?;
+    if keypair_bytes.len() < 64 {
+        return Err("Invalid Solana keypair (expected 64 bytes)".into());
+    }
+    let mut secret_bytes = [0u8; 32];
+    secret_bytes.copy_from_slice(&keypair_bytes[..32]);
+
+    // ── Try Jupiter first ──────────────────────────────────────────────
+    let jupiter_result = if let Some(api_key) = api_key {
+        execute_sol_swap_jupiter(
+            rpc_url, wallet, &secret_bytes, api_key,
+            &input_mint, &output_mint, amount_str, amount_raw,
+            in_decimals, _output_decimals, slippage_bps,
+            token_in_str, token_out_str,
+        ).await
+    } else {
+        Err("No JUPITER_API_KEY — skipping Jupiter, trying PumpPortal".into())
+    };
+
+    let jupiter_err_msg = match &jupiter_result {
+        Ok(_) => unreachable!(),
+        Err(e) => e.clone(),
+    };
+
+    match jupiter_result {
+        Ok(result) => return Ok(result),
+        Err(ref e) if is_jupiter_route_error(e) => {
+            info!("[sol_dex] Jupiter route failed: {} — falling back to PumpPortal", e);
+        }
+        Err(ref e) => {
+            // Non-routing error from Jupiter — still try PumpPortal as last resort
+            info!("[sol_dex] Jupiter error: {} — attempting PumpPortal fallback", e);
+        }
+    }
+
+    // ── PumpPortal fallback ────────────────────────────────────────────
+    info!("[sol_dex] Trying PumpPortal for {} {} → {}", amount_str, token_in_str, token_out_str);
+    let pump_result = pumpportal_swap(
+        rpc_url, wallet, &secret_bytes,
+        &input_mint, &output_mint,
+        amount_str, amount_raw, in_decimals,
+        slippage_bps, token_in_str, token_out_str,
+    ).await;
+
+    match pump_result {
+        Ok(result) => Ok(result),
+        Err(pump_err) => {
+            // Both failed — return both errors for debugging
+            let jupiter_err = jupiter_err_msg;
+            Err(format!(
+                "Swap failed on both routes:\n• Jupiter: {}\n• PumpPortal: {}\n\n\
+                This token may have zero liquidity on all DEXes.",
+                jupiter_err, pump_err
+            ))
+        }
+    }
+}
+
+/// Jupiter-specific swap execution (extracted from execute_sol_swap)
+async fn execute_sol_swap_jupiter(
+    rpc_url: &str,
+    wallet: &str,
+    secret_bytes: &[u8; 32],
+    api_key: &str,
+    input_mint: &str,
+    output_mint: &str,
+    amount_str: &str,
+    amount_raw: u64,
+    in_decimals: u8,
+    output_decimals_hint: u8,
+    slippage_bps: u64,
+    token_in_str: &str,
+    token_out_str: &str,
+) -> Result<String, String> {
     let client = reqwest::Client::new();
 
     // Step 1: Get Jupiter quote (Metis v1)
@@ -507,7 +682,7 @@ pub async fn execute_sol_swap(
     info!("[sol_dex] Getting Jupiter quote for swap: {} {} → {}", amount_str, token_in_str, token_out_str);
 
     let quote_resp = client.get(&quote_url)
-        .header("x-api-key", api_key.as_str())
+        .header("x-api-key", api_key)
         .timeout(Duration::from_secs(15))
         .send()
         .await
@@ -525,7 +700,7 @@ pub async fn execute_sol_swap(
 
     let out_amount_str = quote.get("outAmount").and_then(|v| v.as_str()).unwrap_or("0");
     let out_amount: u64 = out_amount_str.parse().unwrap_or(0);
-    let out_decimals = resolve_decimals_on_chain(rpc_url, &output_mint, _output_decimals).await;
+    let out_decimals = resolve_decimals_on_chain(rpc_url, output_mint, output_decimals_hint).await;
     let out_human = lamports_to_amount(out_amount, out_decimals);
 
     // Step 2: Get swap transaction from Jupiter
@@ -546,7 +721,7 @@ pub async fn execute_sol_swap(
     });
 
     let swap_resp = client.post(&format!("{}/swap", JUPITER_API))
-        .header("x-api-key", api_key.as_str())
+        .header("x-api-key", api_key)
         .json(&swap_body)
         .timeout(Duration::from_secs(30))
         .send()
@@ -565,19 +740,8 @@ pub async fn execute_sol_swap(
     let tx_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, swap_tx_b64)
         .map_err(|e| format!("Failed to decode transaction: {}", e))?;
 
-    // Decode the private key (Solana 64-byte keypair format: 32-byte secret + 32-byte public)
-    let keypair_bytes = bs58::decode(private_key_b58).into_vec()
-        .map_err(|e| format!("Invalid private key encoding: {}", e))?;
-
-    if keypair_bytes.len() < 64 {
-        return Err("Invalid Solana keypair (expected 64 bytes)".into());
-    }
-
-    let mut secret_bytes = [0u8; 32];
-    secret_bytes.copy_from_slice(&keypair_bytes[..32]);
-
     // Sign the transaction
-    let signed_tx = sign_solana_transaction(&tx_bytes, &secret_bytes)?;
+    let signed_tx = sign_solana_transaction(&tx_bytes, secret_bytes)?;
     let signed_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &signed_tx);
 
     // Step 4: Send the signed transaction
@@ -629,7 +793,7 @@ pub async fn execute_sol_swap(
         amount_str, token_in_upper,
         out_human, token_out_upper,
         confirmation,
-        &tx_sig[..16], tx_sig
+        &tx_sig[..std::cmp::min(16, tx_sig.len())], tx_sig
     ))
 }
 
@@ -774,6 +938,169 @@ pub async fn execute_sol_token_info(
     output.push_str(&format!("\n🔗 [View on Solscan](https://solscan.io/token/{})\n", mint));
 
     Ok(output)
+}
+
+// ── PumpPortal Fallback ────────────────────────────────────────────────
+
+/// Check if a Jupiter error indicates a routing failure (no liquidity path).
+/// These errors mean we should try PumpPortal as a fallback.
+fn is_jupiter_route_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("no route")
+        || lower.contains("0x1788")
+        || lower.contains("route not found")
+        || lower.contains("no valid route")
+        || lower.contains("could not find any routes")
+        || lower.contains("insufficient liquidity")
+}
+
+/// Call PumpPortal's local-trade API to get a serialized transaction for signing.
+/// This routes through pump.fun bonding curve, PumpSwap AMM, Raydium, etc.
+/// Returns the raw transaction bytes ready for signing.
+async fn pumpportal_get_tx(
+    wallet_pubkey: &str,
+    action: &str,        // "buy" or "sell"
+    mint: &str,          // token mint address
+    amount: &str,        // SOL amount (if buy, denominatedInSol=true) or token amount (if sell)
+    denominated_in_sol: bool,
+    slippage_pct: u64,   // percent, not bps
+) -> Result<Vec<u8>, String> {
+    let client = reqwest::Client::new();
+
+    let body = serde_json::json!({
+        "publicKey": wallet_pubkey,
+        "action": action,
+        "mint": mint,
+        "amount": amount,
+        "denominatedInSol": if denominated_in_sol { "true" } else { "false" },
+        "slippage": slippage_pct,
+        "priorityFee": 0.001,  // 0.001 SOL priority fee
+        "pool": "auto"         // auto-detect: pump, raydium, pump-amm, etc.
+    });
+
+    info!("[sol_dex] PumpPortal {} request: mint={} amount={} denomInSol={} slippage={}%",
+        action, mint, amount, denominated_in_sol, slippage_pct);
+
+    let resp = client.post(PUMPPORTAL_API)
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .timeout(Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("PumpPortal request error: {}", e))?;
+
+    let status = resp.status();
+
+    // PumpPortal returns raw bytes (serialized transaction) on success,
+    // or JSON error on failure
+    if !status.is_success() {
+        let err_text = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
+        // Try to parse as JSON error
+        if let Ok(err_json) = serde_json::from_str::<serde_json::Value>(&err_text) {
+            let msg = err_json.get("message").or(err_json.get("error"))
+                .and_then(|v| v.as_str())
+                .unwrap_or(&err_text);
+            return Err(format!("PumpPortal error ({}): {}", status, msg));
+        }
+        return Err(format!("PumpPortal error ({}): {}", status, err_text));
+    }
+
+    let tx_bytes = resp.bytes().await
+        .map_err(|e| format!("PumpPortal response read error: {}", e))?;
+
+    if tx_bytes.is_empty() {
+        return Err("PumpPortal returned empty transaction".into());
+    }
+
+    info!("[sol_dex] PumpPortal returned {} byte transaction", tx_bytes.len());
+    Ok(tx_bytes.to_vec())
+}
+
+/// Execute a swap via PumpPortal (fallback when Jupiter has no route).
+/// Handles the full flow: get tx → sign → send → confirm.
+async fn pumpportal_swap(
+    rpc_url: &str,
+    wallet: &str,
+    secret_bytes: &[u8; 32],
+    input_mint: &str,
+    output_mint: &str,
+    amount_str: &str,
+    amount_raw: u64,
+    in_decimals: u8,
+    slippage_bps: u64,
+    token_in_str: &str,
+    token_out_str: &str,
+) -> Result<String, String> {
+    let sol_mint = "So11111111111111111111111111111111111111112";
+    let slippage_pct = std::cmp::max(slippage_bps / 100, 1); // bps → percent, minimum 1%
+
+    // Determine action and parameters
+    // Buying = SOL → token, Selling = token → SOL
+    let (action, mint, pp_amount, denom_in_sol) = if input_mint == sol_mint {
+        // Buying a token with SOL
+        ("buy", output_mint, amount_str.to_string(), true)
+    } else if output_mint == sol_mint {
+        // Selling a token for SOL — use "100%" or the raw token amount
+        ("sell", input_mint, amount_raw.to_string(), false)
+    } else {
+        return Err("PumpPortal only supports SOL ↔ token swaps (not token-to-token)".into());
+    };
+
+    info!("[sol_dex] PumpPortal fallback: {} {} (mint={}) amount={}", action, token_in_str, mint, pp_amount);
+
+    // Step 1: Get serialized transaction from PumpPortal
+    let tx_bytes = pumpportal_get_tx(wallet, action, mint, &pp_amount, denom_in_sol, slippage_pct).await?;
+
+    // Step 2: Sign the transaction locally
+    let signed_tx = sign_solana_transaction(&tx_bytes, secret_bytes)?;
+    let signed_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &signed_tx);
+
+    // Step 3: Send via our RPC
+    info!("[sol_dex] Sending PumpPortal-built transaction via RPC...");
+    let send_result = rpc_call(rpc_url, "sendTransaction", serde_json::json!([
+        signed_b64,
+        { "encoding": "base64", "skipPreflight": true, "maxRetries": 3 }
+    ])).await?;
+
+    let tx_sig = send_result.as_str().unwrap_or("unknown");
+    info!("[sol_dex] PumpPortal swap sent! Tx: {}", tx_sig);
+
+    // Step 4: Wait and check confirmation
+    tokio::time::sleep(Duration::from_secs(3)).await;
+
+    let status = rpc_call(rpc_url, "getSignatureStatuses", serde_json::json!([[tx_sig]])).await;
+    let confirmation = if let Ok(status_val) = status {
+        if let Some(statuses) = status_val.get("value").and_then(|v| v.as_array()) {
+            if let Some(Some(s)) = statuses.first().map(|v| if v.is_null() { None } else { Some(v) }) {
+                let conf = s.get("confirmationStatus").and_then(|v| v.as_str()).unwrap_or("pending");
+                if s.get("err").is_some() && !s["err"].is_null() {
+                    format!("❌ FAILED: {:?}", s["err"])
+                } else {
+                    format!("✅ {}", conf)
+                }
+            } else { "⏳ Pending (check explorer)".into() }
+        } else { "⏳ Submitted".into() }
+    } else { "⏳ Submitted (status check failed)".into() };
+
+    let token_in_upper = token_in_str.to_uppercase();
+    let token_out_upper = token_out_str.to_uppercase();
+
+    Ok(format!(
+        "## Solana Swap Executed (via PumpPortal)\n\n\
+        | Field | Value |\n|-------|-------|\n\
+        | Sold | {} {} |\n\
+        | Buying | {} |\n\
+        | Route | PumpPortal ({}) |\n\
+        | Status | {} |\n\
+        | Transaction | [{}](https://solscan.io/tx/{}) |\n\n\
+        _Routed via PumpPortal (pump.fun/PumpSwap/Raydium). Jupiter had no route for this pair._\n\
+        _Check Solscan for final confirmation._",
+        amount_str, token_in_upper,
+        token_out_upper,
+        action,
+        confirmation,
+        &tx_sig[..std::cmp::min(16, tx_sig.len())], tx_sig
+    ))
 }
 
 // ── Transaction Signing ────────────────────────────────────────────────

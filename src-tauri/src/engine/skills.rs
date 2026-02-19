@@ -815,22 +815,24 @@ Alpha Hunting Workflow:
 7. Cross-reference: when multiple smart wallets accumulate the same token, that's a strong signal
 8. Execute: dex_quote first, then dex_swap with user approval"#.into(),
         },
-        // ── Solana DEX Trading (Jupiter) ──
+        // ── Solana DEX Trading (Jupiter + PumpPortal) ──
         SkillDefinition {
             id: "solana_dex".into(),
-            name: "Solana DEX Trading (Jupiter)".into(),
-            description: "Self-custody Solana wallet with on-chain swaps via Jupiter aggregator. Private key never leaves the vault.".into(),
+            name: "Solana DEX Trading (Jupiter + PumpPortal)".into(),
+            description: "Self-custody Solana wallet with on-chain swaps via Jupiter aggregator + PumpPortal fallback for pump.fun tokens. Private key never leaves the vault.".into(),
             icon: "☀️".into(),
             category: SkillCategory::Vault,
             required_credentials: vec![
-                CredentialField { key: "JUPITER_API_KEY".into(), label: "Jupiter API Key".into(), description: "Required for Jupiter swap quotes. Get a free key at https://dev.jup.ag — go to Dashboard → API Keys.".into(), required: true, placeholder: "your-jupiter-api-key".into() },
+                CredentialField { key: "JUPITER_API_KEY".into(), label: "Jupiter API Key".into(), description: "For Jupiter swap quotes. Get a free key at https://dev.jup.ag — Dashboard → API Keys. Optional: PumpPortal works without it.".into(), required: false, placeholder: "your-jupiter-api-key".into() },
                 CredentialField { key: "SOLANA_RPC_URL".into(), label: "Solana RPC URL".into(), description: "JSON-RPC endpoint for Solana mainnet (from Alchemy, Helius, QuickNode, or your own node). Example: https://solana-mainnet.g.alchemy.com/v2/YOUR_KEY".into(), required: false, placeholder: "https://solana-mainnet.g.alchemy.com/v2/abc123...".into() },
                 CredentialField { key: "SOLANA_PRIVATE_KEY".into(), label: "Wallet Private Key".into(), description: "Auto-generated when you use sol_wallet_create. Or paste your own base58-encoded keypair. Stored encrypted in OS keychain vault.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
                 CredentialField { key: "SOLANA_WALLET_ADDRESS".into(), label: "Wallet Address".into(), description: "Auto-populated when wallet is created. Or paste your own Solana address if importing a key.".into(), required: false, placeholder: "Auto-generated — leave blank".into() },
             ],
             tool_names: vec!["sol_wallet_create".into(), "sol_balance".into(), "sol_quote".into(), "sol_swap".into(), "sol_transfer".into(), "sol_portfolio".into(), "sol_token_info".into()],
-            required_binaries: vec![], required_env_vars: vec![], install_hint: "Get a Jupiter API key free at dev.jup.ag (Dashboard → API Keys), and a Solana RPC URL at alchemy.com, helius.dev, or quicknode.com (free tier works)".into(),
-            agent_instructions: r#"You have a self-custody Solana wallet for DEX trading via Jupiter aggregator.
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Get a Solana RPC URL at alchemy.com, helius.dev, or quicknode.com (free tier works). Jupiter API key optional (free at dev.jup.ag). PumpPortal needs no API key.".into(),
+            agent_instructions: r#"You have a self-custody Solana wallet for DEX trading.
+
+ROUTING: Swaps try Jupiter aggregator first (best prices across all DEXes). If Jupiter has no route (common for pump.fun memecoins), it automatically falls back to PumpPortal which routes through pump.fun bonding curve, PumpSwap AMM, Raydium, and more. This means you CAN buy AND sell pump.fun tokens.
 
 CRITICAL: Your private key is stored encrypted in the OS keychain vault. You NEVER see it — the engine signs transactions internally. Do NOT:
 - Try to read or access the private key
@@ -840,8 +842,8 @@ CRITICAL: Your private key is stored encrypted in the OS keychain vault. You NEV
 Available tools:
 - **sol_wallet_create**: Generate a new Solana wallet (ed25519). Private key is encrypted and stored automatically.
 - **sol_balance**: Check SOL and SPL token balances.
-- **sol_quote**: Get a swap quote from Jupiter aggregator (read-only, no transaction).
-- **sol_swap**: Execute a token swap via Jupiter. REQUIRES USER APPROVAL.
+- **sol_quote**: Get a swap quote (tries Jupiter, falls back to PumpPortal for pump.fun tokens).
+- **sol_swap**: Execute a token swap. Tries Jupiter first, falls back to PumpPortal if no route. REQUIRES USER APPROVAL.
 - **sol_transfer**: Send SOL or SPL tokens from your wallet to any external Solana address. Creates recipient token account if needed. REQUIRES USER APPROVAL.
 - **sol_portfolio**: Check all token balances at once.
 - **sol_token_info**: Get on-chain info about any SPL token (decimals, supply, authorities).
@@ -852,12 +854,13 @@ Trading Rules:
 - ALWAYS get a quote (sol_quote) before proposing a swap
 - ALWAYS state your reasoning and expected outcome before swapping
 - Check balances before trading (sol_balance)
-- Default slippage is 0.5% — warn the user if you need higher
+- Default slippage is 0.5% — for pump.fun memecoins, suggest 5-15% slippage
 - For SOL→token swaps, the wallet needs enough SOL for fees + swap amount
 - For token→token swaps, the wallet needs SOL for transaction fees (~0.005 SOL)
 - If the user hasn't set risk parameters, ask before executing large trades
 - Use dex_search_token (from the Ethereum DEX skill) to discover new Solana tokens — DexScreener supports all chains
-- Use dex_trending with chain='solana' to find trending Solana tokens"#.into(),
+- Use dex_trending with chain='solana' to find trending Solana tokens
+- If a sell fails on Jupiter, try again with higher slippage — PumpPortal fallback will kick in automatically"#.into(),
         },
     ]
 }
