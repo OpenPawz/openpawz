@@ -11,6 +11,9 @@ pub mod atoms;
 // ── Paw Agent Engine ───────────────────────────────────────────────────
 pub mod engine;
 
+// ── Paw Command Modules (Systems layer) ───────────────────────────────
+pub mod commands;
+
 /// Set restrictive file permissions (owner-only read/write) on Unix.
 /// No-op on non-Unix platforms.
 #[cfg(unix)]
@@ -525,13 +528,13 @@ pub fn run() {
             get_db_encryption_key,
             has_db_encryption_key,
             // ── Paw Agent Engine commands (no gateway needed) ──
-            engine::commands::engine_chat_send,
-            engine::commands::engine_chat_history,
-            engine::commands::engine_sessions_list,
-            engine::commands::engine_session_rename,
-            engine::commands::engine_session_delete,
-            engine::commands::engine_session_clear,
-            engine::commands::engine_session_compact,
+            commands::chat::engine_chat_send,
+            commands::chat::engine_chat_history,
+            commands::chat::engine_sessions_list,
+            commands::chat::engine_session_rename,
+            commands::chat::engine_session_delete,
+            commands::chat::engine_session_clear,
+            commands::chat::engine_session_compact,
             engine::commands::engine_sandbox_check,
             engine::commands::engine_sandbox_get_config,
             engine::commands::engine_sandbox_set_config,
@@ -542,12 +545,12 @@ pub fn run() {
             engine::commands::engine_remove_provider,
             engine::commands::engine_status,
             engine::commands::engine_auto_setup,
-            engine::commands::engine_approve_tool,
+            commands::chat::engine_approve_tool,
             // ── Agent Files (Soul / Persona) ──
-            engine::commands::engine_agent_file_list,
-            engine::commands::engine_agent_file_get,
-            engine::commands::engine_agent_file_set,
-            engine::commands::engine_agent_file_delete,
+            commands::agent::engine_agent_file_list,
+            commands::agent::engine_agent_file_get,
+            commands::agent::engine_agent_file_set,
+            commands::agent::engine_agent_file_delete,
             // ── Memory (Long-term Semantic) ──
             engine::commands::engine_memory_store,
             engine::commands::engine_memory_search,
@@ -688,9 +691,9 @@ pub fn run() {
             engine::commands::engine_project_update,
             engine::commands::engine_project_delete,
             engine::commands::engine_project_set_agents,
-            engine::commands::engine_list_all_agents,
-            engine::commands::engine_create_agent,
-            engine::commands::engine_delete_agent,
+            commands::agent::engine_list_all_agents,
+            commands::agent::engine_create_agent,
+            commands::agent::engine_delete_agent,
             engine::commands::engine_project_messages,
             engine::commands::engine_project_run,
         ])

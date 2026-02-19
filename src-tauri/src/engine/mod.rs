@@ -8,6 +8,7 @@ pub mod agent_loop;
 pub mod tool_executor;
 pub mod sessions;
 pub mod commands;
+pub mod chat;
 pub mod memory;
 pub mod skills;
 pub mod web;
