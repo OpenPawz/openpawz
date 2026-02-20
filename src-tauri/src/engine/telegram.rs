@@ -17,6 +17,7 @@ use crate::engine::providers::AnyProvider;
 use crate::engine::agent_loop;
 use crate::engine::skills;
 use crate::engine::memory;
+use crate::engine::chat as chat_org;
 use crate::engine::state::{EngineState, PendingApprovals, normalize_model_name, resolve_provider_for_model};
 use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
@@ -561,6 +562,15 @@ async fn run_telegram_agent(
     let agent_context = engine_state.store.compose_agent_context(agent_id).unwrap_or(None);
     let skill_instructions = skills::get_enabled_skill_instructions(&engine_state.store).unwrap_or_default();
 
+    // Load core soul files (IDENTITY.md, SOUL.md, USER.md) — same as UI chat
+    let core_context = engine_state.store.compose_core_context(agent_id).unwrap_or(None);
+    if let Some(ref cc) = core_context {
+        info!("[telegram] Core soul context loaded ({} chars) for agent '{}'", cc.len(), agent_id);
+    }
+
+    // Load today's memory notes — same as UI chat
+    let todays_memories = engine_state.store.get_todays_memories(agent_id).unwrap_or(None);
+
     // Auto-recall memories
     let (auto_recall_on, recall_limit, recall_threshold) = {
         let mcfg = engine_state.memory_config.lock();
@@ -582,61 +592,51 @@ async fn run_telegram_agent(
         None
     };
 
-    // Build full system prompt
+    // Build full system prompt — use the same rich prompt as the UI chat
+    // so the agent has full awareness of its tools, soul files, and memory.
     let full_system_prompt = {
-        let mut parts: Vec<String> = Vec::new();
-        // Add Telegram context
-        parts.push(format!(
-            "You are chatting via Telegram. The user is messaging you from their phone. \
+        // Build base prompt with Telegram-specific context prepended
+        let tg_context = "You are chatting via Telegram. The user is messaging you from their phone. \
              Keep responses concise and mobile-friendly. Use Markdown formatting supported by Telegram \
-             (bold, italic, code, links). Avoid very long responses unless explicitly asked."
-        ));
-        // Local time context
-        {
-            let user_tz = {
-                let cfg = engine_state.config.lock();
-                cfg.user_timezone.clone()
-            };
-            let now_utc = chrono::Utc::now();
-            if let Ok(tz) = user_tz.parse::<chrono_tz::Tz>() {
-                let local: chrono::DateTime<chrono_tz::Tz> = now_utc.with_timezone(&tz);
-                parts.push(format!(
-                    "## Local Time\n\
-                    - **Current time**: {}\n\
-                    - **Timezone**: {} (UTC{})\n\
-                    - **Day of week**: {}",
-                    local.format("%Y-%m-%d %H:%M:%S"),
-                    tz.name(),
-                    local.format("%:z"),
-                    local.format("%A"),
-                ));
-            } else {
-                let local = chrono::Local::now();
-                parts.push(format!(
-                    "## Local Time\n\
-                    - **Current time**: {}\n\
-                    - **Timezone**: {} (UTC{})\n\
-                    - **Day of week**: {}",
-                    local.format("%Y-%m-%d %H:%M:%S"),
-                    local.format("%Z"),
-                    local.format("%:z"),
-                    local.format("%A"),
-                ));
+             (bold, italic, code, links). Avoid very long responses unless explicitly asked.";
+
+        let base_prompt = match &system_prompt {
+            Some(sp) => Some(format!("{}\n\n{}", tg_context, sp)),
+            None => Some(tg_context.to_string()),
+        };
+
+        // Build runtime context (model, provider, session, agent, time, workspace)
+        let provider_name = format!("{:?}", provider_config.kind);
+        let user_tz = {
+            let cfg = engine_state.config.lock();
+            cfg.user_timezone.clone()
+        };
+        let runtime_context = chat_org::build_runtime_context(
+            &model, &provider_name, &session_id, agent_id, &user_tz,
+        );
+
+        // Compose the full prompt with Soul Files + Memory instructions
+        let mut prompt = chat_org::compose_chat_system_prompt(
+            base_prompt.as_deref(),
+            runtime_context,
+            core_context.as_deref(),
+            todays_memories.as_deref(),
+            &skill_instructions,
+        );
+
+        // Append agent-specific context and auto-recalled memories
+        if let Some(ref mut p) = prompt {
+            if let Some(ac) = &agent_context {
+                p.push_str("\n\n---\n\n");
+                p.push_str(ac);
+            }
+            if let Some(mc) = &memory_context {
+                p.push_str("\n\n---\n\n");
+                p.push_str(mc);
             }
         }
-        if let Some(sp) = &system_prompt {
-            parts.push(sp.clone());
-        }
-        if let Some(ac) = &agent_context {
-            parts.push(ac.clone());
-        }
-        if let Some(mc) = &memory_context {
-            parts.push(mc.clone());
-        }
-        if !skill_instructions.is_empty() {
-            parts.push(skill_instructions);
-        }
-        Some(parts.join("\n\n---\n\n"))
+
+        prompt
     };
 
     // Load conversation history
@@ -700,23 +700,80 @@ async fn run_telegram_agent(
     };
     let daily_tokens_tracker = engine_state.daily_tokens.clone();
 
-    // Run the agent loop
-    let result = agent_loop::run_agent_turn(
-        app_handle,
-        &provider,
-        &model,
-        &mut messages,
-        &tools,
-        &session_id,
-        &run_id,
-        effective_max_rounds,
-        None, // temperature
-        &approvals,
-        tool_timeout,
-        agent_id,
-        daily_budget,
-        Some(&daily_tokens_tracker),
-    ).await;
+    // Run the agent loop — with provider fallback on billing/auth errors
+    let result = {
+        let primary_result = agent_loop::run_agent_turn(
+            app_handle,
+            &provider,
+            &model,
+            &mut messages,
+            &tools,
+            &session_id,
+            &run_id,
+            effective_max_rounds,
+            None, // temperature
+            &approvals,
+            tool_timeout,
+            agent_id,
+            daily_budget,
+            Some(&daily_tokens_tracker),
+        ).await;
+
+        // If the primary provider failed with a billing/auth/rate error, try fallback providers
+        match &primary_result {
+            Err(e) if is_provider_billing_error(e) => {
+                warn!("[telegram] Primary provider failed ({}), trying fallback providers", e);
+                let fallback_providers: Vec<ProviderConfig> = {
+                    let cfg = engine_state.config.lock();
+                    cfg.providers.iter()
+                        .filter(|p| p.id != provider_config.id)
+                        .cloned()
+                        .collect()
+                };
+
+                let mut fallback_result = primary_result;
+                for fb_provider_cfg in &fallback_providers {
+                    // Find a model that works with this provider
+                    let fb_model = fb_provider_cfg.default_model.clone()
+                        .unwrap_or_else(|| normalize_model_name(&model).to_string());
+                    let fb_provider = AnyProvider::from_config(fb_provider_cfg);
+                    info!("[telegram] Trying fallback: {:?} / {}", fb_provider_cfg.kind, fb_model);
+
+                    // Reset messages to pre-loop state for retry
+                    messages.truncate(pre_loop_msg_count);
+
+                    let fb_run_id = uuid::Uuid::new_v4().to_string();
+                    match agent_loop::run_agent_turn(
+                        app_handle,
+                        &fb_provider,
+                        &fb_model,
+                        &mut messages,
+                        &tools,
+                        &session_id,
+                        &fb_run_id,
+                        effective_max_rounds,
+                        None,
+                        &approvals,
+                        tool_timeout,
+                        agent_id,
+                        daily_budget,
+                        Some(&daily_tokens_tracker),
+                    ).await {
+                        Ok(text) => {
+                            info!("[telegram] Fallback {:?} succeeded", fb_provider_cfg.kind);
+                            fallback_result = Ok(text);
+                            break;
+                        }
+                        Err(fb_err) => {
+                            warn!("[telegram] Fallback {:?} also failed: {}", fb_provider_cfg.kind, fb_err);
+                        }
+                    }
+                }
+                fallback_result
+            }
+            _ => primary_result,
+        }
+    };
 
     // Stop the auto-approver
     auto_approver.abort();
@@ -849,4 +906,23 @@ pub fn remove_user(app_handle: &tauri::AppHandle, user_id: i64) -> Result<(), St
     save_telegram_config(app_handle, &config)?;
     info!("[telegram] User {} removed from allowlist", user_id);
     Ok(())
+}
+
+// ── Provider Fallback ──────────────────────────────────────────────────
+
+/// Detect billing, auth, quota, or rate-limit errors that warrant trying
+/// a different provider instead of failing outright.
+fn is_provider_billing_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    lower.contains("credit balance")
+        || lower.contains("insufficient_quota")
+        || lower.contains("billing")
+        || lower.contains("rate_limit")
+        || lower.contains("quota exceeded")
+        || lower.contains("payment required")
+        || lower.contains("account")
+        || (lower.contains("api error 4") && (
+            lower.contains("401") || lower.contains("402")
+            || lower.contains("403") || lower.contains("429")
+        ))
 }
