@@ -153,17 +153,98 @@ pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
 
 // ── Docker Container Management ────────────────────────────────────────
 
+/// Check if Docker is reachable. If not, try to auto-start Docker Desktop.
+/// Returns the Docker client on success, or a user-friendly error.
+async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Result<bollard::Docker, String> {
+    use bollard::Docker;
+
+    // First attempt: connect directly
+    if let Ok(docker) = Docker::connect_with_local_defaults() {
+        if docker.ping().await.is_ok() {
+            return Ok(docker);
+        }
+    }
+
+    // Docker daemon not responding — try to auto-start Docker Desktop
+    info!("[whatsapp] Docker not responding, attempting auto-start...");
+    let _ = app_handle.emit("whatsapp-status", json!({
+        "kind": "docker_starting",
+        "message": "Starting Docker Desktop — this may take a moment...",
+    }));
+
+    let launched = if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+            .args(["-a", "Docker"])
+            .spawn()
+            .is_ok()
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", "Docker Desktop"])
+            .spawn()
+            .is_ok()
+    } else {
+        // Linux: try systemctl
+        std::process::Command::new("systemctl")
+            .args(["--user", "start", "docker-desktop"])
+            .spawn()
+            .is_ok()
+    };
+
+    if !launched {
+        // Docker Desktop doesn't seem to be installed
+        let _ = app_handle.emit("whatsapp-status", json!({
+            "kind": "docker_not_installed",
+            "message": "Docker Desktop is not installed. WhatsApp needs it to run.",
+        }));
+        return Err(
+            "Docker Desktop is not installed.\n\n\
+             WhatsApp uses a small background service (Docker) to connect.\n\
+             Install it from: https://www.docker.com/products/docker-desktop/\n\n\
+             After installing, restart Paw and try again."
+            .into()
+        );
+    }
+
+    // Poll for Docker to become ready (up to 60 seconds)
+    info!("[whatsapp] Waiting for Docker Desktop to start...");
+    for attempt in 1..=30 {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        if let Ok(docker) = Docker::connect_with_local_defaults() {
+            if docker.ping().await.is_ok() {
+                info!("[whatsapp] Docker Desktop ready after ~{}s", attempt * 2);
+                let _ = app_handle.emit("whatsapp-status", json!({
+                    "kind": "docker_ready",
+                    "message": "Docker Desktop is running",
+                }));
+                return Ok(docker);
+            }
+        }
+        if attempt % 5 == 0 {
+            info!("[whatsapp] Still waiting for Docker... ({}s)", attempt * 2);
+        }
+    }
+
+    let _ = app_handle.emit("whatsapp-status", json!({
+        "kind": "docker_timeout",
+        "message": "Docker Desktop is taking too long to start. Open it manually and try again.",
+    }));
+    Err(
+        "Docker Desktop was launched but didn't start in time.\n\n\
+         Open Docker Desktop manually, wait until it says \"Running\", \
+         then click Start on the WhatsApp card again."
+        .into()
+    )
+}
+
 /// Ensure the Evolution API Docker container is running.
 /// Pulls the image if needed, creates and starts the container.
-async fn ensure_evolution_container(config: &WhatsAppConfig) -> Result<String, String> {
-    use bollard::Docker;
+async fn ensure_evolution_container(app_handle: &tauri::AppHandle, config: &WhatsAppConfig) -> Result<String, String> {
     use bollard::container::{Config as ContainerConfig, CreateContainerOptions, StartContainerOptions, ListContainersOptions};
     use bollard::models::HostConfig;
     use bollard::image::CreateImageOptions;
     use futures::StreamExt;
 
-    let docker = Docker::connect_with_local_defaults()
-        .map_err(|e| format!("Docker not available: {}. Install Docker Desktop to use WhatsApp.", e))?;
+    let docker = ensure_docker_ready(app_handle).await?;
 
     // Check if our container already exists
     let mut filters = std::collections::HashMap::new();
@@ -198,6 +279,10 @@ async fn ensure_evolution_container(config: &WhatsAppConfig) -> Result<String, S
     match docker.inspect_image(EVOLUTION_IMAGE).await {
         Ok(_) => info!("[whatsapp] Image already present"),
         Err(_) => {
+            let _ = app_handle.emit("whatsapp-status", json!({
+                "kind": "downloading",
+                "message": "Downloading WhatsApp service (first time only, may take a minute)...",
+            }));
             let pull_opts = CreateImageOptions {
                 from_image: EVOLUTION_IMAGE,
                 ..Default::default()
@@ -378,13 +463,13 @@ async fn connect_evolution_instance(config: &WhatsAppConfig) -> Result<String, S
 async fn run_whatsapp_bridge(app_handle: tauri::AppHandle, mut config: WhatsAppConfig) -> Result<(), String> {
     let stop = get_stop_signal();
 
-    // Step 1: Ensure Docker container is running
+    // Step 1: Ensure Docker is available and container is running
     let _ = app_handle.emit("whatsapp-status", json!({
         "kind": "starting",
-        "message": "Starting Evolution API container...",
+        "message": "Checking Docker and starting WhatsApp service...",
     }));
 
-    let container_id = ensure_evolution_container(&config).await?;
+    let container_id = ensure_evolution_container(&app_handle, &config).await?;
     config.container_id = Some(container_id.clone());
     let _ = channels::save_channel_config(&app_handle, CONFIG_KEY, &config);
 

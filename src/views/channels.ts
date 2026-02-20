@@ -766,8 +766,87 @@ export async function loadChannels() {
         list.appendChild(card);
 
         $(`${cardId}-start`)?.addEventListener('click', async () => {
-          try { await startChannel(ch); showToast(`${name} started`, 'success'); setTimeout(() => loadChannels(), 1000); }
-          catch (e) { showToast(`Start failed: ${e}`, 'error'); }
+          try {
+            // For WhatsApp, listen for real-time status updates during startup
+            if (ch === 'whatsapp') {
+              const statusBannerId = `${cardId}-status-banner`;
+              let banner = document.getElementById(statusBannerId);
+              if (!banner) {
+                banner = document.createElement('div');
+                banner.id = statusBannerId;
+                banner.className = 'wa-status-banner';
+                card.appendChild(banner);
+              }
+              banner.innerHTML = '<span class="wa-spinner"></span> Starting...';
+              banner.style.display = 'flex';
+
+              const { listen } = await import('@tauri-apps/api/event');
+              const unlisten = await listen<{kind: string; message?: string; qr?: string}>('whatsapp-status', (event) => {
+                const { kind, message, qr } = event.payload;
+                if (!banner) return;
+                switch (kind) {
+                  case 'docker_starting':
+                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Starting Docker...')}`;
+                    break;
+                  case 'docker_not_installed':
+                    banner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>Docker Desktop is needed for WhatsApp. <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">Install it here</a>, then try again.</span>`;
+                    banner.className = 'wa-status-banner wa-status-error';
+                    break;
+                  case 'docker_timeout':
+                    banner.innerHTML = `<span class="wa-status-icon">⏱️</span> <span>Docker is still starting. Open Docker Desktop manually, wait until it says "Running", then click Start again.</span>`;
+                    banner.className = 'wa-status-banner wa-status-warning';
+                    break;
+                  case 'docker_ready':
+                    banner.innerHTML = `<span class="wa-spinner"></span> Docker is ready — setting up WhatsApp...`;
+                    break;
+                  case 'downloading':
+                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Downloading WhatsApp service...')}`;
+                    break;
+                  case 'starting':
+                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Starting...')}`;
+                    break;
+                  case 'connecting':
+                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Connecting to WhatsApp...')}`;
+                    break;
+                  case 'qr_code':
+                    banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 8px">Scan this QR code with your phone's WhatsApp app:</p>${qr ? `<img src="${qr.startsWith('data:') ? qr : 'data:image/png;base64,' + qr}" alt="WhatsApp QR code" class="wa-qr-image" />` : ''}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
+                    banner.className = 'wa-status-banner wa-status-qr';
+                    break;
+                  case 'connected':
+                    banner.innerHTML = `<span class="wa-status-icon">✅</span> ${escHtml(message ?? 'WhatsApp connected!')}`;
+                    banner.className = 'wa-status-banner wa-status-success';
+                    setTimeout(() => { banner!.style.display = 'none'; unlisten(); loadChannels(); }, 2000);
+                    break;
+                  case 'disconnected':
+                    banner.style.display = 'none';
+                    unlisten();
+                    loadChannels();
+                    break;
+                }
+              });
+            }
+            await startChannel(ch);
+            if (ch !== 'whatsapp') {
+              showToast(`${name} started`, 'success');
+            }
+            setTimeout(() => loadChannels(), 1000);
+          }
+          catch (e) {
+            const statusBanner = document.getElementById(`${cardId}-status-banner`);
+            if (ch === 'whatsapp' && statusBanner) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              if (errMsg.includes('Docker Desktop is not installed')) {
+                statusBanner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>Docker Desktop is needed. <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">Install it here</a>, then try again.</span>`;
+              } else if (errMsg.includes('didn\'t start in time')) {
+                statusBanner.innerHTML = `<span class="wa-status-icon">⏱️</span> <span>Docker is still loading. Open it manually and try again.</span>`;
+              } else {
+                statusBanner.innerHTML = `<span class="wa-status-icon">❌</span> ${escHtml(errMsg)}`;
+              }
+              statusBanner.className = 'wa-status-banner wa-status-error';
+            } else {
+              showToast(`Start failed: ${e}`, 'error');
+            }
+          }
         });
         $(`${cardId}-stop`)?.addEventListener('click', async () => {
           try { await stopChannel(ch); showToast(`${name} stopped`, 'success'); setTimeout(() => loadChannels(), 500); }
