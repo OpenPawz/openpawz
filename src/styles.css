@@ -10000,11 +10000,52 @@ details[open] > .skill-advanced-summary::before {
   bottom: 12px;
   right: 12px;
   display: flex;
-  flex-direction: column-reverse; /* newest at bottom */
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0;
   z-index: 8999; /* just below mini-chat popups */
   pointer-events: none;
 }
+
+/* Toggle button  */
+.agent-dock-toggle {
+  pointer-events: all;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  transition: background .15s, color .15s, border-color .15s;
+  flex-shrink: 0;
+}
+.agent-dock-toggle:hover {
+  background: var(--bg-hover);
+  color: var(--accent);
+  border-color: var(--accent-muted);
+}
+
+/* Items container */
+.agent-dock-items {
+  display: flex;
+  flex-direction: column-reverse; /* newest at bottom */
+  gap: 8px;
+  transition: opacity .2s, max-height .3s ease;
+  max-height: 600px;
+  opacity: 1;
+  overflow: hidden;
+}
+.agent-dock-collapsed .agent-dock-items {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .agent-dock-item {
   position: relative;
   width: 48px;
@@ -10034,6 +10075,40 @@ details[open] > .skill-advanced-summary::before {
   user-select: none;
 }
 .agent-dock-avatar img { image-rendering: auto; }
+
+/* Hover tooltip — appears to the left of the avatar */
+.agent-dock-tooltip {
+  position: absolute;
+  right: 56px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,.25);
+}
+.agent-dock-tooltip::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right: none;
+  border-left-color: var(--border);
+}
+.agent-dock-item:hover .agent-dock-tooltip {
+  opacity: 1;
+}
+
 .agent-dock-badge {
   position: absolute;
   top: -2px;

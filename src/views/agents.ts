@@ -1180,6 +1180,16 @@ function updateDockActive(agentId: string, active: boolean) {
 // Clicking an avatar opens or focuses that agent's mini-chat popup.
 
 let _dockEl: HTMLElement | null = null;
+let _dockCollapsed = localStorage.getItem('paw-dock-collapsed') === 'true';
+
+function setDockCollapsed(collapsed: boolean) {
+  _dockCollapsed = collapsed;
+  localStorage.setItem('paw-dock-collapsed', String(collapsed));
+  if (_dockEl) _dockEl.classList.toggle('agent-dock-collapsed', collapsed);
+  // Update toggle icon
+  const icon = _dockEl?.querySelector('.agent-dock-toggle .ms') as HTMLElement | null;
+  if (icon) icon.textContent = collapsed ? 'left_panel_open' : 'right_panel_close';
+}
 
 /**
  * Render or refresh the floating agent dock tray.
@@ -1191,6 +1201,7 @@ export function renderAgentDock() {
     _dockEl = document.createElement('div');
     _dockEl.id = 'agent-dock';
     _dockEl.className = 'agent-dock';
+    if (_dockCollapsed) _dockEl.classList.add('agent-dock-collapsed');
     document.body.appendChild(_dockEl);
   }
 
@@ -1201,19 +1212,35 @@ export function renderAgentDock() {
   }
   _dockEl.style.display = '';
 
-  _dockEl.innerHTML = agents.map(a => {
+  const toggleIcon = _dockCollapsed ? 'left_panel_open' : 'right_panel_close';
+  const agentItems = agents.map(a => {
     const isOpen = _miniChats.has(a.id);
     const mc = _miniChats.get(a.id);
     const unread = mc?.unreadCount ?? 0;
     return `
-      <div class="agent-dock-item${isOpen ? ' agent-dock-active' : ''}" data-agent-id="${a.id}" title="${escAttr(a.name)}">
+      <div class="agent-dock-item${isOpen ? ' agent-dock-active' : ''}" data-agent-id="${a.id}">
         <div class="agent-dock-avatar">${spriteAvatar(a.avatar, 40)}</div>
+        <span class="agent-dock-tooltip">${escAttr(a.name)}</span>
         ${unread > 0 ? `<span class="agent-dock-badge">${unread > 9 ? '9+' : unread}</span>` : ''}
       </div>
     `;
   }).join('');
 
-  // Bind click events
+  _dockEl.innerHTML = `
+    <button class="agent-dock-toggle" title="${_dockCollapsed ? 'Show agents' : 'Hide agents'}">
+      <span class="ms ms-sm">${toggleIcon}</span>
+    </button>
+    <div class="agent-dock-items">
+      ${agentItems}
+    </div>
+  `;
+
+  // Toggle button
+  _dockEl.querySelector('.agent-dock-toggle')?.addEventListener('click', () => {
+    setDockCollapsed(!_dockCollapsed);
+  });
+
+  // Bind click events on agent items
   _dockEl.querySelectorAll('.agent-dock-item').forEach(item => {
     item.addEventListener('click', () => {
       const agentId = (item as HTMLElement).dataset.agentId;
