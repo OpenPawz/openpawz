@@ -472,6 +472,7 @@ body {
 .nav-item[data-view="tasks"]::after { content: 'task'; }
 .nav-item[data-view="orchestrator"]::after { content: 'account_tree'; }
 .nav-item[data-view="trading"]::after { content: 'trending_up'; }
+.nav-item[data-view="canvas"]::after { content: 'palette'; }
 
 .sidebar-footer {
   padding: 10px;
