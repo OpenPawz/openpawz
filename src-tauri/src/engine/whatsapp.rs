@@ -90,6 +90,7 @@ impl Default for WhatsAppConfig {
 // ── Global State ───────────────────────────────────────────────────────
 
 static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
+static BRIDGE_RESTARTING: AtomicBool = AtomicBool::new(false);
 static MESSAGE_COUNT: AtomicI64 = AtomicI64::new(0);
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
@@ -109,9 +110,11 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> Result<(), String> {
     // If bridge is already running, stop it first so Start always works
     if BRIDGE_RUNNING.load(Ordering::Relaxed) {
         info!("[whatsapp] Bridge already running — restarting");
+        BRIDGE_RESTARTING.store(true, Ordering::Relaxed);
         stop_bridge();
         // Give the old bridge a moment to wind down
         std::thread::sleep(std::time::Duration::from_millis(500));
+        BRIDGE_RESTARTING.store(false, Ordering::Relaxed);
     }
 
     let mut config: WhatsAppConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)?;
@@ -133,11 +136,16 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> Result<(), String> {
     let app = app_handle.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(e) = run_whatsapp_bridge(app.clone(), config).await {
-            error!("[whatsapp] Bridge crashed: {}", e);
-            let _ = app.emit("whatsapp-status", json!({
-                "kind": "error",
-                "message": format!("{}", e),
-            }));
+            // Only emit error if this isn't a deliberate restart
+            if !BRIDGE_RESTARTING.load(Ordering::Relaxed) {
+                error!("[whatsapp] Bridge crashed: {}", e);
+                let _ = app.emit("whatsapp-status", json!({
+                    "kind": "error",
+                    "message": format!("{}", e),
+                }));
+            } else {
+                info!("[whatsapp] Bridge stopped for restart (suppressing error event)");
+            }
         }
         BRIDGE_RUNNING.store(false, Ordering::Relaxed);
         info!("[whatsapp] Bridge stopped");
@@ -911,9 +919,12 @@ async fn run_whatsapp_bridge(app_handle: tauri::AppHandle, mut config: WhatsAppC
     // Cleanup
     webhook_handle.abort();
 
-    let _ = app_handle.emit("whatsapp-status", json!({
-        "kind": "disconnected",
-    }));
+    // Only emit disconnected if this isn't a deliberate restart
+    if !BRIDGE_RESTARTING.load(Ordering::Relaxed) {
+        let _ = app_handle.emit("whatsapp-status", json!({
+            "kind": "disconnected",
+        }));
+    }
 
     Ok(())
 }

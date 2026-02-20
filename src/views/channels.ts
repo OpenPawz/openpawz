@@ -803,9 +803,18 @@ export async function loadChannels() {
               banner.style.display = 'flex';
 
               const { listen } = await import('@tauri-apps/api/event');
+              let gotMeaningfulEvent = false; // Track whether we've seen real progress
               const unlisten = await listen<{kind: string; message?: string; qr?: string}>('whatsapp-status', (event) => {
                 const { kind, message, qr } = event.payload;
                 if (!banner) return;
+
+                // Ignore disconnected/error from old bridge during restart
+                // (if we haven't seen any real progress yet, it's a stale event)
+                if (!gotMeaningfulEvent && (kind === 'disconnected' || kind === 'error')) {
+                  console.log('[wa-ui] Ignoring stale event from old bridge:', kind);
+                  return;
+                }
+
                 switch (kind) {
                   case 'docker_starting':
                   case 'docker_ready':
@@ -827,6 +836,7 @@ export async function loadChannels() {
                     banner.innerHTML = `<span class="wa-spinner"></span> First-time setup — downloading WhatsApp service (this may take a minute)...`;
                     break;
                   case 'connecting':
+                    gotMeaningfulEvent = true;
                     banner.innerHTML = `<span class="wa-spinner"></span> Connecting to WhatsApp...`;
                     break;
                   case 'qr_code':
