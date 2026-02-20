@@ -438,9 +438,35 @@ async fn ensure_evolution_container(app_handle: &tauri::AppHandle, config: &What
         let state = existing.state.as_deref().unwrap_or("");
         let image = existing.image.as_deref().unwrap_or("");
 
-        // If the container is using a different image version, remove and recreate
-        if image != EVOLUTION_IMAGE {
+        // Check if container needs recreating (wrong image or stale API key)
+        let needs_recreate = if image != EVOLUTION_IMAGE {
             info!("[whatsapp] Container uses wrong image ({} vs {}), recreating...", image, EVOLUTION_IMAGE);
+            true
+        } else {
+            // Inspect env vars to check API key matches
+            let inspect = docker.inspect_container(&container_id, None).await.ok();
+            let env_key = inspect
+                .as_ref()
+                .and_then(|i| i.config.as_ref())
+                .and_then(|c| c.env.as_ref())
+                .and_then(|envs| {
+                    envs.iter()
+                        .find(|e| e.starts_with("AUTHENTICATION_API_KEY="))
+                        .map(|e| e.trim_start_matches("AUTHENTICATION_API_KEY=").to_string())
+                });
+            if let Some(ref existing_key) = env_key {
+                if existing_key != &config.api_key {
+                    info!("[whatsapp] Container has stale API key, recreating...");
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        };
+
+        if needs_recreate {
             let _ = docker.stop_container(&container_id, None).await;
             let remove_opts = bollard::container::RemoveContainerOptions { force: true, ..Default::default() };
             let _ = docker.remove_container(&container_id, Some(remove_opts)).await;
@@ -563,6 +589,8 @@ async fn ensure_evolution_container(app_handle: &tauri::AppHandle, config: &What
     let container_config = ContainerConfig {
         image: Some(EVOLUTION_IMAGE.to_string()),
         env: Some(vec![
+            // v1.x defaults to JWT auth; explicitly switch to API key auth
+            "AUTHENTICATION_TYPE=apikey".to_string(),
             format!("AUTHENTICATION_API_KEY={}", config.api_key),
             "SERVER_PORT=8080".to_string(),
             // Webhook: point back to Paw's webhook listener
