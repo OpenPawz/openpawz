@@ -35,14 +35,26 @@ impl GoogleProvider {
     }
 
     fn format_messages(messages: &[Message]) -> (Option<Value>, Vec<Value>) {
-        let mut system_instruction = None;
-        let mut contents = Vec::new();
+        let mut system_instruction: Option<Value> = None;
+        let mut contents: Vec<Value> = Vec::new();
 
         for msg in messages {
             if msg.role == Role::System {
-                system_instruction = Some(json!({
-                    "parts": [{"text": msg.content.as_text()}]
-                }));
+                // Merge multiple system messages into one systemInstruction
+                let text = msg.content.as_text();
+                if let Some(ref mut existing) = system_instruction {
+                    // Append to existing system instruction
+                    let prev_text = existing["parts"][0]["text"]
+                        .as_str()
+                        .unwrap_or("")
+                        .to_string();
+                    let merged = format!("{}\n\n{}", prev_text, text);
+                    existing["parts"][0]["text"] = json!(merged);
+                } else {
+                    system_instruction = Some(json!({
+                        "parts": [{"text": text}]
+                    }));
+                }
                 continue;
             }
 
@@ -167,10 +179,42 @@ impl GoogleProvider {
             }
         }
 
-        (system_instruction, contents)
+        // ── Merge consecutive same-role messages ──────────────────────
+        // Gemini requires strictly alternating user/model turns.
+        // Consecutive user or model messages cause INVALID_ARGUMENT 400.
+        let mut merged: Vec<Value> = Vec::new();
+        for entry in contents {
+            let entry_role = entry["role"].as_str().unwrap_or("").to_string();
+            let can_merge = !merged.is_empty()
+                && merged.last().and_then(|e| e["role"].as_str()).map(|r| r == entry_role).unwrap_or(false)
+                && entry_role != "function"; // never merge function responses
+
+            if can_merge {
+                // Merge parts into the previous entry
+                if let Some(last) = merged.last_mut() {
+                    if let (Some(existing_parts), Some(new_parts)) = (
+                        last["parts"].as_array().cloned(),
+                        entry["parts"].as_array(),
+                    ) {
+                        let mut combined = existing_parts;
+                        combined.extend(new_parts.iter().cloned());
+                        last["parts"] = json!(combined);
+                    }
+                }
+            } else {
+                merged.push(entry);
+            }
+        }
+
+        (system_instruction, merged)
     }
 
-    /// Strip schema fields that Gemini doesn't support (additionalProperties, etc.)
+    /// Strip schema fields that Gemini doesn't support and fix invalid patterns.
+    ///
+    /// Gemini (especially Flash Lite) rejects:
+    /// - `additionalProperties`, `$schema`, `$ref`
+    /// - `"required": []` (empty array — must be omitted)
+    /// - `"properties": {}` when `type: "object"` (needs at least one prop)
     fn sanitize_schema(val: &Value) -> Value {
         match val {
             Value::Object(map) => {
@@ -180,7 +224,30 @@ impl GoogleProvider {
                     if k == "additionalProperties" || k == "$schema" || k == "$ref" {
                         continue;
                     }
+                    // Strip empty "required": [] — Gemini rejects this
+                    if k == "required" {
+                        if let Value::Array(arr) = v {
+                            if arr.is_empty() {
+                                continue;
+                            }
+                        }
+                    }
+                    // Strip empty "properties": {} — Gemini rejects type:object with no props
+                    if k == "properties" {
+                        if let Value::Object(props) = v {
+                            if props.is_empty() {
+                                continue;
+                            }
+                        }
+                    }
                     clean.insert(k.clone(), Self::sanitize_schema(v));
+                }
+                // If we stripped properties from a type:object, also strip the type
+                // to let Gemini infer it (otherwise it complains about object with no props)
+                if clean.get("type").and_then(|v| v.as_str()) == Some("object")
+                    && !clean.contains_key("properties")
+                {
+                    clean.remove("type");
                 }
                 Value::Object(clean)
             }

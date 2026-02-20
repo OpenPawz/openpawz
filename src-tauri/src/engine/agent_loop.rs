@@ -181,12 +181,13 @@ pub async fn run_agent_turn(
 
             // Handle completely empty responses: the model returned nothing.
             // Auto-retry ONCE by injecting a nudge so the model tries again.
+            // Use System role to avoid consecutive user messages (Gemini rejects those).
             if final_text.is_empty() && round == 1 && round < max_rounds {
                 warn!("[engine] Model returned empty response at round {} — injecting nudge and retrying", round);
                 messages.push(Message {
-                    role: Role::User,
+                    role: Role::System,
                     content: MessageContent::Text(
-                        "Your previous response was empty. Please try again — use your tools if needed to complete the task."
+                        "[SYSTEM] The model returned an empty response. Retry the user's request. Use tools if needed."
                             .to_string(),
                     ),
                     tool_calls: None,

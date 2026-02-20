@@ -130,8 +130,7 @@ impl ToolDefinition {
                             "type": "integer",
                             "description": "Maximum recursion depth (default: 3)"
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -240,11 +239,7 @@ impl ToolDefinition {
             function: FunctionDefinition {
                 name: "soul_list".into(),
                 description: "List all your soul/persona files and their sizes. Use this to see what files exist before reading or writing them.".into(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
+                parameters: serde_json::json!({}),
             },
         }
     }
@@ -333,8 +328,7 @@ impl ToolDefinition {
                     "properties": {
                         "limit": { "type": "integer", "description": "Number of emails to fetch (default: 5)" },
                         "folder": { "type": "string", "description": "Mailbox folder (default: INBOX)" }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -673,8 +667,7 @@ impl ToolDefinition {
                             "type": "boolean",
                             "description": "If true, only return tasks that have a cron schedule (automations)."
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -756,11 +749,7 @@ impl ToolDefinition {
             function: FunctionDefinition {
                 name: "self_info".into(),
                 description: "Get information about your own runtime: current model, provider, session, engine settings, configured providers, memory status, and enabled skills. Use this when you need to check which model you're running, verify configuration, or answer questions about your own setup.".into(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
+                parameters: serde_json::json!({}),
             },
         }
     }
@@ -883,8 +872,7 @@ impl ToolDefinition {
                             "type": "string",
                             "description": "Optional: filter to a specific currency (e.g. 'BTC'). Omit to see all balances."
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -996,11 +984,7 @@ impl ToolDefinition {
             function: FunctionDefinition {
                 name: "dex_wallet_create".into(),
                 description: "Create a new self-custody Ethereum wallet. The private key is encrypted and stored in the OS keychain vault — you never see it. Returns the wallet address.".into(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
+                parameters: serde_json::json!({}),
             },
         }
     }
@@ -1018,8 +1002,7 @@ impl ToolDefinition {
                             "type": "string",
                             "description": "Specific token to check (e.g. 'USDC', 'WBTC', or a contract address). Omit to check all known tokens."
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -1115,8 +1098,7 @@ impl ToolDefinition {
                             "items": { "type": "string" },
                             "description": "Additional ERC-20 contract addresses to check beyond the built-in list"
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -1292,8 +1274,7 @@ impl ToolDefinition {
                             "type": "integer",
                             "description": "Maximum results per category (default 20, max 50)"
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -1339,11 +1320,7 @@ impl ToolDefinition {
             function: FunctionDefinition {
                 name: "sol_wallet_create".into(),
                 description: "Create a new self-custody Solana wallet (ed25519). The private key is encrypted and stored in the OS keychain vault — you never see it. Returns the wallet address.".into(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
+                parameters: serde_json::json!({}),
             },
         }
     }
@@ -1361,8 +1338,7 @@ impl ToolDefinition {
                             "type": "string",
                             "description": "Specific token to check (e.g. 'USDC', 'BONK', 'JUP', or a mint address). Omit to check all tokens."
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -1450,8 +1426,7 @@ impl ToolDefinition {
                             "items": { "type": "string" },
                             "description": "Additional SPL token mint addresses to check beyond auto-detected holdings"
                         }
-                    },
-                    "required": []
+                    }
                 }),
             },
         }
@@ -1517,11 +1492,7 @@ impl ToolDefinition {
             function: FunctionDefinition {
                 name: "agent_list".into(),
                 description: "List all agents with their roles, models, and skill counts.".into(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
+                parameters: serde_json::json!({}),
             },
         }
     }
@@ -1627,11 +1598,7 @@ impl ToolDefinition {
             function: FunctionDefinition {
                 name: "skill_list".into(),
                 description: "List community skills installed for YOUR agent. Shows name, description, enabled status, source, and scope.".into(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {},
-                    "required": []
-                }),
+                parameters: serde_json::json!({}),
             },
         }
     }
