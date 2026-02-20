@@ -179,6 +179,18 @@ pub async fn run_agent_turn(
         if !has_tool_calls || tool_call_map.is_empty() {
             final_text = text_accum.clone();
 
+            // Handle completely empty responses: the model returned nothing
+            // (could be safety filter, context overflow, or model confusion).
+            if final_text.is_empty() {
+                warn!("[engine] Model returned empty response (0 chars, 0 tool calls) at round {}", round);
+                final_text = "I wasn't able to generate a response. This can happen when:\n\
+                    - The conversation context is very large (try compacting the session)\n\
+                    - A content filter was triggered (try rephrasing)\n\
+                    - The model is overwhelmed by too many tools/skills\n\n\
+                    Please try again or start a new session."
+                    .to_string();
+            }
+
             // Add assistant message to history
             messages.push(Message {
                 role: Role::Assistant,

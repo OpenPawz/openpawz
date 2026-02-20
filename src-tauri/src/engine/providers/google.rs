@@ -304,11 +304,48 @@ impl GoogleProvider {
                             let api_model = v["modelVersion"].as_str().map(|s| s.to_string());
 
                             // Parse Google's streaming format
+                            let mut fc_index_counter: usize = 0; // unique index per function call
                             if let Some(candidates) = v["candidates"].as_array() {
                                 for candidate in candidates {
                                     let content = &candidate["content"];
                                     let finish_reason = candidate["finishReason"].as_str()
                                         .map(|s| s.to_string());
+
+                                    // Detect blocked/empty responses (e.g. SAFETY, RECITATION, OTHER)
+                                    if content.is_null() || content["parts"].is_null() {
+                                        if let Some(ref reason) = finish_reason {
+                                            if reason != "STOP" {
+                                                let safety_info = candidate.get("safetyRatings")
+                                                    .map(|r| r.to_string())
+                                                    .unwrap_or_default();
+                                                warn!(
+                                                    "[engine] Google: empty response with finishReason={} safety={}",
+                                                    reason,
+                                                    &safety_info[..safety_info.len().min(300)]
+                                                );
+                                                // Emit a visible error chunk so the agent loop can surface it
+                                                let msg = match reason.as_str() {
+                                                    "SAFETY" => "My response was blocked by Google's safety filter. Try rephrasing your request.".to_string(),
+                                                    "RECITATION" => "My response was blocked by a recitation filter. Try rephrasing.".to_string(),
+                                                    "MAX_TOKENS" => "I ran out of output tokens. Try shortening the conversation or compacting the session.".to_string(),
+                                                    "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII" =>
+                                                        format!("Response blocked ({reason}). Try rephrasing your request."),
+                                                    other => format!(
+                                                        "The model returned an empty response (reason: {other}). Please retry or rephrase."
+                                                    ),
+                                                };
+                                                chunks.push(StreamChunk {
+                                                    delta_text: Some(msg),
+                                                    tool_calls: vec![],
+                                                    finish_reason: finish_reason.clone(),
+                                                    usage: None,
+                                                    model: api_model.clone(),
+                                                    thought_parts: vec![],
+                                                });
+                                            }
+                                        }
+                                        continue;
+                                    }
 
                                     if let Some(parts) = content["parts"].as_array() {
                                         // First pass: collect thought parts (they accompany function calls)
@@ -361,10 +398,12 @@ impl GoogleProvider {
                                                 } else {
                                                     warn!("[engine] Google: NO thoughtSignature found for fn={} (part keys: {:?})", name, part.as_object().map(|o| o.keys().collect::<Vec<_>>()));
                                                 }
+                                                let fc_idx = fc_index_counter;
+                                                fc_index_counter += 1;
                                                 chunks.push(StreamChunk {
                                                     delta_text: None,
                                                     tool_calls: vec![ToolCallDelta {
-                                                        index: 0,
+                                                        index: fc_idx,
                                                         id: Some(format!("call_{}", uuid::Uuid::new_v4())),
                                                         function_name: Some(name),
                                                         arguments_delta: Some(serde_json::to_string(&args).unwrap_or_default()),

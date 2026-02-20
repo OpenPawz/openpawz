@@ -61,31 +61,55 @@ export const ALL_TOOLS = [
   'self_info',
   // Agent management
   'update_profile', 'create_agent',
+  'agent_list', 'agent_skills', 'agent_skill_assign',
   // Task / Automation management
   'create_task', 'list_tasks', 'manage_task',
-  // Skills
+  // Community skills management
+  'skill_search', 'skill_install', 'skill_list',
+  // Communication skills
   'email_send', 'email_read',
   'slack_send', 'slack_read',
+  'telegram_send', 'telegram_read',
   'github_api',
   'rest_api_call',
   'webhook_send',
   'image_generate',
+  // Trading: Coinbase
+  'coinbase_prices', 'coinbase_balance', 'coinbase_wallet_create',
+  'coinbase_trade', 'coinbase_transfer',
+  // Trading: Solana (Jupiter)
+  'sol_wallet_create', 'sol_balance', 'sol_quote', 'sol_swap',
+  'sol_portfolio', 'sol_token_info', 'sol_transfer',
+  // Trading: EVM DEX (Uniswap)
+  'dex_wallet_create', 'dex_balance', 'dex_quote', 'dex_swap',
+  'dex_portfolio', 'dex_token_info', 'dex_check_token',
+  'dex_search_token', 'dex_watch_wallet', 'dex_whale_transfers',
+  'dex_top_traders', 'dex_trending', 'dex_transfer',
 ] as const;
 
 /** Read-only tools that are generally safe. */
 export const SAFE_TOOLS: readonly string[] = [
   'read_file', 'list_directory', 'web_search', 'web_read',
   'memory_search', 'soul_read', 'soul_list', 'self_info',
-  'fetch',
+  'fetch', 'agent_list', 'agent_skills', 'skill_list',
+  'coinbase_prices', 'sol_balance', 'sol_portfolio', 'sol_token_info',
+  'dex_balance', 'dex_portfolio', 'dex_token_info', 'dex_check_token',
+  'dex_search_token', 'dex_trending',
+  'telegram_read', 'slack_read', 'email_read',
 ];
 
 /** High-risk tools that modify the system or send data externally. */
 export const HIGH_RISK_TOOLS: readonly string[] = [
   'exec', 'write_file', 'delete_file', 'append_file',
   'email_send', 'webhook_send', 'rest_api_call',
-  'slack_send', 'github_api', 'image_generate',
+  'slack_send', 'telegram_send', 'github_api', 'image_generate',
   'soul_write', 'update_profile', 'create_agent',
   'create_task', 'manage_task',
+  'skill_search', 'skill_install', 'agent_skill_assign',
+  'coinbase_wallet_create', 'coinbase_trade', 'coinbase_transfer',
+  'sol_wallet_create', 'sol_quote', 'sol_swap', 'sol_transfer',
+  'dex_wallet_create', 'dex_quote', 'dex_swap', 'dex_transfer',
+  'dex_watch_wallet', 'dex_whale_transfers', 'dex_top_traders',
 ];
 
 /** Default policy: unrestricted (backward-compatible). */
