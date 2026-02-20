@@ -363,10 +363,49 @@ function isValidSchedule(s: string): boolean {
   return false;
 }
 
+// ── Morning Brief Template ─────────────────────────────────────────────────
+const MORNING_BRIEF_PROMPT = `Good morning! Please give me a concise daily briefing that includes:
+
+1. **Weather** — Current conditions and today's forecast for my location
+2. **Calendar** — Any scheduled events or deadlines today
+3. **Tasks** — My top priority tasks and anything overdue
+4. **News** — 3-5 key headlines relevant to my interests
+5. **Memories** — Any important context from recent conversations
+
+Keep it brief and actionable. End with a motivational note to start the day.`;
+
+async function createMorningBrief() {
+  try {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const task: EngineTask = {
+      id,
+      title: 'Morning Brief',
+      description: MORNING_BRIEF_PROMPT,
+      status: 'assigned',
+      priority: 'medium',
+      assigned_agent: 'default',
+      assigned_agents: [{ agent_id: 'default', role: 'lead' }],
+      cron_schedule: 'daily 09:00',
+      cron_enabled: true,
+      next_run_at: now,
+      created_at: now,
+      updated_at: now,
+    };
+    await pawEngine.taskCreate(task);
+    await pawEngine.taskSetAgents(id, [{ agent_id: 'default', role: 'lead' }]);
+    loadCron();
+  } catch (e) {
+    alert(`Failed to create Morning Brief: ${e instanceof Error ? e.message : e}`);
+  }
+}
+
 // ── Initialize ─────────────────────────────────────────────────────────────
 export function initAutomations() {
   $('add-cron-btn')?.addEventListener('click', openCreateModal);
   $('cron-empty-add')?.addEventListener('click', openCreateModal);
+  $('add-morning-brief-btn')?.addEventListener('click', createMorningBrief);
+  $('cron-empty-morning-brief')?.addEventListener('click', createMorningBrief);
   $('cron-modal-close')?.addEventListener('click', hideCronModal);
   $('cron-modal-cancel')?.addEventListener('click', hideCronModal);
 

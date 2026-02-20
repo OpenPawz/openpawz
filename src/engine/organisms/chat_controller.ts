@@ -1017,4 +1017,127 @@ export function initChatListeners(): void {
     const warning = document.getElementById('compaction-warning');
     if (warning) warning.style.display = 'none';
   });
+
+  // Talk Mode button in chat input
+  $('chat-talk-btn')?.addEventListener('click', () => toggleChatTalkMode());
+}
+
+// ═══ Chat Talk Mode ═════════════════════════════════════════════════════
+// Quick talk button next to chat input — records one utterance and sends it
+
+let _chatTalkActive = false;
+let _chatMediaRecorder: MediaRecorder | null = null;
+let _chatAudioStream: MediaStream | null = null;
+
+async function toggleChatTalkMode() {
+  if (_chatTalkActive) {
+    stopChatTalk();
+  } else {
+    await startChatTalk();
+  }
+}
+
+async function startChatTalk() {
+  const btn = $('chat-talk-btn');
+  if (!btn) return;
+
+  try {
+    _chatAudioStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 }
+    });
+
+    _chatTalkActive = true;
+    btn.innerHTML = `<span class="ms">stop_circle</span>`;
+    btn.classList.add('talk-active');
+    btn.title = 'Stop recording';
+
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/ogg';
+
+    _chatMediaRecorder = new MediaRecorder(_chatAudioStream, { mimeType });
+    const chunks: Blob[] = [];
+
+    _chatMediaRecorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+
+    _chatMediaRecorder.onstop = async () => {
+      cleanupChatTalk();
+      if (chunks.length === 0) return;
+
+      const blob = new Blob(chunks, { type: mimeType });
+      if (blob.size < 4000) {
+        showToast('Recording too short — try again', 'info');
+        return;
+      }
+
+      btn.innerHTML = `<span class="ms">hourglass_top</span>`;
+      btn.title = 'Transcribing...';
+
+      try {
+        const reader = new FileReader();
+        const base64 = await new Promise<string>((resolve, reject) => {
+          reader.onload = () => resolve((reader.result as string).split(',')[1] || '');
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
+
+        const transcript = await pawEngine.ttsTranscribe(base64, mimeType);
+        if (transcript.trim()) {
+          const chatInput = $('chat-input') as HTMLTextAreaElement | null;
+          if (chatInput) {
+            chatInput.value = transcript;
+            chatInput.style.height = 'auto';
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+            chatInput.focus();
+          }
+        } else {
+          showToast('No speech detected — try again', 'info');
+        }
+      } catch (e) {
+        console.error('[talk] Transcription error:', e);
+        showToast('Transcription failed: ' + (e instanceof Error ? e.message : e), 'error');
+      } finally {
+        btn.innerHTML = `<span class="ms">mic</span>`;
+        btn.title = 'Talk Mode — hold to speak';
+      }
+    };
+
+    _chatMediaRecorder.start();
+
+    // Auto-stop after 30 seconds max
+    setTimeout(() => {
+      if (_chatMediaRecorder && _chatMediaRecorder.state === 'recording') {
+        _chatMediaRecorder.stop();
+      }
+    }, 30_000);
+  } catch (e) {
+    showToast('Microphone access denied', 'error');
+    console.error('[talk] Mic error:', e);
+    cleanupChatTalk();
+  }
+}
+
+function stopChatTalk() {
+  if (_chatMediaRecorder && _chatMediaRecorder.state === 'recording') {
+    _chatMediaRecorder.stop();
+  }
+}
+
+function cleanupChatTalk() {
+  _chatTalkActive = false;
+  _chatMediaRecorder = null;
+  if (_chatAudioStream) {
+    _chatAudioStream.getTracks().forEach(t => t.stop());
+    _chatAudioStream = null;
+  }
+  const btn = $('chat-talk-btn');
+  if (btn) {
+    btn.innerHTML = `<span class="ms">mic</span>`;
+    btn.classList.remove('talk-active');
+    btn.title = 'Talk Mode — hold to speak';
+  }
 }

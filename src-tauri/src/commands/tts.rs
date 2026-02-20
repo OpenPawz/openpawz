@@ -8,12 +8,24 @@ use tauri::State;
 /// TTS configuration stored in DB as JSON under key "tts_config"
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TtsConfig {
-    pub provider: String,        // "google" | "openai"
-    pub voice: String,           // e.g. "en-US-Chirp3-HD-Achernar" or "alloy"
+    pub provider: String,        // "google" | "openai" | "elevenlabs"
+    pub voice: String,           // e.g. "en-US-Chirp3-HD-Achernar" or "alloy" or ElevenLabs voice_id
     pub speed: f64,              // 0.25–4.0
     pub language_code: String,   // e.g. "en-US"
     pub auto_speak: bool,        // automatically speak new responses
+    #[serde(default)]
+    pub elevenlabs_api_key: String,  // ElevenLabs API key (separate from provider keys)
+    #[serde(default = "default_elevenlabs_model")]
+    pub elevenlabs_model: String,    // "eleven_multilingual_v2" | "eleven_turbo_v2_5"
+    #[serde(default = "default_stability")]
+    pub stability: f64,              // 0.0–1.0 (ElevenLabs voice stability)
+    #[serde(default = "default_similarity")]
+    pub similarity_boost: f64,       // 0.0–1.0 (ElevenLabs clarity + similarity)
 }
+
+fn default_elevenlabs_model() -> String { "eleven_multilingual_v2".into() }
+fn default_stability() -> f64 { 0.5 }
+fn default_similarity() -> f64 { 0.75 }
 
 impl Default for TtsConfig {
     fn default() -> Self {
@@ -23,6 +35,10 @@ impl Default for TtsConfig {
             speed: 1.0,
             language_code: "en-US".into(),
             auto_speak: false,
+            elevenlabs_api_key: String::new(),
+            elevenlabs_model: "eleven_multilingual_v2".into(),
+            stability: 0.5,
+            similarity_boost: 0.75,
         }
     }
 }
@@ -63,6 +79,12 @@ pub async fn engine_tts_speak(
             let (api_key, base_url) = openai_provider_info
                 .ok_or("No OpenAI provider configured — add one in Settings → Models")?;
             tts_openai(&api_key, &base_url, &text, &tts_config).await
+        }
+        "elevenlabs" => {
+            if tts_config.elevenlabs_api_key.is_empty() {
+                return Err("No ElevenLabs API key configured — add one in Settings → Voice & TTS".into());
+            }
+            tts_elevenlabs(&tts_config.elevenlabs_api_key, &text, &tts_config).await
         }
         _ => {
             // Default: Google Cloud TTS
@@ -207,7 +229,129 @@ async fn tts_openai(api_key: &str, base_url: &str, text: &str, config: &TtsConfi
     ))
 }
 
-/// Strip markdown formatting for cleaner TTS output
+/// ElevenLabs TTS — calls api.elevenlabs.io/v1/text-to-speech/{voice_id}
+async fn tts_elevenlabs(api_key: &str, text: &str, config: &TtsConfig) -> Result<String, String> {
+    let clean = strip_markdown(text);
+    if clean.trim().is_empty() {
+        return Err("No speakable text after stripping markdown".into());
+    }
+
+    // ElevenLabs has a 5000 char limit per request
+    let chunks = chunk_text(&clean, 4800);
+    let client = reqwest::Client::new();
+    let mut all_audio = Vec::new();
+
+    for chunk in &chunks {
+        let body = serde_json::json!({
+            "text": chunk,
+            "model_id": config.elevenlabs_model,
+            "voice_settings": {
+                "stability": config.stability,
+                "similarity_boost": config.similarity_boost,
+                "speed": config.speed,
+            }
+        });
+
+        let resp = client
+            .post(format!(
+                "https://api.elevenlabs.io/v1/text-to-speech/{}",
+                config.voice
+            ))
+            .header("xi-api-key", api_key)
+            .header("Accept", "audio/mpeg")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("ElevenLabs TTS request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            return Err(format!("ElevenLabs TTS error ({}): {}", status, body));
+        }
+
+        let bytes = resp.bytes().await
+            .map_err(|e| format!("ElevenLabs TTS read error: {}", e))?;
+        all_audio.extend_from_slice(&bytes);
+    }
+
+    info!("[tts] ElevenLabs synthesized {} chunks, {} bytes total", chunks.len(), all_audio.len());
+    Ok(base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        &all_audio,
+    ))
+}
+
+/// Transcribe audio (base64-encoded) to text using OpenAI Whisper API.
+/// Used by Talk Mode for speech-to-text.
+#[tauri::command]
+pub async fn engine_tts_transcribe(
+    state: State<'_, EngineState>,
+    audio_base64: String,
+    mime_type: String,
+) -> Result<String, String> {
+    if audio_base64.is_empty() {
+        return Err("No audio data provided".into());
+    }
+
+    // Find OpenAI provider for Whisper API
+    let (api_key, base_url) = {
+        let config = state.config.lock();
+        config.providers.iter()
+            .find(|p| p.kind == ProviderKind::OpenAI)
+            .map(|p| (p.api_key.clone(), p.base_url.clone().unwrap_or_else(|| "https://api.openai.com/v1".into())))
+            .ok_or("No OpenAI provider configured — Talk Mode requires OpenAI Whisper")?
+    };
+
+    // Decode base64 audio
+    let audio_bytes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &audio_base64,
+    ).map_err(|e| format!("Audio decode error: {}", e))?;
+
+    // Determine file extension from mime type
+    let ext = match mime_type.as_str() {
+        "audio/webm" | "audio/webm;codecs=opus" => "webm",
+        "audio/ogg" | "audio/ogg;codecs=opus" => "ogg",
+        "audio/mp4" => "mp4",
+        "audio/wav" | "audio/wave" => "wav",
+        "audio/mpeg" | "audio/mp3" => "mp3",
+        _ => "webm",
+    };
+
+    // Build multipart form
+    let file_part = reqwest::multipart::Part::bytes(audio_bytes)
+        .file_name(format!("audio.{}", ext))
+        .mime_str(&mime_type)
+        .map_err(|e| format!("MIME error: {}", e))?;
+
+    let form = reqwest::multipart::Form::new()
+        .text("model", "whisper-1")
+        .text("language", "en")
+        .part("file", file_part);
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/audio/transcriptions", base_url.trim_end_matches('/')))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("Whisper API request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Whisper API error ({}): {}", status, body));
+    }
+
+    let result: serde_json::Value = resp.json().await
+        .map_err(|e| format!("Whisper API JSON parse error: {}", e))?;
+
+    result["text"].as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Whisper API: no text in response".into())
+}
 fn strip_markdown(text: &str) -> String {
     let mut out = text.to_string();
     // Remove code blocks

@@ -6722,6 +6722,42 @@ select.form-input {
   height: 18px;
 }
 
+/* ─── Chat Talk (Mic) Button ─── */
+.chat-talk-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 50%;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+.chat-talk-btn:hover {
+  color: var(--accent);
+  background: var(--accent-subtle);
+}
+.chat-talk-btn:active {
+  transform: scale(0.92);
+}
+.chat-talk-btn.talk-active {
+  color: #ff4444;
+  background: rgba(255, 68, 68, 0.15);
+  animation: talk-pulse 1.2s ease-in-out infinite;
+}
+@keyframes talk-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.3); }
+  50% { box-shadow: 0 0 0 6px rgba(255, 68, 68, 0); }
+}
+.chat-talk-btn .ms {
+  font-size: 18px;
+}
+
 /* ─── Attachment Preview Strip ─── */
 .chat-attachment-preview {
   display: flex;

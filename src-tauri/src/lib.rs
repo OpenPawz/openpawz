@@ -121,6 +121,7 @@ pub fn run() {
             commands::tts::engine_tts_speak,
             commands::tts::engine_tts_get_config,
             commands::tts::engine_tts_set_config,
+            commands::tts::engine_tts_transcribe,
             // ── Tasks (Kanban Board) ──
             commands::task::engine_tasks_list,
             commands::task::engine_task_create,

@@ -298,6 +298,10 @@ class PawEngineClient {
     return invoke('engine_tts_set_config', { config });
   }
 
+  async ttsTranscribe(audioBase64: string, mimeType: string): Promise<string> {
+    return invoke<string>('engine_tts_transcribe', { audioBase64, mimeType });
+  }
+
   // ── Tasks ────────────────────────────────────────────────────────────
 
   async tasksList(): Promise<EngineTask[]> {

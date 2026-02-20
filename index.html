@@ -424,6 +424,9 @@
               <button class="chat-attach-btn" id="chat-attach-btn" title="Attach file" data-icon="paperclip"></button>
               <input type="file" id="chat-file-input" multiple accept="image/jpeg,image/png,image/gif,image/webp,.pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.toml,.py,.rs,.js,.ts,.html,.css,.sh,.log,.c,.cpp,.h,.java,.rb,.go,.sql" style="display:none" />
               <textarea class="chat-input" id="chat-input" placeholder="Message your agent..." rows="1"></textarea>
+              <button class="chat-talk-btn" id="chat-talk-btn" title="Talk Mode — hold to speak">
+                <span class="ms">mic</span>
+              </button>
               <button class="chat-send" id="chat-send" title="Send message" data-icon="arrow-up"></button>
             </div>
             <button class="chat-abort-btn" id="chat-abort-btn" style="display:none">
@@ -905,6 +908,10 @@
                 <span class="ms ms-sm">add</span>
                 New Automation
               </button>
+              <button class="btn btn-ghost btn-sm" id="add-morning-brief-btn" title="Quick-add a Morning Brief automation">
+                <span class="ms ms-sm">wb_sunny</span>
+                Morning Brief
+              </button>
             </div>
           </div>
           <div class="auto-board">
@@ -936,7 +943,12 @@
             <div class="empty-icon"><span class="ms" style="font-size:48px">bolt</span></div>
             <div class="empty-title">No automations yet</div>
             <div class="empty-subtitle">Create scheduled tasks, triggers, and recurring workflows</div>
-            <button class="btn btn-primary" id="cron-empty-add" style="margin-top:16px">Create First Automation</button>
+            <div style="display:flex;gap:12px;margin-top:16px;flex-wrap:wrap;justify-content:center">
+              <button class="btn btn-primary" id="cron-empty-add">Create Automation</button>
+              <button class="btn btn-ghost" id="cron-empty-morning-brief">
+                <span class="ms">wb_sunny</span> Morning Brief Template
+              </button>
+            </div>
           </div>
           <div class="view-loading" id="cron-loading" style="display:none">Loading automations…</div>
           <!-- Add/Edit Automation Modal -->

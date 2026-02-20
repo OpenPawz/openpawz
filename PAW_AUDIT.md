@@ -11,7 +11,7 @@
 Pawz is a **standalone AI agent desktop app** built on Tauri v2 with a pure Rust engine. No gateway dependency, no Node.js process, no open ports. Everything runs through Tauri IPC. The app includes 10 channel bridges, 6 AI providers, 37+ skills, multi-agent orchestration, a Coinbase CDP wallet, and a full trading dashboard.
 
 **Total commits**: 100+  
-**All P1 and P2 features complete.** P3+ not started.
+**All P1, P2, and P3 features complete.** P4+ not started.
 
 ---
 
@@ -207,17 +207,18 @@ Each bridge has uniform commands: `start`, `stop`, `status`, `get_config`, `set_
 
 ## 2. What's NOT Done (Remaining Work)
 
-### 2.1 P3 — Voice & TTS (NOT STARTED)
+### 2.1 P3 — Voice & TTS
 
 | Feature | Effort | Status | Details |
-|---------|--------|--------|---------|
-| **OpenAI TTS** | M | ❌ | 🔊 button on messages, OpenAI voices |
-| **ElevenLabs TTS** | M | ❌ | Premium voice synthesis |
-| **Talk Mode** | L | ❌ | Continuous voice conversation |
+|---------|--------|--------|--------|
+| **Google TTS** | M | ✅ | Chirp 3 HD, Neural2, Journey voices via Google Cloud TTS API |
+| **OpenAI TTS** | M | ✅ | 🔊 button on messages, 9 voices (alloy, ash, coral, echo, fable, nova, onyx, sage, shimmer) |
+| **ElevenLabs TTS** | M | ✅ | 16 premium voices (Sarah, Charlie, George, etc.), stability/similarity controls, multilingual v2 + turbo v2.5 models |
+| **Talk Mode** | L | ✅ | Continuous voice loop (mic → Whisper STT → agent → TTS → speaker) + chat mic button for single-utterance transcription |
 | **Voice Wake** | M | ❌ | Wake word detection |
-| **Morning Brief** | S | ❌ | One-click cron template for daily summary |
+| **Morning Brief** | S | ✅ | One-click cron template (daily 09:00) with Weather/Calendar/Tasks/News/Memories prompt |
 
-`settings-voice.ts` is a 15-line stub. Gateway methods (`tts.*`, `talk.*`, `voicewake.*`) are typed but have zero UI.
+`settings-voice.ts` (~350 LOC) — full TTS settings UI with 3-provider picker (Google/OpenAI/ElevenLabs), voice catalogs, speed slider, auto-speak toggle, test button, ElevenLabs API key + model + stability/similarity sliders, Talk Mode start/stop with 8s recording cycles. Backend `tts.rs` (~450 LOC) has Google + OpenAI + ElevenLabs TTS with `strip_markdown`, `chunk_text`, base64 encoding, plus Whisper STT via multipart upload.
 
 ### 2.2 P4 — Browser & Sandbox (NOT STARTED)
 
@@ -244,7 +245,7 @@ Each bridge has uniform commands: `start`, `stop`, `status`, `get_config`, `set_
 
 | Channel | OpenClaw Has | Pawz Status | Priority |
 |---------|:------------:|:-----------:|----------|
-| WhatsApp | ✅ | ❌ | P1.5 — CRITICAL (dedicated phase) |
+| WhatsApp | ✅ | ❌ | Investigating — no pure-Rust path without Meta Business API or external gateway |
 | iMessage | ✅ | ❌ | P5 |
 | Google Chat | ✅ | ❌ | P5 |
 | Signal | ✅ | ❌ | P5 |
@@ -316,7 +317,7 @@ git pusah
 | Security | 17 features | 7 features | **Pawz** |
 | Memory | 12 features | 8 features | **Pawz** |
 | Multi-Agent | 11 features | 6 features | **Pawz** |
-| Voice/TTS | 0 | 5 features | OpenClaw |
+| Voice/TTS | 5 (Google+OpenAI+ElevenLabs TTS, Talk Mode, Morning Brief) | 5 features | **Tie** |
 | Browser | Basic | Advanced | OpenClaw |
 | Unique Features | 11 | 3 | **Pawz** |
 | Desktop UX | Native app | CLI + web | **Pawz** |
@@ -395,16 +396,10 @@ git pusah
 
 ## 6. Priority Roadmap (What's Next)
 
-### Immediate (P1.5)
-1. **WhatsApp channel** — World's #1 messaging platform, massive user demand
+### ~~P3 — Voice & TTS~~ ✅ DONE
+All 3 items shipped: ElevenLabs TTS, Talk Mode (continuous + chat mic), Morning Brief template.
 
-### Near-term (P3)
-2. **OpenAI TTS** — 🔊 button on messages
-3. **ElevenLabs TTS** — Premium voice
-4. **Talk Mode** — Continuous voice conversation
-5. **Morning Brief template** — One-click cron
-
-### Medium-term (P4)
+### Immediate (P4)
 6. **Managed browser profiles** — Persistent Chrome state
 7. **Screenshot viewer** — Display agent screenshots in chat
 8. **Per-agent workspaces** — Isolated filesystem scope
@@ -420,4 +415,4 @@ git pusah
 
 ---
 
-**TL;DR**: All P1 security features DONE. All P2 memory intelligence DONE. Gateway fully removed. 10 channel bridges, 6+ providers, 37+ skills, 50 custom avatars, Coinbase trading, multi-agent orchestration — all shipped. Next up: WhatsApp (P1.5), then Voice/TTS (P3).
+**TL;DR**: All P1 security features DONE. All P2 memory intelligence DONE. **All P3 Voice/TTS DONE** — Google + OpenAI + ElevenLabs TTS, Talk Mode (Whisper STT continuous loop + chat mic button), Morning Brief one-click cron. Gateway fully removed. 10 channel bridges, 6+ providers, 37+ skills, 50 custom avatars, Coinbase trading, multi-agent orchestration — all shipped. Next up: P4 Browser & Sandbox.

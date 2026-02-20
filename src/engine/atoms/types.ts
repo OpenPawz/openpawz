@@ -263,11 +263,15 @@ export interface Position {
 // ── Text-to-Speech ────────────────────────────────────────────────────
 
 export interface TtsConfig {
-  provider: string;        // "google" | "openai"
-  voice: string;           // e.g. "en-US-Chirp3-HD-Achernar" or "alloy"
+  provider: string;        // "google" | "openai" | "elevenlabs"
+  voice: string;           // e.g. "en-US-Chirp3-HD-Achernar" or "alloy" or ElevenLabs voice_id
   speed: number;           // 0.25–4.0
   language_code: string;   // e.g. "en-US"
   auto_speak: boolean;     // automatically speak new responses
+  elevenlabs_api_key: string;  // ElevenLabs API key
+  elevenlabs_model: string;    // "eleven_multilingual_v2" | "eleven_turbo_v2_5"
+  stability: number;           // 0.0–1.0
+  similarity_boost: number;    // 0.0–1.0
 }
 
 // ── Tasks ─────────────────────────────────────────────────────────────
