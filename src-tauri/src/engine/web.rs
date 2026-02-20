@@ -15,12 +15,13 @@ use scraper::{Html, Selector};
 use std::sync::{Arc, OnceLock};
 use parking_lot::Mutex;
 use std::time::Duration;
+use tauri::Manager;
 
 // ── Shared browser instance (lazy singleton) ───────────────────────────
 
 static BROWSER: OnceLock<Mutex<Option<Arc<Browser>>>> = OnceLock::new();
 
-fn get_or_launch_browser() -> Result<Arc<Browser>, String> {
+fn get_or_launch_browser(profile_dir: Option<std::path::PathBuf>) -> Result<Arc<Browser>, String> {
     let mutex = BROWSER.get_or_init(|| Mutex::new(None));
     let mut guard = mutex.lock();
 
@@ -34,11 +35,20 @@ fn get_or_launch_browser() -> Result<Arc<Browser>, String> {
     }
 
     info!("[web] Launching headless Chrome...");
+    let mut builder = LaunchOptions::default_builder();
+    builder
+        .headless(true)
+        .sandbox(false)  // Required in containers / CI
+        .idle_browser_timeout(Duration::from_secs(300));
+
+    // Use profile directory if configured
+    if let Some(ref dir) = profile_dir {
+        info!("[web] Using browser profile: {:?}", dir);
+        builder.user_data_dir(Some(dir.clone()));
+    }
+
     let browser = Browser::new(
-        LaunchOptions::default_builder()
-            .headless(true)
-            .sandbox(false)  // Required in containers / CI
-            .idle_browser_timeout(Duration::from_secs(300))
+        builder
             .build()
             .map_err(|e| format!("Browser launch options error: {}", e))?,
     ).map_err(|e| format!(
@@ -271,9 +281,25 @@ fn extract_readable_text(document: &Html) -> String {
     String::new()
 }
 
+// ── Resolve browser profile dir from config ────────────────────────────
+
+fn resolve_profile_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
+    use crate::engine::state::EngineState;
+    let state = app_handle.try_state::<EngineState>()?;
+    let json = state.store.get_config("browser_config").ok()??;
+    let config: serde_json::Value = serde_json::from_str(&json).ok()?;
+    let profile_id = config["default_profile"].as_str()?;
+    if profile_id.is_empty() {
+        return None;
+    }
+    let home = dirs::home_dir()?;
+    let dir = home.join(".paw").join("browser-profiles").join(profile_id);
+    if dir.exists() { Some(dir) } else { None }
+}
+
 // ── web_screenshot: Headless Chrome screenshot ─────────────────────────
 
-pub async fn execute_web_screenshot(args: &serde_json::Value) -> Result<String, String> {
+pub async fn execute_web_screenshot(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
     let url = args["url"].as_str()
         .ok_or("web_screenshot: missing 'url' argument")?;
     let full_page = args["full_page"].as_bool().unwrap_or(false);
@@ -283,10 +309,11 @@ pub async fn execute_web_screenshot(args: &serde_json::Value) -> Result<String, 
     info!("[web] screenshot: {} {}x{} full_page={}", url, width, height, full_page);
 
     let url_owned = url.to_string();
+    let profile_dir = resolve_profile_dir(app_handle);
 
     // Browser ops are blocking — run in spawn_blocking
     let result = tokio::task::spawn_blocking(move || {
-        let browser = get_or_launch_browser()?;
+        let browser = get_or_launch_browser(profile_dir)?;
 
         let tab = browser.new_tab().map_err(|e| format!("New tab error: {}", e))?;
 
@@ -351,7 +378,7 @@ pub async fn execute_web_screenshot(args: &serde_json::Value) -> Result<String, 
 
 // ── web_browse: Interactive headless browser session ───────────────────
 
-pub async fn execute_web_browse(args: &serde_json::Value) -> Result<String, String> {
+pub async fn execute_web_browse(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
     let action = args["action"].as_str()
         .ok_or("web_browse: missing 'action' argument")?;
     let url = args["url"].as_str().map(|s| s.to_string());
@@ -362,9 +389,10 @@ pub async fn execute_web_browse(args: &serde_json::Value) -> Result<String, Stri
     info!("[web] browse: action={} url={:?} selector={:?}", action, url, selector);
 
     let action_owned = action.to_string();
+    let profile_dir = resolve_profile_dir(app_handle);
 
     let result = tokio::task::spawn_blocking(move || {
-        let browser = get_or_launch_browser()?;
+        let browser = get_or_launch_browser(profile_dir)?;
 
         // Get or create the working tab (reuse first tab for session continuity)
         let tab: Arc<Tab> = {

@@ -41,6 +41,12 @@ import type {
   NextcloudConfig,
   NostrConfig,
   TwitchConfig,
+  BrowserConfig,
+  BrowserProfile,
+  ScreenshotEntry,
+  WorkspaceInfo,
+  WorkspaceFile,
+  NetworkPolicy,
 } from '../atoms/types';
 
 class PawEngineClient {
@@ -486,6 +492,66 @@ class PawEngineClient {
 
   async projectRun(projectId: string): Promise<string> {
     return invoke<string>('engine_project_run', { projectId });
+  }
+
+  // ── Browser Profiles ─────────────────────────────────────────────────
+
+  async browserGetConfig(): Promise<BrowserConfig> {
+    return invoke<BrowserConfig>('engine_browser_get_config');
+  }
+
+  async browserSetConfig(config: BrowserConfig): Promise<void> {
+    return invoke('engine_browser_set_config', { config });
+  }
+
+  async browserCreateProfile(name: string): Promise<BrowserProfile> {
+    return invoke<BrowserProfile>('engine_browser_create_profile', { name });
+  }
+
+  async browserDeleteProfile(profileId: string): Promise<void> {
+    return invoke('engine_browser_delete_profile', { profileId });
+  }
+
+  // ── Screenshots ──────────────────────────────────────────────────────
+
+  async screenshotsList(): Promise<ScreenshotEntry[]> {
+    return invoke<ScreenshotEntry[]>('engine_screenshots_list');
+  }
+
+  async screenshotGet(filename: string): Promise<ScreenshotEntry> {
+    return invoke<ScreenshotEntry>('engine_screenshot_get', { filename });
+  }
+
+  async screenshotDelete(filename: string): Promise<void> {
+    return invoke('engine_screenshot_delete', { filename });
+  }
+
+  // ── Per-Agent Workspaces ─────────────────────────────────────────────
+
+  async workspacesList(): Promise<WorkspaceInfo[]> {
+    return invoke<WorkspaceInfo[]>('engine_workspaces_list');
+  }
+
+  async workspaceFiles(agentId: string, subdir?: string): Promise<WorkspaceFile[]> {
+    return invoke<WorkspaceFile[]>('engine_workspace_files', { agentId, subdir: subdir ?? null });
+  }
+
+  async workspaceDelete(agentId: string): Promise<void> {
+    return invoke('engine_workspace_delete', { agentId });
+  }
+
+  // ── Network Policy (Outbound Domain Allowlist) ───────────────────────
+
+  async networkGetPolicy(): Promise<NetworkPolicy> {
+    return invoke<NetworkPolicy>('engine_network_get_policy');
+  }
+
+  async networkSetPolicy(policy: NetworkPolicy): Promise<void> {
+    return invoke('engine_network_set_policy', { policy });
+  }
+
+  async networkCheckUrl(url: string): Promise<[boolean, string]> {
+    return invoke<[boolean, string]>('engine_network_check_url', { url });
   }
 }
 

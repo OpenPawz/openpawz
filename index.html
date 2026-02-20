@@ -1626,6 +1626,7 @@
             <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="agent-defaults">Agent Defaults</button>
             <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="sessions">Sessions</button>
             <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="voice">Voice & TTS</button>
+            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="browser">Browser & Sandbox</button>
             <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="security">Security</button>
           </div>
 
@@ -1703,6 +1704,18 @@
           </div>
 
 
+
+          <!-- ── Tab: Browser & Sandbox ── -->
+          <div class="settings-tab-panel" id="settings-panel-browser" style="display:none">
+            <div class="settings-section">
+              <h2 class="settings-section-title">
+                <span class="ms ms-sm">language</span>
+                Browser &amp; Sandbox
+              </h2>
+              <p class="settings-section-desc">Managed Chrome profiles, agent screenshots, per-agent workspaces, and outbound network policy.</p>
+              <div id="settings-browser-sandbox-content"></div>
+            </div>
+          </div>
 
           <!-- ── Tab: Security ── -->
           <div class="settings-tab-panel" id="settings-panel-security" style="display:none">

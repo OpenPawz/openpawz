@@ -17,3 +17,4 @@ pub mod task;
 pub mod tts;
 pub mod mail;
 pub mod utility;
+pub mod browser;

@@ -232,6 +232,23 @@ pub fn run() {
             commands::project::engine_project_set_agents,
             commands::project::engine_project_messages,
             commands::project::engine_project_run,
+            // ── Browser Profiles & Sandbox ──
+            commands::browser::engine_browser_get_config,
+            commands::browser::engine_browser_set_config,
+            commands::browser::engine_browser_create_profile,
+            commands::browser::engine_browser_delete_profile,
+            // ── Screenshots ──
+            commands::browser::engine_screenshots_list,
+            commands::browser::engine_screenshot_get,
+            commands::browser::engine_screenshot_delete,
+            // ── Per-Agent Workspaces ──
+            commands::browser::engine_workspaces_list,
+            commands::browser::engine_workspace_files,
+            commands::browser::engine_workspace_delete,
+            // ── Network Policy (Outbound Domain Allowlist) ──
+            commands::browser::engine_network_get_policy,
+            commands::browser::engine_network_set_policy,
+            commands::browser::engine_network_check_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,6 +6,7 @@ import * as AgentDefaultsSettings from './settings-agent-defaults';
 import * as SessionsSettings from './settings-sessions';
 import * as VoiceSettings from './settings-voice';
 import * as SkillsSettings from './settings-skills';
+import * as BrowserSettings from './settings-browser';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -18,6 +19,7 @@ export function loadActiveSettingsTab() {
     case 'sessions':      SessionsSettings.loadSessionsSettings();      break;
     case 'voice':         VoiceSettings.loadVoiceSettings();            break;
     case 'skills':        SkillsSettings.loadSkillsSettings();          break;
+    case 'browser':       BrowserSettings.loadBrowserSettings();        break;
     default: break;
   }
 }

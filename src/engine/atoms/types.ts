@@ -500,3 +500,66 @@ export interface TwitchConfig {
   agent_id?: string;
   require_mention: boolean;
 }
+
+// ── Browser Profiles & Sandbox ────────────────────────────────────────
+
+export interface BrowserProfile {
+  id: string;
+  name: string;
+  user_data_dir: string;
+  created_at: string;
+  last_used: string;
+  size_bytes: number;
+}
+
+export interface BrowserConfig {
+  default_profile: string;
+  profiles: BrowserProfile[];
+  headless: boolean;
+  auto_close_tabs: boolean;
+  idle_timeout_secs: number;
+}
+
+export interface ScreenshotEntry {
+  filename: string;
+  path: string;
+  size_bytes: number;
+  created_at: string;
+  base64_png?: string;
+}
+
+// ── Per-Agent Workspaces ──────────────────────────────────────────────
+
+export interface WorkspaceInfo {
+  agent_id: string;
+  path: string;
+  total_files: number;
+  total_size_bytes: number;
+  exists: boolean;
+}
+
+export interface WorkspaceFile {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size_bytes: number;
+  modified_at: string;
+}
+
+// ── Network Policy (Outbound Domain Allowlist) ────────────────────────
+
+export interface NetworkPolicy {
+  enabled: boolean;
+  allowed_domains: string[];
+  blocked_domains: string[];
+  log_requests: boolean;
+  recent_requests: NetworkRequest[];
+}
+
+export interface NetworkRequest {
+  url: string;
+  domain: string;
+  allowed: boolean;
+  timestamp: string;
+  tool_name: string;
+}

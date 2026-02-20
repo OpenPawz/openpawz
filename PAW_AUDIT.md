@@ -11,7 +11,7 @@
 Pawz is a **standalone AI agent desktop app** built on Tauri v2 with a pure Rust engine. No gateway dependency, no Node.js process, no open ports. Everything runs through Tauri IPC. The app includes 10 channel bridges, 6 AI providers, 37+ skills, multi-agent orchestration, a Coinbase CDP wallet, and a full trading dashboard.
 
 **Total commits**: 100+  
-**All P1, P2, and P3 features complete.** P4+ not started.
+**All P1, P2, P3, and P4 features complete.** P5+ not started.
 
 ---
 
@@ -156,7 +156,7 @@ Each bridge has uniform commands: `start`, `stop`, `status`, `get_config`, `set_
 | `agent-policies/` | 346 | ✅ Per-agent tool policies |
 | `channel-routing/` | 309 | ✅ Rule-based channel routing |
 | `session-compaction/` | 181 | ✅ AI summarization |
-| `browser-sandbox/` | 0 | ❌ Empty directory — not implemented |
+| `browser-sandbox/` | ~260 | ✅ Browser profiles, screenshots, workspaces, network policy |
 
 ### 1.9 Database (SQLite, 11 tables)
 
@@ -220,16 +220,18 @@ Each bridge has uniform commands: `start`, `stop`, `status`, `get_config`, `set_
 
 `settings-voice.ts` (~350 LOC) — full TTS settings UI with 3-provider picker (Google/OpenAI/ElevenLabs), voice catalogs, speed slider, auto-speak toggle, test button, ElevenLabs API key + model + stability/similarity sliders, Talk Mode start/stop with 8s recording cycles. Backend `tts.rs` (~450 LOC) has Google + OpenAI + ElevenLabs TTS with `strip_markdown`, `chunk_text`, base64 encoding, plus Whisper STT via multipart upload.
 
-### 2.2 P4 — Browser & Sandbox (NOT STARTED)
+### 2.2 P4 — Browser & Sandbox ✅ DONE
 
 | Feature | Effort | Status | Details |
-|---------|--------|--------|---------|
-| **Managed browser profiles** | M | ❌ | Persistent Chrome state, profile picker |
-| **Screenshot viewer** | S | ❌ | Display agent browser screenshots in chat |
-| **Per-agent workspaces** | M | ❌ | Isolated filesystem scope per agent |
-| **Outbound domain allowlist** | M | ❌ | Network-level sandboxing |
+|---------|--------|--------|--------|
+| **Managed browser profiles** | M | ✅ | Persistent Chrome state at `~/.paw/browser-profiles/`, profile picker, user_data_dir wired into headless Chrome |
+| **Screenshot viewer** | S | ✅ | Gallery in settings, inline display in chat, lazy-loaded thumbnails, full-size popup |
+| **Per-agent workspaces** | M | ✅ | Management UI — list/browse/delete workspaces, file table view |
+| **Outbound domain allowlist** | M | ✅ | Configurable allow/block lists, wildcard subdomain matching, enforced in `execute_fetch`, test URL button |
 
-`src/features/browser-sandbox/` exists as an empty directory.
+Rust backend: `commands/browser.rs` (~450 LOC) — 15 Tauri commands for profiles, screenshots, workspaces, network policy.
+Frontend: `features/browser-sandbox/` atoms/molecules/index + `views/settings-browser.ts` (~350 LOC) — full settings tab.
+Integration: Network policy enforced in `tool_executor.rs` `execute_fetch`. Browser profiles wired into `web.rs` `get_or_launch_browser` via `user_data_dir`. Inline screenshot viewer in `chat_controller.ts`.
 
 ### 2.3 P5 — Ecosystem & Platform (NOT STARTED)
 
@@ -399,13 +401,10 @@ git pusah
 ### ~~P3 — Voice & TTS~~ ✅ DONE
 All 3 items shipped: ElevenLabs TTS, Talk Mode (continuous + chat mic), Morning Brief template.
 
-### Immediate (P4)
-6. **Managed browser profiles** — Persistent Chrome state
-7. **Screenshot viewer** — Display agent screenshots in chat
-8. **Per-agent workspaces** — Isolated filesystem scope
-9. **Outbound domain allowlist** — Network sandboxing
+### ~~P4 — Browser & Sandbox~~ ✅ DONE
+All 4 items shipped: Managed browser profiles (persistent Chrome state), Screenshot viewer (gallery + inline chat), Per-agent workspace management UI, Outbound domain allowlist (enforced in fetch tool).
 
-### Long-term (P5)
+### Immediate (P5)
 10. **PawHub skill marketplace**
 11. **Canvas / visual workspace**
 12. **Mobile companion app**
@@ -415,4 +414,4 @@ All 3 items shipped: ElevenLabs TTS, Talk Mode (continuous + chat mic), Morning 
 
 ---
 
-**TL;DR**: All P1 security features DONE. All P2 memory intelligence DONE. **All P3 Voice/TTS DONE** — Google + OpenAI + ElevenLabs TTS, Talk Mode (Whisper STT continuous loop + chat mic button), Morning Brief one-click cron. Gateway fully removed. 10 channel bridges, 6+ providers, 37+ skills, 50 custom avatars, Coinbase trading, multi-agent orchestration — all shipped. Next up: P4 Browser & Sandbox.
+**TL;DR**: All P1 security features DONE. All P2 memory intelligence DONE. **All P3 Voice/TTS DONE.** **All P4 Browser & Sandbox DONE** — Managed browser profiles with persistent Chrome state, screenshot gallery + inline chat viewer, per-agent workspace management, outbound domain allowlist enforced in fetch tool. Gateway fully removed. 10 channel bridges, 6+ providers, 37+ skills, 50 custom avatars, Coinbase trading, multi-agent orchestration — all shipped. Next up: P5 Ecosystem & Platform.

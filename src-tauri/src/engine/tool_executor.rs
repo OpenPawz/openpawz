@@ -40,7 +40,7 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle, a
 
     let result = match name.as_str() {
         "exec" => execute_exec(&args, app_handle, agent_id).await,
-        "fetch" => execute_fetch(&args).await,
+        "fetch" => execute_fetch(&args, app_handle).await,
         "read_file" => execute_read_file(&args, agent_id).await,
         "write_file" => execute_write_file(&args, agent_id).await,
         "list_directory" => execute_list_directory(&args, agent_id).await,
@@ -61,8 +61,8 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle, a
         // ── Web tools ──
         "web_search" => web::execute_web_search(&args).await,
         "web_read" => web::execute_web_read(&args).await,
-        "web_screenshot" => web::execute_web_screenshot(&args).await,
-        "web_browse" => web::execute_web_browse(&args).await,
+        "web_screenshot" => web::execute_web_screenshot(&args, app_handle).await,
+        "web_browse" => web::execute_web_browse(&args, app_handle).await,
         // ── Skill tools ──
         "email_send" => execute_skill_tool("email", "email_send", &args, app_handle).await,
         "email_read" => execute_skill_tool("email", "email_read", &args, app_handle).await,
@@ -211,12 +211,32 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, a
 
 // ── fetch: HTTP requests ───────────────────────────────────────────────
 
-async fn execute_fetch(args: &serde_json::Value) -> Result<String, String> {
+async fn execute_fetch(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
     let url = args["url"].as_str()
         .ok_or("fetch: missing 'url' argument")?;
     let method = args["method"].as_str().unwrap_or("GET");
 
     info!("[engine] fetch: {} {}", method, url);
+
+    // Network policy enforcement
+    if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
+        if let Ok(Some(policy_json)) = state.store.get_config("network_policy") {
+            if let Ok(policy) = serde_json::from_str::<crate::commands::browser::NetworkPolicy>(&policy_json) {
+                let domain = crate::commands::browser::extract_domain_from_url(url);
+                // Always block blocked domains
+                if policy.blocked_domains.iter().any(|d| crate::commands::browser::domain_matches_pub(&domain, d)) {
+                    return Err(format!("Network policy: domain '{}' is blocked", domain));
+                }
+                // If allowlist enabled, check against it
+                if policy.enabled {
+                    let allowed = policy.allowed_domains.iter().any(|d| crate::commands::browser::domain_matches_pub(&domain, d));
+                    if !allowed {
+                        return Err(format!("Network policy: domain '{}' is not in the allowlist", domain));
+                    }
+                }
+            }
+        }
+    }
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))

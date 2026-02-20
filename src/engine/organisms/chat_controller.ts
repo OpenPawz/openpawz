@@ -496,6 +496,47 @@ export function renderMessages(): void {
 
     div.appendChild(contentEl);
 
+    // Inline screenshot detection — render agent screenshots in chat
+    if (msg.role === 'assistant' && msg.content.includes('Screenshot saved:')) {
+      const ssMatch = msg.content.match(/Screenshot saved:\s*([^\n]+\.png)/);
+      if (ssMatch) {
+        const ssFilename = ssMatch[1].split('/').pop() || '';
+        if (ssFilename.startsWith('screenshot-')) {
+          const ssCard = document.createElement('div');
+          ssCard.className = 'message-screenshot-card';
+          ssCard.style.cssText = 'margin:8px 0;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);cursor:pointer;max-width:400px';
+          ssCard.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text-muted);font-size:12px">Loading screenshot…</div>';
+          div.appendChild(ssCard);
+          // Lazy-load the screenshot thumbnail
+          (async () => {
+            try {
+              const { pawEngine: eng } = await import('../molecules/ipc_client');
+              const ss = await eng.screenshotGet(ssFilename);
+              if (ss.base64_png) {
+                ssCard.innerHTML = '';
+                const img = document.createElement('img');
+                img.src = `data:image/png;base64,${ss.base64_png}`;
+                img.style.cssText = 'width:100%;display:block';
+                img.alt = ssFilename;
+                ssCard.appendChild(img);
+                ssCard.addEventListener('click', () => {
+                  const win = window.open('', '_blank');
+                  if (win) {
+                    win.document.title = ssFilename;
+                    win.document.body.style.cssText = 'margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh';
+                    const fullImg = win.document.createElement('img');
+                    fullImg.src = img.src;
+                    fullImg.style.maxWidth = '100%';
+                    win.document.body.appendChild(fullImg);
+                  }
+                });
+              }
+            } catch { ssCard.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:12px">Screenshot unavailable</div>'; }
+          })();
+        }
+      }
+    }
+
     // Image/file attachments
     if (msg.attachments?.length) {
       const strip = document.createElement('div');
