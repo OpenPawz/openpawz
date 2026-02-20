@@ -207,15 +207,22 @@ const CHANNEL_SETUPS: ChannelSetupDef[] = [
     id: 'whatsapp',
     name: 'WhatsApp',
     icon: 'WA',
-    description: 'Connect your WhatsApp to Pawz. Your agent will respond to messages automatically.',
+    description: 'Give your agent a WhatsApp number. People message that number, your agent replies.',
     descriptionHtml: `
       <div class="wa-setup-guide">
+        <div style="background:rgba(255,180,0,0.12);border:1px solid rgba(255,180,0,0.3);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.5">
+          <strong style="color:#ffb400">⚠️ Important — read before scanning</strong><br>
+          The phone number you scan <strong>becomes the agent</strong>. Anyone who messages that number will talk to your AI, not you.<br><br>
+          <strong>Don't use your personal number</strong> unless you want your agent replying to all your contacts.
+          Use a cheap prepaid SIM or spare number instead — you only need it for the initial WhatsApp verification.
+        </div>
         <div class="wa-steps">
-          <div class="wa-step"><span class="wa-step-num">1</span> Save this form (defaults are fine)</div>
-          <div class="wa-step"><span class="wa-step-num">2</span> Click <strong>Start</strong> on the WhatsApp card</div>
-          <div class="wa-step"><span class="wa-step-num">3</span> A QR code will appear — scan it with your phone</div>
+          <div class="wa-step"><span class="wa-step-num">1</span> Get a <strong>separate phone number</strong> for your agent (prepaid SIM, eSIM, etc.)</div>
+          <div class="wa-step"><span class="wa-step-num">2</span> Register WhatsApp on that number</div>
+          <div class="wa-step"><span class="wa-step-num">3</span> Save this form, then click <strong>Start</strong> on the WhatsApp card</div>
+          <div class="wa-step"><span class="wa-step-num">4</span> A QR code will appear — scan it <strong>from the agent's phone</strong></div>
           <div class="wa-step-sub">WhatsApp → Settings → Linked Devices → Link a Device</div>
-          <div class="wa-step"><span class="wa-step-num">4</span> Done! Your agent is now live on WhatsApp</div>
+          <div class="wa-step"><span class="wa-step-num">5</span> Done! People can now message that number to talk to your agent</div>
         </div>
       </div>
     `,
@@ -848,7 +855,7 @@ export async function loadChannels() {
                     banner.innerHTML = `<span class="wa-spinner"></span> Connecting to WhatsApp...`;
                     break;
                   case 'qr_code':
-                    banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 8px">Scan this QR code with your phone's WhatsApp app:</p>${qr ? `<img src="${qr.startsWith('data:') ? qr : 'data:image/png;base64,' + qr}" alt="WhatsApp QR code" class="wa-qr-image" />` : ''}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
+                    banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 4px;font-weight:600">Scan with the agent's phone — not your personal one</p><p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">The number you scan becomes the agent. Use a separate number.</p>${qr ? `<img src="${qr.startsWith('data:') ? qr : 'data:image/png;base64,' + qr}" alt="WhatsApp QR code" class="wa-qr-image" />` : ''}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
                     banner.className = 'wa-status-banner wa-status-qr';
                     break;
                   case 'connected':
