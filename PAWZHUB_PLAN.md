@@ -615,3 +615,29 @@ High-value skills the community would want immediately (all instruction-based):
 7. **Modular workspace is user empowerment** — The same app serves a trader, a developer, and a marketer by hiding irrelevant views. Workspace profiles make Pawz feel tailored without requiring different builds.
 
 8. **Backward compatible** — Existing users see no breaking changes. Community skills are additive. The `builtin_skills()` function continues to work unchanged. Modular workspace defaults to "All" (current behavior).
+
+---
+
+## Pre-Release: Documentation Accuracy Audit
+
+> **Status:** NOT STARTED — do this before v1.0 release
+
+The docs site (~50 pages) was written from architecture knowledge, not verified line-by-line against the code. The trading guide had wrong credential names (`COINBASE_API_KEY` vs actual `CDP_API_KEY_NAME`), which means other pages likely have similar issues.
+
+**Action:** Before release, go through every guide page one-by-one against the actual Rust code in `src-tauri/src/engine/` and verify:
+- Credential field names match `required_credentials` in `skills.rs`
+- Tool names match the `name` field in `tools.rs`
+- Feature descriptions match actual behavior
+- Setup steps are accurate and complete
+- Environment variable names are correct
+
+**Pages to audit (in priority order):**
+1. ~~guides/trading.md~~ ✅ Fixed (Coinbase CDP creds, RPC setup, wallet auto-generation)
+2. guides/skills.md — verify all 40 skill names/categories
+3. guides/agents.md — verify soul file format, policy fields
+4. guides/email.md — verify SMTP/IMAP credential fields
+5. guides/orchestrator.md — verify orchestration modes
+6. guides/research.md — verify research tool names
+7. channels/*.md — verify each channel's credential fields
+8. providers/*.md — verify provider config fields
+9. All remaining guide pages
