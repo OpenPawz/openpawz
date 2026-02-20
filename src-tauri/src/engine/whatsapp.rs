@@ -106,8 +106,12 @@ const CONTAINER_NAME: &str = "paw-whatsapp-evolution";
 // ── Bridge Core ────────────────────────────────────────────────────────
 
 pub fn start_bridge(app_handle: tauri::AppHandle) -> Result<(), String> {
+    // If bridge is already running, stop it first so Start always works
     if BRIDGE_RUNNING.load(Ordering::Relaxed) {
-        return Err("WhatsApp bridge is already running".into());
+        info!("[whatsapp] Bridge already running — restarting");
+        stop_bridge();
+        // Give the old bridge a moment to wind down
+        std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
     let mut config: WhatsAppConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)?;
@@ -751,12 +755,26 @@ async fn create_evolution_instance(config: &WhatsAppConfig) -> Result<String, St
 fn extract_qr_from_response(resp: &serde_json::Value) -> String {
     // v1.x create: { "qrcode": { "base64": "data:image/..." } }
     // v1.x connect: { "base64": "data:image/..." }
-    // Also try nested: { "qrcode": "data:image/..." }
-    resp["qrcode"]["base64"].as_str()
+    // Also try nested: { "qrcode": "data:image/..." } or { "qrcode": { "code": "...", "base64": "..." } }
+    let qr = resp["qrcode"]["base64"].as_str()
         .or_else(|| resp["base64"].as_str())
         .or_else(|| resp["qrcode"].as_str().filter(|s| s.starts_with("data:")))
         .unwrap_or("")
-        .to_string()
+        .to_string();
+
+    if qr.is_empty() {
+        // Log what we got so we can debug unexpected response formats
+        let qr_field = &resp["qrcode"];
+        warn!("[whatsapp] QR extraction returned empty. qrcode field type: {}, keys: {:?}",
+            if qr_field.is_object() { "object" } else if qr_field.is_string() { "string" } else if qr_field.is_null() { "null" } else { "other" },
+            qr_field.as_object().map(|o| o.keys().collect::<Vec<_>>())
+        );
+    } else {
+        info!("[whatsapp] QR code extracted ({} bytes, starts with: {})",
+            qr.len(), &qr[..qr.len().min(40)]);
+    }
+
+    qr
 }
 
 /// Delete an existing Evolution API instance.
