@@ -40,8 +40,10 @@ struct ReadyEvent {
 
 #[derive(Debug, Clone, Deserialize)]
 struct DiscordUser {
+    #[allow(dead_code)]
     id: String,
     username: String,
+    #[allow(dead_code)]
     discriminator: Option<String>,
     bot: Option<bool>,
     global_name: Option<String>,
@@ -49,6 +51,7 @@ struct DiscordUser {
 
 #[derive(Debug, Deserialize)]
 struct DiscordMessage {
+    #[allow(dead_code)]
     id: String,
     channel_id: String,
     author: DiscordUser,
@@ -215,8 +218,8 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
         .map_err(|e| format!("Identify send failed: {}", e))?;
 
     // State
-    let mut sequence: Option<u64> = None;
-    let mut session_id_discord: Option<String> = None;
+    let mut _sequence: Option<u64> = None;
+    let mut _session_id_discord: Option<String> = None;
     let mut _resume_url: Option<String> = None;
     let mut current_config = config;
     let mut last_config_reload = std::time::Instant::now();
@@ -273,7 +276,7 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
 
         // Update sequence
         if let Some(s) = payload.s {
-            sequence = Some(s);
+            _sequence = Some(s);
             let _ = hb_tx.try_send(Some(s));
         }
 
@@ -288,7 +291,7 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                                 info!("[discord] Ready as {} ({})", ready.user.username, ready.user.id);
                                 let _ = BOT_USER_ID.set(ready.user.id.clone());
                                 let _ = BOT_USERNAME.set(ready.user.username.clone());
-                                session_id_discord = Some(ready.session_id);
+                                _session_id_discord = Some(ready.session_id);
                                 _resume_url = Some(ready.resume_gateway_url);
 
                                 let _ = app_handle.emit("discord-status", json!({

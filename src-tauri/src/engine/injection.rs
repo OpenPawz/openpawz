@@ -47,6 +47,7 @@ struct InjectionPattern {
 }
 
 /// Case-insensitive substring search helper
+#[allow(dead_code)]
 fn contains_ci(text: &str, needle: &str) -> bool {
     text.to_lowercase().contains(&needle.to_lowercase())
 }

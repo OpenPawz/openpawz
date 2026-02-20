@@ -23,7 +23,7 @@
 // - sol_portfolio: Multi-token balance scan
 // - sol_token_info: Get on-chain token metadata
 
-use log::{info, warn};
+use log::info;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -235,6 +235,7 @@ async fn resolve_decimals_on_chain(rpc_url: &str, mint: &str, known_decimals: u8
 }
 
 /// Derive Solana public key (base58) from ed25519 secret key bytes
+#[allow(dead_code)]
 fn pubkey_from_secret(secret_bytes: &[u8; 32]) -> Result<String, String> {
     use ed25519_dalek::SigningKey;
     let signing_key = SigningKey::from_bytes(secret_bytes);
@@ -663,7 +664,7 @@ async fn execute_sol_swap_jupiter(
     output_mint: &str,
     amount_str: &str,
     amount_raw: u64,
-    in_decimals: u8,
+    _in_decimals: u8,
     output_decimals_hint: u8,
     slippage_bps: u64,
     token_in_str: &str,
@@ -1024,7 +1025,7 @@ async fn pumpportal_swap(
     output_mint: &str,
     amount_str: &str,
     amount_raw: u64,
-    in_decimals: u8,
+    _in_decimals: u8,
     slippage_bps: u64,
     token_in_str: &str,
     token_out_str: &str,

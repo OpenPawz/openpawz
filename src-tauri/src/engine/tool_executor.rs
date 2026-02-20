@@ -8,7 +8,7 @@ use crate::engine::memory;
 use crate::engine::skills;
 use crate::engine::sandbox;
 use crate::engine::web;
-use log::{info, warn, error};
+use log::{info, warn};
 use std::process::Command as ProcessCommand;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
@@ -599,7 +599,7 @@ async fn execute_memory_store(args: &serde_json::Value, app_handle: &tauri::AppH
         .ok_or("Engine state not available")?;
 
     let emb_client = state.embedding_client();
-    let id = memory::store_memory(&state.store, content, category, 5, emb_client.as_ref(), None).await?;;
+    let id = memory::store_memory(&state.store, content, category, 5, emb_client.as_ref(), None).await?;
 
     Ok(format!("Memory stored (id: {}). I'll recall this automatically when it's relevant.", &id[..8]))
 }
@@ -617,7 +617,7 @@ async fn execute_memory_search(args: &serde_json::Value, app_handle: &tauri::App
         .ok_or("Engine state not available")?;
 
     let emb_client = state.embedding_client();
-    let results = memory::search_memories(&state.store, query, limit, 0.1, emb_client.as_ref(), None).await?;;
+    let results = memory::search_memories(&state.store, query, limit, 0.1, emb_client.as_ref(), None).await?;
 
     if results.is_empty() {
         return Ok("No relevant memories found.".into());
@@ -1819,7 +1819,6 @@ fn build_cdp_jwt(
     path: &str,
 ) -> Result<String, String> {
     use base64::Engine as _;
-    use rand::Rng;
 
     let now = chrono::Utc::now().timestamp() as u64;
     // Coinbase Advanced Trade SDK uses hex nonce (secrets.token_hex())
@@ -2073,7 +2072,7 @@ async fn execute_coinbase_balance(
     let accounts = data["accounts"].as_array().ok_or("Unexpected response format — no 'accounts' array")?;
 
     let mut lines = Vec::new();
-    let mut total_usd = 0.0_f64;
+    let mut _total_usd = 0.0_f64;
 
     for acct in accounts {
         let currency = acct["currency"].as_str().unwrap_or("?");
@@ -2284,7 +2283,7 @@ async fn execute_telegram_send(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> Result<String, String> {
-    use crate::engine::telegram::{load_telegram_config, save_telegram_config};
+    use crate::engine::telegram::load_telegram_config;
 
     let text = args["text"].as_str().ok_or("telegram_send: missing 'text'")?;
     let config = load_telegram_config(app_handle)?;
@@ -2367,7 +2366,7 @@ async fn execute_telegram_read(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> Result<String, String> {
-    use crate::engine::telegram::{load_telegram_config, TelegramConfig};
+    use crate::engine::telegram::load_telegram_config;
 
     let info = args["info"].as_str().unwrap_or("status");
     let config = load_telegram_config(app_handle)?;

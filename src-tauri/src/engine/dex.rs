@@ -1917,7 +1917,7 @@ pub async fn execute_dex_watch_wallet(
     let mut has_tokens = false;
     for (symbol, addr, decimals) in KNOWN_TOKENS {
         if *symbol == "ETH" { continue; }
-        let token_bytes = match parse_address(addr) {
+        let _token_bytes = match parse_address(addr) {
             Ok(b) => b,
             Err(_) => continue,
         };
@@ -2298,6 +2298,7 @@ struct Transfer {
     from: String,
     to: String,
     amount: f64,
+    #[allow(dead_code)]
     amount_str: String,
     tx_hash: String,
 }

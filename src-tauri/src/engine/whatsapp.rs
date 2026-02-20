@@ -19,7 +19,6 @@
 //   - Evolution API bound to localhost only
 
 use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use crate::engine::sandbox; // reuse Docker health check
 use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
 use serde_json::json;

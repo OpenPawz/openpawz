@@ -46,6 +46,7 @@ struct TgMessage {
     from: Option<TgUser>,
     chat: TgChat,
     text: Option<String>,
+    #[allow(dead_code)]
     date: i64,
 }
 
@@ -54,6 +55,7 @@ struct TgUser {
     id: i64,
     is_bot: bool,
     first_name: String,
+    #[allow(dead_code)]
     last_name: Option<String>,
     username: Option<String>,
 }
@@ -62,6 +64,7 @@ struct TgUser {
 struct TgChat {
     id: i64,
     #[serde(rename = "type")]
+    #[allow(dead_code)]
     chat_type: String,
 }
 

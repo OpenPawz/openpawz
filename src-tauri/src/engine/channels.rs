@@ -574,7 +574,7 @@ pub async fn run_routed_channel_agent(
     channel_id: Option<&str>,
 ) -> Result<String, String> {
     // Load routing config and resolve agent
-    let engine_state = app_handle.try_state::<EngineState>()
+    let _engine_state = app_handle.try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
     let routing_config = crate::engine::routing::load_routing_config(

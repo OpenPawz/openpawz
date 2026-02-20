@@ -6,7 +6,7 @@ use crate::engine::types::*;
 use crate::engine::providers::AnyProvider;
 use crate::engine::tool_executor;
 use crate::engine::state::{EngineState, PendingApprovals, DailyTokenTracker};
-use log::{info, warn, error};
+use log::{info, warn};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
@@ -380,6 +380,7 @@ pub async fn run_agent_turn(
 
 /// Check if a coinbase trading tool should be auto-approved based on the trading policy.
 /// Returns true if the trade is within policy bounds and should skip HIL.
+#[allow(dead_code)]
 fn check_trading_auto_approve(tool_name: &str, args_str: &str, app_handle: &tauri::AppHandle) -> bool {
     // Only applies to coinbase write tools
     match tool_name {

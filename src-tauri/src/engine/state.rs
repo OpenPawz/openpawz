@@ -5,7 +5,7 @@
 use crate::engine::types::*;
 use crate::engine::sessions::SessionStore;
 use crate::engine::memory::EmbeddingClient;
-use crate::atoms::constants::{DB_KEY_SERVICE, DB_KEY_USER};
+
 use log::info;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

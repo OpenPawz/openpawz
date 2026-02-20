@@ -3,7 +3,6 @@
 // All impl blocks, free functions, and re-exports remain here.
 // Downstream code uses `use crate::engine::types::*` unchanged.
 
-use serde::{Deserialize, Serialize};
 pub use crate::atoms::types::*;
 
 // These are the data structures that flow through the entire engine.
@@ -145,7 +144,7 @@ pub use crate::engine::pricing::{model_price, estimate_cost_usd, classify_task_c
 
 /// Trading policy for auto-approve guidelines.
 // serde default helpers for TradingPolicy live in crate::atoms::types
-use crate::atoms::types::{default_max_trade, default_max_daily};
+
 
 impl Default for TradingPolicy {
     fn default() -> Self {

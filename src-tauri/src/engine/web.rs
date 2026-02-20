@@ -10,7 +10,7 @@
 // when the agent actually calls web_screenshot or web_browse.
 
 use headless_chrome::{Browser, LaunchOptions, Tab};
-use log::{info, warn, error};
+use log::{info, warn};
 use scraper::{Html, Selector};
 use std::sync::{Arc, OnceLock};
 use parking_lot::Mutex;

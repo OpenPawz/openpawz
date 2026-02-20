@@ -5,7 +5,7 @@
 
 use crate::engine::types::*;
 use chrono::Utc;
-use log::{info, warn, error};
+use log::{info, warn};
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
 use parking_lot::Mutex;
@@ -608,7 +608,7 @@ impl SessionStore {
             };
 
             // Drop from the front (oldest) until we fit
-            let mut running_tokens: usize = system_msg.as_ref().map(|m| estimate_tokens(m)).unwrap_or(0);
+            let running_tokens: usize = system_msg.as_ref().map(|m| estimate_tokens(m)).unwrap_or(0);
             let mut keep_from = 0;
             let msg_tokens: Vec<usize> = messages.iter().map(|m| estimate_tokens(m)).collect();
             let total_msg_tokens: usize = msg_tokens.iter().sum();
@@ -621,7 +621,6 @@ impl SessionStore {
                 drop_tokens -= t;
                 keep_from = i + 1;
             }
-            let _ = running_tokens; // suppress unused warning
 
             messages = messages.split_off(keep_from);
 

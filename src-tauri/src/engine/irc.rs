@@ -11,7 +11,7 @@
 //   - TLS encryption to server
 
 use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{info, warn, error};
+use log::{info, error};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};

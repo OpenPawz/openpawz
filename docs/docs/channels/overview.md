@@ -21,6 +21,7 @@ Channels connect your Pawz agents to messaging platforms. Users on those platfor
 | [Nostr](./nostr) | NIP relay protocol | Decentralized social |
 | [Twitch](./twitch) | IRC + API | Live streaming chat |
 | [Webchat](./webchat) | HTTP/WebSocket | Your own website |
+| [WhatsApp](./whatsapp) | Evolution API (Docker) | Personal & group messaging |
 
 ## How channels work
 

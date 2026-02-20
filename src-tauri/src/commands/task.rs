@@ -609,7 +609,7 @@ async fn check_positions(app_handle: &tauri::AppHandle) {
 
 /// Execute a sell of `amount` tokens of `mint` for SOL via the swap infrastructure.
 async fn execute_position_sell(
-    app_handle: &tauri::AppHandle,
+    _app_handle: &tauri::AppHandle,
     creds: &HashMap<String, String>,
     mint: &str,
     symbol: &str,

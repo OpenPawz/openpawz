@@ -6,7 +6,7 @@ use bollard::Docker;
 use bollard::container::{Config, CreateContainerOptions, StartContainerOptions, LogsOptions, RemoveContainerOptions, WaitContainerOptions};
 use bollard::models::HostConfig;
 use futures::StreamExt;
-use log::{info, warn, error};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
