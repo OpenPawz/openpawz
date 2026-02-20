@@ -3,54 +3,26 @@ import Link from '@docusaurus/Link';
 
 /* ── Data ──────────────────────────────────────────── */
 
-const comparisonData = [
-  { cat: 'Platform', icon: 'devices', rows: [
-    { f: 'License', p: 'MIT — free forever', o: 'Apache 2.0', d: '$20/mo per service' },
-    { f: 'Architecture', p: 'Native desktop (5 MB)', o: 'Self-hosted gateway', d: 'Electron (~200 MB)' },
-    { f: 'Engine', p: '22K lines of Rust', o: 'Go', d: 'Node.js / Python' },
-    { f: 'Works offline', p: '✓ Full (Ollama)', o: 'Partial', d: '✗ Cloud only' },
-    { f: 'Data stays on device', p: '✓ All local', o: '✓ Self-hosted', d: '✗ Their servers' },
-  ]},
-  { cat: 'AI & Agents', icon: 'psychology', rows: [
-    { f: 'AI providers', p: '10 + any compatible', o: '30+ via gateway', d: '1 (locked in)' },
-    { f: 'Multi-agent', p: 'Boss/Worker orchestrator', o: 'Agent routing', d: '✗ Single only' },
-    { f: 'Memory', p: 'BM25+vector+decay+MMR', o: 'Basic context', d: 'Simple text' },
-    { f: 'Soul files', p: '✓ Persistent persona', o: '✗', d: '✗' },
-    { f: 'Session compaction', p: '✓ AI-powered', o: '✗', d: '✗' },
-    { f: 'Budget control', p: '✓ Per-model + daily cap', o: '✗', d: '✗' },
-  ]},
-  { cat: 'Channels & Security', icon: 'shield', rows: [
-    { f: 'Chat bridges', p: '10 platforms', o: 'Plugin-based', d: '0' },
-    { f: 'Security layers', p: '7 defense-in-depth', o: '~2', d: '1 basic' },
-    { f: 'Injection scanning', p: 'Dual (TS + Rust)', o: 'Basic', d: 'Basic' },
-    { f: 'Docker sandbox', p: '✓ CAP_DROP ALL', o: '✓', d: '✗' },
-    { f: 'Credential vault', p: '✓ Keychain + AES-GCM', o: 'Env vars', d: '✗' },
-    { f: 'Tool policies', p: '✓ Per-agent rules', o: '✗', d: '✗' },
-  ]},
-  { cat: 'DeFi & Trading', icon: 'trending_up', rows: [
-    { f: 'DEX trading', p: '✓ Uniswap + Jupiter', o: '✗', d: '✗' },
-    { f: 'EVM chains', p: '7 chains', o: '✗', d: '✗' },
-    { f: 'Solana + SPL', p: '✓ Ed25519 signing', o: '✗', d: '✗' },
-    { f: 'Honeypot scanner', p: '✓ Risk 0–30', o: '✗', d: '✗' },
-    { f: 'Whale tracking', p: '✓ Smart money', o: '✗', d: '✗' },
-  ]},
-  { cat: 'Tools & Productivity', icon: 'extension', rows: [
-    { f: 'Tools + skills', p: '22 + 30+', o: '~10+', d: '~5–10' },
-    { f: 'Task board + cron', p: '✓ Kanban + scheduler', o: '✗', d: '✗' },
-    { f: 'Email', p: '✓ IMAP + SMTP', o: '✗', d: '✗' },
-    { f: 'Voice TTS', p: '3 providers, 35+ voices', o: '✗', d: '0–1' },
-    { f: 'Smart home', p: '✓ Hue / Sonos / Sleep', o: '✗', d: '✗' },
-    { f: 'Content studio', p: '✓ Editor + AI', o: '✗', d: '✗' },
-  ]},
+const vsFeatures = [
+  { feature: 'AI providers', pawz: 'Unlimited', pawzSub: 'Any OpenAI-compatible API', oc: '30+ via gateway', desk: '1 locked-in' },
+  { feature: 'Skills / plugins', pawz: 'Unlimited', pawzSub: 'PawzHub — community marketplace', oc: '~10 built-in', desk: '~5 basic' },
+  { feature: 'Chat bridges', pawz: '10+ platforms', pawzSub: 'Telegram · Discord · Slack · Matrix · +6', oc: 'Plugin-based', desk: 'None' },
+  { feature: 'Multi-agent', pawz: 'Boss/Worker', pawzSub: 'Real-time orchestrator + 8 specialties', oc: 'Routing only', desk: 'Single agent' },
+  { feature: 'Memory', pawz: '6-stage hybrid', pawzSub: 'BM25 + vector + decay + MMR', oc: 'Basic context', desk: 'Simple text' },
+  { feature: 'Security', pawz: '7 layers', pawzSub: 'Injection scan → Docker sandbox', oc: '~2 layers', desk: '1 basic' },
+  { feature: 'DeFi trading', pawz: 'ETH + Solana', pawzSub: '7 EVM chains · honeypot · whale tracking', oc: 'None', desk: 'None' },
+  { feature: 'Offline', pawz: 'Full', pawzSub: 'Ollama — zero cloud dependency', oc: 'Partial', desk: 'Cloud only' },
+  { feature: 'Cost', pawz: '$0 forever', pawzSub: 'MIT licensed — no limits', oc: 'Free / self-host', desk: '$20/mo/provider' },
+  { feature: 'Binary', pawz: '~5 MB', pawzSub: 'Tauri + Rust — native webview', oc: 'Server deploy', desk: '~200 MB Electron' },
 ];
 
 const stats = [
-  { number: '22', label: 'Built-in Tools', sub: 'file, web, shell, memory, soul' },
-  { number: '30+', label: 'Skills', sub: '9 categories' },
-  { number: '10', label: 'AI Providers', sub: 'with fallback' },
-  { number: '10', label: 'Chat Platforms', sub: 'bridged' },
+  { number: '22', label: 'Built-in Tools', sub: 'core engine tools' },
+  { number: '∞', label: 'Skills', sub: 'plugin-based — PawzHub' },
+  { number: '∞', label: 'AI Providers', sub: 'any OpenAI-compatible' },
+  { number: '10+', label: 'Chat Platforms', sub: 'bridged channels' },
   { number: '7', label: 'Security Layers', sub: 'defense-in-depth' },
-  { number: '8', label: 'EVM + Solana Chains', sub: 'DeFi trading' },
+  { number: '8', label: 'DeFi Chains', sub: 'EVM + Solana' },
   { number: '16', label: 'Views', sub: 'full desktop app' },
   { number: '$0', label: 'Cost', sub: 'forever' },
 ];
@@ -131,15 +103,15 @@ const pillars = [
   },
   {
     icon: 'extension',
-    title: 'The PawzHub — 30+ Skills',
-    headline: 'Unlimited capabilities. Encrypted credentials.',
+    title: 'PawzHub — Unlimited Skills',
+    headline: 'Plugin-based. Modular. If it has an API, it works.',
     points: [
+      '30+ skills ship today — but the architecture is plugin-based, so anyone can build and share more',
+      'PawzHub: community skill marketplace where contributors publish skills for everyone',
+      'Modular by design: install only the skills you need — trading, smart home, dev tools, or all of them',
       'Vault skills: Email, Slack, Telegram, Discord, GitHub, REST API, Webhooks, Coinbase, Uniswap, Jupiter, Image Gen',
-      'Smart Home: Philips Hue, Sonos, Eight Sleep',
-      'Productivity: Apple Notes, Reminders, Things 3, Obsidian, Bear, Notion, Trello, Google Workspace',
-      'Media: Whisper STT, ElevenLabs TTS, Spotify, Video Frames, Camera, GIF Search',
-      'Communication: WhatsApp, iMessage — Development: tmux, session logs',
-      'All credentials encrypted in OS keychain vault, injected server-side, never in prompts',
+      'Smart Home: Hue, Sonos, Eight Sleep — Media: Whisper, TTS, Spotify, Camera',
+      'All credentials encrypted in OS keychain vault, injected server-side, never exposed in prompts',
     ],
     link: '/docs/guides/skills',
   },
@@ -193,10 +165,10 @@ function HeroSection() {
             The most secure, capable, and extensible AI agent platform ever built for the desktop.
           </p>
           <p className="hero-description">
-            22 built-in tools. 30+ skills. 10 providers. 10 channels. 7 security layers.
-            22,000 lines of Rust. Multi-agent orchestration. DeFi trading on ETH &amp; Solana.
-            Research-grade memory. 16 views. Kanban. Cron. Content Studio.
-            All running natively on your machine for $0.
+            Unlimited providers. Unlimited skills via PawzHub.
+            10+ channel bridges. 7 security layers. 22,000 lines of Rust.
+            Multi-agent orchestration. DeFi trading. Research-grade memory.
+            Modular — install only what you need. $0 forever.
           </p>
           <div className="hero-buttons">
             <Link className="hero-btn hero-btn-primary" to="/docs/start/installation">
@@ -247,38 +219,42 @@ function ComparisonSection() {
           <h2>The competition isn't even close.</h2>
           <p>We don't just beat ChatGPT Desktop — we take on OpenClaw too.</p>
         </div>
-        <div className="comparison-table-wrap">
-          <table className="comparison-table">
-            <thead>
-              <tr>
-                <th className="comp-feature-col"></th>
-                <th className="col-pawz">
-                  <img src="/paw/img/pawz-logo.png" alt="" className="comp-th-logo" />
-                  Pawz
-                </th>
-                <th className="col-oc">OpenClaw</th>
-                <th className="col-them">ChatGPT / Claude</th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparisonData.flatMap((cat, ci) => [
-                <tr key={`cat-${ci}`} className="comp-cat-row">
-                  <td colSpan={4}>
-                    <span className="ms comp-cat-icon">{cat.icon}</span>
-                    {cat.cat}
-                  </td>
-                </tr>,
-                ...cat.rows.map((row, ri) => (
-                  <tr key={`r-${ci}-${ri}`}>
-                    <td className="comp-label">{row.f}</td>
-                    <td className="comp-pawz">{row.p}</td>
-                    <td className="comp-oc">{row.o}</td>
-                    <td className="comp-them">{row.d}</td>
-                  </tr>
-                )),
-              ])}
-            </tbody>
-          </table>
+
+        {/* VS Header */}
+        <div className="vs-header">
+          <div className="vs-col-label">&nbsp;</div>
+          <div className="vs-col-pawz">
+            <img src="/paw/img/pawz-logo.png" alt="" className="vs-logo" />
+            <span className="vs-name">Pawz</span>
+          </div>
+          <div className="vs-col-oc">
+            <span className="vs-name-dim">OpenClaw</span>
+          </div>
+          <div className="vs-col-desk">
+            <span className="vs-name-dim">ChatGPT / Claude</span>
+          </div>
+        </div>
+
+        {/* VS Rows */}
+        <div className="vs-rows">
+          {vsFeatures.map((row, i) => (
+            <div key={i} className="vs-row">
+              <div className="vs-col-label">{row.feature}</div>
+              <div className="vs-col-pawz vs-cell-pawz">
+                <span className="vs-val-pawz">{row.pawz}</span>
+                <span className="vs-sub">{row.pawzSub}</span>
+              </div>
+              <div className="vs-col-oc vs-cell-dim">{row.oc}</div>
+              <div className="vs-col-desk vs-cell-dim">{row.desk}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bottom CTA */}
+        <div className="vs-bottom">
+          <span className="ms vs-bottom-icon">verified</span>
+          Pawz ships 30+ skills today — and with the PawzHub, anyone can add more.
+          If it has an API key, we can make it work.
         </div>
       </div>
     </section>
@@ -292,7 +268,7 @@ function PillarsSection() {
         <div className="section-header">
           <div className="section-badge">Deep Dive</div>
           <h2>Built different. Proven in code.</h2>
-          <p>Not marketing promises — real features backed by 22,638 lines of Rust and 49,000 lines total.</p>
+          <p>Not marketing promises — real features backed by 22,638 lines of Rust. Plugin architecture means it keeps growing.</p>
         </div>
         <div className="pillars-grid">
           {pillars.map((p, i) => (
@@ -321,7 +297,7 @@ function MoreFeaturesSection() {
         <div className="section-header">
           <div className="section-badge">Everything Else</div>
           <h2>And we're just getting started.</h2>
-          <p>16 views, 30+ skills, 15 slash commands, 50 avatars — every feature backed by real code.</p>
+          <p>16 views, unlimited skills, 15 slash commands, 50 avatars — every feature backed by real code.</p>
         </div>
         <div className="more-grid">
           {moreFeatures.map((f, i) => (
@@ -407,13 +383,13 @@ function ArchSection() {
           <div className="flow-col">
             <div className="flow-node flow-node-output">
               <span className="ms">cloud</span>
-              <strong>10 AI Providers</strong>
-              <span className="flow-sub">OpenAI · Claude · Gemini · Ollama · Groq · Mistral · +4</span>
+              <strong>∞ AI Providers</strong>
+              <span className="flow-sub">Any OpenAI-compatible API</span>
             </div>
             <div className="flow-node flow-node-output">
               <span className="ms">build</span>
-              <strong>22 Tools · 30+ Skills</strong>
-              <span className="flow-sub">Docker · DeFi · Browser · Smart Home · Email</span>
+              <strong>22 Tools · ∞ Skills</strong>
+              <span className="flow-sub">PawzHub plugin marketplace</span>
             </div>
           </div>
         </div>
@@ -464,7 +440,7 @@ function CTASection() {
 
 export default function Home() {
   return (
-    <Layout description="Pawz — the most secure, capable, and extensible AI agent platform for the desktop. 22 tools, 30+ skills, 10 providers, 10 channels, 7 security layers. Free, open source, MIT licensed.">
+    <Layout description="Pawz — the most secure, capable, and extensible AI agent platform for the desktop. Unlimited providers and skills via PawzHub. 10+ channels, 7 security layers. Free, open source, MIT licensed.">
       <HeroSection />
       <StatsSection />
       <ComparisonSection />

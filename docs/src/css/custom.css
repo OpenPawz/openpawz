@@ -379,116 +379,138 @@ html {
   margin: 0 auto;
 }
 
-/* ── Comparison Table ───────────────────────────────── */
+/* ── Comparison / VS Section ─────────────────────────── */
 
 .comparison-section {
   padding: 6rem 0;
 }
 
-.comparison-table-wrap {
-  overflow-x: auto;
-  border-radius: 16px;
-  border: 1px solid var(--paw-border);
-  background: var(--paw-card-bg);
-}
-
-.comparison-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-  margin: 0;
-}
-
-.comparison-table thead {
+.vs-header {
+  display: grid;
+  grid-template-columns: 1.2fr 2fr 1.3fr 1.3fr;
+  gap: 0;
+  padding: 0.75rem 0;
   border-bottom: 2px solid var(--paw-border);
+  margin-bottom: 0;
 }
 
-.comparison-table th {
-  padding: 1rem 1.25rem;
+.vs-col-label {
+  padding: 0.75rem 1.25rem;
   font-weight: 700;
-  text-align: left;
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
-}
-
-.comparison-table th:first-child {
-  width: 160px;
-}
-
-.col-pawz {
-  background: var(--paw-glow);
-  color: var(--ifm-color-primary);
-}
-
-.col-them {
-  color: var(--paw-text-muted);
-}
-
-.col-oc {
-  color: var(--paw-text-muted);
-}
-
-.comp-feature-col {
-  width: 180px;
-}
-
-.comp-th-logo {
-  width: 20px;
-  height: 20px;
-  vertical-align: middle;
-  margin-right: 0.35rem;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 0 4px rgba(255, 0, 255, 0.4));
-}
-
-.comp-cat-row td {
-  font-weight: 700;
-  font-size: 0.78rem;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--paw-cyan);
-  background: rgba(0, 204, 255, 0.05);
-  border-bottom: 2px solid rgba(0, 204, 255, 0.15);
-  padding: 0.65rem 1.25rem;
-}
-
-.comp-cat-icon {
-  font-size: 18px;
-  vertical-align: middle;
-  margin-right: 0.5rem;
-  color: var(--paw-cyan);
-  filter: drop-shadow(0 0 4px rgba(0, 204, 255, 0.3));
-}
-
-.comparison-table td {
-  padding: 0.7rem 1.25rem;
-  border-bottom: 1px solid var(--paw-border);
-}
-
-.comparison-table tr:last-child td {
-  border-bottom: none;
-}
-
-.comp-label {
-  font-weight: 600;
   font-size: 0.85rem;
   color: var(--ifm-font-color-base);
 }
 
-.comp-pawz {
-  color: var(--paw-green);
+.vs-col-pawz {
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vs-col-oc,
+.vs-col-desk {
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+}
+
+.vs-logo {
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 0 8px rgba(255, 0, 255, 0.5));
+  animation: logoPulse 3s ease-in-out infinite;
+}
+
+.vs-name {
+  font-family: var(--paw-pixel);
+  font-size: 0.65rem;
+  color: var(--paw-neon);
+  letter-spacing: 0.03em;
+  text-shadow: 0 0 8px rgba(255, 0, 255, 0.4);
+}
+
+.vs-name-dim {
+  font-size: 0.82rem;
   font-weight: 600;
+  color: var(--paw-text-muted);
+}
+
+/* VS rows */
+
+.vs-rows {
+  border-radius: 16px;
+  border: 1px solid var(--paw-border);
+  background: var(--paw-card-bg);
+  overflow: hidden;
+}
+
+.vs-row {
+  display: grid;
+  grid-template-columns: 1.2fr 2fr 1.3fr 1.3fr;
+  gap: 0;
+  border-bottom: 1px solid var(--paw-border);
+  transition: background 0.15s;
+}
+
+.vs-row:last-child {
+  border-bottom: none;
+}
+
+.vs-row:hover {
+  background: var(--paw-glow);
+}
+
+.vs-row > div {
+  padding: 0.85rem 1.25rem;
+}
+
+.vs-cell-pawz {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.vs-val-pawz {
+  color: var(--paw-green);
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.vs-sub {
+  font-size: 0.72rem;
+  color: var(--paw-text-muted);
+  line-height: 1.3;
+}
+
+.vs-cell-dim {
   font-size: 0.85rem;
+  color: var(--paw-text-muted);
+  display: flex;
+  align-items: center;
 }
 
-.comp-oc {
+/* VS bottom CTA */
+
+.vs-bottom {
+  text-align: center;
+  margin-top: 1.5rem;
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  background: rgba(0, 204, 255, 0.06);
+  border: 1px solid rgba(0, 204, 255, 0.15);
+  font-size: 0.88rem;
   color: var(--paw-text-muted);
-  font-size: 0.83rem;
+  line-height: 1.6;
 }
 
-.comp-them {
-  color: var(--paw-text-muted);
-  font-size: 0.83rem;
+.vs-bottom-icon {
+  font-size: 18px;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  color: var(--paw-cyan);
+  filter: drop-shadow(0 0 4px rgba(0, 204, 255, 0.4));
 }
 
 /* ── Pillars ────────────────────────────────────────── */
@@ -902,10 +924,15 @@ html {
   .pillars-grid {
     grid-template-columns: 1fr;
   }
-  .comparison-table th,
-  .comparison-table td {
-    padding: 0.6rem 0.8rem;
-    font-size: 0.8rem;
+  .vs-header,
+  .vs-row {
+    grid-template-columns: 1fr 1.5fr 1fr 1fr;
+  }
+  .vs-row > div {
+    padding: 0.7rem 0.8rem;
+  }
+  .vs-val-pawz {
+    font-size: 0.82rem;
   }
 }
 
