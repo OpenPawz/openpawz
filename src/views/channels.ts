@@ -783,6 +783,14 @@ export async function loadChannels() {
           try {
             // For WhatsApp, listen for real-time status updates during startup
             if (ch === 'whatsapp') {
+              // Hide Start button immediately so user knows something is happening
+              const startBtn = document.getElementById(`${cardId}-start`) as HTMLButtonElement | null;
+              if (startBtn) {
+                startBtn.disabled = true;
+                startBtn.textContent = 'Starting...';
+                startBtn.style.opacity = '0.5';
+              }
+
               const statusBannerId = `${cardId}-status-banner`;
               let banner = document.getElementById(statusBannerId);
               if (!banner) {
@@ -791,7 +799,7 @@ export async function loadChannels() {
                 banner.className = 'wa-status-banner';
                 card.appendChild(banner);
               }
-              banner.innerHTML = '<span class="wa-spinner"></span> Starting...';
+              banner.innerHTML = '<span class="wa-spinner"></span> Setting up WhatsApp...';
               banner.style.display = 'flex';
 
               const { listen } = await import('@tauri-apps/api/event');
@@ -847,8 +855,11 @@ export async function loadChannels() {
             await startChannel(ch);
             if (ch !== 'whatsapp') {
               showToast(`${name} started`, 'success');
+              setTimeout(() => loadChannels(), 1000);
             }
-            setTimeout(() => loadChannels(), 1000);
+            // For WhatsApp, DON'T reload channels — the event listener handles
+            // all UI updates (loading spinner, QR code, connected/error).
+            // Reloading would destroy the status banner DOM element.
           }
           catch (e) {
             const statusBanner = document.getElementById(`${cardId}-status-banner`);
