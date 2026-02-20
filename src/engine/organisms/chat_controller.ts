@@ -4,7 +4,7 @@
 // the main.ts closure scope.
 
 import { pawEngine } from '../../engine';
-import { engineChatSend } from '../../engine-bridge';
+import { engineChatSend } from '../molecules/bridge';
 import { appState, agentSessionMap, persistAgentSessionMap,
          MODEL_CONTEXT_SIZES, MODEL_COST_PER_TOKEN, COMPACTION_WARN_THRESHOLD,
          type MessageWithAttachments } from '../../state/index';

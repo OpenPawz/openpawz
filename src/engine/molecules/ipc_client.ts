@@ -1,0 +1,489 @@
+// src/engine/molecules/ipc_client.ts
+// PawEngineClient — wraps every Tauri invoke() call for the engine.
+// Extracted from engine.ts.
+
+import { invoke } from '@tauri-apps/api/core';
+import type {
+  EngineConfig,
+  EngineProviderConfig,
+  EngineChatRequest,
+  EngineChatResponse,
+  EngineSession,
+  EngineStoredMessage,
+  EngineEvent,
+  EngineStatus,
+  EngineAgentFile,
+  EngineMemory,
+  EngineMemoryConfig,
+  EngineMemoryStats,
+  OllamaReadyStatus,
+  EngineSkillStatus,
+  TradeRecord,
+  TradingSummary,
+  TradingPolicy,
+  Position,
+  TtsConfig,
+  EngineTask,
+  EngineTaskActivity,
+  TaskAgent,
+  EngineProject,
+  EngineProjectAgent,
+  EngineProjectMessage,
+  BackendAgent,
+  TelegramConfig,
+  TelegramStatus,
+  ChannelStatus,
+  DiscordConfig,
+  IrcConfig,
+  SlackConfig,
+  MatrixConfig,
+  MattermostConfig,
+  NextcloudConfig,
+  NostrConfig,
+  TwitchConfig,
+} from '../atoms/types';
+
+class PawEngineClient {
+  private _listeners: Map<string, Set<(event: EngineEvent) => void>> = new Map();
+  private _tauriUnlisten: (() => void) | null = null;
+
+  /** Start listening for engine events from the Rust backend. */
+  async startListening(): Promise<void> {
+    if (this._tauriUnlisten) return;
+    const { listen } = await import('@tauri-apps/api/event');
+    this._tauriUnlisten = await listen<EngineEvent>('engine-event', (event) => {
+      const payload = event.payload;
+      const handlers = this._listeners.get(payload.kind);
+      if (handlers) {
+        for (const h of handlers) {
+          try { h(payload); } catch (e) { console.error('[engine] Event handler error:', e); }
+        }
+      }
+      const wildcardHandlers = this._listeners.get('*');
+      if (wildcardHandlers) {
+        for (const h of wildcardHandlers) {
+          try { h(payload); } catch (e) { console.error('[engine] Wildcard handler error:', e); }
+        }
+      }
+    }) as unknown as () => void;
+  }
+
+  on(kind: string, handler: (event: EngineEvent) => void): () => void {
+    if (!this._listeners.has(kind)) {
+      this._listeners.set(kind, new Set());
+    }
+    this._listeners.get(kind)!.add(handler);
+    return () => this._listeners.get(kind)?.delete(handler);
+  }
+
+  destroy(): void {
+    if (this._tauriUnlisten) {
+      this._tauriUnlisten();
+      this._tauriUnlisten = null;
+    }
+    this._listeners.clear();
+  }
+
+  // ── Chat ─────────────────────────────────────────────────────────────
+
+  async chatSend(sessionIdOrRequest: string | EngineChatRequest, message?: string): Promise<EngineChatResponse> {
+    const request: EngineChatRequest = typeof sessionIdOrRequest === 'string'
+      ? { session_id: sessionIdOrRequest, message: message ?? '' }
+      : sessionIdOrRequest;
+    return invoke<EngineChatResponse>('engine_chat_send', { request });
+  }
+
+  async chatAbort(_sessionId: string): Promise<void> {
+    console.warn('[engine] chatAbort not yet implemented in backend');
+  }
+
+  async chatHistory(sessionId: string, limit?: number): Promise<EngineStoredMessage[]> {
+    return invoke<EngineStoredMessage[]>('engine_chat_history', { sessionId, limit: limit ?? 200 });
+  }
+
+  // ── Sessions ─────────────────────────────────────────────────────────
+
+  async sessionsList(limit?: number, agentId?: string): Promise<EngineSession[]> {
+    return invoke<EngineSession[]>('engine_sessions_list', { limit: limit ?? 50, agentId: agentId ?? null });
+  }
+
+  async sessionRename(sessionId: string, label: string): Promise<void> {
+    return invoke('engine_session_rename', { sessionId, label });
+  }
+
+  async sessionDelete(sessionId: string): Promise<void> {
+    return invoke('engine_session_delete', { sessionId });
+  }
+
+  async sessionClear(sessionId: string): Promise<void> {
+    return invoke('engine_session_clear', { sessionId });
+  }
+
+  async sessionCompact(sessionId: string): Promise<{
+    session_id: string; messages_before: number; messages_after: number;
+    tokens_before: number; tokens_after: number; summary_length: number;
+  }> {
+    return invoke('engine_session_compact', { sessionId });
+  }
+
+  // ── Config ───────────────────────────────────────────────────────────
+
+  async getConfig(): Promise<EngineConfig> {
+    return invoke<EngineConfig>('engine_get_config');
+  }
+
+  async setConfig(config: EngineConfig): Promise<void> {
+    return invoke('engine_set_config', { config });
+  }
+
+  async upsertProvider(provider: EngineProviderConfig): Promise<void> {
+    return invoke('engine_upsert_provider', { provider });
+  }
+
+  async removeProvider(providerId: string): Promise<void> {
+    return invoke('engine_remove_provider', { providerId });
+  }
+
+  async status(): Promise<EngineStatus> {
+    return invoke<EngineStatus>('engine_status');
+  }
+
+  async autoSetup(): Promise<{ action: string; model?: string; message?: string; available_models?: string[] }> {
+    return invoke('engine_auto_setup');
+  }
+
+  async approveTool(toolCallId: string, approved: boolean): Promise<void> {
+    return invoke('engine_approve_tool', { toolCallId, approved });
+  }
+
+  // ── Agent Files ──────────────────────────────────────────────────────
+
+  async agentFileList(agentId?: string): Promise<EngineAgentFile[]> {
+    return invoke<EngineAgentFile[]>('engine_agent_file_list', { agentId: agentId ?? 'default' });
+  }
+
+  async agentFileGet(fileName: string, agentId?: string): Promise<EngineAgentFile | null> {
+    return invoke<EngineAgentFile | null>('engine_agent_file_get', { agentId: agentId ?? 'default', fileName });
+  }
+
+  async agentFileSet(fileName: string, content: string, agentId?: string): Promise<void> {
+    return invoke('engine_agent_file_set', { agentId: agentId ?? 'default', fileName, content });
+  }
+
+  async agentFileDelete(fileName: string, agentId?: string): Promise<void> {
+    return invoke('engine_agent_file_delete', { agentId: agentId ?? 'default', fileName });
+  }
+
+  // ── Memory ───────────────────────────────────────────────────────────
+
+  async memoryStore(content: string, category?: string, importance?: number): Promise<string> {
+    return invoke<string>('engine_memory_store', { content, category, importance });
+  }
+
+  async memorySearch(query: string, limit?: number): Promise<EngineMemory[]> {
+    return invoke<EngineMemory[]>('engine_memory_search', { query, limit });
+  }
+
+  async memoryStats(): Promise<EngineMemoryStats> {
+    return invoke<EngineMemoryStats>('engine_memory_stats');
+  }
+
+  async memoryDelete(id: string): Promise<void> {
+    return invoke('engine_memory_delete', { id });
+  }
+
+  async memoryList(limit?: number): Promise<EngineMemory[]> {
+    return invoke<EngineMemory[]>('engine_memory_list', { limit });
+  }
+
+  async getMemoryConfig(): Promise<EngineMemoryConfig> {
+    return invoke<EngineMemoryConfig>('engine_get_memory_config');
+  }
+
+  async setMemoryConfig(config: EngineMemoryConfig): Promise<void> {
+    return invoke('engine_set_memory_config', { config });
+  }
+
+  async testEmbedding(): Promise<number> {
+    return invoke<number>('engine_test_embedding');
+  }
+
+  async embeddingStatus(): Promise<{ ollama_running: boolean; model_available: boolean; model_name: string; error?: string }> {
+    return invoke('engine_embedding_status');
+  }
+
+  async embeddingPullModel(): Promise<string> {
+    return invoke<string>('engine_embedding_pull_model');
+  }
+
+  async ensureEmbeddingReady(): Promise<OllamaReadyStatus> {
+    return invoke<OllamaReadyStatus>('engine_ensure_embedding_ready');
+  }
+
+  async memoryBackfill(): Promise<{ success: number; failed: number }> {
+    return invoke('engine_memory_backfill');
+  }
+
+  // ── Skills ───────────────────────────────────────────────────────────
+
+  async skillsList(): Promise<EngineSkillStatus[]> {
+    return invoke<EngineSkillStatus[]>('engine_skills_list');
+  }
+
+  async skillSetEnabled(skillId: string, enabled: boolean): Promise<void> {
+    return invoke('engine_skill_set_enabled', { skillId, enabled });
+  }
+
+  async skillSetCredential(skillId: string, key: string, value: string): Promise<void> {
+    return invoke('engine_skill_set_credential', { skillId, key, value });
+  }
+
+  async skillDeleteCredential(skillId: string, key: string): Promise<void> {
+    return invoke('engine_skill_delete_credential', { skillId, key });
+  }
+
+  async skillRevokeAll(skillId: string): Promise<void> {
+    return invoke('engine_skill_revoke_all', { skillId });
+  }
+
+  async skillGetInstructions(skillId: string): Promise<string | null> {
+    return invoke<string | null>('engine_skill_get_instructions', { skillId });
+  }
+
+  async skillSetInstructions(skillId: string, instructions: string): Promise<void> {
+    return invoke('engine_skill_set_instructions', { skillId, instructions });
+  }
+
+  // ── Trading ──────────────────────────────────────────────────────────
+
+  async tradingHistory(limit?: number): Promise<TradeRecord[]> {
+    return invoke<TradeRecord[]>('engine_trading_history', { limit });
+  }
+
+  async tradingSummary(): Promise<TradingSummary> {
+    return invoke<TradingSummary>('engine_trading_summary');
+  }
+
+  async tradingPolicyGet(): Promise<TradingPolicy> {
+    return invoke<TradingPolicy>('engine_trading_policy_get');
+  }
+
+  async tradingPolicySet(policy: TradingPolicy): Promise<void> {
+    return invoke('engine_trading_policy_set', { policy });
+  }
+
+  async positionsList(status?: string): Promise<Position[]> {
+    return invoke<Position[]>('engine_positions_list', { status: status ?? null });
+  }
+
+  async positionClose(id: string): Promise<void> {
+    return invoke('engine_position_close', { id });
+  }
+
+  async positionUpdateTargets(id: string, stopLossPct: number, takeProfitPct: number): Promise<void> {
+    return invoke('engine_position_update_targets', { id, stopLossPct, takeProfitPct });
+  }
+
+  // ── Text-to-Speech ───────────────────────────────────────────────────
+
+  async ttsSpeak(text: string): Promise<string> {
+    return invoke<string>('engine_tts_speak', { text });
+  }
+
+  async ttsGetConfig(): Promise<TtsConfig> {
+    return invoke<TtsConfig>('engine_tts_get_config');
+  }
+
+  async ttsSetConfig(config: TtsConfig): Promise<void> {
+    return invoke('engine_tts_set_config', { config });
+  }
+
+  // ── Tasks ────────────────────────────────────────────────────────────
+
+  async tasksList(): Promise<EngineTask[]> {
+    return invoke<EngineTask[]>('engine_tasks_list');
+  }
+
+  async taskCreate(task: EngineTask): Promise<void> {
+    return invoke('engine_task_create', { task });
+  }
+
+  async taskUpdate(task: EngineTask): Promise<void> {
+    return invoke('engine_task_update', { task });
+  }
+
+  async taskDelete(taskId: string): Promise<void> {
+    return invoke('engine_task_delete', { taskId });
+  }
+
+  async taskMove(taskId: string, newStatus: string): Promise<void> {
+    return invoke('engine_task_move', { taskId, newStatus });
+  }
+
+  async taskActivity(taskId?: string, limit?: number): Promise<EngineTaskActivity[]> {
+    return invoke<EngineTaskActivity[]>('engine_task_activity', { taskId, limit });
+  }
+
+  async taskSetAgents(taskId: string, agents: TaskAgent[]): Promise<void> {
+    return invoke('engine_task_set_agents', { taskId, agents });
+  }
+
+  async taskRun(taskId: string): Promise<string> {
+    return invoke<string>('engine_task_run', { taskId });
+  }
+
+  async tasksCronTick(): Promise<string[]> {
+    return invoke<string[]>('engine_tasks_cron_tick');
+  }
+
+  // ── Telegram ────────────────────────────────────────────────────────
+
+  async telegramStart(): Promise<void> { return invoke('engine_telegram_start'); }
+  async telegramStop(): Promise<void> { return invoke('engine_telegram_stop'); }
+  async telegramStatus(): Promise<TelegramStatus> { return invoke<TelegramStatus>('engine_telegram_status'); }
+  async telegramGetConfig(): Promise<TelegramConfig> { return invoke<TelegramConfig>('engine_telegram_get_config'); }
+  async telegramSetConfig(config: TelegramConfig): Promise<void> { return invoke('engine_telegram_set_config', { config }); }
+  async telegramApproveUser(userId: number): Promise<void> { return invoke('engine_telegram_approve_user', { userId }); }
+  async telegramDenyUser(userId: number): Promise<void> { return invoke('engine_telegram_deny_user', { userId }); }
+  async telegramRemoveUser(userId: number): Promise<void> { return invoke('engine_telegram_remove_user', { userId }); }
+
+  // ── Discord ─────────────────────────────────────────────────────────
+
+  async discordStart(): Promise<void> { return invoke('engine_discord_start'); }
+  async discordStop(): Promise<void> { return invoke('engine_discord_stop'); }
+  async discordStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_discord_status'); }
+  async discordGetConfig(): Promise<DiscordConfig> { return invoke<DiscordConfig>('engine_discord_get_config'); }
+  async discordSetConfig(config: DiscordConfig): Promise<void> { return invoke('engine_discord_set_config', { config }); }
+  async discordApproveUser(userId: string): Promise<void> { return invoke('engine_discord_approve_user', { userId }); }
+  async discordDenyUser(userId: string): Promise<void> { return invoke('engine_discord_deny_user', { userId }); }
+  async discordRemoveUser(userId: string): Promise<void> { return invoke('engine_discord_remove_user', { userId }); }
+
+  // ── IRC ──────────────────────────────────────────────────────────────
+
+  async ircStart(): Promise<void> { return invoke('engine_irc_start'); }
+  async ircStop(): Promise<void> { return invoke('engine_irc_stop'); }
+  async ircStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_irc_status'); }
+  async ircGetConfig(): Promise<IrcConfig> { return invoke<IrcConfig>('engine_irc_get_config'); }
+  async ircSetConfig(config: IrcConfig): Promise<void> { return invoke('engine_irc_set_config', { config }); }
+  async ircApproveUser(userId: string): Promise<void> { return invoke('engine_irc_approve_user', { userId }); }
+  async ircDenyUser(userId: string): Promise<void> { return invoke('engine_irc_deny_user', { userId }); }
+  async ircRemoveUser(userId: string): Promise<void> { return invoke('engine_irc_remove_user', { userId }); }
+
+  // ── Slack ────────────────────────────────────────────────────────────
+
+  async slackStart(): Promise<void> { return invoke('engine_slack_start'); }
+  async slackStop(): Promise<void> { return invoke('engine_slack_stop'); }
+  async slackStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_slack_status'); }
+  async slackGetConfig(): Promise<SlackConfig> { return invoke<SlackConfig>('engine_slack_get_config'); }
+  async slackSetConfig(config: SlackConfig): Promise<void> { return invoke('engine_slack_set_config', { config }); }
+  async slackApproveUser(userId: string): Promise<void> { return invoke('engine_slack_approve_user', { userId }); }
+  async slackDenyUser(userId: string): Promise<void> { return invoke('engine_slack_deny_user', { userId }); }
+  async slackRemoveUser(userId: string): Promise<void> { return invoke('engine_slack_remove_user', { userId }); }
+
+  // ── Matrix ───────────────────────────────────────────────────────────
+
+  async matrixStart(): Promise<void> { return invoke('engine_matrix_start'); }
+  async matrixStop(): Promise<void> { return invoke('engine_matrix_stop'); }
+  async matrixStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_matrix_status'); }
+  async matrixGetConfig(): Promise<MatrixConfig> { return invoke<MatrixConfig>('engine_matrix_get_config'); }
+  async matrixSetConfig(config: MatrixConfig): Promise<void> { return invoke('engine_matrix_set_config', { config }); }
+  async matrixApproveUser(userId: string): Promise<void> { return invoke('engine_matrix_approve_user', { userId }); }
+  async matrixDenyUser(userId: string): Promise<void> { return invoke('engine_matrix_deny_user', { userId }); }
+  async matrixRemoveUser(userId: string): Promise<void> { return invoke('engine_matrix_remove_user', { userId }); }
+
+  // ── Mattermost ───────────────────────────────────────────────────────
+
+  async mattermostStart(): Promise<void> { return invoke('engine_mattermost_start'); }
+  async mattermostStop(): Promise<void> { return invoke('engine_mattermost_stop'); }
+  async mattermostStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_mattermost_status'); }
+  async mattermostGetConfig(): Promise<MattermostConfig> { return invoke<MattermostConfig>('engine_mattermost_get_config'); }
+  async mattermostSetConfig(config: MattermostConfig): Promise<void> { return invoke('engine_mattermost_set_config', { config }); }
+  async mattermostApproveUser(userId: string): Promise<void> { return invoke('engine_mattermost_approve_user', { userId }); }
+  async mattermostDenyUser(userId: string): Promise<void> { return invoke('engine_mattermost_deny_user', { userId }); }
+  async mattermostRemoveUser(userId: string): Promise<void> { return invoke('engine_mattermost_remove_user', { userId }); }
+
+  // ── Nextcloud Talk ───────────────────────────────────────────────────
+
+  async nextcloudStart(): Promise<void> { return invoke('engine_nextcloud_start'); }
+  async nextcloudStop(): Promise<void> { return invoke('engine_nextcloud_stop'); }
+  async nextcloudStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_nextcloud_status'); }
+  async nextcloudGetConfig(): Promise<NextcloudConfig> { return invoke<NextcloudConfig>('engine_nextcloud_get_config'); }
+  async nextcloudSetConfig(config: NextcloudConfig): Promise<void> { return invoke('engine_nextcloud_set_config', { config }); }
+  async nextcloudApproveUser(userId: string): Promise<void> { return invoke('engine_nextcloud_approve_user', { userId }); }
+  async nextcloudDenyUser(userId: string): Promise<void> { return invoke('engine_nextcloud_deny_user', { userId }); }
+  async nextcloudRemoveUser(userId: string): Promise<void> { return invoke('engine_nextcloud_remove_user', { userId }); }
+
+  // ── Nostr ────────────────────────────────────────────────────────────
+
+  async nostrStart(): Promise<void> { return invoke('engine_nostr_start'); }
+  async nostrStop(): Promise<void> { return invoke('engine_nostr_stop'); }
+  async nostrStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_nostr_status'); }
+  async nostrGetConfig(): Promise<NostrConfig> { return invoke<NostrConfig>('engine_nostr_get_config'); }
+  async nostrSetConfig(config: NostrConfig): Promise<void> { return invoke('engine_nostr_set_config', { config }); }
+  async nostrApproveUser(userId: string): Promise<void> { return invoke('engine_nostr_approve_user', { userId }); }
+  async nostrDenyUser(userId: string): Promise<void> { return invoke('engine_nostr_deny_user', { userId }); }
+  async nostrRemoveUser(userId: string): Promise<void> { return invoke('engine_nostr_remove_user', { userId }); }
+
+  // ── Twitch ───────────────────────────────────────────────────────────
+
+  async twitchStart(): Promise<void> { return invoke('engine_twitch_start'); }
+  async twitchStop(): Promise<void> { return invoke('engine_twitch_stop'); }
+  async twitchStatus(): Promise<ChannelStatus> { return invoke<ChannelStatus>('engine_twitch_status'); }
+  async twitchGetConfig(): Promise<TwitchConfig> { return invoke<TwitchConfig>('engine_twitch_get_config'); }
+  async twitchSetConfig(config: TwitchConfig): Promise<void> { return invoke('engine_twitch_set_config', { config }); }
+  async twitchApproveUser(userId: string): Promise<void> { return invoke('engine_twitch_approve_user', { userId }); }
+  async twitchDenyUser(userId: string): Promise<void> { return invoke('engine_twitch_deny_user', { userId }); }
+  async twitchRemoveUser(userId: string): Promise<void> { return invoke('engine_twitch_remove_user', { userId }); }
+
+  // ── Orchestrator: Projects ───────────────────────────────────────────
+
+  async projectsList(): Promise<EngineProject[]> {
+    return invoke<EngineProject[]>('engine_projects_list');
+  }
+
+  async projectCreate(project: EngineProject): Promise<void> {
+    return invoke('engine_project_create', { project });
+  }
+
+  async projectUpdate(project: EngineProject): Promise<void> {
+    return invoke('engine_project_update', { project });
+  }
+
+  async projectDelete(projectId: string): Promise<void> {
+    return invoke('engine_project_delete', { projectId });
+  }
+
+  async projectSetAgents(projectId: string, agents: EngineProjectAgent[]): Promise<void> {
+    return invoke('engine_project_set_agents', { projectId, agents });
+  }
+
+  async listAllAgents(): Promise<BackendAgent[]> {
+    return invoke<BackendAgent[]>('engine_list_all_agents');
+  }
+
+  async createAgent(agent: {
+    agent_id: string; role: string; specialty?: string;
+    model?: string; system_prompt?: string; capabilities?: string[];
+  }): Promise<void> {
+    return invoke('engine_create_agent', {
+      agentId: agent.agent_id, role: agent.role,
+      specialty: agent.specialty ?? 'general', model: agent.model ?? null,
+      systemPrompt: agent.system_prompt ?? null, capabilities: agent.capabilities ?? [],
+    });
+  }
+
+  async deleteAgent(agentId: string): Promise<void> {
+    return invoke('engine_delete_agent', { agentId });
+  }
+
+  async projectMessages(projectId: string, limit?: number): Promise<EngineProjectMessage[]> {
+    return invoke<EngineProjectMessage[]>('engine_project_messages', { projectId, limit });
+  }
+
+  async projectRun(projectId: string): Promise<string> {
+    return invoke<string>('engine_project_run', { projectId });
+  }
+}
+
+/** Singleton engine client — import this in all consumers. */
+export const pawEngine = new PawEngineClient();

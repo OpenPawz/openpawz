@@ -263,7 +263,7 @@ Each bridge has uniform commands: `start`, `stop`, `status`, `get_config`, `set_
 | GitHub Copilot | ❌ | ❌ | Not implemented |
 
 ### 2.6 Minor Gaps & Polish
-
+git pusah
 | Item | Status | Details |
 |------|--------|---------|
 | **Nodes view** | 🔶 Minimal | 190 lines — basic list/invoke/pair UI, no mobile app to pair with |

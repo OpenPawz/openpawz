@@ -918,3 +918,33 @@ export function initChannels() {
 
   $('refresh-memory-btn')?.addEventListener('click', () => loadMemory());
 }
+
+// ── Auto-start configured channel bridges on app boot ─────────────────────
+
+/** Auto-connect all channels that are enabled and have credentials. Called once at startup. */
+export async function autoStartConfiguredChannels(): Promise<void> {
+  try {
+    const tgCfg = await pawEngine.telegramGetConfig();
+    if (tgCfg.enabled && tgCfg.bot_token) {
+      const tgStatus = await pawEngine.telegramStatus();
+      if (!tgStatus.running) {
+        await pawEngine.telegramStart();
+        console.log('[channels] Auto-started Telegram bridge');
+      }
+    }
+  } catch (e) { console.warn('[channels] Telegram auto-start skipped:', e); }
+
+  const channels = ['discord', 'irc', 'slack', 'matrix', 'mattermost', 'nextcloud', 'nostr', 'twitch'] as const;
+  for (const ch of channels) {
+    try {
+      const cfg = await getChannelConfig(ch);
+      if (cfg && (cfg as Record<string, unknown>).enabled) {
+        const status = await getChannelStatus(ch);
+        if (status && !status.running) {
+          await startChannel(ch);
+          console.log(`[channels] Auto-started ${ch} bridge`);
+        }
+      }
+    } catch (e) { console.warn(`[channels] ${ch} auto-start skipped:`, e); }
+  }
+}

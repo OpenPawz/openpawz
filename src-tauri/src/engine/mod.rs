@@ -3,6 +3,8 @@
 // for zero-network-hop communication.
 
 pub mod types;
+pub mod tools;
+pub mod pricing;
 pub mod providers;
 pub mod agent_loop;
 pub mod tool_executor;

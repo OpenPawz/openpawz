@@ -6,65 +6,6 @@ export interface AppConfig {
   configured: boolean;
 }
 
-// ── Connect / Hello ───────────────────────────────────────────────────────
-
-export interface ConnectParams {
-  minProtocol: number;
-  maxProtocol: number;
-  client: {
-    id: string;
-    version: string;
-    platform: string;
-    mode: string;
-  };
-  role: string;
-  scopes: string[];
-  caps: string[];
-  commands: string[];
-  permissions: Record<string, boolean>;
-  auth: { token: string } | { password: string };
-  locale: string;
-  userAgent: string;
-}
-
-export interface HelloOk {
-  type?: string;
-  protocol: number;
-  connId: string;
-  server: { version: string };
-  config?: Record<string, unknown>;
-  policy?: { tickIntervalMs?: number; maxPayload?: number; maxBufferedBytes?: number };
-  auth?: { deviceToken?: string; role?: string; scopes?: string[] };
-}
-
-// ── Health ─────────────────────────────────────────────────────────────────
-
-export interface HealthSummary {
-  ok: true;
-  ts: number;
-  durationMs: number;
-  channels: Record<string, ChannelHealthSummary>;
-  sessions: { total: number; active: number };
-  agents: AgentHealthSummary[];
-}
-
-export interface ChannelHealthSummary {
-  accountId?: string;
-  configured?: boolean;
-  linked?: boolean;
-  authAgeMs?: number | null;
-  probe?: unknown;
-  accounts?: Record<string, { accountId: string; linked?: boolean; configured?: boolean }>;
-}
-
-export interface AgentHealthSummary {
-  agentId: string;
-  name?: string;
-  isDefault: boolean;
-  heartbeat: { lastRunAt?: number; ok?: boolean };
-  sessions: { total: number; active: number };
-}
-
 // ── Agents ─────────────────────────────────────────────────────────────────
 
 export interface AgentSummary {

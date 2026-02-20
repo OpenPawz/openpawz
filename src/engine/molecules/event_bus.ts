@@ -4,7 +4,7 @@
 //
 // This module is side-effectful on import — it calls onEngineAgent() once.
 
-import { onEngineAgent } from '../../engine-bridge';
+import { onEngineAgent } from './bridge';
 import { appState } from '../../state/index';
 import {
   appendStreamingDelta,
