@@ -2,6 +2,7 @@
 
 import { pawEngine } from '../engine';
 import { getCurrentAgent, spriteAvatar } from './agents';
+import { switchView } from './router';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -98,8 +99,8 @@ async function fetchWeather() {
       <div class="today-weather-desc">${desc}</div>
       <div class="today-weather-details">
         ${feelsLikeC ? `<span>Feels like ${feelsLikeC}°C</span>` : ''}
-        ${humidity ? `<span>💧 ${humidity}%</span>` : ''}
-        ${windKmph ? `<span>💨 ${windKmph} km/h</span>` : ''}
+        ${humidity ? `<span><span class="ms ms-sm">water_drop</span> ${humidity}%</span>` : ''}
+        ${windKmph ? `<span><span class="ms ms-sm">air</span> ${windKmph} km/h</span>` : ''}
       </div>
       ${location ? `<div class="today-weather-location">${escHtml(location)}</div>` : ''}
     `;
@@ -107,7 +108,7 @@ async function fetchWeather() {
     console.warn('[today] Weather fetch failed:', e);
     weatherEl.innerHTML = `
       <div class="today-weather-main">
-        <span class="today-weather-icon">🌤️</span>
+        <span class="today-weather-icon"><span class="ms ms-lg">cloud</span></span>
         <span class="today-weather-temp">--</span>
       </div>
       <div class="today-weather-desc">Weather unavailable — check connection</div>
@@ -115,17 +116,18 @@ async function fetchWeather() {
   }
 }
 
-/** Map WMO weather code to emoji icon (used by weather widget) */
+/** Map WMO weather code to Material Symbol icon (used by weather widget) */
 export function getWeatherIcon(code: string): string {
   const c = parseInt(code);
-  if (c === 113) return '☀️';
-  if (c === 116) return '⛅';
-  if ([119, 122].includes(c)) return '☁️';
-  if ([143, 248, 260].includes(c)) return '🌫️';
-  if ([176, 263, 266, 293, 296, 299, 302, 305, 308, 311, 314, 353, 356, 359].includes(c)) return '🌧️';
-  if ([179, 182, 185, 281, 284, 317, 320, 323, 326, 329, 332, 335, 338, 350, 362, 365, 368, 371, 374, 377].includes(c)) return '🌨️';
-  if ([200, 386, 389, 392, 395].includes(c)) return '⛈️';
-  return '🌤️';
+  const ms = (name: string) => `<span class="ms ms-lg">${name}</span>`;
+  if (c === 113) return ms('light_mode');
+  if (c === 116) return ms('partly_cloudy_day');
+  if ([119, 122].includes(c)) return ms('cloud');
+  if ([143, 248, 260].includes(c)) return ms('mist');
+  if ([176, 263, 266, 293, 296, 299, 302, 305, 308, 311, 314, 353, 356, 359].includes(c)) return ms('rainy');
+  if ([179, 182, 185, 281, 284, 317, 320, 323, 326, 329, 332, 335, 338, 350, 362, 365, 368, 371, 374, 377].includes(c)) return ms('weather_snowy');
+  if ([200, 386, 389, 392, 395].includes(c)) return ms('thunderstorm');
+  return ms('partly_cloudy_day');
 }
 
 async function fetchUnreadEmails() {
@@ -192,7 +194,7 @@ async function fetchUnreadEmails() {
     const unread = envelopes.filter(e => !e.flags?.includes('Seen'));
 
     if (unread.length === 0) {
-      emailsEl.innerHTML = `<div class="today-section-empty">📭 No unread emails — you're all caught up!</div>`;
+      emailsEl.innerHTML = `<div class="today-section-empty"><span class="ms ms-sm">mark_email_read</span> No unread emails — you're all caught up!</div>`;
       return;
     }
 
@@ -259,7 +261,7 @@ function renderToday() {
         <!-- Weather -->
         <div class="today-card">
           <div class="today-card-header">
-            <span class="today-card-icon">☀️</span>
+            <span class="today-card-icon"><span class="ms">partly_cloudy_day</span></span>
             <span class="today-card-title">Weather</span>
           </div>
           <div class="today-card-body" id="today-weather">
@@ -270,7 +272,7 @@ function renderToday() {
         <!-- Tasks -->
         <div class="today-card today-card-tasks">
           <div class="today-card-header">
-            <span class="today-card-icon">✅</span>
+            <span class="today-card-icon"><span class="ms">task_alt</span></span>
             <span class="today-card-title">Tasks</span>
             <span class="today-card-count">${pendingTasks.length}</span>
             <button class="btn btn-ghost btn-sm today-add-task-btn">+ Add</button>
@@ -296,7 +298,7 @@ function renderToday() {
         <!-- Unread Emails -->
         <div class="today-card">
           <div class="today-card-header">
-            <span class="today-card-icon">📧</span>
+            <span class="today-card-icon"><span class="ms">mail</span></span>
             <span class="today-card-title">Unread Emails</span>
           </div>
           <div class="today-card-body" id="today-emails">
@@ -309,18 +311,18 @@ function renderToday() {
         <!-- Quick Actions -->
         <div class="today-card">
           <div class="today-card-header">
-            <span class="today-card-icon">⚡</span>
+            <span class="today-card-icon"><span class="ms">bolt</span></span>
             <span class="today-card-title">Quick Actions</span>
           </div>
           <div class="today-card-body">
             <button class="today-quick-action" id="today-briefing-btn">
-              <span>🎙️</span> Morning Briefing
+              <span class="ms">campaign</span> Morning Briefing
             </button>
             <button class="today-quick-action" id="today-summarize-btn">
-              <span>📝</span> Summarize Inbox
+              <span class="ms">summarize</span> Summarize Inbox
             </button>
             <button class="today-quick-action" id="today-schedule-btn">
-              <span>📅</span> What's on today?
+              <span class="ms">calendar_today</span> What's on today?
             </button>
           </div>
         </div>
@@ -430,6 +432,7 @@ function deleteTask(taskId: string) {
 
 async function triggerBriefing() {
   showToast('Starting morning briefing...');
+  switchView('chat');
   try {
     await pawEngine.chatSend('main', 'Give me a morning briefing: weather, any calendar events today, and summarize my unread emails.');
   } catch {
@@ -439,6 +442,7 @@ async function triggerBriefing() {
 
 async function triggerInboxSummary() {
   showToast('Summarizing inbox...');
+  switchView('chat');
   try {
     await pawEngine.chatSend('main', 'Check my email inbox and summarize the important unread messages.');
   } catch {
@@ -448,6 +452,7 @@ async function triggerInboxSummary() {
 
 async function triggerScheduleCheck() {
   showToast('Checking schedule...');
+  switchView('chat');
   try {
     await pawEngine.chatSend('main', 'What do I have scheduled for today? Check my calendar.');
   } catch {
@@ -479,7 +484,7 @@ function getPawzMessage(pendingTasks: number, completedToday: number): string {
   
   // Task-based context
   if (completedToday > 0 && pendingTasks === 0) {
-    message += `You crushed it — ${completedToday} task${completedToday > 1 ? 's' : ''} done and nothing pending! 🎉`;
+    message += `You crushed it — ${completedToday} task${completedToday > 1 ? 's' : ''} done and nothing pending!`;
   } else if (completedToday > 0) {
     message += `Nice progress! ${completedToday} down, ${pendingTasks} to go.`;
   } else if (pendingTasks > 0) {
