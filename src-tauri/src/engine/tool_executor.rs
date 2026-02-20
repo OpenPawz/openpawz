@@ -3,7 +3,7 @@
 // Every tool call goes through here — this is the security enforcement point.
 
 use crate::engine::types::*;
-use crate::commands::state::EngineState;
+use crate::engine::state::EngineState;
 use crate::engine::memory;
 use crate::engine::skills;
 use crate::engine::sandbox;
@@ -616,8 +616,8 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> Result<String, Stri
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
-    let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
-    let mcfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let cfg = state.config.lock();
+    let mcfg = state.memory_config.lock();
 
     // Provider info
     let providers_info: Vec<String> = cfg.providers.iter().map(|p| {
@@ -1200,7 +1200,7 @@ async fn execute_skill_tool(
                     let app = app_handle.clone();
 
                     // Parse received amount from the swap result markdown
-                    let result_text = result.as_ref().unwrap().clone();
+                    let result_text = result.as_ref().map(|r| r.clone()).unwrap_or_default();
                     tokio::spawn(async move {
                         // Get current price from DexScreener
                         let price = crate::engine::sol_dex::get_token_price_usd(&output_mint).await.unwrap_or(0.0);

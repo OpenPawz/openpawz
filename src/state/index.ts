@@ -6,7 +6,7 @@ import type { AppConfig, Session } from '../types';
 
 // ── Extended message type ──────────────────────────────────────────────────
 export interface ChatAttachmentLocal {
-  name: string;
+  name?: string;
   mimeType: string;
   url?: string;
   data?: string; // base64
@@ -76,6 +76,22 @@ export const MODEL_COST_PER_TOKEN: Record<string, { input: number; output: numbe
   'default':          { input: 3e-6,    output: 15e-6 },
 };
 
+// ── Per-session stream state ───────────────────────────────────────────────
+export interface StreamState {
+  content:  string;
+  el:       HTMLElement | null;
+  runId:    string | null;
+  resolve:  ((text: string) => void) | null;
+  timeout:  ReturnType<typeof setTimeout> | null;
+  agentId:  string | null;
+  /** Set to true after onToken has fired for this run to prevent double-counting */
+  tokenRecorded: boolean;
+}
+
+export function createStreamState(agentId?: string | null): StreamState {
+  return { content: '', el: null, runId: null, resolve: null, timeout: null, agentId: agentId ?? null, tokenRecorded: false };
+}
+
 // ── Mutable singleton state ────────────────────────────────────────────────
 export const appState = {
   // Core config (loaded from localStorage)
@@ -88,13 +104,56 @@ export const appState = {
   sessions:          [] as Session[],
   wsConnected:       false,
 
-  // Streaming pipeline
-  streamingContent:  '',
-  streamingEl:       null as HTMLElement | null,
-  streamingRunId:    null as string | null,
-  streamingResolve:  null as ((text: string) => void) | null,
+  // Streaming pipeline — session-keyed for concurrent isolation
+  activeStreams: new Map<string, StreamState>(),
+
+  // Legacy convenience accessors (delegate to current session's stream)
+  get streamingContent(): string {
+    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
+    return s?.content ?? '';
+  },
+  set streamingContent(v: string) {
+    const key = appState.currentSessionKey ?? '';
+    const s = appState.activeStreams.get(key);
+    if (s) s.content = v;
+  },
+  get streamingEl(): HTMLElement | null {
+    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
+    return s?.el ?? null;
+  },
+  set streamingEl(v: HTMLElement | null) {
+    const key = appState.currentSessionKey ?? '';
+    const s = appState.activeStreams.get(key);
+    if (s) s.el = v;
+  },
+  get streamingRunId(): string | null {
+    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
+    return s?.runId ?? null;
+  },
+  set streamingRunId(v: string | null) {
+    const key = appState.currentSessionKey ?? '';
+    const s = appState.activeStreams.get(key);
+    if (s) s.runId = v;
+  },
+  get streamingResolve(): ((text: string) => void) | null {
+    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
+    return s?.resolve ?? null;
+  },
+  set streamingResolve(v: ((text: string) => void) | null) {
+    const key = appState.currentSessionKey ?? '';
+    const s = appState.activeStreams.get(key);
+    if (s) s.resolve = v;
+  },
   streamingTimeout:  null as ReturnType<typeof setTimeout> | null,
-  streamingAgentId:  null as string | null,
+  get streamingAgentId(): string | null {
+    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
+    return s?.agentId ?? null;
+  },
+  set streamingAgentId(v: string | null) {
+    const key = appState.currentSessionKey ?? '';
+    const s = appState.activeStreams.get(key);
+    if (s) s.agentId = v;
+  },
 
   // Attachments
   pendingAttachments: [] as File[],

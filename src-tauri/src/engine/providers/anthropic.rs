@@ -26,7 +26,11 @@ impl AnthropicProvider {
             .unwrap_or_else(|| config.kind.default_base_url().to_string());
         let is_azure = base_url.contains(".azure.com");
         AnthropicProvider {
-            client: Client::new(),
+            client: Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(10))
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .unwrap_or_default(),
             base_url,
             api_key: config.api_key.clone(),
             is_azure,

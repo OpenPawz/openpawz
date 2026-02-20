@@ -5,7 +5,7 @@
 use crate::engine::types::*;
 use crate::engine::providers::AnyProvider;
 use crate::engine::tool_executor;
-use crate::commands::state::{EngineState, PendingApprovals, DailyTokenTracker};
+use crate::engine::state::{EngineState, PendingApprovals, DailyTokenTracker};
 use log::{info, warn, error};
 use std::time::Duration;
 use tauri::{Emitter, Manager};
@@ -290,7 +290,7 @@ pub async fn run_agent_turn(
                 // Register a oneshot channel for approval
                 let (approval_tx, approval_rx) = tokio::sync::oneshot::channel::<bool>();
                 {
-                    let mut map = pending_approvals.lock().unwrap();
+                    let mut map = pending_approvals.lock();
                     map.insert(tc.id.clone(), approval_tx);
                 }
 
@@ -312,7 +312,7 @@ pub async fn run_agent_turn(
                     Err(_) => {
                         warn!("[engine] Approval timeout ({}s) for tool {}", tool_timeout_secs, tc.function.name);
                         // Clean up the pending entry
-                        let mut map = pending_approvals.lock().unwrap();
+                        let mut map = pending_approvals.lock();
                         map.remove(&tc.id);
                         false
                     }

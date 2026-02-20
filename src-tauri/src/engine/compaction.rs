@@ -187,7 +187,7 @@ pub async fn compact_session(
 
     // 4. Delete old messages from DB
     {
-        let conn = store.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = store.conn.lock();
         for msg in old_messages {
             conn.execute(
                 "DELETE FROM messages WHERE id = ?1",

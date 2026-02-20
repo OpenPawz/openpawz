@@ -7,8 +7,22 @@ import { escHtml, populateModelSelect, promptModal, icon } from './components/he
 import { showToast } from './components/toast';
 import { initTheme } from './components/molecules/theme';
 import { initHILModal } from './components/molecules/hil_modal';
-import { initChatListeners, switchToAgent, populateAgentSelect } from './engine/organisms/chat_controller';
-import './engine/molecules/event_bus';
+import { initChatListeners, switchToAgent, populateAgentSelect, appendStreamingDelta, recordTokenUsage, updateContextLimitFromModel } from './engine/organisms/chat_controller';
+import { registerStreamHandlers, registerResearchRouter } from './engine/molecules/event_bus';
+import * as ResearchModule from './views/research';
+
+// ── Wire event_bus callbacks (engine ← view layer) ──
+registerStreamHandlers({
+  onDelta: appendStreamingDelta,
+  onToken: recordTokenUsage,
+  onModel: updateContextLimitFromModel,
+});
+registerResearchRouter({
+  isStreaming: ResearchModule.isStreaming,
+  getRunId: ResearchModule.getRunId,
+  appendDelta: ResearchModule.appendDelta,
+  resolveStream: ResearchModule.resolveStream,
+});
 import { initChannels, openMemoryFile, autoStartConfiguredChannels, closeChannelSetup } from './views/channels';
 import { initContent } from './views/content';
 import { switchView, showView } from './views/router';
@@ -25,7 +39,6 @@ import * as MemoryPalaceModule from './views/memory-palace';
 import * as MailModule from './views/mail';
 import * as SkillsModule from './views/skills';
 import * as FoundryModule from './views/foundry';
-import * as ResearchModule from './views/research';
 import * as NodesModule from './views/nodes';
 import * as ProjectsModule from './views/projects';
 import * as AgentsModule from './views/agents';

@@ -31,10 +31,7 @@ pub async fn engine_memory_search(
     agent_id: Option<String>,
 ) -> Result<Vec<Memory>, String> {
     let lim = limit.unwrap_or(10);
-    let threshold = {
-        let mcfg = state.memory_config.lock().ok();
-        mcfg.map(|c| c.recall_threshold).unwrap_or(0.3)
-    };
+    let threshold = state.memory_config.lock().recall_threshold;
     let emb_client = state.embedding_client();
     memory::search_memories(&state.store, &query, lim, threshold, emb_client.as_ref(), agent_id.as_deref()).await
 }
@@ -68,7 +65,7 @@ pub fn engine_memory_list(
 pub fn engine_get_memory_config(
     state: State<'_, EngineState>,
 ) -> Result<MemoryConfig, String> {
-    let cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let cfg = state.memory_config.lock();
     Ok(cfg.clone())
 }
 
@@ -80,7 +77,7 @@ pub fn engine_set_memory_config(
     let json = serde_json::to_string(&config)
         .map_err(|e| format!("Serialize error: {}", e))?;
     state.store.set_config("memory_config", &json)?;
-    let mut cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut cfg = state.memory_config.lock();
     *cfg = config;
     info!("[engine] Memory config updated");
     Ok(())
@@ -116,7 +113,7 @@ pub async fn engine_embedding_status(
     };
 
     let model_name = {
-        let cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.memory_config.lock();
         cfg.embedding_model.clone()
     };
 
@@ -166,7 +163,7 @@ pub async fn engine_ensure_embedding_ready(
     state: State<'_, EngineState>,
 ) -> Result<memory::OllamaReadyStatus, String> {
     let config = {
-        let cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.memory_config.lock();
         cfg.clone()
     };
 
@@ -174,7 +171,7 @@ pub async fn engine_ensure_embedding_ready(
 
     // If we discovered the actual dimensions, update the config
     if status.embedding_dims > 0 {
-        let mut cfg = state.memory_config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let mut cfg = state.memory_config.lock();
         if cfg.embedding_dims != status.embedding_dims {
             info!("[engine] Updating embedding_dims from {} to {} based on actual model output", cfg.embedding_dims, status.embedding_dims);
             cfg.embedding_dims = status.embedding_dims;

@@ -83,7 +83,7 @@ export async function engineChatSend(
     agentProfile?: { id?: string; name?: string; bio?: string; systemPrompt?: string; model?: string; personality?: { tone?: string; initiative?: string; detail?: string }; boundaries?: string[] };
     attachments?: Array<{ type?: string; mimeType: string; content: string; name?: string; fileName?: string }>;
   } = {},
-): Promise<{ runId: string; sessionKey: string; status: string }> {
+): Promise<{ runId: string; sessionKey: string; status: string; usage?: Record<string, unknown>; text?: string; response?: unknown }> {
   const rawModel = opts.model ?? opts.agentProfile?.model;
   const resolvedModel = (rawModel && rawModel !== 'default' && rawModel !== 'Default') ? rawModel : undefined;
 

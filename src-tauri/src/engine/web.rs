@@ -12,7 +12,8 @@
 use headless_chrome::{Browser, LaunchOptions, Tab};
 use log::{info, warn, error};
 use scraper::{Html, Selector};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, OnceLock};
+use parking_lot::Mutex;
 use std::time::Duration;
 
 // ── Shared browser instance (lazy singleton) ───────────────────────────
@@ -21,7 +22,7 @@ static BROWSER: OnceLock<Mutex<Option<Arc<Browser>>>> = OnceLock::new();
 
 fn get_or_launch_browser() -> Result<Arc<Browser>, String> {
     let mutex = BROWSER.get_or_init(|| Mutex::new(None));
-    let mut guard = mutex.lock().map_err(|e| format!("Browser lock error: {}", e))?;
+    let mut guard = mutex.lock();
 
     // Return existing browser if alive
     if let Some(ref browser) = *guard {

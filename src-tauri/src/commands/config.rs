@@ -34,7 +34,7 @@ pub fn engine_sandbox_set_config(
 pub fn engine_get_config(
     state: State<'_, EngineState>,
 ) -> Result<EngineConfig, String> {
-    let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let cfg = state.config.lock();
     Ok(cfg.clone())
 }
 
@@ -47,7 +47,7 @@ pub fn engine_get_daily_spend(
     let cache_read = state.daily_tokens.cache_read_tokens.load(Ordering::Relaxed);
     let cache_create = state.daily_tokens.cache_create_tokens.load(Ordering::Relaxed);
     let budget = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         cfg.daily_budget_usd
     };
     let budget_pct = if budget > 0.0 { (estimated_usd / budget * 100.0).min(100.0) } else { 0.0 };
@@ -75,7 +75,7 @@ pub fn engine_set_config(
     state.store.set_config("engine_config", &json)?;
 
     // Update in-memory config
-    let mut cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut cfg = state.config.lock();
     *cfg = config;
 
     info!("[engine] Config updated, {} providers configured", cfg.providers.len());
@@ -88,7 +88,7 @@ pub fn engine_upsert_provider(
     state: State<'_, EngineState>,
     provider: ProviderConfig,
 ) -> Result<(), String> {
-    let mut cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut cfg = state.config.lock();
 
     // Update existing or add new
     if let Some(existing) = cfg.providers.iter_mut().find(|p| p.id == provider.id) {
@@ -117,7 +117,7 @@ pub fn engine_remove_provider(
     state: State<'_, EngineState>,
     provider_id: String,
 ) -> Result<(), String> {
-    let mut cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let mut cfg = state.config.lock();
 
     cfg.providers.retain(|p| p.id != provider_id);
 
@@ -139,7 +139,7 @@ pub fn engine_remove_provider(
 pub fn engine_status(
     state: State<'_, EngineState>,
 ) -> Result<serde_json::Value, String> {
-    let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+    let cfg = state.config.lock();
 
     let has_providers = !cfg.providers.is_empty();
     let has_api_key = cfg.providers.iter().any(|p| !p.api_key.is_empty());
@@ -161,7 +161,7 @@ pub async fn engine_auto_setup(
 ) -> Result<serde_json::Value, String> {
     // Only run if no providers are configured yet
     {
-        let cfg = state.config.lock().map_err(|e| format!("Lock: {}", e))?;
+        let cfg = state.config.lock();
         if !cfg.providers.is_empty() {
             return Ok(serde_json::json!({ "action": "none", "reason": "providers_exist" }));
         }
@@ -266,7 +266,7 @@ pub async fn engine_auto_setup(
     };
 
     {
-        let mut cfg = state.config.lock().map_err(|e| format!("Lock: {}", e))?;
+        let mut cfg = state.config.lock();
         cfg.providers.push(provider);
         cfg.default_provider = Some("ollama".to_string());
         cfg.default_model = Some(model_name.clone());

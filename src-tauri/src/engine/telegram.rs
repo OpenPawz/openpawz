@@ -17,7 +17,7 @@ use crate::engine::providers::AnyProvider;
 use crate::engine::agent_loop;
 use crate::engine::skills;
 use crate::engine::memory;
-use crate::commands::state::{EngineState, PendingApprovals, normalize_model_name, resolve_provider_for_model};
+use crate::engine::state::{EngineState, PendingApprovals, normalize_model_name, resolve_provider_for_model};
 use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -508,7 +508,7 @@ async fn run_telegram_agent(
     // setting is respected for Telegram (instead of burning the expensive
     // default_model on every DM)
     let (provider_config, model, system_prompt, max_rounds, tool_timeout) = {
-        let cfg = engine_state.config.lock().map_err(|e| format!("Lock: {}", e))?;
+        let cfg = engine_state.config.lock();
 
         let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".into());
         let model = normalize_model_name(
@@ -563,12 +563,8 @@ async fn run_telegram_agent(
 
     // Auto-recall memories
     let (auto_recall_on, recall_limit, recall_threshold) = {
-        let mcfg = engine_state.memory_config.lock().ok();
-        (
-            mcfg.as_ref().map(|c| c.auto_recall).unwrap_or(false),
-            mcfg.as_ref().map(|c| c.recall_limit).unwrap_or(5),
-            mcfg.as_ref().map(|c| c.recall_threshold).unwrap_or(0.3),
-        )
+        let mcfg = engine_state.memory_config.lock();
+        (mcfg.auto_recall, mcfg.recall_limit, mcfg.recall_threshold)
     };
 
     let memory_context = if auto_recall_on {
@@ -598,7 +594,7 @@ async fn run_telegram_agent(
         // Local time context
         {
             let user_tz = {
-                let cfg = engine_state.config.lock().map_err(|e| format!("Lock: {}", e))?;
+                let cfg = engine_state.config.lock();
                 cfg.user_timezone.clone()
             };
             let now_utc = chrono::Utc::now();
@@ -667,7 +663,7 @@ async fn run_telegram_agent(
 
     // For Telegram, we auto-approve all tool calls (no HIL — user is on phone)
     // Create approvals map that auto-resolves
-    let approvals: PendingApprovals = std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new()));
+    let approvals: PendingApprovals = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
 
     // Spawn auto-approver: listen for tool requests and approve them
     let _app_clone = app_handle.clone();
@@ -678,7 +674,7 @@ async fn run_telegram_agent(
         // For Telegram we'll handle it differently — see below
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            let mut map = approvals_clone.lock().unwrap();
+            let mut map = approvals_clone.lock();
             let keys: Vec<String> = map.keys().cloned().collect();
             for key in keys {
                 if let Some(sender) = map.remove(&key) {
@@ -699,7 +695,7 @@ async fn run_telegram_agent(
 
     // Get daily budget config
     let daily_budget = {
-        let cfg = engine_state.config.lock().map_err(|e| format!("Lock: {}", e))?;
+        let cfg = engine_state.config.lock();
         cfg.daily_budget_usd
     };
     let daily_tokens_tracker = engine_state.daily_tokens.clone();
@@ -751,8 +747,7 @@ async fn run_telegram_agent(
 
     // Auto-capture memories
     if let Ok(final_text) = &result {
-        let auto_capture = engine_state.memory_config.lock().ok()
-            .map(|c| c.auto_capture).unwrap_or(false);
+        let auto_capture = engine_state.memory_config.lock().auto_capture;
         if auto_capture && !final_text.is_empty() {
             let facts = memory::extract_memorable_facts(message, final_text);
             if !facts.is_empty() {

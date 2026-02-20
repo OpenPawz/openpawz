@@ -76,7 +76,11 @@ impl OpenAiProvider {
             .unwrap_or_else(|| config.kind.default_base_url().to_string());
         let is_azure = base_url.contains(".azure.com");
         OpenAiProvider {
-            client: Client::new(),
+            client: Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(120))
+                .build()
+                .unwrap_or_default(),
             base_url,
             api_key: config.api_key.clone(),
             is_azure,

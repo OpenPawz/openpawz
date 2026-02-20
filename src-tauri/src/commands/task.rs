@@ -147,7 +147,7 @@ pub async fn execute_task(
 ) -> Result<String, String> {
     // ── Dedup guard: skip if this task is already running ──
     {
-        let mut inflight = state.inflight_tasks.lock().map_err(|e| format!("Lock: {}", e))?;
+        let mut inflight = state.inflight_tasks.lock();
         if inflight.contains(task_id) {
             info!("[engine] Task '{}' already in flight — skipping duplicate", task_id);
             return Err(format!("Task {} is already running", task_id));
@@ -192,7 +192,7 @@ pub async fn execute_task(
     };
 
     let (base_system_prompt, max_rounds, tool_timeout, model_routing, default_model) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         (
             cfg.default_system_prompt.clone(),
             cfg.max_tool_rounds,
@@ -230,7 +230,7 @@ pub async fn execute_task(
     let inflight = state.inflight_tasks.clone();
 
     let task_daily_budget = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         cfg.daily_budget_usd
     };
     let task_daily_tokens = state.daily_tokens.clone();
@@ -270,7 +270,7 @@ pub async fn execute_task(
         info!("[engine] Agent '{}' resolved model: {} (task_override: {:?}, default: {})", agent_id, agent_model, task.model, default_model);
 
         let (provider_config, model) = {
-            let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+            let cfg = state.config.lock();
             let model = agent_model;
             let provider = resolve_provider_for_model(&model, &cfg.providers)
                 .or_else(|| {
@@ -300,7 +300,7 @@ pub async fn execute_task(
 
         {
             let user_tz = {
-                let cfg = state.config.lock().map_err(|e| format!("Lock: {}", e))?;
+                let cfg = state.config.lock();
                 cfg.user_timezone.clone()
             };
             let now_utc = chrono::Utc::now();
@@ -451,9 +451,7 @@ pub async fn execute_task(
             }
         }
 
-        if let Ok(mut set) = inflight_clone.lock() {
-            set.remove(&task_id_for_cleanup);
-        }
+        inflight_clone.lock().remove(&task_id_for_cleanup);
 
         if let Ok(conn) = rusqlite::Connection::open(&store_path) {
             let new_status = if is_recurring {

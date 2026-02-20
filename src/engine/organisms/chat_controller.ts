@@ -7,6 +7,7 @@ import { pawEngine } from '../../engine';
 import { engineChatSend } from '../molecules/bridge';
 import { appState, agentSessionMap, persistAgentSessionMap,
          MODEL_CONTEXT_SIZES, MODEL_COST_PER_TOKEN, COMPACTION_WARN_THRESHOLD,
+         createStreamState,
          type MessageWithAttachments } from '../../state/index';
 import { formatMarkdown } from '../../components/molecules/markdown';
 import { escHtml, icon } from '../../components/helpers';
@@ -124,7 +125,7 @@ export function renderSessionSelect(): void {
   for (const s of agentSessions) {
     const opt = document.createElement('option');
     opt.value = s.key;
-    opt.textContent = (s as unknown as Record<string, unknown>).label as string ?? (s as unknown as Record<string, unknown>).displayName as string ?? s.key;
+    opt.textContent = s.label ?? s.displayName ?? s.key;
     if (s.key === appState.currentSessionKey) opt.selected = true;
     chatSessionSelect.appendChild(opt);
   }
@@ -354,7 +355,12 @@ export function showStreamingMessage(): void {
   div.appendChild(contentEl);
   div.appendChild(time);
   chatMessages?.appendChild(div);
-  appState.streamingEl = contentEl;
+
+  // Create session-keyed stream state
+  const key = appState.currentSessionKey ?? '';
+  const ss = createStreamState(AgentsModule.getCurrentAgent()?.id);
+  ss.el = contentEl;
+  appState.activeStreams.set(key, ss);
 
   const abortBtn = $('chat-abort-btn');
   if (abortBtn) abortBtn.style.display = '';
@@ -382,12 +388,13 @@ export function appendStreamingDelta(text: string): void {
 
 export function finalizeStreaming(finalContent: string, toolCalls?: ToolCall[]): void {
   $('streaming-message')?.remove();
-  appState.streamingEl = null;
-  const savedRunId = appState.streamingRunId;
-  appState.streamingRunId = null;
-  appState.streamingContent = '';
-  const streamingAgent = appState.streamingAgentId;
-  appState.streamingAgentId = null;
+
+  // Tear down session-keyed stream
+  const key = appState.currentSessionKey ?? '';
+  const ss = appState.activeStreams.get(key);
+  const savedRunId = ss?.runId ?? null;
+  const streamingAgent = ss?.agentId ?? null;
+  appState.activeStreams.delete(key);
 
   const abortBtn = $('chat-abort-btn');
   if (abortBtn) abortBtn.style.display = 'none';
@@ -717,8 +724,8 @@ export async function sendMessage(): Promise<void> {
         if (label) {
           const newId = `session_${Date.now()}`;
           const result = await pawEngine.chatSend({ session_id: newId, message: '', model: '' });
-          if ((result as unknown as Record<string, unknown>).session_id) {
-            appState.currentSessionKey = (result as unknown as Record<string, unknown>).session_id as string;
+          if (result.session_id) {
+            appState.currentSessionKey = result.session_id;
             await pawEngine.sessionRename(appState.currentSessionKey!, label);
           }
         }
@@ -749,7 +756,7 @@ export async function sendMessage(): Promise<void> {
   // User message
   const userMsg: Message = { role: 'user', content, timestamp: new Date() };
   if (attachments.length) {
-    (userMsg as unknown as Record<string, unknown>).attachments = attachments.map(a => ({ mimeType: a.mimeType, data: a.content }));
+    userMsg.attachments = attachments.map(a => ({ name: a.name ?? 'attachment', mimeType: a.mimeType, data: a.content }));
   }
   addMessage(userMsg);
   if (chatInput) { chatInput.value = ''; chatInput.style.height = 'auto'; }
@@ -757,16 +764,17 @@ export async function sendMessage(): Promise<void> {
   appState.isLoading = true;
   if (chatSend) chatSend.disabled = true;
 
-  appState.streamingContent  = '';
-  appState.streamingRunId    = null;
-  appState.streamingAgentId  = AgentsModule.getCurrentAgent()?.id ?? null;
   showStreamingMessage();
 
+  // Get stream state (created by showStreamingMessage)
+  const streamKey = appState.currentSessionKey ?? '';
+  const ss = appState.activeStreams.get(streamKey)!;
+
   const responsePromise = new Promise<string>((resolve) => {
-    appState.streamingResolve = resolve;
+    ss.resolve = resolve;
     appState.streamingTimeout = setTimeout(() => {
       console.warn('[chat] Streaming timeout — auto-finalizing');
-      resolve(appState.streamingContent || '(Response timed out)');
+      resolve(ss.content || '(Response timed out)');
     }, 600_000);
   });
 
@@ -801,24 +809,28 @@ export async function sendMessage(): Promise<void> {
     });
     console.log('[chat] send ack:', JSON.stringify(result).slice(0, 300));
 
-    if (result.runId) appState.streamingRunId = result.runId;
+    if (result.runId) ss.runId = result.runId;
     if (result.sessionKey) {
       appState.currentSessionKey = result.sessionKey;
+      // Re-key the stream state if session changed
+      if (result.sessionKey !== streamKey) {
+        appState.activeStreams.delete(streamKey);
+        appState.activeStreams.set(result.sessionKey, ss);
+      }
       const curAgent = AgentsModule.getCurrentAgent();
       if (curAgent) { agentSessionMap.set(curAgent.id, result.sessionKey); persistAgentSessionMap(); }
     }
 
-    const sendUsage = (result as unknown as Record<string, unknown>).usage as Record<string, unknown> | undefined;
+    const sendUsage = result.usage;
     if (sendUsage) recordTokenUsage(sendUsage);
 
-    const resultAny = result as unknown as Record<string, unknown>;
-    const ackText = (resultAny.text as string | undefined)
-      ?? (typeof resultAny.response === 'string' ? resultAny.response as string : null)
-      ?? extractContent(resultAny.response);
-    if (ackText && appState.streamingResolve) {
+    const ackText = result.text
+      ?? (typeof result.response === 'string' ? result.response : null)
+      ?? extractContent(result.response);
+    if (ackText && ss.resolve) {
       appendStreamingDelta(ackText);
-      appState.streamingResolve(ackText);
-      appState.streamingResolve = null;
+      ss.resolve(ackText);
+      ss.resolve = null;
     }
 
     const finalText = await responsePromise;
@@ -826,15 +838,15 @@ export async function sendMessage(): Promise<void> {
     loadSessions({ skipHistory: true }).catch(() => {});
   } catch (error) {
     console.error('[chat] error:', error);
-    if (appState.streamingEl) {
+    if (ss?.el) {
       const errMsg = error instanceof Error ? error.message : 'Failed to get response';
-      finalizeStreaming(appState.streamingContent || `Error: ${errMsg}`);
+      finalizeStreaming(ss.content || `Error: ${errMsg}`);
     }
   } finally {
     appState.isLoading = false;
-    appState.streamingRunId   = null;
-    appState.streamingResolve = null;
-    appState.streamingAgentId = null;
+    // Clean up stream state if still present
+    const finalKey = appState.currentSessionKey ?? streamKey;
+    appState.activeStreams.delete(finalKey);
     if (appState.streamingTimeout) { clearTimeout(appState.streamingTimeout); appState.streamingTimeout = null; }
     const chatSendBtn = document.getElementById('chat-send') as HTMLButtonElement | null;
     if (chatSendBtn) chatSendBtn.disabled = false;

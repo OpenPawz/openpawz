@@ -761,7 +761,8 @@ pub async fn execute_dex_wallet_create(
 ) -> Result<String, String> {
     // Check if wallet already exists
     if creds.contains_key("DEX_PRIVATE_KEY") && creds.contains_key("DEX_WALLET_ADDRESS") {
-        let addr = creds.get("DEX_WALLET_ADDRESS").unwrap();
+        let addr = creds.get("DEX_WALLET_ADDRESS")
+            .ok_or("DEX_WALLET_ADDRESS not found in credentials")?;
         return Ok(format!(
             "Wallet already exists!\n\nAddress: {}\n\nTo create a new wallet, first remove the existing credentials in Settings → Skills → DEX Trading.",
             addr
@@ -780,7 +781,7 @@ pub async fn execute_dex_wallet_create(
     // Store private key encrypted in vault
     let private_key_hex = hex_encode(&signing_key.to_bytes());
 
-    let state = app_handle.try_state::<crate::commands::state::EngineState>()
+    let state = app_handle.try_state::<crate::engine::state::EngineState>()
         .ok_or("Engine state not available")?;
     let vault_key = crate::engine::skills::get_vault_key()?;
 
@@ -926,7 +927,8 @@ pub async fn execute_dex_quote(
         return Err(format!("Unexpected quoter response length: {} bytes", result_bytes.len()));
     }
 
-    let amount_out_bytes: [u8; 32] = result_bytes[..32].try_into().unwrap();
+    let amount_out_bytes: [u8; 32] = result_bytes[..32].try_into()
+        .map_err(|_| "Failed to parse 32-byte amount from quoter response")?;
     let amount_out_hex = hex_encode(&amount_out_bytes);
     let amount_out = raw_to_amount(&amount_out_hex, token_out_dec)?;
 
@@ -1013,7 +1015,7 @@ pub async fn execute_dex_swap(
             Ok(r) => {
                 let qb = hex_decode(&r)?;
                 if qb.len() < 32 { return Err("Invalid quoter response".into()); }
-                qb[..32].try_into().unwrap()
+                qb[..32].try_into().map_err(|_| "Quoter response byte conversion failed")?
             },
             Err(_) if token_in_bytes != weth_bytes && token_out_bytes != weth_bytes => {
                 info!("[dex] Single-hop quote failed, trying multi-hop through WETH");
@@ -1027,7 +1029,7 @@ pub async fn execute_dex_swap(
                     .map_err(|e| format!("Both single-hop and multi-hop quotes failed: {}", e))?;
                 let qb = hex_decode(&r)?;
                 if qb.len() < 32 { return Err("Invalid quoter response".into()); }
-                qb[..32].try_into().unwrap()
+                qb[..32].try_into().map_err(|_| "Quoter response byte conversion failed")?
             },
             Err(e) => return Err(e),
         }
@@ -1051,7 +1053,8 @@ pub async fn execute_dex_swap(
         let mut needs_approval = true;
         if allowance_bytes.len() >= 32 {
             // Compare: if allowance >= amount, no approval needed
-            let allowance_slice: [u8; 32] = allowance_bytes[..32].try_into().unwrap();
+            let allowance_slice: [u8; 32] = allowance_bytes[..32].try_into()
+                .map_err(|_| "Failed to parse allowance bytes")?;
             needs_approval = allowance_slice < amount_u256;
         }
 
@@ -1313,7 +1316,9 @@ fn decode_abi_string(hex_data: &str) -> Result<String, String> {
     }
     // Standard ABI: offset (32 bytes) + length (32 bytes) + data
     let offset_bytes: [u8; 32] = bytes[..32].try_into().map_err(|_| "Bad offset")?;
-    let offset = u32::from_be_bytes(offset_bytes[28..32].try_into().unwrap()) as usize;
+    let offset = u32::from_be_bytes(
+        offset_bytes[28..32].try_into().map_err(|_| "Bad offset u32 slice")?
+    ) as usize;
 
     if offset + 32 > bytes.len() {
         // Try bytes32 fallback
@@ -1323,7 +1328,9 @@ fn decode_abi_string(hex_data: &str) -> Result<String, String> {
 
     let len_start = offset;
     let len_bytes: [u8; 32] = bytes[len_start..len_start + 32].try_into().map_err(|_| "Bad length")?;
-    let len = u32::from_be_bytes(len_bytes[28..32].try_into().unwrap()) as usize;
+    let len = u32::from_be_bytes(
+        len_bytes[28..32].try_into().map_err(|_| "Bad length u32 slice")?
+    ) as usize;
 
     let data_start = len_start + 32;
     if data_start + len > bytes.len() {
@@ -1459,7 +1466,8 @@ pub async fn execute_dex_token_info(
             Ok(result) => {
                 let result_bytes = hex_decode(&result).unwrap_or_default();
                 if result_bytes.len() >= 32 {
-                    let amount_out: [u8; 32] = result_bytes[..32].try_into().unwrap();
+                    let amount_out: [u8; 32] = result_bytes[..32].try_into()
+                        .map_err(|_| "Byte conversion failed")?;
                     let out_hex = hex_encode(&amount_out);
                     if let Ok(out_amount) = raw_to_amount(&out_hex, token_decimals) {
                         output.push_str(&format!("    Uniswap V3 pool found ({}% fee tier) [OK]\n", *fee as f64 / 10000.0));
@@ -1478,7 +1486,8 @@ pub async fn execute_dex_token_info(
                                     Ok(rev_result) => {
                                         let rev_bytes = hex_decode(&rev_result).unwrap_or_default();
                                         if rev_bytes.len() >= 32 {
-                                            let rev_out: [u8; 32] = rev_bytes[..32].try_into().unwrap();
+                                            let rev_out: [u8; 32] = rev_bytes[..32].try_into()
+                                                .map_err(|_| "Byte conversion failed")?;
                                             let rev_hex = hex_encode(&rev_out);
                                             if let Ok(rev_amount) = raw_to_amount(&rev_hex, 18) {
                                                 let rev_f: f64 = rev_amount.parse().unwrap_or(0.0);
@@ -1618,7 +1627,8 @@ pub async fn execute_dex_check_token(
             Ok(result) => {
                 let result_bytes = hex_decode(&result).unwrap_or_default();
                 if result_bytes.len() >= 32 {
-                    let out: [u8; 32] = result_bytes[..32].try_into().unwrap();
+                    let out: [u8; 32] = result_bytes[..32].try_into()
+                        .map_err(|_| "Byte conversion failed")?;
                     let out_hex = hex_encode(&out);
                     if let Ok(amount) = raw_to_amount(&out_hex, token_decimals) {
                         can_buy = true;
@@ -1632,7 +1642,8 @@ pub async fn execute_dex_check_token(
                                     Ok(rev) => {
                                         let rev_bytes = hex_decode(&rev).unwrap_or_default();
                                         if rev_bytes.len() >= 32 {
-                                            let rev_out: [u8; 32] = rev_bytes[..32].try_into().unwrap();
+                                            let rev_out: [u8; 32] = rev_bytes[..32].try_into()
+                                                .map_err(|_| "Byte conversion failed")?;
                                             let rev_hex = hex_encode(&rev_out);
                                             if let Ok(rev_amount) = raw_to_amount(&rev_hex, 18) {
                                                 can_sell = true;

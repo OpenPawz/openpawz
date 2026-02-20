@@ -49,7 +49,7 @@ pub async fn engine_tts_speak(
     // Find the provider's API key from engine config
     // Extract needed values before any async calls (MutexGuard is !Send)
     let (openai_provider_info, google_key) = {
-        let config = state.config.lock().map_err(|e| e.to_string())?;
+        let config = state.config.lock();
         let openai = config.providers.iter().find(|p| p.kind == ProviderKind::OpenAI);
         let google = config.providers.iter().find(|p| p.kind == ProviderKind::Google);
         (

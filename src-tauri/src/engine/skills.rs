@@ -872,7 +872,7 @@ use crate::engine::sessions::SessionStore;
 impl SessionStore {
     /// Initialize the skill vault tables (call from open()).
     pub fn init_skill_tables(&self) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute_batch("
             CREATE TABLE IF NOT EXISTS skill_credentials (
                 skill_id TEXT NOT NULL,
@@ -900,7 +900,7 @@ impl SessionStore {
     /// Store a credential for a skill.
     /// Value is stored encrypted (caller must encrypt before calling).
     pub fn set_skill_credential(&self, skill_id: &str, key: &str, encrypted_value: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO skill_credentials (skill_id, cred_key, cred_value, updated_at)
              VALUES (?1, ?2, ?3, datetime('now'))
@@ -912,7 +912,7 @@ impl SessionStore {
 
     /// Get a credential for a skill (returns encrypted value).
     pub fn get_skill_credential(&self, skill_id: &str, key: &str) -> Result<Option<String>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let result = conn.query_row(
             "SELECT cred_value FROM skill_credentials WHERE skill_id = ?1 AND cred_key = ?2",
             rusqlite::params![skill_id, key],
@@ -927,7 +927,7 @@ impl SessionStore {
 
     /// Delete a credential for a skill.
     pub fn delete_skill_credential(&self, skill_id: &str, key: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "DELETE FROM skill_credentials WHERE skill_id = ?1 AND cred_key = ?2",
             rusqlite::params![skill_id, key],
@@ -937,7 +937,7 @@ impl SessionStore {
 
     /// Delete ALL credentials for a skill.
     pub fn delete_all_skill_credentials(&self, skill_id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "DELETE FROM skill_credentials WHERE skill_id = ?1",
             rusqlite::params![skill_id],
@@ -947,7 +947,7 @@ impl SessionStore {
 
     /// List which credential keys are set for a skill (not the values).
     pub fn list_skill_credential_keys(&self, skill_id: &str) -> Result<Vec<String>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT cred_key FROM skill_credentials WHERE skill_id = ?1 ORDER BY cred_key"
         ).map_err(|e| format!("Prepare error: {}", e))?;
@@ -960,7 +960,7 @@ impl SessionStore {
 
     /// Get/set skill enabled state.
     pub fn set_skill_enabled(&self, skill_id: &str, enabled: bool) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO skill_state (skill_id, enabled, updated_at) VALUES (?1, ?2, datetime('now'))
              ON CONFLICT(skill_id) DO UPDATE SET enabled = ?2, updated_at = datetime('now')",
@@ -970,7 +970,7 @@ impl SessionStore {
     }
 
     pub fn is_skill_enabled(&self, skill_id: &str) -> Result<bool, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let result = conn.query_row(
             "SELECT enabled FROM skill_state WHERE skill_id = ?1",
             rusqlite::params![skill_id],
@@ -985,7 +985,7 @@ impl SessionStore {
 
     /// Get custom instructions for a skill (if any).
     pub fn get_skill_custom_instructions(&self, skill_id: &str) -> Result<Option<String>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let result = conn.query_row(
             "SELECT instructions FROM skill_custom_instructions WHERE skill_id = ?1",
             rusqlite::params![skill_id],
@@ -1001,7 +1001,7 @@ impl SessionStore {
     /// Set custom instructions for a skill.
     /// Pass empty string to clear (falls back to defaults).
     pub fn set_skill_custom_instructions(&self, skill_id: &str, instructions: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         if instructions.is_empty() {
             conn.execute(
                 "DELETE FROM skill_custom_instructions WHERE skill_id = ?1",

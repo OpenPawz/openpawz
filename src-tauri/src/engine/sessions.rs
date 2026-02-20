@@ -8,7 +8,7 @@ use chrono::Utc;
 use log::{info, warn, error};
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
-use std::sync::Mutex;
+use parking_lot::Mutex;
 
 /// Get the path to the engine's SQLite database.
 pub fn engine_db_path() -> PathBuf {
@@ -314,7 +314,7 @@ impl SessionStore {
     // ── Session CRUD ───────────────────────────────────────────────────
 
     pub fn create_session(&self, id: &str, model: &str, system_prompt: Option<&str>, agent_id: Option<&str>) -> Result<Session, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         conn.execute(
             "INSERT INTO sessions (id, model, system_prompt, agent_id) VALUES (?1, ?2, ?3, ?4)",
@@ -339,7 +339,7 @@ impl SessionStore {
 
     /// List sessions, optionally filtered by agent_id.
     pub fn list_sessions_filtered(&self, limit: i64, agent_id: Option<&str>) -> Result<Vec<Session>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(aid) = agent_id {
             (
@@ -377,7 +377,7 @@ impl SessionStore {
     }
 
     pub fn get_session(&self, id: &str) -> Result<Option<Session>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         let result = conn.query_row(
             "SELECT id, label, model, system_prompt, created_at, updated_at, message_count, agent_id
@@ -405,7 +405,7 @@ impl SessionStore {
     }
 
     pub fn rename_session(&self, id: &str, label: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE sessions SET label = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![label, id],
@@ -414,7 +414,7 @@ impl SessionStore {
     }
 
     pub fn delete_session(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute("DELETE FROM messages WHERE session_id = ?1", params![id])
             .map_err(|e| format!("Delete messages error: {}", e))?;
         conn.execute("DELETE FROM sessions WHERE id = ?1", params![id])
@@ -424,7 +424,7 @@ impl SessionStore {
 
     /// Clear all messages for a session but keep the session itself.
     pub fn clear_messages(&self, session_id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute("DELETE FROM messages WHERE session_id = ?1", params![session_id])
             .map_err(|e| format!("Delete messages error: {}", e))?;
         conn.execute(
@@ -441,7 +441,7 @@ impl SessionStore {
     ///
     /// Returns the number of messages deleted.
     pub fn prune_session_messages(&self, session_id: &str, keep: i64) -> Result<usize, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         // Count current messages
         let total: i64 = conn.query_row(
@@ -482,7 +482,7 @@ impl SessionStore {
     // ── Message CRUD ───────────────────────────────────────────────────
 
     pub fn add_message(&self, msg: &StoredMessage) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         conn.execute(
             "INSERT INTO messages (id, session_id, role, content, tool_calls_json, tool_call_id, name)
@@ -511,7 +511,7 @@ impl SessionStore {
     }
 
     pub fn get_messages(&self, session_id: &str, limit: i64) -> Result<Vec<StoredMessage>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         let mut stmt = conn.prepare(
             "SELECT id, session_id, role, content, tool_calls_json, tool_call_id, name, created_at
@@ -738,7 +738,7 @@ impl SessionStore {
     // ── Config storage ─────────────────────────────────────────────────
 
     pub fn get_config(&self, key: &str) -> Result<Option<String>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let result = conn.query_row(
             "SELECT value FROM engine_config WHERE key = ?1",
             params![key],
@@ -752,7 +752,7 @@ impl SessionStore {
     }
 
     pub fn set_config(&self, key: &str, value: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT OR REPLACE INTO engine_config (key, value) VALUES (?1, ?2)",
             params![key, value],
@@ -779,7 +779,7 @@ impl SessionStore {
         agent_id: Option<&str>,
         raw_response: Option<&str>,
     ) -> Result<String, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let id = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO trade_history (id, trade_type, side, product_id, currency, amount, order_type, order_id, status, usd_value, to_address, reason, session_id, agent_id, raw_response)
@@ -790,7 +790,7 @@ impl SessionStore {
     }
 
     pub fn list_trades(&self, limit: u32) -> Result<Vec<serde_json::Value>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, trade_type, side, product_id, currency, amount, order_type, order_id, status, usd_value, to_address, reason, session_id, agent_id, created_at
              FROM trade_history ORDER BY created_at DESC LIMIT ?1"
@@ -823,7 +823,7 @@ impl SessionStore {
 
     /// Get daily P&L: sum of all trades today, grouped by side
     pub fn daily_trade_summary(&self) -> Result<serde_json::Value, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let today = Utc::now().format("%Y-%m-%d").to_string();
         // SQLite datetime('now') uses space separator: "2026-02-19 00:00:00"
         // Must match that format, NOT ISO 8601 'T' separator
@@ -916,7 +916,7 @@ impl SessionStore {
         take_profit_pct: f64,
         agent_id: Option<&str>,
     ) -> Result<String, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let id = uuid::Uuid::new_v4().to_string();
         conn.execute(
             "INSERT INTO positions (id, mint, symbol, entry_price_usd, entry_sol, amount, current_amount, stop_loss_pct, take_profit_pct, status, last_price_usd, agent_id)
@@ -930,7 +930,7 @@ impl SessionStore {
 
     /// List all positions, optionally filtered by status.
     pub fn list_positions(&self, status_filter: Option<&str>) -> Result<Vec<crate::engine::types::Position>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let sql = if let Some(status) = status_filter {
             format!("SELECT id, mint, symbol, entry_price_usd, entry_sol, amount, current_amount, stop_loss_pct, take_profit_pct, status, last_price_usd, last_checked_at, created_at, closed_at, close_tx, agent_id
                      FROM positions WHERE status = '{}' ORDER BY created_at DESC", status)
@@ -968,7 +968,7 @@ impl SessionStore {
 
     /// Update a position's last known price.
     pub fn update_position_price(&self, id: &str, price_usd: f64) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE positions SET last_price_usd = ?1, last_checked_at = datetime('now') WHERE id = ?2",
             params![price_usd, id],
@@ -978,7 +978,7 @@ impl SessionStore {
 
     /// Close a position (stop-loss hit, take-profit hit, or manual).
     pub fn close_position(&self, id: &str, status: &str, close_tx: Option<&str>) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE positions SET status = ?1, closed_at = datetime('now'), close_tx = ?2 WHERE id = ?3",
             params![status, close_tx, id],
@@ -988,7 +988,7 @@ impl SessionStore {
 
     /// Reduce the current_amount of a position (partial take-profit sell).
     pub fn reduce_position(&self, id: &str, new_amount: f64) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE positions SET current_amount = ?1 WHERE id = ?2",
             params![new_amount, id],
@@ -998,7 +998,7 @@ impl SessionStore {
 
     /// Update stop-loss and take-profit percentages for a position.
     pub fn update_position_targets(&self, id: &str, stop_loss_pct: f64, take_profit_pct: f64) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE positions SET stop_loss_pct = ?1, take_profit_pct = ?2 WHERE id = ?3",
             params![stop_loss_pct, take_profit_pct, id],
@@ -1009,7 +1009,7 @@ impl SessionStore {
     // ── Agent Files (Soul / Persona) ───────────────────────────────────
 
     pub fn list_agent_files(&self, agent_id: &str) -> Result<Vec<AgentFile>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT agent_id, file_name, content, updated_at FROM agent_files WHERE agent_id = ?1 ORDER BY file_name"
         ).map_err(|e| format!("Prepare error: {}", e))?;
@@ -1029,7 +1029,7 @@ impl SessionStore {
     }
 
     pub fn get_agent_file(&self, agent_id: &str, file_name: &str) -> Result<Option<AgentFile>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let result = conn.query_row(
             "SELECT agent_id, file_name, content, updated_at FROM agent_files WHERE agent_id = ?1 AND file_name = ?2",
             params![agent_id, file_name],
@@ -1048,7 +1048,7 @@ impl SessionStore {
     }
 
     pub fn set_agent_file(&self, agent_id: &str, file_name: &str, content: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT OR REPLACE INTO agent_files (agent_id, file_name, content, updated_at)
              VALUES (?1, ?2, ?3, datetime('now'))",
@@ -1058,7 +1058,7 @@ impl SessionStore {
     }
 
     pub fn delete_agent_file(&self, agent_id: &str, file_name: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "DELETE FROM agent_files WHERE agent_id = ?1 AND file_name = ?2",
             params![agent_id, file_name],
@@ -1117,7 +1117,7 @@ impl SessionStore {
     /// Get memories created today — lightweight daily context injection.
     /// Returns a compact summary string (max 10 entries, highest importance first).
     pub fn get_todays_memories(&self, agent_id: &str) -> Result<Option<String>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
         let today_start = format!("{} 00:00:00", today);
         let mut stmt = conn.prepare(
@@ -1149,7 +1149,7 @@ impl SessionStore {
     // ── Memory CRUD ────────────────────────────────────────────────────
 
     pub fn store_memory(&self, id: &str, content: &str, category: &str, importance: u8, embedding: Option<&[u8]>, agent_id: Option<&str>) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let aid = agent_id.unwrap_or("");
         conn.execute(
             "INSERT OR REPLACE INTO memories (id, content, category, importance, embedding, agent_id)
@@ -1166,7 +1166,7 @@ impl SessionStore {
     }
 
     pub fn delete_memory(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute("DELETE FROM memories WHERE id = ?1", params![id])
             .map_err(|e| format!("Memory delete error: {}", e))?;
         // Sync FTS5 index
@@ -1175,7 +1175,7 @@ impl SessionStore {
     }
 
     pub fn memory_stats(&self) -> Result<MemoryStats, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         let total: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))
             .map_err(|e| format!("Count error: {}", e))?;
@@ -1200,7 +1200,7 @@ impl SessionStore {
     /// Search memories by cosine similarity against a query embedding.
     /// Falls back to keyword search if no embeddings are stored.
     pub fn search_memories_by_embedding(&self, query_embedding: &[f32], limit: usize, threshold: f64, agent_id: Option<&str>) -> Result<Vec<Memory>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         let mut stmt = conn.prepare(
             "SELECT id, content, category, importance, embedding, created_at, agent_id FROM memories WHERE embedding IS NOT NULL"
@@ -1242,7 +1242,7 @@ impl SessionStore {
 
     /// BM25 full-text search via FTS5 — much better than LIKE keyword search.
     pub fn search_memories_bm25(&self, query: &str, limit: usize, agent_id: Option<&str>) -> Result<Vec<Memory>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         // FTS5 match query — escape special characters
         let fts_query = query
@@ -1310,7 +1310,7 @@ impl SessionStore {
 
     /// Keyword-based fallback search (no embeddings needed).
     pub fn search_memories_keyword(&self, query: &str, limit: usize) -> Result<Vec<Memory>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         let pattern = format!("%{}%", query.to_lowercase());
         let mut stmt = conn.prepare(
@@ -1342,7 +1342,7 @@ impl SessionStore {
 
     /// Get all memories (for export / listing), newest first.
     pub fn list_memories(&self, limit: usize) -> Result<Vec<Memory>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, content, category, importance, created_at, agent_id FROM memories
              ORDER BY created_at DESC LIMIT ?1"
@@ -1370,7 +1370,7 @@ impl SessionStore {
 
     /// List memories that have no embedding vector (for backfill).
     pub fn list_memories_without_embeddings(&self, limit: usize) -> Result<Vec<Memory>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, content, category, importance, created_at, agent_id FROM memories
              WHERE embedding IS NULL
@@ -1399,7 +1399,7 @@ impl SessionStore {
 
     /// Update the embedding for an existing memory (used by backfill).
     pub fn update_memory_embedding(&self, id: &str, embedding: &[u8]) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE memories SET embedding = ?2 WHERE id = ?1",
             params![id, embedding],
@@ -1413,7 +1413,7 @@ impl SessionStore {
 impl SessionStore {
     /// List all tasks, ordered by updated_at DESC.
     pub fn list_tasks(&self) -> Result<Vec<Task>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
 
         // Auto-migrate: add model column if not present
         let _ = conn.execute("ALTER TABLE tasks ADD COLUMN model TEXT", []);
@@ -1467,7 +1467,7 @@ impl SessionStore {
 
     /// Create a new task.
     pub fn create_task(&self, task: &Task) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO tasks (id, title, description, status, priority, assigned_agent, session_id,
                                model, cron_schedule, cron_enabled, last_run_at, next_run_at)
@@ -1483,7 +1483,7 @@ impl SessionStore {
 
     /// Update a task (all mutable fields).
     pub fn update_task(&self, task: &Task) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE tasks SET title=?2, description=?3, status=?4, priority=?5,
                     assigned_agent=?6, session_id=?7, model=?8, cron_schedule=?9, cron_enabled=?10,
@@ -1500,7 +1500,7 @@ impl SessionStore {
 
     /// Delete a task and its activity.
     pub fn delete_task(&self, task_id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute("DELETE FROM task_activity WHERE task_id = ?1", params![task_id])
             .map_err(|e| e.to_string())?;
         conn.execute("DELETE FROM tasks WHERE id = ?1", params![task_id])
@@ -1510,7 +1510,7 @@ impl SessionStore {
 
     /// Add an activity entry for a task.
     pub fn add_task_activity(&self, id: &str, task_id: &str, kind: &str, agent: Option<&str>, content: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO task_activity (id, task_id, kind, agent, content)
              VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -1521,7 +1521,7 @@ impl SessionStore {
 
     /// List activity for a task (most recent first).
     pub fn list_task_activity(&self, task_id: &str, limit: u32) -> Result<Vec<TaskActivity>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, task_id, kind, agent, content, created_at
              FROM task_activity WHERE task_id = ?1
@@ -1546,7 +1546,7 @@ impl SessionStore {
 
     /// Get all activity across all tasks for the live feed, most recent first.
     pub fn list_all_activity(&self, limit: u32) -> Result<Vec<TaskActivity>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, task_id, kind, agent, content, created_at
              FROM task_activity ORDER BY created_at DESC LIMIT ?1"
@@ -1570,7 +1570,7 @@ impl SessionStore {
 
     /// Get due cron tasks (cron_enabled=1 and next_run_at <= now).
     pub fn get_due_cron_tasks(&self) -> Result<Vec<Task>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let now = chrono::Utc::now().to_rfc3339();
         let mut stmt = conn.prepare(
             "SELECT id, title, description, status, priority, assigned_agent, session_id,
@@ -1620,7 +1620,7 @@ impl SessionStore {
 
     /// Update a task's cron run timestamps.
     pub fn update_task_cron_run(&self, task_id: &str, last_run: &str, next_run: Option<&str>) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE tasks SET last_run_at = ?2, next_run_at = ?3, updated_at = datetime('now') WHERE id = ?1",
             params![task_id, last_run, next_run],
@@ -1632,7 +1632,7 @@ impl SessionStore {
 
     /// Set the agents for a task (replaces all existing assignments).
     pub fn set_task_agents(&self, task_id: &str, agents: &[TaskAgent]) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         // Clear existing
         conn.execute("DELETE FROM task_agents WHERE task_id = ?1", params![task_id])
             .map_err(|e| e.to_string())?;
@@ -1655,7 +1655,7 @@ impl SessionStore {
 
     /// Get agents assigned to a task.
     pub fn get_task_agents(&self, task_id: &str) -> Result<Vec<TaskAgent>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at"
         ).map_err(|e| e.to_string())?;
@@ -1674,7 +1674,7 @@ impl SessionStore {
     // ── Orchestrator: Projects ─────────────────────────────────────────
 
     pub fn list_projects(&self) -> Result<Vec<crate::engine::types::Project>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, title, goal, status, boss_agent, created_at, updated_at FROM projects ORDER BY updated_at DESC"
         ).map_err(|e| e.to_string())?;
@@ -1722,7 +1722,7 @@ impl SessionStore {
     }
 
     pub fn create_project(&self, project: &crate::engine::types::Project) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO projects (id, title, goal, status, boss_agent) VALUES (?1, ?2, ?3, ?4, ?5)",
             params![project.id, project.title, project.goal, project.status, project.boss_agent],
@@ -1731,7 +1731,7 @@ impl SessionStore {
     }
 
     pub fn update_project(&self, project: &crate::engine::types::Project) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE projects SET title=?2, goal=?3, status=?4, boss_agent=?5, updated_at=datetime('now') WHERE id=?1",
             params![project.id, project.title, project.goal, project.status, project.boss_agent],
@@ -1740,14 +1740,14 @@ impl SessionStore {
     }
 
     pub fn delete_project(&self, id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute("DELETE FROM projects WHERE id=?1", params![id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }
 
     pub fn set_project_agents(&self, project_id: &str, agents: &[crate::engine::types::ProjectAgent]) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute("DELETE FROM project_agents WHERE project_id=?1", params![project_id])
             .map_err(|e| e.to_string())?;
         for a in agents {
@@ -1761,7 +1761,7 @@ impl SessionStore {
     }
 
     pub fn add_project_agent(&self, project_id: &str, agent: &crate::engine::types::ProjectAgent) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let caps_json = serde_json::to_string(&agent.capabilities).unwrap_or_default();
         conn.execute(
             "INSERT OR REPLACE INTO project_agents (project_id, agent_id, role, specialty, status, current_task, model, system_prompt, capabilities) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
@@ -1771,7 +1771,7 @@ impl SessionStore {
     }
 
     pub fn get_project_agents(&self, project_id: &str) -> Result<Vec<crate::engine::types::ProjectAgent>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents WHERE project_id=?1"
         ).map_err(|e| e.to_string())?;
@@ -1795,7 +1795,7 @@ impl SessionStore {
     }
 
     pub fn update_project_agent_status(&self, project_id: &str, agent_id: &str, status: &str, current_task: Option<&str>) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "UPDATE project_agents SET status=?3, current_task=?4 WHERE project_id=?1 AND agent_id=?2",
             params![project_id, agent_id, status, current_task],
@@ -1805,7 +1805,7 @@ impl SessionStore {
 
     /// Delete an agent from a specific project.
     pub fn delete_agent(&self, project_id: &str, agent_id: &str) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "DELETE FROM project_agents WHERE project_id=?1 AND agent_id=?2",
             params![project_id, agent_id],
@@ -1816,7 +1816,7 @@ impl SessionStore {
     /// List all unique agents across all projects (deduped by agent_id).
     /// Filters out rows with empty/NULL agent_id (bad data from manual SQL inserts).
     pub fn list_all_agents(&self) -> Result<Vec<(String, crate::engine::types::ProjectAgent)>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT project_id, agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents WHERE agent_id IS NOT NULL AND agent_id != '' ORDER BY agent_id"
         ).map_err(|e| e.to_string())?;
@@ -1842,7 +1842,7 @@ impl SessionStore {
     // ── Orchestrator: Message Bus ──────────────────────────────────────
 
     pub fn add_project_message(&self, msg: &crate::engine::types::ProjectMessage) -> Result<(), String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO project_messages (id, project_id, from_agent, to_agent, kind, content, metadata) VALUES (?1,?2,?3,?4,?5,?6,?7)",
             params![msg.id, msg.project_id, msg.from_agent, msg.to_agent, msg.kind, msg.content, msg.metadata],
@@ -1851,7 +1851,7 @@ impl SessionStore {
     }
 
     pub fn get_project_messages(&self, project_id: &str, limit: i64) -> Result<Vec<crate::engine::types::ProjectMessage>, String> {
-        let conn = self.conn.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, project_id, from_agent, to_agent, kind, content, metadata, created_at FROM project_messages WHERE project_id=?1 ORDER BY created_at DESC LIMIT ?2"
         ).map_err(|e| e.to_string())?;

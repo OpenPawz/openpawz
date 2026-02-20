@@ -37,7 +37,7 @@ pub async fn engine_chat_send(
             let new_id = format!("eng-{}", uuid::Uuid::new_v4());
             let raw = request.model.clone().unwrap_or_default();
             let model = if raw.is_empty() || raw.eq_ignore_ascii_case("default") {
-                let cfg = state.config.lock().unwrap();
+                let cfg = state.config.lock();
                 cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string())
             } else {
                 raw
@@ -54,7 +54,7 @@ pub async fn engine_chat_send(
 
     // ── Resolve model and provider ─────────────────────────────────────────
     let (provider_config, model) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
 
         let raw_model = request.model.clone().unwrap_or_default();
         let base_model = if raw_model.is_empty() || raw_model.eq_ignore_ascii_case("default") {
@@ -120,7 +120,7 @@ pub async fn engine_chat_send(
 
     // ── Base system prompt ─────────────────────────────────────────────────
     let base_system_prompt = request.system_prompt.clone().or_else(|| {
-        let cfg = state.config.lock().ok()?;
+        let cfg = state.config.lock();
         cfg.default_system_prompt.clone()
     });
 
@@ -143,10 +143,7 @@ pub async fn engine_chat_send(
     }
 
     // ── Auto-capture flag ──────────────────────────────────────────────────
-    let auto_capture_on = {
-        let mcfg = state.memory_config.lock().ok();
-        mcfg.as_ref().map(|c| c.auto_capture).unwrap_or(false)
-    };
+    let auto_capture_on = state.memory_config.lock().auto_capture;
 
     // ── Skill instructions ─────────────────────────────────────────────────
     let skill_instructions =
@@ -157,7 +154,7 @@ pub async fn engine_chat_send(
 
     // ── Runtime context block (extracted values for organism) ─────────────
     let runtime_context = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         let provider_name = cfg
             .providers
             .iter()
@@ -206,15 +203,15 @@ pub async fn engine_chat_send(
 
     // ── Extract remaining config values ───────────────────────────────────
     let (max_rounds, temperature) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         (cfg.max_tool_rounds, request.temperature)
     };
     let tool_timeout = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         cfg.tool_timeout_secs
     };
     let daily_budget = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         cfg.daily_budget_usd
     };
 
@@ -459,7 +456,7 @@ pub async fn engine_session_compact(
     info!("[engine] Manual compaction requested for session {}", session_id);
 
     let (provider_config, model) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         let model = cfg
             .default_model
             .clone()
@@ -497,8 +494,7 @@ pub fn engine_approve_tool(
 ) -> Result<(), String> {
     let mut map = state
         .pending_approvals
-        .lock()
-        .map_err(|e| format!("Lock error: {}", e))?;
+        .lock();
 
     if let Some(sender) = map.remove(&tool_call_id) {
         info!(

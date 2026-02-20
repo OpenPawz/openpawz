@@ -4,7 +4,7 @@
 
 use crate::engine::types::*;
 use crate::engine::providers::AnyProvider;
-use crate::commands::state::{EngineState, PendingApprovals, normalize_model_name};
+use crate::engine::state::{EngineState, PendingApprovals, normalize_model_name};
 use crate::engine::sessions::SessionStore;
 use crate::engine::skills;
 use log::{info, warn, error};
@@ -556,7 +556,7 @@ pub async fn run_project(
 
     // Get provider config — use model routing for boss agent
     let (provider_config, model) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
 
         // Find the boss agent's ProjectAgent entry to get specialty
@@ -580,7 +580,7 @@ pub async fn run_project(
     };
 
     let (base_system_prompt, max_rounds, tool_timeout) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         (
             cfg.default_system_prompt.clone(),
             cfg.max_tool_rounds,
@@ -898,7 +898,7 @@ async fn run_boss_agent_loop(
             } else {
                 let (approval_tx, approval_rx) = tokio::sync::oneshot::channel::<bool>();
                 {
-                    let mut map = pending_approvals.lock().unwrap();
+                    let mut map = pending_approvals.lock();
                     map.insert(tc.id.clone(), approval_tx);
                 }
                 let _ = app_handle.emit("engine-event", EngineEvent::ToolRequest {
@@ -912,7 +912,7 @@ async fn run_boss_agent_loop(
                 ).await {
                     Ok(Ok(allowed)) => allowed,
                     _ => {
-                        let mut map = pending_approvals.lock().unwrap();
+                        let mut map = pending_approvals.lock();
                         map.remove(&tc.id);
                         false
                     }
@@ -969,7 +969,7 @@ async fn run_sub_agent(
 
     // Get provider — use model routing for worker agents
     let (provider_config, model) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
 
         // Look up this agent in the project to get specialty and per-agent model override
@@ -994,7 +994,7 @@ async fn run_sub_agent(
     };
 
     let (base_system_prompt, max_rounds, tool_timeout) = {
-        let cfg = state.config.lock().map_err(|e| format!("Lock error: {}", e))?;
+        let cfg = state.config.lock();
         (
             cfg.default_system_prompt.clone(),
             cfg.max_tool_rounds,
@@ -1278,7 +1278,7 @@ async fn run_worker_agent_loop(
             } else {
                 let (approval_tx, approval_rx) = tokio::sync::oneshot::channel::<bool>();
                 {
-                    let mut map = pending_approvals.lock().unwrap();
+                    let mut map = pending_approvals.lock();
                     map.insert(tc.id.clone(), approval_tx);
                 }
                 let _ = app_handle.emit("engine-event", EngineEvent::ToolRequest {
@@ -1292,7 +1292,7 @@ async fn run_worker_agent_loop(
                 ).await {
                     Ok(Ok(allowed)) => allowed,
                     _ => {
-                        let mut map = pending_approvals.lock().unwrap();
+                        let mut map = pending_approvals.lock();
                         map.remove(&tc.id);
                         false
                     }

@@ -2,16 +2,40 @@
 // Registers the Tauri IPC agent event listener and routes incoming events
 // to the correct handler: streaming chat bubbles, research view, or task sessions.
 //
-// This module is side-effectful on import — it calls onEngineAgent() once.
+// Uses a callback registration pattern so the engine layer never imports
+// from the view layer (chat_controller, views/research).  The view layer
+// calls registerStreamHandlers() and registerResearchRouter() at startup.
 
 import { onEngineAgent } from './bridge';
-import { appState } from '../../state/index';
-import {
-  appendStreamingDelta,
-  recordTokenUsage,
-  updateContextLimitFromModel,
-} from '../organisms/chat_controller';
-import * as ResearchModule from '../../views/research';
+import { appState, type StreamState } from '../../state/index';
+
+// ── Callback type definitions ────────────────────────────────────────────────
+
+export interface StreamHandlers {
+  onDelta: (text: string) => void;
+  onToken: (usage: Record<string, unknown> | undefined) => void;
+  onModel: (model: string) => void;
+}
+
+export interface ResearchRouter {
+  isStreaming: () => boolean;
+  getRunId: () => string | null;
+  appendDelta: (text: string) => void;
+  resolveStream: (text?: string) => void;
+}
+
+let _streamHandlers: StreamHandlers | null = null;
+let _researchRouter: ResearchRouter | null = null;
+
+/** Register stream handlers (call once from chat_controller at startup). */
+export function registerStreamHandlers(h: StreamHandlers): void {
+  _streamHandlers = h;
+}
+
+/** Register research router (call once from views/research at startup). */
+export function registerResearchRouter(r: ResearchRouter): void {
+  _researchRouter = r;
+}
 
 function handleAgentEvent(payload: unknown): void {
   try {
@@ -27,21 +51,21 @@ function handleAgentEvent(payload: unknown): void {
 
     // ── Route research sessions ──
     if (evtSession && evtSession.startsWith('paw-research-')) {
-      if (!ResearchModule.isStreaming()) return;
-      if (ResearchModule.getRunId() && runId && runId !== ResearchModule.getRunId()) return;
+      if (!_researchRouter || !_researchRouter.isStreaming()) return;
+      if (_researchRouter.getRunId() && runId && runId !== _researchRouter.getRunId()) return;
       if (stream === 'assistant' && data) {
         const delta = data.delta as string | undefined;
-        if (delta) ResearchModule.appendDelta(delta);
+        if (delta) _researchRouter.appendDelta(delta);
       } else if (stream === 'lifecycle' && data) {
-        if ((data.phase as string) === 'end') ResearchModule.resolveStream();
+        if ((data.phase as string) === 'end') _researchRouter.resolveStream();
       } else if (stream === 'tool' && data) {
         const tool  = (data.name  ?? data.tool)  as string | undefined;
         const phase = data.phase as string | undefined;
-        if (phase === 'start' && tool) ResearchModule.appendDelta(`\n\n▶ ${tool}...`);
+        if (phase === 'start' && tool) _researchRouter.appendDelta(`\n\n▶ ${tool}...`);
       } else if (stream === 'error' && data) {
         const error = (data.message ?? data.error ?? '') as string;
-        if (error) ResearchModule.appendDelta(`\n\nError: ${error}`);
-        ResearchModule.resolveStream();
+        if (error) _researchRouter.appendDelta(`\n\nError: ${error}`);
+        _researchRouter.resolveStream();
       }
       return;
     }
@@ -60,27 +84,35 @@ function handleAgentEvent(payload: unknown): void {
     )) return;
 
     // ── Guard: only process while streaming is active ──
-    if (!appState.isLoading && !appState.streamingEl) return;
-    if (appState.streamingRunId && runId && runId !== appState.streamingRunId) return;
+    // Look up the stream for this event's session (or current session)
+    const streamKey = evtSession ?? appState.currentSessionKey ?? '';
+    const stream_s: StreamState | undefined = appState.activeStreams.get(streamKey);
+
+    if (!stream_s && !appState.isLoading) return;
+    if (stream_s?.runId && runId && runId !== stream_s.runId) return;
     if (evtSession && appState.currentSessionKey && evtSession !== appState.currentSessionKey) return;
 
     if (stream === 'assistant' && data) {
       const delta = data.delta as string | undefined;
-      if (delta) appendStreamingDelta(delta);
+      if (delta) _streamHandlers?.onDelta(delta);
 
     } else if (stream === 'lifecycle' && data) {
       const phase = data.phase as string | undefined;
       if (phase === 'start') {
-        if (!appState.streamingRunId && runId) appState.streamingRunId = runId;
+        if (stream_s && !stream_s.runId && runId) stream_s.runId = runId;
         console.log(`[event_bus] Agent run started: ${runId}`);
       } else if (phase === 'end') {
-        console.log(`[event_bus] Agent run ended: ${runId} chars=${appState.streamingContent.length}`);
+        console.log(`[event_bus] Agent run ended: ${runId} chars=${stream_s?.content.length ?? 0}`);
         const dAny    = data as Record<string, unknown>;
         const dNested = (dAny.response as Record<string, unknown> | undefined);
-        const agentUsage = (dAny.usage ?? dNested?.usage ?? data) as Record<string, unknown> | undefined;
-        recordTokenUsage(agentUsage);
-        const evtUsage = (evt as Record<string, unknown>).usage as Record<string, unknown> | undefined;
-        if (evtUsage) recordTokenUsage(evtUsage);
+
+        // D-3.3: Deduplicate token recording — only fire once per run
+        if (stream_s && !stream_s.tokenRecorded) {
+          stream_s.tokenRecorded = true;
+          // Prefer nested usage over top-level to avoid double-count
+          const agentUsage = (dAny.usage ?? dNested?.usage ?? data) as Record<string, unknown> | undefined;
+          _streamHandlers?.onToken(agentUsage);
+        }
 
         // Update model selector with API-confirmed model name
         const confirmedModel = dAny.model as string | undefined;
@@ -96,21 +128,21 @@ function handleAgentEvent(payload: unknown): void {
             }
             if (modelSel.value === 'default' || modelSel.value === '') modelSel.value = confirmedModel;
           }
-          updateContextLimitFromModel(confirmedModel);
+          _streamHandlers?.onModel(confirmedModel);
         }
 
-        if (appState.streamingResolve) {
-          if (appState.streamingContent) {
-            appState.streamingResolve(appState.streamingContent);
-            appState.streamingResolve = null;
+        if (stream_s?.resolve) {
+          if (stream_s.content) {
+            stream_s.resolve(stream_s.content);
+            stream_s.resolve = null;
           } else {
             console.log('[event_bus] No content at lifecycle end — waiting 3s for chat.final...');
-            const savedResolve = appState.streamingResolve;
+            const savedResolve = stream_s.resolve;
             setTimeout(() => {
-              if (appState.streamingResolve === savedResolve && appState.streamingResolve) {
+              if (stream_s.resolve === savedResolve && stream_s.resolve) {
                 console.warn('[event_bus] Grace period expired — resolving with empty content');
-                appState.streamingResolve(appState.streamingContent || '');
-                appState.streamingResolve = null;
+                stream_s.resolve(stream_s.content || '');
+                stream_s.resolve = null;
               }
             }, 3000);
           }
@@ -122,16 +154,16 @@ function handleAgentEvent(payload: unknown): void {
       const phase = data.phase as string | undefined;
       if (phase === 'start' && tool) {
         console.log(`[event_bus] Tool: ${tool}`);
-        if (appState.streamingEl) appendStreamingDelta(`\n\n▶ ${tool}...`);
+        if (stream_s?.el) _streamHandlers?.onDelta(`\n\n▶ ${tool}...`);
       }
 
     } else if (stream === 'error' && data) {
       const error = (data.message ?? data.error ?? '') as string;
       console.error(`[event_bus] Agent error: ${error}`);
-      if (error && appState.streamingEl) appendStreamingDelta(`\n\nError: ${error}`);
-      if (appState.streamingResolve) {
-        appState.streamingResolve(appState.streamingContent);
-        appState.streamingResolve = null;
+      if (error && stream_s?.el) _streamHandlers?.onDelta(`\n\nError: ${error}`);
+      if (stream_s?.resolve) {
+        stream_s.resolve(stream_s.content);
+        stream_s.resolve = null;
       }
     }
   } catch (e) {
