@@ -259,20 +259,62 @@ async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Result<bollard::D
 
         info!("[whatsapp] Docker installed successfully");
     } else {
-        // Docker is installed but daemon isn't running — try to start it
+        // Docker CLI is installed but daemon isn't running — start it
         info!("[whatsapp] Docker installed but not running, starting...");
 
         if cfg!(target_os = "macos") {
-            // Try Colima first (lightweight), fall back to Docker Desktop
-            let colima_ok = std::process::Command::new("colima")
-                .arg("start")
+            // macOS needs a VM runtime (Colima or Docker Desktop) to run containers.
+            // Check if Colima is installed; if not, install it via Homebrew.
+            let colima_exists = std::process::Command::new("which")
+                .arg("colima")
                 .output()
                 .map(|o| o.status.success())
                 .unwrap_or(false);
-            if !colima_ok {
-                let _ = std::process::Command::new("open")
-                    .args(["-a", "Docker"])
-                    .spawn();
+
+            if !colima_exists {
+                info!("[whatsapp] Colima not found, installing via Homebrew...");
+                let _ = app_handle.emit("whatsapp-status", json!({
+                    "kind": "installing",
+                    "message": "Installing WhatsApp service (first time only — this may take a minute)...",
+                }));
+                let brew_ok = std::process::Command::new("brew")
+                    .args(["install", "colima"])
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false);
+                if !brew_ok {
+                    let _ = app_handle.emit("whatsapp-status", json!({
+                        "kind": "install_failed",
+                        "message": "Couldn't install the WhatsApp service. Make sure Homebrew (brew.sh) is installed and try again.",
+                    }));
+                    return Err("Couldn't install required service. Make sure Homebrew is installed (brew.sh) and try again.".into());
+                }
+                info!("[whatsapp] Colima installed successfully");
+            }
+
+            // Start Colima (boots a lightweight Linux VM)
+            info!("[whatsapp] Starting Colima...");
+            let _ = app_handle.emit("whatsapp-status", json!({
+                "kind": "docker_starting",
+                "message": "Starting WhatsApp service...",
+            }));
+            let colima_start = std::process::Command::new("colima")
+                .arg("start")
+                .output();
+            match colima_start {
+                Ok(out) if out.status.success() => {
+                    info!("[whatsapp] Colima started successfully");
+                }
+                Ok(out) => {
+                    let stderr = String::from_utf8_lossy(&out.stderr);
+                    // If already running, that's fine
+                    if !stderr.contains("already running") {
+                        warn!("[whatsapp] Colima start issue: {}", stderr);
+                    }
+                }
+                Err(e) => {
+                    warn!("[whatsapp] Failed to start colima: {}", e);
+                }
             }
         } else if cfg!(target_os = "windows") {
             let _ = std::process::Command::new("cmd")
@@ -285,9 +327,9 @@ async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Result<bollard::D
         }
     }
 
-    // Poll for Docker to become ready (up to 30 seconds)
+    // Poll for Docker to become ready (up to 40 seconds — Colima VM boot can take ~20s)
     info!("[whatsapp] Waiting for backend service to start...");
-    for attempt in 1..=15 {
+    for attempt in 1..=20 {
         // Check stop signal each iteration so Stop/Remove can interrupt
         if stop.load(Ordering::Relaxed) {
             info!("[whatsapp] Stop signal received during Docker wait");
