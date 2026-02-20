@@ -105,7 +105,7 @@ pub async fn execute_tool(tool_call: &ToolCall, app_handle: &tauri::AppHandle, a
         // ── Community Skills tools ──
         "skill_search" => execute_skill_search(&args, app_handle).await,
         "skill_install" => execute_skill_install(&args, app_handle, agent_id).await,
-        "skill_list" => execute_skill_list(app_handle).await,
+        "skill_list" => execute_skill_list(app_handle, agent_id).await,
         _ => Err(format!("Unknown tool: {}", name)),
     };
 
@@ -1102,7 +1102,7 @@ async fn execute_skill_install(args: &serde_json::Value, app_handle: &tauri::App
     let _ = app_handle.emit("community-skill-installed", &skill.name);
 
     Ok(format!(
-        "Successfully installed and enabled \"{}\" for agent '{}'!\n\nDescription: {}\nSource: {}\n\nThis skill is scoped to your agent and its instructions will be included in your future conversations.",
+        "Successfully installed and enabled \"{}\" — scoped to your agent ('{}') only, not system-wide.\n\nDescription: {}\nSource: {}\n\nThis skill's instructions will be included in your future conversations. You can now tell the user it's installed. Do NOT search for or install more skills unless the user explicitly asks.",
         skill.name,
         agent_id,
         skill.description,
@@ -1110,25 +1110,32 @@ async fn execute_skill_install(args: &serde_json::Value, app_handle: &tauri::App
     ))
 }
 
-async fn execute_skill_list(app_handle: &tauri::AppHandle) -> Result<String, String> {
+async fn execute_skill_list(app_handle: &tauri::AppHandle, agent_id: &str) -> Result<String, String> {
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
-    let skills = state.store.list_community_skills()?;
+    let all_skills = state.store.list_community_skills()?;
+
+    // Filter: show skills scoped to this agent, plus global skills (empty agent_ids)
+    let skills: Vec<_> = all_skills.iter().filter(|s| {
+        s.agent_ids.is_empty() || s.agent_ids.contains(&agent_id.to_string())
+    }).collect();
 
     if skills.is_empty() {
-        return Ok("No community skills installed yet. Use skill_search to find and skill_install to add new skills.".to_string());
+        return Ok("No community skills installed for your agent yet. Use skill_search to find and skill_install to add new skills.".to_string());
     }
 
-    let mut output = format!("{} community skills installed:\n\n", skills.len());
+    let mut output = format!("{} community skills available to you:\n\n", skills.len());
 
     for (i, skill) in skills.iter().enumerate() {
         let status = if skill.enabled { "✓ Enabled" } else { "✗ Disabled" };
+        let scope = if skill.agent_ids.is_empty() { "all agents" } else { "this agent only" };
         output.push_str(&format!(
-            "{}. **{}** [{}]\n   {}\n   Source: {}\n\n",
+            "{}. **{}** [{}] (scope: {})\n   {}\n   Source: {}\n\n",
             i + 1,
             skill.name,
             status,
+            scope,
             skill.description,
             skill.source,
         ));
