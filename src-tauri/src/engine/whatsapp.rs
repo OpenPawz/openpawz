@@ -90,7 +90,9 @@ impl Default for WhatsAppConfig {
 // ── Global State ───────────────────────────────────────────────────────
 
 static BRIDGE_RUNNING: AtomicBool = AtomicBool::new(false);
-static BRIDGE_RESTARTING: AtomicBool = AtomicBool::new(false);
+/// Each start_bridge() call increments this. Old bridge tasks compare their
+/// generation against the current value to know if they've been superseded.
+static BRIDGE_GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 static MESSAGE_COUNT: AtomicI64 = AtomicI64::new(0);
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
@@ -110,11 +112,9 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> Result<(), String> {
     // If bridge is already running, stop it first so Start always works
     if BRIDGE_RUNNING.load(Ordering::Relaxed) {
         info!("[whatsapp] Bridge already running — restarting");
-        BRIDGE_RESTARTING.store(true, Ordering::Relaxed);
         stop_bridge();
         // Give the old bridge a moment to wind down
         std::thread::sleep(std::time::Duration::from_millis(500));
-        BRIDGE_RESTARTING.store(false, Ordering::Relaxed);
     }
 
     let mut config: WhatsAppConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)?;
@@ -131,24 +131,37 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> Result<(), String> {
     stop.store(false, Ordering::Relaxed);
     BRIDGE_RUNNING.store(true, Ordering::Relaxed);
 
-    info!("[whatsapp] Starting bridge via Evolution API");
+    // Increment generation so old bridge tasks know they've been superseded
+    let my_gen = BRIDGE_GENERATION.fetch_add(1, Ordering::Relaxed) + 1;
+
+    info!("[whatsapp] Starting bridge via Evolution API (gen {})", my_gen);
 
     let app = app_handle.clone();
     tauri::async_runtime::spawn(async move {
+        let is_current = || BRIDGE_GENERATION.load(Ordering::Relaxed) == my_gen;
+
         if let Err(e) = run_whatsapp_bridge(app.clone(), config).await {
-            // Only emit error if this isn't a deliberate restart
-            if !BRIDGE_RESTARTING.load(Ordering::Relaxed) {
+            // Only emit error if we're still the current bridge (not superseded)
+            if is_current() {
                 error!("[whatsapp] Bridge crashed: {}", e);
                 let _ = app.emit("whatsapp-status", json!({
                     "kind": "error",
                     "message": format!("{}", e),
                 }));
             } else {
-                info!("[whatsapp] Bridge stopped for restart (suppressing error event)");
+                info!("[whatsapp] Old bridge (gen {}) exited — superseded", my_gen);
             }
         }
+
+        // Only emit disconnected if we're still the current bridge
+        if is_current() {
+            let _ = app.emit("whatsapp-status", json!({
+                "kind": "disconnected",
+            }));
+        }
+
         BRIDGE_RUNNING.store(false, Ordering::Relaxed);
-        info!("[whatsapp] Bridge stopped");
+        info!("[whatsapp] Bridge stopped (gen {})", my_gen);
     });
 
     Ok(())
@@ -918,13 +931,8 @@ async fn run_whatsapp_bridge(app_handle: tauri::AppHandle, mut config: WhatsAppC
 
     // Cleanup
     webhook_handle.abort();
-
-    // Only emit disconnected if this isn't a deliberate restart
-    if !BRIDGE_RESTARTING.load(Ordering::Relaxed) {
-        let _ = app_handle.emit("whatsapp-status", json!({
-            "kind": "disconnected",
-        }));
-    }
+    // Note: disconnected event is emitted by the spawned task wrapper,
+    // not here, so the generation check can gate it properly.
 
     Ok(())
 }

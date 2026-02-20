@@ -527,14 +527,22 @@ export async function saveChannelSetup() {
       showToast(`${_chDef.name} configured!`, 'success');
       closeChannelSetup();
 
-      try {
-        await startChannel(channelType);
-        showToast(`${_chDef.name} bridge started`, 'success');
-      } catch (e) {
-        console.warn('Auto-start failed:', e);
+      if (channelType === 'whatsapp') {
+        // For WhatsApp, render the channel card first so the Start button's
+        // event listener (which sets up the QR code banner) is in the DOM,
+        // then auto-click Start to trigger the full WhatsApp startup flow.
+        await loadChannels();
+        const waStartBtn = document.getElementById('ch-whatsapp-start');
+        if (waStartBtn) waStartBtn.click();
+      } else {
+        try {
+          await startChannel(channelType);
+          showToast(`${_chDef.name} bridge started`, 'success');
+        } catch (e) {
+          console.warn('Auto-start failed:', e);
+        }
+        setTimeout(() => loadChannels(), 1000);
       }
-
-      setTimeout(() => loadChannels(), 1000);
     } catch (e) {
       showToast(`Failed to save: ${e instanceof Error ? e.message : e}`, 'error');
     } finally {
