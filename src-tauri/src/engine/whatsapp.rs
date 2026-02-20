@@ -430,16 +430,77 @@ async fn ensure_evolution_container(app_handle: &tauri::AppHandle, config: &What
         let container_id = existing.id.clone().unwrap_or_default();
         let state = existing.state.as_deref().unwrap_or("");
 
-        if state == "running" {
-            info!("[whatsapp] Evolution API container already running: {}", &container_id[..12]);
-            return Ok(container_id);
-        }
+        // If container is crash-looping, remove it and recreate fresh
+        if state == "restarting" || state == "dead" {
+            info!("[whatsapp] Container is {} — removing and recreating", state);
+            // Force stop + remove
+            let _ = docker.stop_container(&container_id, None).await;
+            let remove_opts = bollard::container::RemoveContainerOptions { force: true, ..Default::default() };
+            let _ = docker.remove_container(&container_id, Some(remove_opts)).await;
+            info!("[whatsapp] Old container removed");
+            // Fall through to create a new container below
+        } else if state == "running" {
+            // Verify the API is actually responding (not just "running" in Docker)
+            let client = reqwest::Client::new();
+            let api_url = format!("http://127.0.0.1:{}", config.api_port);
+            match client.get(&api_url).send().await {
+                Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 401 => {
+                    info!("[whatsapp] Evolution API container already running and healthy: {}", &container_id[..12]);
+                    return Ok(container_id);
+                }
+                _ => {
+                    // Container says "running" but API not responding — wait for it
+                    info!("[whatsapp] Container running but API not ready, waiting...");
+                }
+            }
+            // Wait for API to be ready
+            let client = reqwest::Client::new();
+            let api_url = format!("http://127.0.0.1:{}", config.api_port);
+            for attempt in 1..=30 {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                match client.get(&api_url).send().await {
+                    Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 401 => {
+                        info!("[whatsapp] Evolution API ready after {} attempts", attempt);
+                        return Ok(container_id);
+                    }
+                    _ => {
+                        if attempt % 5 == 0 {
+                            info!("[whatsapp] Waiting for Evolution API to start... (attempt {}/30)", attempt);
+                        }
+                    }
+                }
+            }
+            // API never came up — remove and recreate
+            info!("[whatsapp] Running container never became healthy — removing");
+            let _ = docker.stop_container(&container_id, None).await;
+            let remove_opts = bollard::container::RemoveContainerOptions { force: true, ..Default::default() };
+            let _ = docker.remove_container(&container_id, Some(remove_opts)).await;
+            // Fall through to create new container
+        } else {
+            // Container exists but stopped — start it and wait for API
+            info!("[whatsapp] Starting existing Evolution API container");
+            docker.start_container(&container_id, None::<StartContainerOptions<String>>).await
+                .map_err(|e| format!("Failed to start container: {}", e))?;
 
-        // Container exists but stopped — start it
-        info!("[whatsapp] Starting existing Evolution API container");
-        docker.start_container(&container_id, None::<StartContainerOptions<String>>).await
-            .map_err(|e| format!("Failed to start container: {}", e))?;
-        return Ok(container_id);
+            info!("[whatsapp] Waiting for Evolution API to be ready...");
+            let client = reqwest::Client::new();
+            let api_url = format!("http://127.0.0.1:{}", config.api_port);
+            for attempt in 1..=30 {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                match client.get(&api_url).send().await {
+                    Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 401 => {
+                        info!("[whatsapp] Evolution API ready after {} attempts", attempt);
+                        return Ok(container_id);
+                    }
+                    _ => {
+                        if attempt % 5 == 0 {
+                            info!("[whatsapp] Waiting for Evolution API to start... (attempt {}/30)", attempt);
+                        }
+                    }
+                }
+            }
+            return Err("WhatsApp service started but didn't become ready. Try again in a moment.".into());
+        }
     }
 
     // Pull image if not present
