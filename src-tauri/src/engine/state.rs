@@ -186,6 +186,9 @@ impl EngineState {
         // Initialize skill vault tables
         store.init_skill_tables()?;
 
+        // Initialize community skills table (skills.sh ecosystem)
+        store.init_community_skills_table()?;
+
         // Load config from DB or use defaults
         let mut config = match store.get_config("engine_config") {
             Ok(Some(json)) => {

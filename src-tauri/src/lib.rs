@@ -108,6 +108,12 @@ pub fn run() {
             commands::skills::engine_skill_revoke_all,
             commands::skills::engine_skill_get_instructions,
             commands::skills::engine_skill_set_instructions,
+            // ── Community Skills (skills.sh) ──
+            commands::skills::engine_community_skills_list,
+            commands::skills::engine_community_skills_browse,
+            commands::skills::engine_community_skill_install,
+            commands::skills::engine_community_skill_remove,
+            commands::skills::engine_community_skill_set_enabled,
             // ── Trading ──
             commands::trade::engine_trading_history,
             commands::trade::engine_trading_summary,

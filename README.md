@@ -62,7 +62,8 @@ Telegram, Discord, IRC, Slack, Matrix, Mattermost, Nextcloud Talk, Nostr, Twitch
 - Morning Brief automation template
 
 ### Built-in Tools
-- 37+ skills with encrypted credential injection
+- 40+ skills with encrypted credential injection
+- Community skills from the [skills.sh](https://skills.sh) ecosystem — browse, install, and manage open-source agent skills
 - Kanban task board with drag-and-drop, agent assignment, cron scheduling
 - Research workflow with findings and synthesis reports
 - Full email client (IMAP/SMTP via Himalaya)

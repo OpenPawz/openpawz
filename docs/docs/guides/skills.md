@@ -130,6 +130,52 @@ Paw ships with **40 built-in skills** across **9 categories**:
 | **Peekaboo** | `peekaboo` |
 | **Security Audit** | — |
 
+## Community Skills (skills.sh ecosystem)
+
+Pawz supports the open-source [skills.sh](https://skills.sh) community skills ecosystem. Community skills are instruction-based — they teach your agent new capabilities by injecting expert knowledge into the system prompt.
+
+### How community skills work
+
+Community skills use the **SKILL.md** format: a Markdown file with YAML frontmatter containing the skill's `name` and `description`, followed by a markdown body with instructions for the agent. When installed, the instructions are injected alongside your built-in skills into every agent prompt — across all channels (WhatsApp, Telegram, Discord, etc).
+
+```markdown
+---
+name: Python Expert
+description: Deep Python knowledge and best practices
+---
+
+You are an expert Python developer. When writing Python:
+- Use type hints for all function signatures
+- Follow PEP 8 naming conventions
+- Prefer pathlib over os.path
+...
+```
+
+### Browsing and installing
+
+1. Go to **Settings → Skills** and scroll to the **Community Skills** section
+2. Enter a GitHub repo in `owner/repo` format (e.g. `vercel-labs/agent-skills`) or click a quick-browse button
+3. Pawz scans the repo for SKILL.md files and shows available skills
+4. Click **Install** on individual skills or **Install All** to grab everything
+5. Installed skills are automatically enabled and will be included in all agent prompts
+
+### Managing community skills
+
+- **Enable/disable**: Toggle individual community skills on or off without removing them
+- **Remove**: Uninstall a community skill entirely (you can reinstall later)
+- **Preview**: Expand the instructions preview to see exactly what gets injected into the prompt
+
+### Compatible repositories
+
+Any public GitHub repository containing SKILL.md files in the skills.sh format works. Popular repos:
+
+| Repository | Description |
+|-----------|-------------|
+| `vercel-labs/agent-skills` | Vercel's curated agent skills collection |
+| `anthropics/skills` | Anthropic's official skills |
+
+You can also create your own skills repository — just add SKILL.md files anywhere in the repo tree.
+
 ## Credential security
 
 Credentials are stored in SQLite and encrypted with XOR using a 32-byte random key stored in your OS keychain (service: `paw-skill-vault`, key: `encryption-key`).

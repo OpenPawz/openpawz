@@ -18,6 +18,8 @@ import type {
   EngineMemoryStats,
   OllamaReadyStatus,
   EngineSkillStatus,
+  CommunitySkill,
+  DiscoveredSkill,
   TradeRecord,
   TradingSummary,
   TradingPolicy,
@@ -261,6 +263,28 @@ class PawEngineClient {
 
   async skillSetInstructions(skillId: string, instructions: string): Promise<void> {
     return invoke('engine_skill_set_instructions', { skillId, instructions });
+  }
+
+  // ── Community Skills (skills.sh) ──────────────────────────────────
+
+  async communitySkillsList(): Promise<CommunitySkill[]> {
+    return invoke<CommunitySkill[]>('engine_community_skills_list');
+  }
+
+  async communitySkillsBrowse(source: string): Promise<DiscoveredSkill[]> {
+    return invoke<DiscoveredSkill[]>('engine_community_skills_browse', { source });
+  }
+
+  async communitySkillInstall(source: string, skillPath: string): Promise<CommunitySkill> {
+    return invoke<CommunitySkill>('engine_community_skill_install', { source, skillPath });
+  }
+
+  async communitySkillRemove(skillId: string): Promise<void> {
+    return invoke('engine_community_skill_remove', { skillId });
+  }
+
+  async communitySkillSetEnabled(skillId: string, enabled: boolean): Promise<void> {
+    return invoke('engine_community_skill_set_enabled', { skillId, enabled });
   }
 
   // ── Trading ──────────────────────────────────────────────────────────

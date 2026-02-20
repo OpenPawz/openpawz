@@ -129,6 +129,7 @@ Pawz uses **two SQLite databases** — one managed by the Rust engine, one by th
 | `skill_credentials` | Encrypted API keys and secrets per skill |
 | `skill_state` | Enabled/disabled state per skill |
 | `skill_custom_instructions` | User-edited skill instructions (overrides defaults) |
+| `community_skills` | Installed community skills from skills.sh ecosystem (name, description, instructions, source, enabled) |
 
 ### Frontend database (TypeScript — `@tauri-apps/plugin-sql`)
 
@@ -174,6 +175,7 @@ Commands are called via `invoke()` and return Promises:
 | **Agent files** | `engine_agent_file_list`, `engine_agent_file_get`, `engine_agent_file_set`, `engine_agent_file_delete` |
 | **Memory** | `engine_memory_store`, `engine_memory_search`, `engine_memory_list`, `engine_memory_delete`, `engine_memory_stats`, `engine_get_memory_config`, `engine_set_memory_config`, `engine_test_embedding`, `engine_embedding_status`, `engine_embedding_pull_model`, `engine_ensure_embedding_ready`, `engine_memory_backfill` |
 | **Skills** | `engine_skills_list`, `engine_skill_set_enabled`, `engine_skill_set_credential`, `engine_skill_delete_credential`, `engine_skill_revoke_all`, `engine_skill_get_instructions`, `engine_skill_set_instructions` |
+| **Community Skills** | `engine_community_skills_list`, `engine_community_skills_browse`, `engine_community_skill_install`, `engine_community_skill_remove`, `engine_community_skill_set_enabled` |
 | **Tasks** | `engine_tasks_list`, `engine_task_create`, `engine_task_update`, `engine_task_delete`, `engine_task_move`, `engine_task_activity`, `engine_task_set_agents`, `engine_task_run`, `engine_tasks_cron_tick` |
 | **TTS / STT** | `engine_tts_speak`, `engine_tts_get_config`, `engine_tts_set_config`, `engine_tts_transcribe` |
 | **Trading** | `engine_trading_history`, `engine_trading_summary`, `engine_trading_policy_get`, `engine_trading_policy_set`, `engine_positions_list`, `engine_position_close`, `engine_position_update_targets` |

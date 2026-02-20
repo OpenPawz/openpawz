@@ -198,6 +198,28 @@ export interface EngineSkillStatus {
   custom_instructions: string;
 }
 
+// ── Community Skills (skills.sh) ─────────────────────────────────────
+
+export interface CommunitySkill {
+  id: string;
+  name: string;
+  description: string;
+  instructions: string;
+  source: string;
+  enabled: boolean;
+  installed_at: string;
+  updated_at: string;
+}
+
+export interface DiscoveredSkill {
+  id: string;
+  name: string;
+  description: string;
+  source: string;
+  path: string;
+  installed: boolean;
+}
+
 // ── Trading ──────────────────────────────────────────────────────────
 
 export interface TradeRecord {

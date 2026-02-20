@@ -73,3 +73,58 @@ pub fn engine_skill_set_instructions(
     info!("[engine] Setting custom instructions for skill {} ({} chars)", skill_id, instructions.len());
     state.store.set_skill_custom_instructions(&skill_id, &instructions)
 }
+
+// ── Community Skills (skills.sh) ───────────────────────────────────────
+
+#[tauri::command]
+pub fn engine_community_skills_list(
+    state: State<'_, EngineState>,
+) -> Result<Vec<skills::CommunitySkill>, String> {
+    state.store.list_community_skills()
+}
+
+#[tauri::command]
+pub async fn engine_community_skills_browse(
+    source: String,
+    state: State<'_, EngineState>,
+) -> Result<Vec<skills::DiscoveredSkill>, String> {
+    let mut discovered = skills::fetch_repo_skills(&source).await?;
+
+    // Mark which ones are already installed
+    let installed = state.store.list_community_skills()?;
+    let installed_ids: std::collections::HashSet<String> = installed.iter().map(|s| s.id.clone()).collect();
+    for skill in &mut discovered {
+        skill.installed = installed_ids.contains(&skill.id);
+    }
+
+    Ok(discovered)
+}
+
+#[tauri::command]
+pub async fn engine_community_skill_install(
+    source: String,
+    skill_path: String,
+    state: State<'_, EngineState>,
+) -> Result<skills::CommunitySkill, String> {
+    info!("[engine] Installing community skill from {} path {}", source, skill_path);
+    skills::install_community_skill(&state.store, &source, &skill_path).await
+}
+
+#[tauri::command]
+pub fn engine_community_skill_remove(
+    state: State<'_, EngineState>,
+    skill_id: String,
+) -> Result<(), String> {
+    info!("[engine] Removing community skill: {}", skill_id);
+    state.store.remove_community_skill(&skill_id)
+}
+
+#[tauri::command]
+pub fn engine_community_skill_set_enabled(
+    state: State<'_, EngineState>,
+    skill_id: String,
+    enabled: bool,
+) -> Result<(), String> {
+    info!("[engine] Community skill {} → enabled={}", skill_id, enabled);
+    state.store.set_community_skill_enabled(&skill_id, enabled)
+}
