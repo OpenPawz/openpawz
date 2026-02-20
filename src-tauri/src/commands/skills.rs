@@ -101,6 +101,23 @@ pub async fn engine_community_skills_browse(
 }
 
 #[tauri::command]
+pub async fn engine_community_skills_search(
+    query: String,
+    state: State<'_, EngineState>,
+) -> Result<Vec<skills::DiscoveredSkill>, String> {
+    let mut discovered = skills::search_community_skills(&query).await?;
+
+    // Mark which ones are already installed
+    let installed = state.store.list_community_skills()?;
+    let installed_ids: std::collections::HashSet<String> = installed.iter().map(|s| s.id.clone()).collect();
+    for skill in &mut discovered {
+        skill.installed = installed_ids.contains(&skill.id);
+    }
+
+    Ok(discovered)
+}
+
+#[tauri::command]
 pub async fn engine_community_skill_install(
     source: String,
     skill_path: String,

@@ -1456,6 +1456,116 @@ pub async fn install_community_skill(
     Ok(skill)
 }
 
+/// Search GitHub for SKILL.md files matching a keyword query.
+/// Uses the GitHub code search API to find skills across all public repos.
+pub async fn search_community_skills(query: &str) -> Result<Vec<DiscoveredSkill>, String> {
+    let client = reqwest::Client::new();
+
+    // GitHub code search: find SKILL.md files containing the query keyword
+    let encoded_query = query.replace(' ', "+");
+    let search_url = format!(
+        "https://api.github.com/search/code?q={}+filename:SKILL.md&per_page=30",
+        encoded_query
+    );
+
+    let resp = client.get(&search_url)
+        .header("User-Agent", "Pawz/1.0")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send().await
+        .map_err(|e| format!("GitHub search error: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        // GitHub code search requires authentication or may rate-limit
+        if status.as_u16() == 403 || status.as_u16() == 422 {
+            return Err(format!(
+                "GitHub code search requires authentication or is rate-limited (HTTP {}). Try browsing a specific repo instead.",
+                status
+            ));
+        }
+        return Err(format!("GitHub search returned HTTP {}: {}", status, body));
+    }
+
+    let data: serde_json::Value = resp.json().await
+        .map_err(|e| format!("Failed to parse search results: {}", e))?;
+
+    let empty_vec = vec![];
+    let items = data["items"].as_array()
+        .unwrap_or(&empty_vec);
+
+    let mut skills = Vec::new();
+    let mut seen_repos = std::collections::HashSet::new();
+
+    for item in items {
+        let path = item["path"].as_str().unwrap_or_default().to_string();
+        let repo_full = item["repository"]["full_name"].as_str().unwrap_or_default();
+
+        if repo_full.is_empty() || path.is_empty() {
+            continue;
+        }
+
+        let (owner, repo) = match repo_full.split_once('/') {
+            Some((o, r)) => (o, r),
+            None => continue,
+        };
+
+        // Fetch the actual SKILL.md to get name and description
+        let raw_url = format!(
+            "https://raw.githubusercontent.com/{}/{}/main/{}",
+            owner, repo, path
+        );
+
+        let content = match client.get(&raw_url)
+            .header("User-Agent", "Pawz/1.0")
+            .send().await
+        {
+            Ok(r) if r.status().is_success() => {
+                r.text().await.unwrap_or_default()
+            }
+            // Also try default branch HEAD
+            _ => {
+                let fallback_url = format!(
+                    "https://raw.githubusercontent.com/{}/{}/HEAD/{}",
+                    owner, repo, path
+                );
+                match client.get(&fallback_url)
+                    .header("User-Agent", "Pawz/1.0")
+                    .send().await
+                {
+                    Ok(r) if r.status().is_success() => {
+                        r.text().await.unwrap_or_default()
+                    }
+                    _ => continue,
+                }
+            }
+        };
+
+        if let Some((name, description, _instructions)) = parse_skill_md(&content) {
+            let skill_name = name.to_lowercase().replace(' ', "-");
+            let source = format!("{}/{}", owner, repo);
+            let id = format!("{}/{}", source, skill_name);
+
+            // Deduplicate by ID
+            if seen_repos.contains(&id) {
+                continue;
+            }
+            seen_repos.insert(id.clone());
+
+            skills.push(DiscoveredSkill {
+                id,
+                name,
+                description,
+                source,
+                path,
+                installed: false,
+            });
+        }
+    }
+
+    Ok(skills)
+}
+
 /// Parse "owner/repo" from a GitHub source string.
 fn parse_github_source(source: &str) -> Result<(String, String), String> {
     // Handle full URLs: https://github.com/owner/repo

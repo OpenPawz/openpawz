@@ -111,6 +111,7 @@ pub fn run() {
             // ── Community Skills (skills.sh) ──
             commands::skills::engine_community_skills_list,
             commands::skills::engine_community_skills_browse,
+            commands::skills::engine_community_skills_search,
             commands::skills::engine_community_skill_install,
             commands::skills::engine_community_skill_remove,
             commands::skills::engine_community_skill_set_enabled,

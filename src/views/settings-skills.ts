@@ -74,7 +74,7 @@ export async function loadSkillsSettings(): Promise<void> {
     const skills = await pawEngine.skillsList();
     const communitySkills = await pawEngine.communitySkillsList();
     if (loading) loading.style.display = 'none';
-    if (list) list.innerHTML = renderSkillsPage(skills) + renderCommunitySection(communitySkills);
+    if (list) list.innerHTML = renderCommunitySection(communitySkills) + renderSkillsPage(skills);
     bindFilterEvents(skills);
     bindSkillEvents(skills);
     bindCommunityEvents(communitySkills);
@@ -428,39 +428,76 @@ const POPULAR_REPOS = [
   { source: 'anthropics/skills', label: 'Anthropic Skills' },
 ];
 
+const POPULAR_TAGS = [
+  'marketing', 'trading', 'supabase', 'writing', 'coding',
+  'data analysis', 'devops', 'design', 'finance', 'research',
+];
+
 function renderCommunitySection(installed: CommunitySkill[]): string {
   const installedCards = installed.length > 0
     ? installed.map(s => renderCommunityCard(s)).join('')
-    : '<p style="color:var(--text-muted);font-size:13px;padding:8px 0">No community skills installed yet.</p>';
+    : '';
+
+  const tagButtons = POPULAR_TAGS.map(t =>
+    `<button class="btn btn-ghost btn-sm community-search-tag" data-query="${escHtml(t)}" style="border-radius:20px;padding:4px 14px;font-size:12px;border:1px solid var(--border-subtle)">${escHtml(t)}</button>`
+  ).join('');
+
+  const repoButtons = POPULAR_REPOS.map(r =>
+    `<button class="btn btn-ghost btn-sm community-quick-browse" data-source="${escHtml(r.source)}" style="border-radius:20px;padding:4px 14px;font-size:12px;border:1px solid var(--accent);color:var(--accent)">${escHtml(r.label)}</button>`
+  ).join('');
 
   return `
-  <div class="skill-category-group" style="margin-top:24px">
-    <h3 class="skill-category-title" style="display:flex;align-items:center;gap:8px">
-      ${msIcon('public')} Community Skills
-      <span style="font-size:12px;font-weight:400;color:var(--text-muted)">from skills.sh</span>
-    </h3>
-    <p style="color:var(--text-muted);font-size:13px;margin:0 0 12px">
-      Browse and install open-source agent skills from the <a href="https://skills.sh" target="_blank" style="color:var(--accent)">skills.sh</a> ecosystem.
-      Skills are instruction sets that teach your agent new capabilities — they work across all channels (WhatsApp, Telegram, Discord, etc).
+  <div class="community-skills-hero" style="background:linear-gradient(135deg, var(--bg-surface) 0%, color-mix(in srgb, var(--accent) 10%, var(--bg-surface)) 100%);border:1px solid var(--border-subtle);border-radius:12px;padding:24px 28px;margin-bottom:24px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+      <span style="font-size:28px">${msIcon('public', 'ms-lg')}</span>
+      <h2 style="margin:0;font-size:20px;font-weight:700;letter-spacing:-0.02em">Community Skills</h2>
+      <a href="https://skills.sh" target="_blank" style="font-size:11px;color:var(--accent);text-decoration:none;padding:2px 8px;border:1px solid var(--accent);border-radius:12px;margin-left:4px">skills.sh</a>
+    </div>
+    <p style="color:var(--text-muted);font-size:13px;margin:0 0 16px;max-width:600px">
+      Search and install open-source agent skills that teach your agents new capabilities.
+      Skills work across all channels — WhatsApp, Telegram, Discord, and more.
     </p>
 
-    <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-      <input type="text" class="form-input" id="community-skill-source"
-        placeholder="owner/repo (e.g. vercel-labs/agent-skills)"
-        style="flex:1;min-width:200px;font-size:13px" />
-      <button class="btn btn-primary btn-sm" id="community-skill-browse">
-        ${msIcon('search')} Browse
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px">
+      <div style="flex:1;position:relative">
+        <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none">${msIcon('search')}</span>
+        <input type="text" class="form-input" id="community-skill-search"
+          placeholder="Search skills — try marketing, trading, supabase..."
+          style="width:100%;font-size:14px;padding:10px 12px 10px 36px;border-radius:10px" />
+      </div>
+      <button class="btn btn-primary" id="community-skill-search-btn" style="padding:10px 20px;border-radius:10px;font-size:14px">
+        Search
       </button>
-      ${POPULAR_REPOS.map(r =>
-        `<button class="btn btn-ghost btn-sm community-quick-browse" data-source="${escHtml(r.source)}" title="Browse ${escHtml(r.label)}">${escHtml(r.label)}</button>`
-      ).join('')}
     </div>
 
-    <div id="community-browse-results" style="display:none;margin-bottom:16px"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      ${tagButtons}
+    </div>
 
-    <div class="skill-section-title" style="margin-bottom:8px">${msIcon('download')} Installed Community Skills (${installed.length})</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid var(--border-subtle)">
+      <span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:4px">${msIcon('folder')} Browse repo:</span>
+      ${repoButtons}
+      <span style="font-size:11px;color:var(--text-muted);display:flex;align-items:center;margin-left:4px">or type</span>
+      <input type="text" class="form-input" id="community-skill-source"
+        placeholder="owner/repo"
+        style="font-size:12px;padding:4px 10px;border-radius:8px;width:160px" />
+      <button class="btn btn-ghost btn-sm" id="community-skill-browse" style="border-radius:8px;font-size:12px">
+        ${msIcon('search')} Browse
+      </button>
+    </div>
+
+    <div id="community-search-results" style="display:none;margin-top:16px"></div>
+    <div id="community-browse-results" style="display:none;margin-top:16px"></div>
+  </div>
+
+  ${installed.length > 0 ? `
+  <div class="skill-category-group" style="margin-bottom:24px">
+    <h3 class="skill-category-title" style="display:flex;align-items:center;gap:8px">
+      ${msIcon('download')} Installed Community Skills
+      <span style="font-size:12px;font-weight:400;color:var(--text-muted)">(${installed.length})</span>
+    </h3>
     ${installedCards}
-  </div>`;
+  </div>` : ''}`;
 }
 
 function renderCommunityCard(s: CommunitySkill): string {
@@ -532,13 +569,34 @@ function renderDiscoveredCard(skill: DiscoveredSkill): string {
 }
 
 function bindCommunityEvents(_installed: CommunitySkill[]): void {
-  // Browse button
+  // ── Keyword search ──────────────────────────────────────────────────
+  const searchInput = $('community-skill-search') as HTMLInputElement | null;
+
+  $('community-skill-search-btn')?.addEventListener('click', () => {
+    if (searchInput?.value.trim()) searchSkills(searchInput.value.trim());
+  });
+
+  searchInput?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && searchInput.value.trim()) {
+      searchSkills(searchInput.value.trim());
+    }
+  });
+
+  // Tag buttons
+  document.querySelectorAll('.community-search-tag').forEach(el => {
+    el.addEventListener('click', () => {
+      const query = (el as HTMLElement).dataset.query!;
+      if (searchInput) searchInput.value = query;
+      searchSkills(query);
+    });
+  });
+
+  // ── Repo browse ─────────────────────────────────────────────────────
   $('community-skill-browse')?.addEventListener('click', () => {
     const input = $('community-skill-source') as HTMLInputElement | null;
     if (input?.value.trim()) browseRepo(input.value.trim());
   });
 
-  // Enter key in input
   ($('community-skill-source') as HTMLInputElement)?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') {
       const input = e.target as HTMLInputElement;
@@ -556,6 +614,7 @@ function bindCommunityEvents(_installed: CommunitySkill[]): void {
     });
   });
 
+  // ── Installed skill management ──────────────────────────────────────
   // Enable/disable toggles
   document.querySelectorAll('.community-enabled-toggle').forEach(el => {
     el.addEventListener('change', async (e) => {
@@ -594,6 +653,10 @@ function bindCommunityEvents(_installed: CommunitySkill[]): void {
 
 async function browseRepo(source: string): Promise<void> {
   const results = $('community-browse-results');
+  // Hide search results when browsing
+  const searchResults = $('community-search-results');
+  if (searchResults) searchResults.style.display = 'none';
+
   if (!results) return;
 
   results.style.display = 'block';
@@ -609,58 +672,111 @@ async function browseRepo(source: string): Promise<void> {
       return;
     }
 
+    const notInstalled = skills.filter(s => !s.installed).length;
     const header = `<div style="display:flex;justify-content:space-between;align-items:center;padding:0 0 8px">
       <span style="font-weight:600;font-size:13px">${skills.length} skills found in ${escHtml(source)}</span>
-      ${skills.filter(s => !s.installed).length > 0
+      ${notInstalled > 0
         ? `<button class="btn btn-primary btn-sm" id="community-install-all" data-source="${escHtml(source)}">
-            ${msIcon('download')} Install All (${skills.filter(s => !s.installed).length})
+            ${msIcon('download')} Install All (${notInstalled})
           </button>`
         : ''}
     </div>`;
 
     results.innerHTML = header + skills.map(s => renderDiscoveredCard(s)).join('');
-
-    // Wire install buttons
-    results.querySelectorAll('.community-install-btn').forEach(el => {
-      el.addEventListener('click', async () => {
-        const btn = el as HTMLButtonElement;
-        const src = btn.dataset.source!;
-        const path = btn.dataset.path!;
-        const name = btn.dataset.name!;
-
-        btn.disabled = true;
-        btn.innerHTML = `<span class="wa-spinner" style="width:12px;height:12px"></span> Installing...`;
-
-        try {
-          await pawEngine.communitySkillInstall(src, path);
-          showVaultToast(`${name} installed and enabled!`, 'success');
-          await loadSkillsSettings();
-        } catch (err) {
-          showVaultToast(`Install failed: ${err}`, 'error');
-          btn.disabled = false;
-          btn.innerHTML = `${msIcon('download')} Install`;
-        }
-      });
-    });
-
-    // Wire "Install All" button
-    $('community-install-all')?.addEventListener('click', async () => {
-      const allBtn = $('community-install-all') as HTMLButtonElement;
-      if (allBtn) { allBtn.disabled = true; allBtn.textContent = 'Installing...'; }
-
-      let installed = 0;
-      for (const s of skills.filter(sk => !sk.installed)) {
-        try {
-          await pawEngine.communitySkillInstall(s.source, s.path);
-          installed++;
-        } catch (err) {
-          console.warn(`Failed to install ${s.name}:`, err);
-        }
-      }
-      showVaultToast(`${installed} skills installed!`, 'success');
-      await loadSkillsSettings();
-    });
+    wireInstallButtons(results, skills);
   } catch (err) {
     results.innerHTML = `<p style="color:var(--accent-danger);padding:12px">${msIcon('error')} ${escHtml(String(err))}</p>`;
   }
+}
+
+async function searchSkills(query: string): Promise<void> {
+  const results = $('community-search-results');
+  // Hide repo browse results when searching
+  const browseResults = $('community-browse-results');
+  if (browseResults) browseResults.style.display = 'none';
+
+  if (!results) return;
+
+  results.style.display = 'block';
+  results.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:12px;color:var(--text-muted)">
+    <span class="wa-spinner"></span> Searching for "${escHtml(query)}" skills...
+  </div>`;
+
+  try {
+    const skills = await pawEngine.communitySkillsSearch(query);
+
+    if (skills.length === 0) {
+      results.innerHTML = `<div style="padding:16px;text-align:center">
+        <p style="color:var(--text-muted);margin:0 0 8px">${msIcon('search_off')} No skills found for "${escHtml(query)}"</p>
+        <p style="color:var(--text-muted);font-size:12px;margin:0">Try different keywords or browse a specific repo below.</p>
+      </div>`;
+      return;
+    }
+
+    // Group results by repo for clarity
+    const byRepo = new Map<string, typeof skills>();
+    for (const s of skills) {
+      const existing = byRepo.get(s.source) || [];
+      existing.push(s);
+      byRepo.set(s.source, existing);
+    }
+
+    const header = `<div style="display:flex;justify-content:space-between;align-items:center;padding:0 0 8px">
+      <span style="font-weight:600;font-size:14px">${msIcon('check_circle')} ${skills.length} skills found for "${escHtml(query)}"</span>
+      <span style="font-size:12px;color:var(--text-muted)">from ${byRepo.size} ${byRepo.size === 1 ? 'repo' : 'repos'}</span>
+    </div>`;
+
+    results.innerHTML = header + skills.map(s => renderDiscoveredCard(s)).join('');
+
+    // Wire install buttons
+    wireInstallButtons(results, skills);
+  } catch (err) {
+    results.innerHTML = `<div style="padding:16px">
+      <p style="color:var(--accent-danger);margin:0 0 6px">${msIcon('error')} ${escHtml(String(err))}</p>
+      <p style="color:var(--text-muted);font-size:12px;margin:0">GitHub code search may require authentication. Try browsing a specific repo instead.</p>
+    </div>`;
+  }
+}
+
+/** Wire install buttons inside a results container. Shared by search and browse. */
+function wireInstallButtons(container: HTMLElement, skills: DiscoveredSkill[]): void {
+  container.querySelectorAll('.community-install-btn').forEach(el => {
+    el.addEventListener('click', async () => {
+      const btn = el as HTMLButtonElement;
+      const src = btn.dataset.source!;
+      const path = btn.dataset.path!;
+      const name = btn.dataset.name!;
+
+      btn.disabled = true;
+      btn.innerHTML = `<span class="wa-spinner" style="width:12px;height:12px"></span> Installing...`;
+
+      try {
+        await pawEngine.communitySkillInstall(src, path);
+        showVaultToast(`${name} installed and enabled!`, 'success');
+        await loadSkillsSettings();
+      } catch (err) {
+        showVaultToast(`Install failed: ${err}`, 'error');
+        btn.disabled = false;
+        btn.innerHTML = `${msIcon('download')} Install`;
+      }
+    });
+  });
+
+  // Install All button (if present)
+  container.querySelector('#community-install-all')?.addEventListener('click', async () => {
+    const allBtn = $('community-install-all') as HTMLButtonElement;
+    if (allBtn) { allBtn.disabled = true; allBtn.textContent = 'Installing...'; }
+
+    let installed = 0;
+    for (const s of skills.filter(sk => !sk.installed)) {
+      try {
+        await pawEngine.communitySkillInstall(s.source, s.path);
+        installed++;
+      } catch (err) {
+        console.warn(`Failed to install ${s.name}:`, err);
+      }
+    }
+    showVaultToast(`${installed} skills installed!`, 'success');
+    await loadSkillsSettings();
+  });
 }

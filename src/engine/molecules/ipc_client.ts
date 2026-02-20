@@ -275,6 +275,10 @@ class PawEngineClient {
     return invoke<DiscoveredSkill[]>('engine_community_skills_browse', { source });
   }
 
+  async communitySkillsSearch(query: string): Promise<DiscoveredSkill[]> {
+    return invoke<DiscoveredSkill[]>('engine_community_skills_search', { query });
+  }
+
   async communitySkillInstall(source: string, skillPath: string): Promise<CommunitySkill> {
     return invoke<CommunitySkill>('engine_community_skill_install', { source, skillPath });
   }
