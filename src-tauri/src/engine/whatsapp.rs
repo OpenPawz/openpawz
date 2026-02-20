@@ -153,57 +153,129 @@ pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
 
 // ── Docker Container Management ────────────────────────────────────────
 
-/// Check if the WhatsApp backend service is reachable. If not, try to auto-start it.
+/// Check if the WhatsApp backend service is reachable.
+/// If Docker isn't installed, install it automatically.
+/// If Docker isn't running, start it automatically.
 /// Returns the Docker client on success, or a user-friendly error.
 async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Result<bollard::Docker, String> {
     use bollard::Docker;
 
-    // First attempt: connect directly
+    // First attempt: connect directly — fastest path
     if let Ok(docker) = Docker::connect_with_local_defaults() {
         if docker.ping().await.is_ok() {
             return Ok(docker);
         }
     }
 
-    // Docker daemon not responding — try to auto-start silently
-    info!("[whatsapp] Docker not responding, attempting auto-start...");
+    info!("[whatsapp] Docker not responding, checking installation...");
     let _ = app_handle.emit("whatsapp-status", json!({
         "kind": "docker_starting",
         "message": "Setting up WhatsApp...",
     }));
 
-    let launched = if cfg!(target_os = "macos") {
-        std::process::Command::new("open")
-            .args(["-a", "Docker"])
-            .spawn()
-            .is_ok()
-    } else if cfg!(target_os = "windows") {
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", "Docker Desktop"])
-            .spawn()
-            .is_ok()
-    } else {
-        // Linux: try systemctl
-        std::process::Command::new("systemctl")
-            .args(["--user", "start", "docker-desktop"])
-            .spawn()
-            .is_ok()
-    };
+    // Check if docker CLI exists at all
+    let docker_installed = std::process::Command::new("docker")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
 
-    if !launched {
+    if !docker_installed {
+        // Auto-install Docker Engine
+        info!("[whatsapp] Docker not found, installing automatically...");
         let _ = app_handle.emit("whatsapp-status", json!({
-            "kind": "docker_not_installed",
-            "message": "WhatsApp service is not available.",
+            "kind": "installing",
+            "message": "Installing WhatsApp service (first time only)...",
         }));
-        return Err(
-            "WhatsApp couldn't start. A required background service is not installed."
-            .into()
-        );
+
+        let install_ok = if cfg!(target_os = "macos") {
+            // macOS: use Homebrew to install Docker CLI + Colima (lightweight runtime)
+            let brew_ok = std::process::Command::new("brew")
+                .args(["install", "docker", "colima"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if brew_ok {
+                // Start Colima (lightweight Docker VM — no GUI needed)
+                std::process::Command::new("colima")
+                    .arg("start")
+                    .output()
+                    .map(|o| o.status.success())
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        } else if cfg!(target_os = "windows") {
+            // Windows: try winget
+            std::process::Command::new("winget")
+                .args(["install", "--id", "Docker.DockerCLI", "--accept-source-agreements", "--accept-package-agreements"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        } else {
+            // Linux: use official install script
+            let curl_ok = std::process::Command::new("sh")
+                .args(["-c", "curl -fsSL https://get.docker.com | sh"])
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if curl_ok {
+                // Start Docker daemon
+                let _ = std::process::Command::new("sudo")
+                    .args(["systemctl", "start", "docker"])
+                    .output();
+                // Add user to docker group so future runs don't need sudo
+                let _ = std::process::Command::new("sudo")
+                    .args(["usermod", "-aG", "docker", &std::env::var("USER").unwrap_or_default()])
+                    .output();
+                true
+            } else {
+                false
+            }
+        };
+
+        if !install_ok {
+            let _ = app_handle.emit("whatsapp-status", json!({
+                "kind": "install_failed",
+                "message": "Couldn't set up WhatsApp automatically. Please try again or check your internet connection.",
+            }));
+            return Err(
+                "WhatsApp couldn't be set up automatically. Check your internet connection and try again."
+                .into()
+            );
+        }
+
+        info!("[whatsapp] Docker installed successfully");
+    } else {
+        // Docker is installed but daemon isn't running — try to start it
+        info!("[whatsapp] Docker installed but not running, starting...");
+
+        if cfg!(target_os = "macos") {
+            // Try Colima first (lightweight), fall back to Docker Desktop
+            let colima_ok = std::process::Command::new("colima")
+                .arg("start")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false);
+            if !colima_ok {
+                let _ = std::process::Command::new("open")
+                    .args(["-a", "Docker"])
+                    .spawn();
+            }
+        } else if cfg!(target_os = "windows") {
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "net", "start", "com.docker.service"])
+                .spawn();
+        } else {
+            let _ = std::process::Command::new("sudo")
+                .args(["systemctl", "start", "docker"])
+                .output();
+        }
     }
 
-    // Poll for readiness (up to 60 seconds)
+    // Poll for Docker to become ready (up to 90 seconds — install may take time)
     info!("[whatsapp] Waiting for backend service to start...");
-    for attempt in 1..=30 {
+    for attempt in 1..=45 {
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         if let Ok(docker) = Docker::connect_with_local_defaults() {
             if docker.ping().await.is_ok() {

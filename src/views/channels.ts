@@ -786,8 +786,11 @@ export async function loadChannels() {
                   case 'starting':
                     banner.innerHTML = `<span class="wa-spinner"></span> Setting up WhatsApp...`;
                     break;
-                  case 'docker_not_installed':
-                    banner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>WhatsApp couldn't start. Pawz needs a background service to connect — <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">click here to set it up</a>, then try again.</span>`;
+                  case 'installing':
+                    banner.innerHTML = `<span class="wa-spinner"></span> Installing WhatsApp service (first time only — this may take a minute)...`;
+                    break;
+                  case 'install_failed':
+                    banner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>Couldn't set up WhatsApp automatically. Check your internet connection and try again.</span>`;
                     banner.className = 'wa-status-banner wa-status-error';
                     break;
                   case 'docker_timeout':
@@ -827,8 +830,8 @@ export async function loadChannels() {
             const statusBanner = document.getElementById(`${cardId}-status-banner`);
             if (ch === 'whatsapp' && statusBanner) {
               const errMsg = e instanceof Error ? e.message : String(e);
-              if (errMsg.includes('not installed') || errMsg.includes('not available')) {
-                statusBanner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>WhatsApp couldn't start. <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">Install the required service</a> and try again.</span>`;
+              if (errMsg.includes('automatically') || errMsg.includes('internet')) {
+                statusBanner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>Couldn't set up WhatsApp. Check your internet connection and try again.</span>`;
               } else if (errMsg.includes('didn\'t start in time') || errMsg.includes('timeout')) {
                 statusBanner.innerHTML = `<span class="wa-status-icon">⏱️</span> <span>WhatsApp is still loading. Give it a moment and try again.</span>`;
               } else {
