@@ -153,7 +153,7 @@ pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
 
 // ── Docker Container Management ────────────────────────────────────────
 
-/// Check if Docker is reachable. If not, try to auto-start Docker Desktop.
+/// Check if the WhatsApp backend service is reachable. If not, try to auto-start it.
 /// Returns the Docker client on success, or a user-friendly error.
 async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Result<bollard::Docker, String> {
     use bollard::Docker;
@@ -165,11 +165,11 @@ async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Result<bollard::D
         }
     }
 
-    // Docker daemon not responding — try to auto-start Docker Desktop
+    // Docker daemon not responding — try to auto-start silently
     info!("[whatsapp] Docker not responding, attempting auto-start...");
     let _ = app_handle.emit("whatsapp-status", json!({
         "kind": "docker_starting",
-        "message": "Starting Docker Desktop — this may take a moment...",
+        "message": "Setting up WhatsApp...",
     }));
 
     let launched = if cfg!(target_os = "macos") {
@@ -191,47 +191,41 @@ async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Result<bollard::D
     };
 
     if !launched {
-        // Docker Desktop doesn't seem to be installed
         let _ = app_handle.emit("whatsapp-status", json!({
             "kind": "docker_not_installed",
-            "message": "Docker Desktop is not installed. WhatsApp needs it to run.",
+            "message": "WhatsApp service is not available.",
         }));
         return Err(
-            "Docker Desktop is not installed.\n\n\
-             WhatsApp uses a small background service (Docker) to connect.\n\
-             Install it from: https://www.docker.com/products/docker-desktop/\n\n\
-             After installing, restart Paw and try again."
+            "WhatsApp couldn't start. A required background service is not installed."
             .into()
         );
     }
 
-    // Poll for Docker to become ready (up to 60 seconds)
-    info!("[whatsapp] Waiting for Docker Desktop to start...");
+    // Poll for readiness (up to 60 seconds)
+    info!("[whatsapp] Waiting for backend service to start...");
     for attempt in 1..=30 {
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         if let Ok(docker) = Docker::connect_with_local_defaults() {
             if docker.ping().await.is_ok() {
-                info!("[whatsapp] Docker Desktop ready after ~{}s", attempt * 2);
+                info!("[whatsapp] Backend service ready after ~{}s", attempt * 2);
                 let _ = app_handle.emit("whatsapp-status", json!({
                     "kind": "docker_ready",
-                    "message": "Docker Desktop is running",
+                    "message": "Setting up WhatsApp...",
                 }));
                 return Ok(docker);
             }
         }
         if attempt % 5 == 0 {
-            info!("[whatsapp] Still waiting for Docker... ({}s)", attempt * 2);
+            info!("[whatsapp] Still waiting for backend... ({}s)", attempt * 2);
         }
     }
 
     let _ = app_handle.emit("whatsapp-status", json!({
         "kind": "docker_timeout",
-        "message": "Docker Desktop is taking too long to start. Open it manually and try again.",
+        "message": "WhatsApp is still loading. Try again in a moment.",
     }));
     Err(
-        "Docker Desktop was launched but didn't start in time.\n\n\
-         Open Docker Desktop manually, wait until it says \"Running\", \
-         then click Start on the WhatsApp card again."
+        "WhatsApp service didn't start in time. Give it a moment and try again."
         .into()
     )
 }
@@ -281,7 +275,7 @@ async fn ensure_evolution_container(app_handle: &tauri::AppHandle, config: &What
         Err(_) => {
             let _ = app_handle.emit("whatsapp-status", json!({
                 "kind": "downloading",
-                "message": "Downloading WhatsApp service (first time only, may take a minute)...",
+                "message": "First-time setup — downloading WhatsApp service...",
             }));
             let pull_opts = CreateImageOptions {
                 from_image: EVOLUTION_IMAGE,
@@ -463,10 +457,10 @@ async fn connect_evolution_instance(config: &WhatsAppConfig) -> Result<String, S
 async fn run_whatsapp_bridge(app_handle: tauri::AppHandle, mut config: WhatsAppConfig) -> Result<(), String> {
     let stop = get_stop_signal();
 
-    // Step 1: Ensure Docker is available and container is running
+    // Step 1: Ensure backend service is available and container is running
     let _ = app_handle.emit("whatsapp-status", json!({
         "kind": "starting",
-        "message": "Checking Docker and starting WhatsApp service...",
+        "message": "Setting up WhatsApp...",
     }));
 
     let container_id = ensure_evolution_container(&app_handle, &config).await?;

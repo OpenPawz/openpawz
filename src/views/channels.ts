@@ -210,15 +210,11 @@ const CHANNEL_SETUPS: ChannelSetupDef[] = [
     description: 'Connect your WhatsApp to Pawz. Your agent will respond to messages automatically.',
     descriptionHtml: `
       <div class="wa-setup-guide">
-        <div class="wa-prereq">
-          <span class="ms" style="font-size:18px;vertical-align:middle;margin-right:6px">info</span>
-          <strong>Requires <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener">Docker Desktop</a></strong> — install it and make sure it's running before you start.
-        </div>
         <div class="wa-steps">
           <div class="wa-step"><span class="wa-step-num">1</span> Save this form (defaults are fine)</div>
           <div class="wa-step"><span class="wa-step-num">2</span> Click <strong>Start</strong> on the WhatsApp card</div>
           <div class="wa-step"><span class="wa-step-num">3</span> A QR code will appear — scan it with your phone</div>
-          <div class="wa-step-sub">WhatsApp > Settings > Linked Devices > Link a Device</div>
+          <div class="wa-step-sub">WhatsApp → Settings → Linked Devices → Link a Device</div>
           <div class="wa-step"><span class="wa-step-num">4</span> Done! Your agent is now live on WhatsApp</div>
         </div>
       </div>
@@ -786,27 +782,23 @@ export async function loadChannels() {
                 if (!banner) return;
                 switch (kind) {
                   case 'docker_starting':
-                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Starting Docker...')}`;
+                  case 'docker_ready':
+                  case 'starting':
+                    banner.innerHTML = `<span class="wa-spinner"></span> Setting up WhatsApp...`;
                     break;
                   case 'docker_not_installed':
-                    banner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>Docker Desktop is needed for WhatsApp. <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">Install it here</a>, then try again.</span>`;
+                    banner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>WhatsApp couldn't start. Pawz needs a background service to connect — <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">click here to set it up</a>, then try again.</span>`;
                     banner.className = 'wa-status-banner wa-status-error';
                     break;
                   case 'docker_timeout':
-                    banner.innerHTML = `<span class="wa-status-icon">⏱️</span> <span>Docker is still starting. Open Docker Desktop manually, wait until it says "Running", then click Start again.</span>`;
+                    banner.innerHTML = `<span class="wa-status-icon">⏱️</span> <span>WhatsApp is still loading. Give it a moment and click Start again.</span>`;
                     banner.className = 'wa-status-banner wa-status-warning';
                     break;
-                  case 'docker_ready':
-                    banner.innerHTML = `<span class="wa-spinner"></span> Docker is ready — setting up WhatsApp...`;
-                    break;
                   case 'downloading':
-                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Downloading WhatsApp service...')}`;
-                    break;
-                  case 'starting':
-                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Starting...')}`;
+                    banner.innerHTML = `<span class="wa-spinner"></span> First-time setup — downloading WhatsApp service (this may take a minute)...`;
                     break;
                   case 'connecting':
-                    banner.innerHTML = `<span class="wa-spinner"></span> ${escHtml(message ?? 'Connecting to WhatsApp...')}`;
+                    banner.innerHTML = `<span class="wa-spinner"></span> Connecting to WhatsApp...`;
                     break;
                   case 'qr_code':
                     banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 8px">Scan this QR code with your phone's WhatsApp app:</p>${qr ? `<img src="${qr.startsWith('data:') ? qr : 'data:image/png;base64,' + qr}" alt="WhatsApp QR code" class="wa-qr-image" />` : ''}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
@@ -835,10 +827,10 @@ export async function loadChannels() {
             const statusBanner = document.getElementById(`${cardId}-status-banner`);
             if (ch === 'whatsapp' && statusBanner) {
               const errMsg = e instanceof Error ? e.message : String(e);
-              if (errMsg.includes('Docker Desktop is not installed')) {
-                statusBanner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>Docker Desktop is needed. <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">Install it here</a>, then try again.</span>`;
-              } else if (errMsg.includes('didn\'t start in time')) {
-                statusBanner.innerHTML = `<span class="wa-status-icon">⏱️</span> <span>Docker is still loading. Open it manually and try again.</span>`;
+              if (errMsg.includes('not installed') || errMsg.includes('not available')) {
+                statusBanner.innerHTML = `<span class="wa-status-icon">⚠️</span> <span>WhatsApp couldn't start. <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener" style="color:var(--neon-cyan)">Install the required service</a> and try again.</span>`;
+              } else if (errMsg.includes('didn\'t start in time') || errMsg.includes('timeout')) {
+                statusBanner.innerHTML = `<span class="wa-status-icon">⏱️</span> <span>WhatsApp is still loading. Give it a moment and try again.</span>`;
               } else {
                 statusBanner.innerHTML = `<span class="wa-status-icon">❌</span> ${escHtml(errMsg)}`;
               }
