@@ -344,15 +344,53 @@ export function extractCommandString(toolName: string, args?: Record<string, unk
   return toolName;
 }
 
+// ── Safe Regex Helpers (ReDoS mitigation) ─────────────────────────────────
+
+/**
+ * Detect regex patterns with nested quantifiers that can cause catastrophic
+ * backtracking (ReDoS). Rejects patterns like (a+)+, (a*)+, (a+)*, etc.
+ */
+const NESTED_QUANTIFIER_RE = /([+*])\s*\)[\s]*[+*?{]/;
+const OVERLAPPING_ALTERNATION_RE = /(\.\*.*\|.*\.\*)/;
+
+export function isReDoSRisk(pattern: string): boolean {
+  return NESTED_QUANTIFIER_RE.test(pattern) || OVERLAPPING_ALTERNATION_RE.test(pattern);
+}
+
+/**
+ * Validate a regex pattern string. Returns null if valid, or an error message.
+ */
+export function validateRegexPattern(pattern: string): string | null {
+  if (isReDoSRisk(pattern)) {
+    return 'Pattern contains nested quantifiers that could cause catastrophic backtracking';
+  }
+  try {
+    new RegExp(pattern, 'i');
+    return null;
+  } catch (e) {
+    return e instanceof Error ? e.message : 'Invalid regex';
+  }
+}
+
+/**
+ * Safely compile and test a regex pattern against a string.
+ * Rejects patterns flagged as ReDoS risks; catches compilation errors.
+ */
+function safeRegexTest(pattern: string, input: string): boolean {
+  if (isReDoSRisk(pattern)) return false;
+  try {
+    return new RegExp(pattern, 'i').test(input);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Check if a command string matches any pattern in an allowlist.
  * Used for auto-approve of known safe commands.
  */
 export function matchesAllowlist(command: string, patterns: string[]): boolean {
-  return patterns.some(p => {
-    try { return new RegExp(p, 'i').test(command); }
-    catch { return false; }
-  });
+  return patterns.some(p => safeRegexTest(p, command));
 }
 
 /**
@@ -360,10 +398,7 @@ export function matchesAllowlist(command: string, patterns: string[]): boolean {
  * Used for auto-deny of known dangerous commands.
  */
 export function matchesDenylist(command: string, patterns: string[]): boolean {
-  return patterns.some(p => {
-    try { return new RegExp(p, 'i').test(command); }
-    catch { return false; }
-  });
+  return patterns.some(p => safeRegexTest(p, command));
 }
 
 // ── Network Request Auditing (Sprint C5) ──────────────────────────────────

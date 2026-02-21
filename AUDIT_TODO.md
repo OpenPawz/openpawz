@@ -41,10 +41,8 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 
 ## Tier 2 — High Impact
 
-### 7. ReDoS in security allowlist/denylist
-- **File:** `src/security.ts` L353-364
-- **Bug:** User-configured patterns compiled with `new RegExp(p, 'i')` without complexity checks. Catastrophic backtracking possible (e.g. `(a+)+$`).
-- **Fix:** Wrap regex compilation in a try/catch with timeout, or validate pattern complexity before saving.
+### ~~7. ReDoS in security allowlist/denylist~~ ✅ FIXED
+- Added `isReDoSRisk()` detector (nested quantifiers, overlapping alternation), `validateRegexPattern()` for save-time validation, and `safeRegexTest()` wrapper. Updated `matchesAllowlist` and `matchesDenylist` to reject ReDoS-risk patterns silently. 19 new tests in `src/security.test.ts`.
 
 ### 8. Security settings stored in unprotected localStorage
 - **File:** `src/security.ts` L200-315
