@@ -109,7 +109,7 @@ fn access_control_allowlist_denies_unlisted() {
     let allowed: Vec<String> = vec!["alice".into()];
     let result = check_access("allowlist", "bob", "bob", "Bob", &allowed, &mut pending);
     assert!(result.is_err());
-    assert!(result.unwrap_err().contains("allowlist"));
+    assert!(result.unwrap_err().to_string().contains("allowlist"));
 }
 
 #[test]

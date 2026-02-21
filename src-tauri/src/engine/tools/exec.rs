@@ -93,7 +93,7 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, a
     use tokio::process::Command as TokioCommand;
     use std::time::Duration;
 
-    let mut child = if cfg!(target_os = "windows") {
+    let child = if cfg!(target_os = "windows") {
         TokioCommand::new("cmd")
             .args(["C", command])
             .current_dir(&workspace)

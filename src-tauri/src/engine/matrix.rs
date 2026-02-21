@@ -142,7 +142,6 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
                     if get_stop_signal().load(Ordering::Relaxed) { break; }
                 }
             }
-            reconnect_attempt = 0;
         }
         BRIDGE_RUNNING.store(false, Ordering::Relaxed);
         info!("[matrix] Bridge stopped");
