@@ -7,7 +7,7 @@ import { pawEngine } from '../../engine';
 import { engineChatSend } from '../molecules/bridge';
 import { appState, agentSessionMap, persistAgentSessionMap,
          MODEL_CONTEXT_SIZES, MODEL_COST_PER_TOKEN, COMPACTION_WARN_THRESHOLD,
-         createStreamState, type StreamState,
+         createStreamState, sweepStaleStreams, type StreamState,
          type MessageWithAttachments } from '../../state/index';
 import { formatMarkdown } from '../../components/molecules/markdown';
 import { escHtml, icon, confirmModal } from '../../components/helpers';
@@ -406,6 +406,7 @@ export function showStreamingMessage(): void {
 
   // Create session-keyed stream state
   const key = appState.currentSessionKey ?? '';
+  sweepStaleStreams(); // Evict leaked entries before adding a new one
   const ss = createStreamState(AgentsModule.getCurrentAgent()?.id);
   ss.el = contentEl;
   appState.activeStreams.set(key, ss);

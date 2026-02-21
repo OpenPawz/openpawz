@@ -154,10 +154,11 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Fix:** Export a factory function or accept dependency injection.
 - Exported the `PawEngineClient` class (was private) and added `createPawEngine()` factory function. The default `pawEngine` singleton is now created via the factory. Tests can import `createPawEngine()` or `PawEngineClient` directly for mocking/DI. Both are re-exported through the `src/engine.ts` barrel. All 40+ existing consumers continue to use the singleton unchanged.
 
-### 32. `activeStreams` Map never bounded
+### 32. ~~`activeStreams` Map never bounded~~ ✅ FIXED
 - **File:** `src/state/index.ts` L100
 - On error paths the map entry may not be deleted, causing slow memory leak over long sessions.
 - **Fix:** Add cleanup sweep or bounded map.
+- Added `createdAt` timestamp to `StreamState`. New `sweepStaleStreams()` function evicts entries older than 10 minutes (matching the streaming timeout) and enforces a hard cap of 50 entries. Stale entries have their timeouts cleared and resolve callbacks invoked before removal. Sweep runs automatically each time a new stream is created in `showStreamingMessage()`.
 
 ### 33. Token cost drift
 - **File:** `src/engine/organisms/chat_controller.ts` L340

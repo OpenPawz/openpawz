@@ -111,10 +111,47 @@ export interface StreamState {
   agentId:  string | null;
   /** Set to true after onToken has fired for this run to prevent double-counting */
   tokenRecorded: boolean;
+  /** Timestamp when this stream was created (for stale cleanup). */
+  createdAt: number;
 }
 
 export function createStreamState(agentId?: string | null): StreamState {
-  return { content: '', el: null, runId: null, resolve: null, timeout: null, agentId: agentId ?? null, tokenRecorded: false };
+  return { content: '', el: null, runId: null, resolve: null, timeout: null, agentId: agentId ?? null, tokenRecorded: false, createdAt: Date.now() };
+}
+
+/** Max age (ms) before a stream entry is considered stale and evictable. */
+const STREAM_MAX_AGE_MS = 10 * 60 * 1000; // 10 minutes (matches streaming timeout)
+
+/** Hard cap on concurrent stream entries. */
+const STREAM_MAX_ENTRIES = 50;
+
+/**
+ * Remove stale stream entries that were never cleaned up (e.g. error paths).
+ * Called automatically when a new stream is registered.
+ */
+export function sweepStaleStreams(): number {
+  const now = Date.now();
+  let swept = 0;
+  for (const [key, ss] of appState.activeStreams) {
+    if (now - ss.createdAt > STREAM_MAX_AGE_MS) {
+      if (ss.timeout) clearTimeout(ss.timeout);
+      if (ss.resolve) ss.resolve(ss.content || '');
+      appState.activeStreams.delete(key);
+      swept++;
+    }
+  }
+  // Hard cap: if still over limit, evict oldest entries
+  if (appState.activeStreams.size > STREAM_MAX_ENTRIES) {
+    const sorted = [...appState.activeStreams.entries()].sort((a, b) => a[1].createdAt - b[1].createdAt);
+    while (sorted.length > STREAM_MAX_ENTRIES) {
+      const [key, ss] = sorted.shift()!;
+      if (ss.timeout) clearTimeout(ss.timeout);
+      if (ss.resolve) ss.resolve(ss.content || '');
+      appState.activeStreams.delete(key);
+      swept++;
+    }
+  }
+  return swept;
 }
 
 // ── Mutable singleton state ────────────────────────────────────────────────
