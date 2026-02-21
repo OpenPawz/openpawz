@@ -10,8 +10,9 @@ permissions:
   contents: read
 
 jobs:
-  check:
-    name: Lint, Type-check & Test
+  # ── TypeScript: lint, type-check, test, format ──────────────────
+  typescript:
+    name: TypeScript
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -37,3 +38,76 @@ jobs:
 
       - name: Prettier check
         run: npx prettier --check "src/**/*.ts"
+
+  # ── Rust: check, test, clippy ───────────────────────────────────
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      - name: Cargo check
+        run: cargo check
+        working-directory: src-tauri
+
+      - name: Cargo test
+        run: cargo test
+        working-directory: src-tauri
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+        working-directory: src-tauri
+
+  # ── Security: dependency audits ─────────────────────────────────
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Cargo audit
+        run: cargo audit
+        working-directory: src-tauri
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=high

@@ -16,6 +16,9 @@
 - [ ] `npx tsc --noEmit` passes (zero type errors)
 - [ ] `npx vitest run` passes (all tests green)
 - [ ] `npx eslint src/` has no new errors
+- [ ] `cd src-tauri && cargo check` passes
+- [ ] `cd src-tauri && cargo test` passes
+- [ ] `cd src-tauri && cargo clippy -- -D warnings` has no new warnings
 - [ ] New atoms have unit tests
 - [ ] No secrets, tokens, or credentials in diff
 
