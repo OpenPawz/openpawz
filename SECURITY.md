@@ -137,7 +137,7 @@ Sensitive database fields are encrypted at rest using **AES-256-GCM** via the We
 
 **Decryption:** Values starting with `enc:` are detected automatically. The first 12 bytes of the decoded payload are extracted as the IV, the remainder as ciphertext, and decrypted with `crypto.subtle.decrypt()`.
 
-**Fallback behavior:** If the keychain is unavailable (e.g. headless environment, missing libsecret), encryption initialization fails gracefully and fields are stored as plaintext. A console warning is emitted but the app continues operating. *(See AUDIT_TODO.md — this silent fallback is flagged for improvement.)*
+**Fallback behavior:** If the keychain is unavailable (e.g. headless environment, missing libsecret), encryption initialization fails gracefully and fields are stored as plaintext. A console warning is emitted but the app continues operating.
 
 **Applies to:** Channel credentials, API tokens, and other sensitive configuration stored in the local SQLite database (`paw.db`).
 

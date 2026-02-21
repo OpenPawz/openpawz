@@ -54,7 +54,7 @@ export function getLogTransport(): LogTransport | null {
 
 /** Format a log entry into a single line suitable for file output. */
 export function formatLogEntry(entry: LogEntry): string {
-  const dataStr = entry.data ? ' ' + JSON.stringify(entry.data) : '';
+  const dataStr = entry.data ? ` ${JSON.stringify(entry.data)}` : '';
   return `[${entry.timestamp}] [${entry.level.toUpperCase().padEnd(5)}] [${entry.module}] ${entry.message}${dataStr}`;
 }
 

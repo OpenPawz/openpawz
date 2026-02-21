@@ -29,8 +29,8 @@ Pawz is a standalone Tauri v2 app with a pure Rust backend engine. Every tool ca
 | Moonshot/Kimi | moonshot-v1 models |
 | Custom | Any OpenAI-compatible endpoint |
 
-### 10 Channel Bridges
-Telegram, Discord, IRC, Slack, Matrix, Mattermost, Nextcloud Talk, Nostr, Twitch, WebChat — each with user approval flows, per-agent routing, and uniform start/stop/config commands.
+### 11 Channel Bridges
+Telegram, Discord, IRC, Slack, Matrix, Mattermost, Nextcloud Talk, Nostr, Twitch, WebChat, WhatsApp — each with user approval flows, per-agent routing, and uniform start/stop/config commands.
 
 ### Security
 - Command risk classifier (30+ danger patterns, 5 risk levels)
@@ -78,7 +78,7 @@ Telegram, Discord, IRC, Slack, Matrix, Mattermost, Nextcloud Talk, Nostr, Twitch
 - Per-agent workspaces
 - 50 custom Pawz Boi avatars
 - Light/dark theme
-- SQLite-backed persistence (11+ tables)
+- SQLite-backed persistence (21 tables)
 
 ---
 
@@ -122,7 +122,7 @@ Pawz is built on [Tauri v2](https://v2.tauri.app/) with a clear separation:
 Frontend (TypeScript)          Rust Backend
 ┌──────────────────┐          ┌──────────────────────────────┐
 │ Vanilla DOM UI   │◄── IPC ──► Agent engine (19k LOC)       │
-│ 20+ views        │          │ 10 channel bridges            │
+│ 20+ views        │          │ 11 channel bridges            │
 │ 7 feature modules│          │ 3 native AI providers         │
 │ Material Symbols │          │ Tool executor + HIL            │
 └──────────────────┘          │ SQLite + OS keychain           │

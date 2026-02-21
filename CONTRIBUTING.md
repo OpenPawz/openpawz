@@ -95,7 +95,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full breakdown.
 
 ### Adding a Channel Bridge
 
-Each bridge follows the same pattern. Create a new file in `src-tauri/src/engine/` with:
+Each bridge follows the same pattern. Create a new file (or directory module for complex bridges) in `src-tauri/src/engine/` with:
 - `start_*` / `stop_*` — spawn/kill the bridge task
 - `get_*_config` / `set_*_config` — configuration CRUD
 - `*_status` — running state check

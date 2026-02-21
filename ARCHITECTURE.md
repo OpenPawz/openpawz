@@ -22,7 +22,7 @@
 │  │  Rust Backend Engine                                  │  │
 │  │  • Agent loop with SSE streaming                      │  │
 │  │  • Tool executor with human-in-the-loop approval      │  │
-│  │  • 10 channel bridges                                 │  │
+│  │  • 11 channel bridges                                 │  │
 │  │  • 3 native AI providers (+ 7 via model routing)      │  │
 │  │  • SQLite persistence + OS keychain                   │  │
 │  │  • Docker container sandbox (bollard crate)           │  │
@@ -83,7 +83,6 @@ src-tauri/                    # Rust backend
 │   ├── lib.rs                # Command registration, plugin setup
 │   └── engine/               # Core engine modules
 │       ├── mod.rs            # Module exports
-│       ├── agent_loop.rs     # Main agent conversation loop
 │       ├── commands.rs       # 70+ Tauri IPC commands
 │       ├── tools/            # Tool executor — 17 focused modules
 │       │   ├── mod.rs        # Definitions, routing, HIL approval
@@ -169,8 +168,32 @@ src-tauri/                    # Rust backend
 │       │   ├── bridge.rs     # Bridge lifecycle
 │       │   ├── config.rs     # Configuration
 │       │   └── docker.rs     # Docker management
-│       ├── memory.rs         # Semantic memory (embeddings, BM25, vector search)
-│       ├── orchestrator.rs   # Boss/worker multi-agent orchestration
+│       ├── memory/           # Semantic memory — 3 modules
+│       │   ├── mod.rs        # Store/search/merge/decay/MMR/facts
+│       │   ├── ollama.rs     # Ollama readiness, startup, model pull
+│       │   └── embedding.rs  # EmbeddingClient (vector operations)
+│       ├── orchestrator/     # Boss/worker multi-agent orchestration — 5 modules
+│       │   ├── mod.rs        # AgentRole enum, orchestration entry points
+│       │   ├── tools.rs      # Orchestrator tool definitions
+│       │   ├── handlers.rs   # Tool call handlers
+│       │   ├── agent_loop.rs # Unified boss/worker agent loop
+│       │   └── sub_agent.rs  # Sub-agent spawning
+│       ├── agent_loop/       # Core agent conversation loop — 2 modules
+│       │   ├── mod.rs        # run_agent_turn (streaming + tool routing)
+│       │   └── trading.rs    # Trading auto-approve policy checks
+│       ├── channels/         # Shared channel bridge logic — 3 modules
+│       │   ├── mod.rs        # Types, config helpers, message splitting
+│       │   ├── agent.rs      # run_channel_agent, routed agent dispatch
+│       │   └── access.rs     # User access control (approve/deny/remove)
+│       ├── nostr/            # Nostr bridge — 3 modules
+│       │   ├── mod.rs        # Config, state, keychain, bridge API
+│       │   ├── crypto.rs     # NIP-04 encrypt/decrypt, event signing
+│       │   └── relay.rs      # WebSocket relay loop
+│       ├── webchat/          # WebChat bridge — 4 modules
+│       │   ├── mod.rs        # Config, state, public API, WebSocket handler
+│       │   ├── server.rs     # TLS acceptor, HTTP server, connection handler
+│       │   ├── session.rs    # Session management, cookie auth
+│       │   └── html.rs       # Inline chat HTML/JS/CSS
 │       ├── compaction.rs     # Session compaction (context summarization)
 │       ├── sandbox.rs        # Docker container sandboxing
 │       ├── routing.rs        # Channel routing rules
@@ -179,7 +202,6 @@ src-tauri/                    # Rust backend
 │       ├── pricing.rs        # Token pricing
 │       ├── chat.rs           # Chat utilities
 │       ├── types.rs          # Shared Rust types
-│       ├── channels.rs       # Shared channel bridge logic
 │       ├── telegram.rs       # Telegram bridge
 │       ├── discord.rs        # Discord bridge
 │       ├── slack.rs          # Slack bridge
@@ -187,9 +209,7 @@ src-tauri/                    # Rust backend
 │       ├── irc.rs            # IRC bridge
 │       ├── mattermost.rs     # Mattermost bridge
 │       ├── nextcloud.rs      # Nextcloud Talk bridge
-│       ├── nostr.rs          # Nostr bridge
 │       ├── twitch.rs         # Twitch bridge
-│       ├── webchat.rs        # WebChat bridge
 │       └── web.rs            # Browser automation (headless Chrome)
 ├── Cargo.toml                # Rust dependencies
 ├── tauri.conf.json           # Tauri config (CSP, bundle, permissions)
@@ -201,7 +221,7 @@ src-tauri/                    # Rust backend
 
 ## Rust Backend
 
-### Agent Loop (`agent_loop.rs`)
+### Agent Loop (`agent_loop/`)
 
 The core conversation loop:
 1. Receives user message
@@ -241,14 +261,14 @@ Additional providers are handled via model-prefix routing to OpenAI-compatible e
 
 ### Channel Bridges
 
-Each of the 10 bridges follows a uniform pattern:
+Each of the 11 bridges follows a uniform pattern:
 - `start_*` / `stop_*` — spawn/kill the bridge task
 - `get_*_config` / `set_*_config` — read/write bridge configuration
 - `*_status` — check if bridge is running
 - `approve_user` / `deny_user` / `remove_user` — user access control
 - Messages received → routed to the configured agent → response sent back
 
-### Memory (`memory.rs`)
+### Memory (`memory/`)
 
 Hybrid retrieval system:
 1. **BM25 full-text search** — SQLite FTS5 virtual table
