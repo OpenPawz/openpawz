@@ -119,8 +119,27 @@ All sensitive credentials stored in the platform keychain:
 
 Config files contain keychain references, never plaintext secrets.
 
-### Database Encryption
-Sensitive database fields encrypted with AES-256-GCM via Web Crypto API. The encryption key is derived from the OS keychain.
+### Database Encryption — AES-256-GCM
+
+Sensitive database fields are encrypted at rest using **AES-256-GCM** via the Web Crypto API (`crypto.subtle`).
+
+**Key management:**
+- A 256-bit encryption key is stored in the OS keychain (macOS Keychain / Linux libsecret / Windows Credential Manager)
+- The Rust backend exposes `get_db_encryption_key` which returns the hex-encoded key via Tauri IPC
+- The frontend imports the raw key bytes with `crypto.subtle.importKey('raw', ..., 'AES-GCM')`
+- The key is held in memory only (`CryptoKey` object) — never written to disk or localStorage
+
+**Encryption process:**
+1. A fresh 12-byte IV is generated per field via `crypto.getRandomValues()`
+2. Plaintext is UTF-8 encoded and encrypted with `crypto.subtle.encrypt({ name: 'AES-GCM', iv })`
+3. IV and ciphertext are concatenated and base64-encoded
+4. The stored value is prefixed with `enc:` — e.g. `enc:<base64(iv ‖ ciphertext)>`
+
+**Decryption:** Values starting with `enc:` are detected automatically. The first 12 bytes of the decoded payload are extracted as the IV, the remainder as ciphertext, and decrypted with `crypto.subtle.decrypt()`.
+
+**Fallback behavior:** If the keychain is unavailable (e.g. headless environment, missing libsecret), encryption initialization fails gracefully and fields are stored as plaintext. A console warning is emitted but the app continues operating. *(See AUDIT_TODO.md — this silent fallback is flagged for improvement.)*
+
+**Applies to:** Channel credentials, API tokens, and other sensitive configuration stored in the local SQLite database (`paw.db`).
 
 ### Credential Audit Trail
 Every credential access is logged to `credential_activity_log` with:
@@ -150,7 +169,7 @@ Toggle in Security Policies blocks all agent filesystem write tools (create, edi
 
 ## Channel Access Control
 
-Each of the 10 channel bridges supports:
+Each of the 11 channel bridges supports:
 - **DM policy** — pairing / allowlist / open
 - **Pairing approval** — new users send a request → approved in Pawz → confirmation sent back
 - **Per-channel allowlist** — specific user IDs
