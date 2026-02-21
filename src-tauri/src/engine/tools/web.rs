@@ -3,7 +3,6 @@
 // Execution delegates to crate::engine::web
 
 use crate::atoms::types::*;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
