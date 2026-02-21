@@ -287,7 +287,7 @@ mod tests {
             id: "1".into(),
             session_id: "s1".into(),
             role: "user".into(),
-            content: "Hello world, this is a test message.".into(), // 35 chars
+            content: "Hello world, this is a test message.".into(), // 36 chars
             tool_calls_json: None,
             tool_call_id: None,
             name: None,
@@ -295,7 +295,7 @@ mod tests {
         };
         let tokens = estimate_message_tokens(&msg);
         assert!(tokens > 0);
-        assert_eq!(tokens, 35 / 4 + 4); // 12
+        assert_eq!(tokens, 36 / 4 + 4); // 13
     }
 
     #[test]

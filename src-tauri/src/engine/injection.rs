@@ -71,14 +71,17 @@ fn build_patterns() -> Vec<InjectionPattern> {
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
+                let fillers: &[&str] = &["", "all ", "your ", "the ", "my ", "a ", "an "];
                 for verb in &["ignore", "disregard", "forget", "override"] {
                     for target in &["previous instructions", "prior instructions", "above instructions",
                                     "earlier instructions", "previous prompt", "prior prompt",
                                     "all instructions", "your instructions", "system prompt",
                                     "previous rules", "your rules"] {
-                        let phrase = format!("{} {}", verb, target);
-                        if l.contains(&phrase) {
-                            return Some(phrase);
+                        for filler in fillers {
+                            let phrase = format!("{} {}{}", verb, filler, target);
+                            if l.contains(&phrase) {
+                                return Some(phrase);
+                            }
                         }
                     }
                 }
@@ -262,10 +265,14 @@ fn build_patterns() -> Vec<InjectionPattern> {
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
+                let fillers: &[&str] = &["", "the ", "your ", "a ", "an ", "all ", "my "];
                 for verb in &["bypass", "circumvent", "evade", "disable"] {
                     for target in &["safety", "security", "content filter", "moderation", "filter"] {
-                        if l.contains(&format!("{} {}", verb, target)) {
-                            return Some(format!("{} {}", verb, target));
+                        for filler in fillers {
+                            let phrase = format!("{} {}{}", verb, filler, target);
+                            if l.contains(&phrase) {
+                                return Some(phrase);
+                            }
                         }
                     }
                 }
@@ -355,8 +362,6 @@ pub fn log_injection_detected(channel: &str, user_id: &str, result: &InjectionSc
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::atoms::error::EngineResult;
-
     #[test]
     fn test_clean_message() {
         let r = scan_for_injection("Hello, can you help me write a Python script?");
