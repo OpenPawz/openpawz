@@ -2,6 +2,18 @@
 
 Pawz is a Tauri v2 desktop AI agent. Every system call flows through the Rust backend before reaching the OS, making it the natural enforcement point for all security controls.
 
+## Trust at a Glance
+
+| Metric | Value |
+|--------|-------|
+| Automated tests | 530 (164 Rust + 366 TypeScript) |
+| CI jobs | 3 parallel (Rust + TypeScript + Security Audit) |
+| Clippy warnings | 0 (enforced via `-D warnings`) |
+| Known CVEs | 0 (`cargo audit` + `npm audit` in CI) |
+| Credential encryption | AES-256-GCM (OS keychain for key storage) |
+| Error handling | 12-variant typed `EngineError` enum (no `String` errors) |
+| Network attack surface | Zero open ports (Tauri IPC only) |
+
 ---
 
 ## Architecture
@@ -137,7 +149,7 @@ Sensitive database fields are encrypted at rest using **AES-256-GCM** via the We
 
 **Decryption:** Values starting with `enc:` are detected automatically. The first 12 bytes of the decoded payload are extracted as the IV, the remainder as ciphertext, and decrypted with `crypto.subtle.decrypt()`.
 
-**Fallback behavior:** If the keychain is unavailable (e.g. headless environment, missing libsecret), encryption initialization fails gracefully and fields are stored as plaintext. A console warning is emitted but the app continues operating.
+**Fallback behavior:** If the keychain is unavailable, encryption initialization fails with a user-facing error dialog. Credential storage is blocked — the app continues operating but will not silently store secrets in plaintext.
 
 **Applies to:** Channel credentials, API tokens, and other sensitive configuration stored in the local SQLite database (`paw.db`).
 
@@ -147,6 +159,18 @@ Every credential access is logged to `credential_activity_log` with:
 - Tool that requested access
 - Whether access was allowed or denied
 - Timestamp
+
+### Enterprise Hardening
+
+The following hardening measures were applied as part of a systematic enterprise audit:
+
+- **XOR → AES-256-GCM**: The original XOR cipher for skill credentials was replaced with AES-256-GCM. Existing XOR-encrypted values are auto-migrated on first read. 11 unit tests validate encrypt/decrypt roundtrips and wrong-key rejection.
+- **Silent fallback removed**: Missing OS keychain previously fell back to plaintext storage silently. Now shows a user-facing error and blocks credential operations.
+- **Typed error handling**: All engine functions use a 12-variant `EngineError` enum via `thiserror 2` — no `Result<T, String>` in the engine internals.
+- **Retry with circuit breakers**: Provider and bridge calls use exponential backoff (base 1s, max 30s, 3 retries) with `Retry-After` support. Circuit breaker trips after 5 consecutive failures (60s cooldown).
+- **Persistent logging**: Structured log files with daily rotation and 7-day pruning. In-app log viewer with filtering.
+- **530 automated tests**: 164 Rust tests (14 modules + 4 integration test files) + 366 TypeScript tests (24 test files) covering all security-critical paths.
+- **3-job CI pipeline**: `cargo check` + `cargo test` + `cargo clippy -- -D warnings` + `cargo audit` + `npm audit` on every push.
 
 ---
 

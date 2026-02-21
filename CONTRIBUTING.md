@@ -26,11 +26,22 @@ This starts the Tauri dev server with hot-reload for the frontend and live-rebui
 ### Verifying Changes
 
 ```bash
-# TypeScript type-check (no emit)
-npx tsc --noEmit
+# Run all TypeScript tests (366 tests)
+npx vitest run
 
-# Rust check (faster than full build)
-cd src-tauri && cargo check
+# Run all Rust tests (164 tests)
+cd src-tauri && cargo test
+
+# TypeScript type-check + lint
+npx tsc --noEmit
+npx eslint src/
+
+# Rust lint (zero warnings enforced)
+cd src-tauri && cargo clippy -- -D warnings
+
+# Code formatting
+npx prettier --check "src/**/*.ts"
+cd src-tauri && cargo fmt --check
 
 # Full production build
 npm run tauri build
@@ -67,7 +78,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the full breakdown.
 - Tauri commands are `async` functions with `#[tauri::command]`
 - All commands registered in `lib.rs`
 - Channel bridges follow a uniform pattern (start/stop/status/config/approve/deny)
-- Error handling via `Result<T, String>` for Tauri command boundaries
+- Error handling via typed `EngineError` enum (12 variants) — Tauri command boundaries convert with `.map_err(|e| e.to_string())`
 
 ### CSS
 - Single `styles.css` file for all styles
@@ -121,6 +132,31 @@ For non-compatible providers:
 3. Run `npx tsc --noEmit` and `cd src-tauri && cargo check` — both must pass
 4. Write a clear PR description explaining what changed and why
 5. Keep PRs focused — one feature or fix per PR
+
+---
+
+## CI Pipeline
+
+Every push and PR triggers 3 parallel CI jobs:
+
+| Job | What it checks | Timeout |
+|-----|---------------|--------|
+| **TypeScript** | `tsc --noEmit` → `eslint` → `vitest run` (366 tests) → `prettier --check` | 10 min |
+| **Rust** | `cargo check` → `cargo test` (164 tests) → `cargo clippy -- -D warnings` | 30 min |
+| **Security Audit** | `cargo audit` → `npm audit --audit-level=high` | 10 min |
+
+All 3 jobs must pass. Zero clippy warnings enforced. Zero known vulnerabilities enforced.
+
+### Writing Tests
+
+**Rust tests** live in `#[cfg(test)]` modules within each source file, plus 4 integration test files in `src-tauri/tests/`. Run with `cd src-tauri && cargo test`.
+
+**TypeScript tests** use vitest. Test files are co-located with source (e.g., `security.test.ts` next to `security.ts`). Run with `npx vitest run`.
+
+When adding new features, include tests for:
+- Happy path and error cases
+- Edge cases (empty input, boundary values)
+- Security-relevant behavior (injection patterns, access control)
 
 ---
 

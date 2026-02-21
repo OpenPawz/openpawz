@@ -1,7 +1,7 @@
 # Architecture
 
 > Pawz is a Tauri v2 native desktop app — Rust backend, TypeScript frontend, IPC bridge.  
-> ~65k LOC total (31k Rust + 24k TypeScript + 10k CSS)
+> ~78k LOC total (33k Rust + 32k TypeScript + 11k CSS) · 530 tests · 3-job CI · 0 clippy warnings
 
 ---
 
@@ -17,7 +17,7 @@
 │  │  • 7 feature modules (atomic design pattern)          │  │
 │  │  • Material Symbols icon library                      │  │
 │  └──────────────────┬────────────────────────────────────┘  │
-│                     │ Tauri IPC (70+ structured commands)    │
+│                     │ Tauri IPC (134 structured commands)    │
 │  ┌──────────────────▼────────────────────────────────────┐  │
 │  │  Rust Backend Engine                                  │  │
 │  │  • Agent loop with SSE streaming                      │  │
@@ -83,7 +83,7 @@ src-tauri/                    # Rust backend
 │   ├── lib.rs                # Command registration, plugin setup
 │   └── engine/               # Core engine modules
 │       ├── mod.rs            # Module exports
-│       ├── commands.rs       # 70+ Tauri IPC commands
+│       ├── commands.rs       # 134 Tauri IPC commands
 │       ├── tools/            # Tool executor — 17 focused modules
 │       │   ├── mod.rs        # Definitions, routing, HIL approval
 │       │   ├── agents.rs     # Agent management tools
@@ -124,7 +124,7 @@ src-tauri/                    # Rust backend
 │       ├── skills/           # Skill vault — 40 built-in skills
 │       │   ├── mod.rs        # Skill loading, prompt injection
 │       │   ├── builtins.rs   # 40 built-in skill definitions
-│       │   ├── crypto.rs     # Credential encryption (XOR + keychain)
+│       │   ├── crypto.rs     # Credential encryption (AES-256-GCM + keychain)
 │       │   ├── vault.rs      # Credential storage/retrieval
 │       │   ├── prompt.rs     # Prompt construction
 │       │   ├── status.rs     # Readiness checks
@@ -353,4 +353,20 @@ SQLite via Tauri's SQL plugin. Tables:
 | `task_activity` | Task activity log |
 | `community_skills` | Installed community skills |
 
-Credential fields are encrypted with XOR using a 32-byte random key stored in the OS keychain (service: `paw-skill-vault`).
+Credential fields encrypted with AES-256-GCM. Encryption key stored in OS keychain (macOS Keychain / Linux libsecret / Windows Credential Manager). 12-byte random nonce per field. Auto-migration from legacy XOR format.
+
+---
+
+## Quality
+
+| Metric | Value |
+|--------|-------|
+| Rust tests | 164 (124 unit + 40 integration) |
+| TypeScript tests | 366 (24 test files) |
+| CI jobs | 3 parallel (Rust + TS + Security Audit) |
+| Clippy warnings | 0 (enforced via `-D warnings`) |
+| Known CVEs | 0 (`cargo audit` + `npm audit`) |
+| Error handling | 12-variant typed `EngineError` (thiserror 2) |
+| Credential encryption | AES-256-GCM |
+| IPC commands | 134 |
+| SQLite tables | 19 |
