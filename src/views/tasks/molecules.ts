@@ -1,60 +1,43 @@
-// Tasks Hub — Kanban Board View
-// Agents pick up tasks, work on them autonomously, move them through columns.
-// Supports drag-and-drop, live feed, cron scheduling, and agent auto-work.
+// Tasks Hub — Molecules (DOM rendering + IPC)
 
-import { pawEngine } from '../engine';
-import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority, TaskAgent } from '../engine';
-import { showToast } from '../components/toast';
-import { populateModelSelect, $, escHtml, formatTimeAgo } from '../components/helpers';
-import { spriteAvatar } from './agents';
+import { pawEngine } from '../../engine';
+import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority, TaskAgent } from '../../engine';
+import { showToast } from '../../components/toast';
+import { populateModelSelect, $, escHtml, formatTimeAgo } from '../../components/helpers';
+import { spriteAvatar } from '../agents';
+import { COLUMNS } from './atoms';
 
-// ── State ──────────────────────────────────────────────────────────────
+// ── State accessors (set by index.ts) ──────────────────────────────────────
 
-let _tasks: EngineTask[] = [];
-let _activity: EngineTaskActivity[] = [];
-let _editingTask: EngineTask | null = null;
-let _feedFilter: 'all' | 'tasks' | 'status' = 'all';
-let _agents: { id: string; name: string; avatar: string }[] = [];
-let _modalSelectedAgents: TaskAgent[] = [];
-
-const COLUMNS: TaskStatus[] = ['inbox', 'assigned', 'in_progress', 'review', 'blocked', 'done'];
-
-// ── Public API ─────────────────────────────────────────────────────────
-
-export async function loadTasks() {
-  try {
-    const [tasks, activity] = await Promise.all([
-      pawEngine.tasksList(),
-      pawEngine.taskActivity(undefined, 50),
-    ]);
-    _tasks = tasks;
-    _activity = activity;
-    renderBoard();
-    renderFeed();
-    renderStats();
-  } catch (e) {
-    console.error('[tasks] Load failed:', e);
-  }
+interface MoleculesState {
+  getTasks: () => EngineTask[];
+  getActivity: () => EngineTaskActivity[];
+  getEditingTask: () => EngineTask | null;
+  setEditingTask: (t: EngineTask | null) => void;
+  getFeedFilter: () => 'all' | 'tasks' | 'status';
+  setFeedFilter: (f: 'all' | 'tasks' | 'status') => void;
+  getAgents: () => { id: string; name: string; avatar: string }[];
+  getModalSelectedAgents: () => TaskAgent[];
+  setModalSelectedAgents: (agents: TaskAgent[]) => void;
+  reload: () => Promise<void>;
 }
 
-export function setAgents(agents: { id: string; name: string; avatar: string }[]) {
-  _agents = agents;
-}
+let _state: MoleculesState;
 
-/** Called from main.ts when a task-updated event fires */
-export function onTaskUpdated(_data: { task_id: string; status: string }) {
-  loadTasks(); // Full refresh — simple and reliable
+export function setMoleculesState(s: MoleculesState) {
+  _state = s;
 }
 
 // ── Render Board ───────────────────────────────────────────────────────
 
-function renderBoard() {
+export function renderBoard() {
+  const tasks = _state.getTasks();
   for (const status of COLUMNS) {
     const container = $(`tasks-cards-${status}`);
     const countEl = $(`tasks-count-${status}`);
     if (!container) continue;
 
-    const columnTasks = _tasks.filter(t => t.status === status);
+    const columnTasks = tasks.filter(t => t.status === status);
     if (countEl) countEl.textContent = String(columnTasks.length);
 
     container.innerHTML = '';
@@ -64,7 +47,7 @@ function renderBoard() {
   }
 }
 
-function createTaskCard(task: EngineTask): HTMLElement {
+export function createTaskCard(task: EngineTask): HTMLElement {
   const card = document.createElement('div');
   card.className = 'task-card';
   card.draggable = true;
@@ -87,7 +70,7 @@ function createTaskCard(task: EngineTask): HTMLElement {
     ? `<span class="task-card-model" title="Model override">${escHtml(task.model)}</span>`
     : '';
   const timeAgo = formatTimeAgo(task.updated_at || task.created_at);
-  
+
   // Show run button for tasks with agents
   const hasAgents = agents.length > 0;
   const canRun = hasAgents && ['assigned', 'inbox'].includes(task.status);
@@ -143,15 +126,16 @@ function createTaskCard(task: EngineTask): HTMLElement {
 
 // ── Render Feed ────────────────────────────────────────────────────────
 
-function renderFeed() {
+export function renderFeed() {
   const list = $('tasks-feed-list');
   if (!list) return;
 
-  let filtered = _activity;
-  if (_feedFilter === 'tasks') {
-    filtered = _activity.filter(a => ['created', 'assigned', 'agent_started', 'agent_completed'].includes(a.kind));
-  } else if (_feedFilter === 'status') {
-    filtered = _activity.filter(a => ['status_change', 'agent_started', 'agent_completed', 'agent_error', 'cron_triggered'].includes(a.kind));
+  const feedFilter = _state.getFeedFilter();
+  let filtered = _state.getActivity();
+  if (feedFilter === 'tasks') {
+    filtered = filtered.filter(a => ['created', 'assigned', 'agent_started', 'agent_completed'].includes(a.kind));
+  } else if (feedFilter === 'status') {
+    filtered = filtered.filter(a => ['status_change', 'agent_started', 'agent_completed', 'agent_error', 'cron_triggered'].includes(a.kind));
   }
 
   if (!filtered.length) {
@@ -182,22 +166,23 @@ function renderFeed() {
   }
 }
 
-function renderStats() {
+export function renderStats() {
+  const tasks = _state.getTasks();
   const total = $('tasks-stat-total');
   const active = $('tasks-stat-active');
   const cron = $('tasks-stat-cron');
-  if (total) total.textContent = `${_tasks.length} tasks`;
-  if (active) active.textContent = `${_tasks.filter(t => t.status === 'in_progress').length} active`;
-  if (cron) cron.textContent = `${_tasks.filter(t => t.cron_enabled).length} scheduled`;
+  if (total) total.textContent = `${tasks.length} tasks`;
+  if (active) active.textContent = `${tasks.filter(t => t.status === 'in_progress').length} active`;
+  if (cron) cron.textContent = `${tasks.filter(t => t.cron_enabled).length} scheduled`;
 }
 
 // ── Task Modal ─────────────────────────────────────────────────────────
 
-function openTaskModal(task?: EngineTask) {
+export function openTaskModal(task?: EngineTask) {
   const modal = $('tasks-detail-modal');
   if (!modal) return;
 
-  _editingTask = task || null;
+  _state.setEditingTask(task || null);
   const isNew = !task;
 
   const titleEl = $('tasks-modal-title');
@@ -235,17 +220,19 @@ function openTaskModal(task?: EngineTask) {
   if (runBtn) runBtn.style.display = hasAgents ? '' : 'none';
 
   // Multi-agent picker: populate selected agents from task
-  _modalSelectedAgents = task?.assigned_agents?.length
-    ? [...task.assigned_agents]
-    : task?.assigned_agent
-      ? [{ agent_id: task.assigned_agent, role: 'lead' }]
-      : [];
+  _state.setModalSelectedAgents(
+    task?.assigned_agents?.length
+      ? [...task.assigned_agents]
+      : task?.assigned_agent
+        ? [{ agent_id: task.assigned_agent, role: 'lead' }]
+        : []
+  );
   renderAgentPicker();
 
   // Also set legacy dropdown for backward compat
   if (inputAgent) {
     inputAgent.innerHTML = '<option value="">+ Add agent</option>';
-    for (const agent of _agents) {
+    for (const agent of _state.getAgents()) {
       const opt = document.createElement('option');
       opt.value = agent.id;
       opt.textContent = agent.name;
@@ -265,12 +252,13 @@ function openTaskModal(task?: EngineTask) {
   modal.style.display = 'flex';
 }
 
-function renderAgentPicker() {
+export function renderAgentPicker() {
   const container = $('tasks-modal-agents-tags');
   if (!container) return;
   container.innerHTML = '';
-  for (const ta of _modalSelectedAgents) {
-    const agent = _agents.find(a => a.id === ta.agent_id);
+  const modalSelectedAgents = _state.getModalSelectedAgents();
+  for (const ta of modalSelectedAgents) {
+    const agent = _state.getAgents().find(a => a.id === ta.agent_id);
     const tag = document.createElement('span');
     tag.className = `agent-tag${ta.role === 'lead' ? ' lead' : ''}`;
     tag.innerHTML = `${agent ? spriteAvatar(agent.avatar, 18) + ' ' : ''}${escHtml(ta.agent_id)}${ta.role === 'lead' ? ' ★' : ''}<button class="agent-tag-remove" title="Remove">×</button>`;
@@ -285,21 +273,24 @@ function renderAgentPicker() {
     // Remove button
     tag.querySelector('.agent-tag-remove')?.addEventListener('click', (e) => {
       e.stopPropagation();
-      _modalSelectedAgents = _modalSelectedAgents.filter(a => a.agent_id !== ta.agent_id);
+      _state.setModalSelectedAgents(
+        _state.getModalSelectedAgents().filter(a => a.agent_id !== ta.agent_id)
+      );
       renderAgentPicker();
     });
 
     container.appendChild(tag);
   }
-  if (!_modalSelectedAgents.length) {
+  if (!modalSelectedAgents.length) {
     container.innerHTML = '<span class="agent-tag-empty">No agents assigned</span>';
   }
 }
 
-function addAgentToTask(agentId: string) {
-  if (!agentId || _modalSelectedAgents.some(a => a.agent_id === agentId)) return;
-  const role = _modalSelectedAgents.length === 0 ? 'lead' : 'collaborator';
-  _modalSelectedAgents.push({ agent_id: agentId, role });
+export function addAgentToTask(agentId: string) {
+  const modalSelectedAgents = _state.getModalSelectedAgents();
+  if (!agentId || modalSelectedAgents.some(a => a.agent_id === agentId)) return;
+  const role = modalSelectedAgents.length === 0 ? 'lead' : 'collaborator';
+  _state.setModalSelectedAgents([...modalSelectedAgents, { agent_id: agentId, role }]);
   renderAgentPicker();
 }
 
@@ -324,13 +315,16 @@ async function loadTaskActivity(taskId: string) {
   }
 }
 
-function closeTaskModal() {
+export function closeTaskModal() {
   const modal = $('tasks-detail-modal');
   if (modal) modal.style.display = 'none';
-  _editingTask = null;
+  _state.setEditingTask(null);
 }
 
-async function saveTask() {
+export async function saveTask() {
+  const editingTask = _state.getEditingTask();
+  const modalSelectedAgents = _state.getModalSelectedAgents();
+
   const inputTitle = $('tasks-modal-input-title') as HTMLInputElement;
   const inputDesc = $('tasks-modal-input-desc') as HTMLTextAreaElement;
   const inputPriority = $('tasks-modal-input-priority') as HTMLSelectElement;
@@ -346,74 +340,73 @@ async function saveTask() {
   const taskModel = inputModel?.value || undefined;
 
   // Primary agent = first lead or first agent in the multi-select
-  const primaryAgent = _modalSelectedAgents.find(a => a.role === 'lead')
-    || _modalSelectedAgents[0];
+  const primaryAgent = modalSelectedAgents.find(a => a.role === 'lead')
+    || modalSelectedAgents[0];
   const agentId = primaryAgent?.agent_id;
 
   // Determine status
-  let status: TaskStatus = _editingTask?.status || 'inbox';
-  if (!_editingTask && _modalSelectedAgents.length > 0) status = 'assigned';
+  let status: TaskStatus = editingTask?.status || 'inbox';
+  if (!editingTask && modalSelectedAgents.length > 0) status = 'assigned';
 
   const now = new Date().toISOString();
   const task: EngineTask = {
-    id: _editingTask?.id || crypto.randomUUID(),
+    id: editingTask?.id || crypto.randomUUID(),
     title,
     description: inputDesc?.value || '',
     status,
     priority: (inputPriority?.value || 'medium') as TaskPriority,
     assigned_agent: agentId,
-    assigned_agents: _modalSelectedAgents,
-    session_id: _editingTask?.session_id,
+    assigned_agents: modalSelectedAgents,
+    session_id: editingTask?.session_id,
     model: taskModel,
     cron_schedule: cronSchedule,
     cron_enabled: cronEnabled,
-    last_run_at: _editingTask?.last_run_at,
-    next_run_at: _editingTask?.next_run_at,
-    created_at: _editingTask?.created_at || now,
+    last_run_at: editingTask?.last_run_at,
+    next_run_at: editingTask?.next_run_at,
+    created_at: editingTask?.created_at || now,
     updated_at: now,
   };
 
   try {
-    if (_editingTask) {
+    if (editingTask) {
       await pawEngine.taskUpdate(task);
-      // Save multi-agent assignments
-      if (_modalSelectedAgents.length > 0) {
-        await pawEngine.taskSetAgents(task.id, _modalSelectedAgents);
+      if (modalSelectedAgents.length > 0) {
+        await pawEngine.taskSetAgents(task.id, modalSelectedAgents);
       }
       showToast('Task updated', 'success');
     } else {
       await pawEngine.taskCreate(task);
-      // Save multi-agent assignments for new task
-      if (_modalSelectedAgents.length > 0) {
-        await pawEngine.taskSetAgents(task.id, _modalSelectedAgents);
+      if (modalSelectedAgents.length > 0) {
+        await pawEngine.taskSetAgents(task.id, modalSelectedAgents);
       }
       showToast('Task created', 'success');
     }
     closeTaskModal();
-    await loadTasks();
+    await _state.reload();
   } catch (e) {
     showToast(`Failed: ${e instanceof Error ? e.message : e}`, 'error');
   }
 }
 
-async function deleteTask() {
-  if (!_editingTask) return;
+export async function deleteTask() {
+  const editingTask = _state.getEditingTask();
+  if (!editingTask) return;
   try {
-    await pawEngine.taskDelete(_editingTask.id);
+    await pawEngine.taskDelete(editingTask.id);
     showToast('Task deleted', 'success');
     closeTaskModal();
-    await loadTasks();
+    await _state.reload();
   } catch (e) {
     showToast(`Failed: ${e instanceof Error ? e.message : e}`, 'error');
   }
 }
 
-async function runTask(taskId: string) {
+export async function runTask(taskId: string) {
   try {
     showToast('Starting agent work...', 'info');
     await pawEngine.taskRun(taskId);
     showToast('Agent is working on the task', 'success');
-    await loadTasks();
+    await _state.reload();
   } catch (e) {
     showToast(`Run failed: ${e instanceof Error ? e.message : e}`, 'error');
   }
@@ -421,7 +414,7 @@ async function runTask(taskId: string) {
 
 // ── Drag & Drop ────────────────────────────────────────────────────────
 
-function setupDragAndDrop() {
+export function setupDragAndDrop() {
   document.querySelectorAll<HTMLElement>('.tasks-column-cards').forEach(column => {
     column.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -430,7 +423,6 @@ function setupDragAndDrop() {
     });
 
     column.addEventListener('dragleave', (e) => {
-      // Only remove if leaving the column container itself
       if (!column.contains(e.relatedTarget as Node)) {
         column.classList.remove('drag-over');
       }
@@ -443,13 +435,13 @@ function setupDragAndDrop() {
       const newStatus = column.dataset.status;
       if (!taskId || !newStatus) return;
 
-      // Find the task
-      const task = _tasks.find(t => t.id === taskId);
+      const tasks = _state.getTasks();
+      const task = tasks.find(t => t.id === taskId);
       if (!task || task.status === newStatus) return;
 
       try {
         await pawEngine.taskMove(taskId, newStatus);
-        await loadTasks();
+        await _state.reload();
       } catch (err) {
         showToast(`Move failed: ${err instanceof Error ? err.message : err}`, 'error');
       }
@@ -457,103 +449,10 @@ function setupDragAndDrop() {
   });
 }
 
-// ── Cron Timer ─────────────────────────────────────────────────────────
-
-let _cronInterval: ReturnType<typeof setInterval> | null = null;
-
-export function startCronTimer() {
-  if (_cronInterval) return;
-  // Check for due cron tasks every 30 seconds.
-  // The backend heartbeat (60s) handles actual execution.
-  // The frontend tick just updates cron timestamps and refreshes the board.
-  _cronInterval = setInterval(async () => {
-    try {
-      const triggered = await pawEngine.tasksCronTick();
-      if (triggered.length > 0) {
-        showToast(`${triggered.length} cron task(s) triggered`, 'info');
-        // Backend heartbeat will execute these — just refresh the board.
-        // The dedup guard prevents double-execution if both fire close together.
-        for (const taskId of triggered) {
-          try {
-            await pawEngine.taskRun(taskId);
-          } catch (e) {
-            // Expected: "already running" from dedup guard is fine
-            if (!String(e).includes('already running')) {
-              console.warn('[tasks] Auto-run failed for', taskId, e);
-            }
-          }
-        }
-        await loadTasks();
-      }
-    } catch (e) {
-      console.warn('[tasks] Cron tick failed:', e);
-    }
-  }, 30_000);
-}
-
-export function stopCronTimer() {
-  if (_cronInterval) {
-    clearInterval(_cronInterval);
-    _cronInterval = null;
-  }
-}
-
 // ── Helpers ────────────────────────────────────────────────────────────
 
 function getAgentAvatar(agentId?: string | null): string {
   if (!agentId) return '<span class="ms">build</span>';
-  const agent = _agents.find(a => a.id === agentId || a.name === agentId);
+  const agent = _state.getAgents().find(a => a.id === agentId || a.name === agentId);
   return agent ? spriteAvatar(agent.avatar, 20) : '<span class="ms">smart_toy</span>';
-}
-
-// ── Event Binding ──────────────────────────────────────────────────────
-
-export function bindTaskEvents() {
-  // New task button
-  $('tasks-add-btn')?.addEventListener('click', () => openTaskModal());
-
-  // Column add buttons
-  document.querySelectorAll<HTMLElement>('.tasks-column-add').forEach(btn => {
-    btn.addEventListener('click', () => openTaskModal());
-  });
-
-  // Modal controls
-  $('tasks-modal-close')?.addEventListener('click', closeTaskModal);
-  $('tasks-modal-save')?.addEventListener('click', saveTask);
-  $('tasks-modal-delete')?.addEventListener('click', deleteTask);
-  $('tasks-modal-run')?.addEventListener('click', () => {
-    if (_editingTask) {
-      closeTaskModal();
-      runTask(_editingTask.id);
-    }
-  });
-
-  // Agent dropdown → add agent tag
-  $('tasks-modal-input-agent')?.addEventListener('change', () => {
-    const sel = $('tasks-modal-input-agent') as HTMLSelectElement;
-    if (sel?.value) {
-      addAgentToTask(sel.value);
-      sel.value = ''; // reset dropdown
-    }
-  });
-
-  // Modal backdrop close
-  $('tasks-detail-modal')?.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).classList.contains('tasks-modal-overlay')) {
-      closeTaskModal();
-    }
-  });
-
-  // Feed tabs
-  document.querySelectorAll<HTMLElement>('.tasks-feed-tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      document.querySelectorAll('.tasks-feed-tab').forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      _feedFilter = (tab.dataset.feed as typeof _feedFilter) || 'all';
-      renderFeed();
-    });
-  });
-
-  // Drag & drop
-  setupDragAndDrop();
 }
