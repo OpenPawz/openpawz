@@ -6,6 +6,10 @@ description: Full-power extensions with custom sidebar views, dashboard widgets,
 
 # Extensions
 
+:::caution 🚧 Planned
+The entire Extension system described on this page — custom sidebar views (`[view]`), persistent storage (`[storage]`), `skill_store_*` tools, and the TOML manifest format — is **planned but not yet implemented**. This page documents the intended design for a future release.
+:::
+
 Extensions are the most powerful tier of the Pawz extensibility system. They have everything an [Integration](/docs/guides/integrations) has — credentials, instructions, widgets — plus **custom sidebar views** and **persistent data storage**.
 
 ```
@@ -296,7 +300,7 @@ Extensions have the same security model as Integrations, with additional protect
 
 | Layer | Protection |
 |-------|-----------|
-| **Credentials** | AES-GCM encrypted, key in OS keychain |
+| **Credentials** | XOR-encrypted, 32-byte key in OS keychain |
 | **Network** | Domain allowlist/blocklist on every `fetch` |
 | **Shell** | Docker sandbox routing when enabled |
 | **Storage** | Namespaced — extensions cannot read/write other extensions' data |

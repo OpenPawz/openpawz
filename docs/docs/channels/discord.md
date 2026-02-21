@@ -44,5 +44,5 @@ Route specific channels or users to different agents using routing rules:
 
 ## Tips
 
-- Use `DISCORD_BOT_TOKEN` in the Skills vault if you also want agents to send messages proactively via the Slack skill
+- Use `DISCORD_BOT_TOKEN` in the Skills vault if you also want agents to send messages proactively via the Discord skill
 - The bot responds to mentions and DMs by default

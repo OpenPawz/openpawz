@@ -34,9 +34,9 @@ Pawz ships with **40 built-in skills** that are compiled into the binary. These 
 
 ### Skill architecture
 
-Skills are Rust functions registered in `skills.rs` that the agent can invoke as tools. The architecture works as follows:
+Skills are Rust functions registered in the `skills/` module directory that the agent can invoke as tools. The architecture works as follows:
 
-- **Registration**: Each skill is defined as a `SkillDefinition` struct in `skills.rs`, specifying its ID, name, category, required credentials, tool names, required binaries, and agent instructions.
+- **Registration**: Each skill is defined as a `SkillDefinition` struct in `skills/builtins.rs`, specifying its ID, name, category, required credentials, tool names, required binaries, and agent instructions.
 - **Per-agent toggle**: Every skill is gated by an enable/disable toggle per-agent. When disabled, the skill's tools and instructions are not injected into the agent's prompt.
 - **Categories**: Skills are organized into 9 categories for the UI. Each skill belongs to exactly one category and can be independently toggled on or off.
 - **Vault skills** have dedicated tool functions (e.g. `email_send`, `coinbase_trade`) with encrypted credential storage. The engine executes these tools directly — credentials never appear in the agent prompt.

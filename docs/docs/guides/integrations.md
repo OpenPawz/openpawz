@@ -6,6 +6,10 @@ description: Connect your agents to third-party APIs and CLI tools with encrypte
 
 # Integrations
 
+:::caution 🚧 Planned Features
+The TOML manifest format (`pawz-skill.toml`), PawzHub publishing, dashboard widgets, the in-app creation wizard, and CI validation described on this page are **planned but not yet implemented**. The 40 built-in integrations are compiled into the Rust binary and work today. Community integrations via TOML manifests are coming in a future release.
+:::
+
 Integrations are the second tier of the Pawz extensibility system. They connect your agents to third-party APIs and CLI tools with full credential management, binary detection, and optional dashboard widgets.
 
 ```
@@ -34,7 +38,7 @@ Integrations are the second tier of the Pawz extensibility system. They connect 
 User enters API key in Skills tab
        │
        ▼
-AES-GCM encrypted (256-bit key in OS keychain)
+XOR-encrypted (32-byte key in OS keychain)
        │
        ▼
 Stored in SQLite (encrypted blob)
@@ -129,7 +133,7 @@ type = "badge"
 
 #### `[[credentials]]` — Optional, repeatable
 
-Declare API keys, tokens, or secrets the integration requires. Users enter these in the Skills tab. Pawz encrypts them with AES-GCM and injects decrypted values into the agent's system prompt at runtime.
+Declare API keys, tokens, or secrets the integration requires. Users enter these in the Skills tab. Pawz encrypts them with XOR (32-byte random key in the OS keychain) and injects decrypted values into the agent's system prompt at runtime.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -140,7 +144,7 @@ Declare API keys, tokens, or secrets the integration requires. Users enter these
 | `placeholder` | string | — | Example value in the input field. |
 
 :::info Credential Security
-Credentials are never stored in plain text. They are encrypted in SQLite using AES-GCM with a 256-bit key stored in your OS keychain (macOS Keychain, Windows Credential Manager, or Linux Secret Service). Decrypted values exist only in the agent's system prompt at runtime — never logged, never written to disk unencrypted, never transmitted externally.
+Credentials are never stored in plain text. They are encrypted in SQLite using XOR with a 32-byte random key stored in your OS keychain (service: `paw-skill-vault`). Decrypted values exist only in the agent's system prompt at runtime — never logged, never written to disk unencrypted, never transmitted externally. An AES-GCM upgrade is planned.
 :::
 
 #### `[instructions]` — Required
@@ -434,7 +438,7 @@ The agent fetches the API docs, generates a complete `pawz-skill.toml` with endp
 
 | Layer | Protection |
 |-------|-----------|
-| **Credentials** | AES-GCM encrypted, key in OS keychain |
+| **Credentials** | XOR-encrypted, 32-byte key in OS keychain |
 | **Network** | Domain allowlist/blocklist on every `fetch` |
 | **Shell** | Docker sandbox routing when enabled |
 | **File system** | Engine source read-blocked |
