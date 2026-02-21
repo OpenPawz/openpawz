@@ -54,7 +54,7 @@ import type {
   TailscaleConfig,
 } from '../atoms/types';
 
-class PawEngineClient {
+export class PawEngineClient {
   private _listeners: Map<string, Set<(event: EngineEvent) => void>> = new Map();
   private _tauriUnlisten: (() => void) | null = null;
 
@@ -732,5 +732,10 @@ class PawEngineClient {
   }
 }
 
-/** Singleton engine client — import this in all consumers. */
-export const pawEngine = new PawEngineClient();
+/** Create a new engine client instance — useful for testing or custom wiring. */
+export function createPawEngine(): PawEngineClient {
+  return new PawEngineClient();
+}
+
+/** Default singleton engine client — import this in application consumers. */
+export const pawEngine: PawEngineClient = createPawEngine();

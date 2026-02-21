@@ -6,4 +6,4 @@
 // All existing imports of { pawEngine, EngineConfig, ... } from './engine' continue to work.
 
 export * from './engine/atoms/types';
-export { pawEngine } from './engine/molecules/ipc_client';
+export { PawEngineClient, createPawEngine, pawEngine } from './engine/molecules/ipc_client';

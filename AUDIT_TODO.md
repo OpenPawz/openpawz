@@ -148,10 +148,11 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Fix:** Add file transport or Tauri-side log persistence.
 - Added pluggable transport hook: `setLogTransport(fn)` receives every log entry that passes the level filter, with both the structured `LogEntry` and a pre-formatted string. Added `flushBufferToTransport()` to replay pre-init logs. In `main.ts`, wired a file transport after startup that writes to `~/Documents/Paw/logs/paw-YYYY-MM-DD.log` via `@tauri-apps/plugin-fs`, with batched I/O (1s flush interval) and automatic 7-day log rotation. 10 new tests (360 total).
 
-### 31. Singleton prevents test mocking
+### 31. ~~Singleton prevents test mocking~~ ✅ FIXED
 - **File:** `src/engine/molecules/ipc_client.ts` L735
 - `export const pawEngine = new PawEngineClient()` at module level — no mock seam for tests.
 - **Fix:** Export a factory function or accept dependency injection.
+- Exported the `PawEngineClient` class (was private) and added `createPawEngine()` factory function. The default `pawEngine` singleton is now created via the factory. Tests can import `createPawEngine()` or `PawEngineClient` directly for mocking/DI. Both are re-exported through the `src/engine.ts` barrel. All 40+ existing consumers continue to use the singleton unchanged.
 
 ### 32. `activeStreams` Map never bounded
 - **File:** `src/state/index.ts` L100
