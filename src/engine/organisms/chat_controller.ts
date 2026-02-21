@@ -7,7 +7,7 @@ import { pawEngine } from '../../engine';
 import { engineChatSend } from '../molecules/bridge';
 import { appState, agentSessionMap, persistAgentSessionMap,
          MODEL_CONTEXT_SIZES, MODEL_COST_PER_TOKEN, COMPACTION_WARN_THRESHOLD,
-         createStreamState,
+         createStreamState, type StreamState,
          type MessageWithAttachments } from '../../state/index';
 import { formatMarkdown } from '../../components/molecules/markdown';
 import { escHtml, icon } from '../../components/helpers';
@@ -17,7 +17,7 @@ import * as SettingsModule from '../../views/settings-main';
 import { interceptSlashCommand, getSessionOverrides as getSlashOverrides,
          getAutocompleteSuggestions, isSlashCommand,
          type CommandContext } from '../../features/slash-commands';
-import type { Message, ToolCall, ChatAttachment, Agent } from '../../types';
+import type { Message, ToolCall, Agent } from '../../types';
 
 const $ = (id: string) => document.getElementById(id);
 
@@ -509,6 +509,152 @@ function retryMessage(content: string): void {
   sendMessage();
 }
 
+/** Render an inline screenshot card for assistant messages */
+function renderScreenshotCard(msgContent: string): HTMLElement | null {
+  const ssMatch = msgContent.match(/Screenshot saved:\s*([^\n]+\.png)/);
+  if (!ssMatch) return null;
+  const ssFilename = ssMatch[1].split('/').pop() || '';
+  if (!ssFilename.startsWith('screenshot-')) return null;
+
+  const ssCard = document.createElement('div');
+  ssCard.className = 'message-screenshot-card';
+  ssCard.style.cssText = 'margin:8px 0;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);cursor:pointer;max-width:400px';
+  ssCard.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text-muted);font-size:12px">Loading screenshot…</div>';
+  (async () => {
+    try {
+      const { pawEngine: eng } = await import('../molecules/ipc_client');
+      const ss = await eng.screenshotGet(ssFilename);
+      if (ss.base64_png) {
+        ssCard.innerHTML = '';
+        const img = document.createElement('img');
+        img.src = `data:image/png;base64,${ss.base64_png}`;
+        img.style.cssText = 'width:100%;display:block';
+        img.alt = ssFilename;
+        ssCard.appendChild(img);
+        ssCard.addEventListener('click', () => {
+          const win = window.open('', '_blank');
+          if (win) {
+            win.document.title = ssFilename;
+            win.document.body.style.cssText = 'margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh';
+            const fullImg = win.document.createElement('img');
+            fullImg.src = img.src;
+            fullImg.style.maxWidth = '100%';
+            win.document.body.appendChild(fullImg);
+          }
+        });
+      }
+    } catch { ssCard.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:12px">Screenshot unavailable</div>'; }
+  })();
+  return ssCard;
+}
+
+/** Render attachment strip (images + file chips) for a message */
+function renderAttachmentStrip(attachments: NonNullable<Message['attachments']>): HTMLElement {
+  const strip = document.createElement('div');
+  strip.className = 'message-attachments';
+  for (const att of attachments) {
+    if (att.mimeType?.startsWith('image/')) {
+      const card = document.createElement('div');
+      card.className = 'message-attachment-card';
+      const img = document.createElement('img');
+      img.className = 'message-attachment-img';
+      img.alt = att.name || 'attachment';
+      if (att.url) img.src = att.url;
+      else if (att.data) img.src = `data:${att.mimeType};base64,${att.data}`;
+      const overlay = document.createElement('div');
+      overlay.className = 'message-attachment-overlay';
+      overlay.innerHTML = icon('external-link');
+      card.appendChild(img);
+      card.appendChild(overlay);
+      card.addEventListener('click', () => window.open(img.src, '_blank'));
+      if (att.name) {
+        const lbl = document.createElement('div');
+        lbl.className = 'message-attachment-label';
+        lbl.textContent = att.name;
+        card.appendChild(lbl);
+      }
+      strip.appendChild(card);
+    } else {
+      const docChip = document.createElement('div');
+      docChip.className = 'message-attachment-doc';
+      const iconName = att.mimeType?.startsWith('text/') || att.mimeType === 'application/pdf' ? 'file-text' : 'file';
+      docChip.innerHTML = icon(iconName);
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = att.name || 'file';
+      docChip.appendChild(nameSpan);
+      strip.appendChild(docChip);
+    }
+  }
+  return strip;
+}
+
+/** Render a single message element */
+function renderSingleMessage(msg: Message, index: number, lastUserIdx: number, lastAssistantIdx: number): HTMLElement {
+  const div = document.createElement('div');
+  div.className = `message ${msg.role}`;
+
+  const contentEl = document.createElement('div');
+  contentEl.className = 'message-content';
+  if (msg.role === 'assistant' || msg.role === 'system') {
+    contentEl.innerHTML = formatMarkdown(msg.content);
+  } else {
+    contentEl.textContent = msg.content;
+  }
+
+  const time = document.createElement('div');
+  time.className = 'message-time';
+  time.textContent = msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+  div.appendChild(contentEl);
+
+  // Inline screenshot detection
+  if (msg.role === 'assistant' && msg.content.includes('Screenshot saved:')) {
+    const ssCard = renderScreenshotCard(msg.content);
+    if (ssCard) div.appendChild(ssCard);
+  }
+
+  // Image/file attachments
+  if (msg.attachments?.length) {
+    div.appendChild(renderAttachmentStrip(msg.attachments));
+  }
+
+  div.appendChild(time);
+
+  // Tool calls badge
+  if (msg.toolCalls?.length) {
+    const badge = document.createElement('div');
+    badge.className = 'tool-calls-badge';
+    badge.innerHTML = `${icon('wrench')} ${msg.toolCalls.length} tool call${msg.toolCalls.length > 1 ? 's' : ''}`;
+    div.appendChild(badge);
+  }
+
+  // Retry button
+  const isLastUser = index === lastUserIdx;
+  const isErrored  = index === lastAssistantIdx && msg.content.startsWith('Error:');
+  if ((isLastUser || isErrored) && !appState.isLoading) {
+    const retryBtn = document.createElement('button');
+    retryBtn.className = 'message-retry-btn';
+    retryBtn.title = 'Retry';
+    retryBtn.innerHTML = `${icon('rotate-ccw')} Retry`;
+    const retryContent = isLastUser ? msg.content : (lastUserIdx >= 0 ? appState.messages[lastUserIdx].content : '');
+    retryBtn.addEventListener('click', () => retryMessage(retryContent));
+    div.appendChild(retryBtn);
+  }
+
+  // TTS button
+  if (msg.role === 'assistant' && msg.content && !msg.content.startsWith('Error:')) {
+    const ttsBtn = document.createElement('button');
+    ttsBtn.className = 'message-tts-btn';
+    ttsBtn.title = 'Read aloud';
+    ttsBtn.innerHTML = `<span class="ms">volume_up</span>`;
+    const msgContent = msg.content;
+    ttsBtn.addEventListener('click', () => speakMessage(msgContent, ttsBtn));
+    div.appendChild(ttsBtn);
+  }
+
+  return div;
+}
+
 export function renderMessages(): void {
   const chatMessages = $('chat-messages');
   const chatEmpty    = $('chat-empty');
@@ -526,140 +672,7 @@ export function renderMessages(): void {
   const lastAssistantIdx = findLastIndex(appState.messages, m => m.role === 'assistant');
 
   for (let i = 0; i < appState.messages.length; i++) {
-    const msg = appState.messages[i];
-    const div = document.createElement('div');
-    div.className = `message ${msg.role}`;
-
-    const contentEl = document.createElement('div');
-    contentEl.className = 'message-content';
-    if (msg.role === 'assistant' || msg.role === 'system') {
-      contentEl.innerHTML = formatMarkdown(msg.content);
-    } else {
-      contentEl.textContent = msg.content;
-    }
-
-    const time = document.createElement('div');
-    time.className = 'message-time';
-    time.textContent = msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    div.appendChild(contentEl);
-
-    // Inline screenshot detection — render agent screenshots in chat
-    if (msg.role === 'assistant' && msg.content.includes('Screenshot saved:')) {
-      const ssMatch = msg.content.match(/Screenshot saved:\s*([^\n]+\.png)/);
-      if (ssMatch) {
-        const ssFilename = ssMatch[1].split('/').pop() || '';
-        if (ssFilename.startsWith('screenshot-')) {
-          const ssCard = document.createElement('div');
-          ssCard.className = 'message-screenshot-card';
-          ssCard.style.cssText = 'margin:8px 0;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);cursor:pointer;max-width:400px';
-          ssCard.innerHTML = '<div style="padding:8px;text-align:center;color:var(--text-muted);font-size:12px">Loading screenshot…</div>';
-          div.appendChild(ssCard);
-          // Lazy-load the screenshot thumbnail
-          (async () => {
-            try {
-              const { pawEngine: eng } = await import('../molecules/ipc_client');
-              const ss = await eng.screenshotGet(ssFilename);
-              if (ss.base64_png) {
-                ssCard.innerHTML = '';
-                const img = document.createElement('img');
-                img.src = `data:image/png;base64,${ss.base64_png}`;
-                img.style.cssText = 'width:100%;display:block';
-                img.alt = ssFilename;
-                ssCard.appendChild(img);
-                ssCard.addEventListener('click', () => {
-                  const win = window.open('', '_blank');
-                  if (win) {
-                    win.document.title = ssFilename;
-                    win.document.body.style.cssText = 'margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh';
-                    const fullImg = win.document.createElement('img');
-                    fullImg.src = img.src;
-                    fullImg.style.maxWidth = '100%';
-                    win.document.body.appendChild(fullImg);
-                  }
-                });
-              }
-            } catch { ssCard.innerHTML = '<div style="padding:8px;color:var(--text-muted);font-size:12px">Screenshot unavailable</div>'; }
-          })();
-        }
-      }
-    }
-
-    // Image/file attachments
-    if (msg.attachments?.length) {
-      const strip = document.createElement('div');
-      strip.className = 'message-attachments';
-      for (const att of msg.attachments) {
-        if (att.mimeType?.startsWith('image/')) {
-          const card = document.createElement('div');
-          card.className = 'message-attachment-card';
-          const img = document.createElement('img');
-          img.className = 'message-attachment-img';
-          img.alt = att.name || 'attachment';
-          if (att.url) img.src = att.url;
-          else if (att.data) img.src = `data:${att.mimeType};base64,${att.data}`;
-          const overlay = document.createElement('div');
-          overlay.className = 'message-attachment-overlay';
-          overlay.innerHTML = icon('external-link');
-          card.appendChild(img);
-          card.appendChild(overlay);
-          card.addEventListener('click', () => window.open(img.src, '_blank'));
-          if (att.name) {
-            const lbl = document.createElement('div');
-            lbl.className = 'message-attachment-label';
-            lbl.textContent = att.name;
-            card.appendChild(lbl);
-          }
-          strip.appendChild(card);
-        } else {
-          const docChip = document.createElement('div');
-          docChip.className = 'message-attachment-doc';
-          const iconName = att.mimeType?.startsWith('text/') || att.mimeType === 'application/pdf' ? 'file-text' : 'file';
-          docChip.innerHTML = icon(iconName);
-          const nameSpan = document.createElement('span');
-          nameSpan.textContent = att.name || 'file';
-          docChip.appendChild(nameSpan);
-          strip.appendChild(docChip);
-        }
-      }
-      div.appendChild(strip);
-    }
-
-    div.appendChild(time);
-
-    // Tool calls badge
-    if (msg.toolCalls?.length) {
-      const badge = document.createElement('div');
-      badge.className = 'tool-calls-badge';
-      badge.innerHTML = `${icon('wrench')} ${msg.toolCalls.length} tool call${msg.toolCalls.length > 1 ? 's' : ''}`;
-      div.appendChild(badge);
-    }
-
-    // Retry button
-    const isLastUser = i === lastUserIdx;
-    const isErrored  = i === lastAssistantIdx && msg.content.startsWith('Error:');
-    if ((isLastUser || isErrored) && !appState.isLoading) {
-      const retryBtn = document.createElement('button');
-      retryBtn.className = 'message-retry-btn';
-      retryBtn.title = 'Retry';
-      retryBtn.innerHTML = `${icon('rotate-ccw')} Retry`;
-      const retryContent = isLastUser ? msg.content : (lastUserIdx >= 0 ? appState.messages[lastUserIdx].content : '');
-      retryBtn.addEventListener('click', () => retryMessage(retryContent));
-      div.appendChild(retryBtn);
-    }
-
-    // TTS button
-    if (msg.role === 'assistant' && msg.content && !msg.content.startsWith('Error:')) {
-      const ttsBtn = document.createElement('button');
-      ttsBtn.className = 'message-tts-btn';
-      ttsBtn.title = 'Read aloud';
-      ttsBtn.innerHTML = `<span class="ms">volume_up</span>`;
-      const msgContent = msg.content;
-      ttsBtn.addEventListener('click', () => speakMessage(msgContent, ttsBtn));
-      div.appendChild(ttsBtn);
-    }
-
-    frag.appendChild(div);
+    frag.appendChild(renderSingleMessage(appState.messages[i], i, lastUserIdx, lastAssistantIdx));
   }
 
   const streamingEl = $('streaming-message');
@@ -794,6 +807,88 @@ async function autoSpeakIfEnabled(text: string): Promise<void> {
 }
 
 // ── Send message ──────────────────────────────────────────────────────────
+/** Build the command context object for slash command interception */
+function buildSlashCommandContext(chatModelSelect: HTMLSelectElement | null): CommandContext {
+  return {
+    sessionKey: appState.currentSessionKey,
+    addSystemMessage: (text: string) => addMessage({ role: 'assistant', content: text, timestamp: new Date() }),
+    clearChatUI: () => {
+      const el = document.getElementById('chat-messages');
+      if (el) el.innerHTML = '';
+      appState.messages = [];
+    },
+    newSession: async (label?: string) => {
+      appState.currentSessionKey = null;
+      if (label) {
+        const newId = `session_${Date.now()}`;
+        const result = await pawEngine.chatSend({ session_id: newId, message: '', model: '' });
+        if (result.session_id) {
+          appState.currentSessionKey = result.session_id;
+          await pawEngine.sessionRename(appState.currentSessionKey!, label);
+        }
+      }
+    },
+    reloadSessions: () => loadSessions({ skipHistory: true }),
+    getCurrentModel: () => chatModelSelect?.value || 'default',
+  };
+}
+
+/** Encode pending file attachments to base64 for sending */
+async function encodeFileAttachments(): Promise<Array<{ type: string; mimeType: string; content: string; name?: string }>> {
+  const attachments: Array<{ type: string; mimeType: string; content: string; name?: string }> = [];
+  for (const file of appState.pendingAttachments) {
+    try {
+      const base64 = await fileToBase64(file);
+      const mime = file.type || (file.name?.match(/\.(txt|md|csv|json|xml|html|css|js|ts|py|rs|sh|yaml|yml|toml|log)$/i) ? 'text/plain' : 'application/octet-stream');
+      attachments.push({ type: mime.startsWith('image/') ? 'image' : 'file', mimeType: mime, content: base64, name: file.name });
+    } catch (e) { console.error('[chat] Attachment encode failed:', file.name, e); }
+  }
+  return attachments;
+}
+
+/** Handle the send result — update session, auto-label, process ack text */
+function handleSendResult(
+  result: { sessionKey?: string; session_id?: string; runId?: string; text?: string; response?: unknown; usage?: unknown },
+  ss: StreamState,
+  streamKey: string,
+): void {
+  if (result.runId) ss.runId = result.runId;
+  if (result.sessionKey) {
+    appState.currentSessionKey = result.sessionKey;
+    if (result.sessionKey !== streamKey) {
+      appState.activeStreams.delete(streamKey);
+      appState.activeStreams.set(result.sessionKey, ss);
+    }
+    const curAgent = AgentsModule.getCurrentAgent();
+    if (curAgent) { agentSessionMap.set(curAgent.id, result.sessionKey); persistAgentSessionMap(); }
+
+    const isNewSession = result.sessionKey !== streamKey || streamKey === 'default' || !streamKey;
+    const existingSession = appState.sessions.find(s => s.key === result.sessionKey);
+    if (isNewSession || !existingSession?.label) {
+      const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+      const msgContent = chatInput?.value || appState.messages[appState.messages.length - 1]?.content || '';
+      const autoLabel = generateSessionLabel(msgContent);
+      pawEngine.sessionRename(result.sessionKey, autoLabel).then(() => {
+        const s = appState.sessions.find(s2 => s2.key === result.sessionKey);
+        if (s) { s.label = autoLabel; s.displayName = autoLabel; }
+        renderSessionSelect();
+        console.debug('[chat] Auto-labeled session:', autoLabel);
+      }).catch(e => console.warn('[chat] Auto-label failed:', e));
+    }
+  }
+
+  if (result.usage) recordTokenUsage(result.usage as Record<string, unknown>);
+
+  const ackText = result.text
+    ?? (typeof result.response === 'string' ? result.response : null)
+    ?? extractContent(result.response);
+  if (ackText && ss.resolve) {
+    appendStreamingDelta(ackText);
+    ss.resolve(ackText);
+    ss.resolve = null;
+  }
+}
+
 export async function sendMessage(): Promise<void> {
   const chatInput  = document.getElementById('chat-input')  as HTMLTextAreaElement | null;
   const chatSend   = document.getElementById('chat-send')   as HTMLButtonElement | null;
@@ -803,28 +898,7 @@ export async function sendMessage(): Promise<void> {
 
   // Slash command interception
   if (isSlashCommand(content)) {
-    const cmdCtx: CommandContext = {
-      sessionKey: appState.currentSessionKey,
-      addSystemMessage: (text: string) => addMessage({ role: 'assistant', content: text, timestamp: new Date() }),
-      clearChatUI: () => {
-        const el = document.getElementById('chat-messages');
-        if (el) el.innerHTML = '';
-        appState.messages = [];
-      },
-      newSession: async (label?: string) => {
-        appState.currentSessionKey = null;
-        if (label) {
-          const newId = `session_${Date.now()}`;
-          const result = await pawEngine.chatSend({ session_id: newId, message: '', model: '' });
-          if (result.session_id) {
-            appState.currentSessionKey = result.session_id;
-            await pawEngine.sessionRename(appState.currentSessionKey!, label);
-          }
-        }
-      },
-      reloadSessions: () => loadSessions({ skipHistory: true }),
-      getCurrentModel: () => chatModelSelect?.value || 'default',
-    };
+    const cmdCtx = buildSlashCommandContext(chatModelSelect);
     const result = await interceptSlashCommand(content, cmdCtx);
     if (result.handled) {
       if (chatInput) { chatInput.value = ''; chatInput.style.height = 'auto'; }
@@ -836,14 +910,7 @@ export async function sendMessage(): Promise<void> {
   }
 
   // Encode pending file attachments
-  const attachments: Array<{ type: string; mimeType: string; content: string; name?: string }> = [];
-  for (const file of appState.pendingAttachments) {
-    try {
-      const base64 = await fileToBase64(file);
-      const mime = file.type || (file.name?.match(/\.(txt|md|csv|json|xml|html|css|js|ts|py|rs|sh|yaml|yml|toml|log)$/i) ? 'text/plain' : 'application/octet-stream');
-      attachments.push({ type: mime.startsWith('image/') ? 'image' : 'file', mimeType: mime, content: base64, name: file.name });
-    } catch (e) { console.error('[chat] Attachment encode failed:', file.name, e); }
-  }
+  const attachments = await encodeFileAttachments();
 
   // User message
   const userMsg: Message = { role: 'user', content, timestamp: new Date() };
@@ -858,7 +925,6 @@ export async function sendMessage(): Promise<void> {
 
   showStreamingMessage();
 
-  // Get stream state (created by showStreamingMessage)
   const streamKey = appState.currentSessionKey ?? '';
   const ss = appState.activeStreams.get(streamKey);
   if (!ss) {
@@ -876,74 +942,29 @@ export async function sendMessage(): Promise<void> {
     }, 600_000);
   });
 
-  const chatOpts: {
-    model?: string;
-    thinkingLevel?: string;
-    temperature?: number;
-    attachments?: ChatAttachment[];
-    agentProfile?: Partial<Agent>;
-  } = {};
-
   try {
     const sessionKey = appState.currentSessionKey ?? 'default';
+    const chatOpts: Record<string, unknown> = {};
     const currentAgent = AgentsModule.getCurrentAgent();
     if (currentAgent) {
       if (currentAgent.model && currentAgent.model !== 'default') chatOpts.model = currentAgent.model;
-      (chatOpts as Record<string, unknown>).agentProfile = currentAgent;
+      chatOpts.agentProfile = currentAgent;
     }
-    if (attachments.length) chatOpts.attachments = attachments as ChatAttachment[];
-
+    if (attachments.length) chatOpts.attachments = attachments;
     const chatModelVal = chatModelSelect?.value;
     if (chatModelVal && chatModelVal !== 'default') chatOpts.model = chatModelVal;
-
     const slashOverrides = getSlashOverrides();
     if (slashOverrides.model) chatOpts.model = slashOverrides.model;
     if (slashOverrides.thinkingLevel) chatOpts.thinkingLevel = slashOverrides.thinkingLevel;
     if (slashOverrides.temperature !== undefined) chatOpts.temperature = slashOverrides.temperature;
 
-    const result = await engineChatSend(sessionKey, content, {
-      ...chatOpts,
-      attachments: chatOpts.attachments as Array<{ type?: string; mimeType: string; content: string }> | undefined,
+    const result = await engineChatSend(sessionKey, content, chatOpts as {
+      model?: string; thinkingLevel?: string; temperature?: number;
+      attachments?: Array<{ type?: string; mimeType: string; content: string }>;
+      agentProfile?: Partial<Agent>;
     });
     console.debug('[chat] send ack:', JSON.stringify(result).slice(0, 300));
-
-    if (result.runId) ss.runId = result.runId;
-    if (result.sessionKey) {
-      appState.currentSessionKey = result.sessionKey;
-      // Re-key the stream state if session changed
-      if (result.sessionKey !== streamKey) {
-        appState.activeStreams.delete(streamKey);
-        appState.activeStreams.set(result.sessionKey, ss);
-      }
-      const curAgent = AgentsModule.getCurrentAgent();
-      if (curAgent) { agentSessionMap.set(curAgent.id, result.sessionKey); persistAgentSessionMap(); }
-
-      // ── Auto-label new sessions from first message ──────────────────
-      const isNewSession = result.sessionKey !== streamKey || streamKey === 'default' || !streamKey;
-      const existingSession = appState.sessions.find(s => s.key === result.sessionKey);
-      if (isNewSession || !existingSession?.label) {
-        const autoLabel = generateSessionLabel(content);
-        pawEngine.sessionRename(result.sessionKey, autoLabel).then(() => {
-          // Update local state so dropdown reflects it immediately
-          const s = appState.sessions.find(s2 => s2.key === result.sessionKey);
-          if (s) { s.label = autoLabel; s.displayName = autoLabel; }
-          renderSessionSelect();
-          console.debug('[chat] Auto-labeled session:', autoLabel);
-        }).catch(e => console.warn('[chat] Auto-label failed:', e));
-      }
-    }
-
-    const sendUsage = result.usage;
-    if (sendUsage) recordTokenUsage(sendUsage);
-
-    const ackText = result.text
-      ?? (typeof result.response === 'string' ? result.response : null)
-      ?? extractContent(result.response);
-    if (ackText && ss.resolve) {
-      appendStreamingDelta(ackText);
-      ss.resolve(ackText);
-      ss.resolve = null;
-    }
+    handleSendResult(result, ss, streamKey);
 
     const finalText = await responsePromise;
     finalizeStreaming(finalText);
@@ -956,7 +977,6 @@ export async function sendMessage(): Promise<void> {
     }
   } finally {
     appState.isLoading = false;
-    // Clean up stream state if still present
     const finalKey = appState.currentSessionKey ?? streamKey;
     appState.activeStreams.delete(finalKey);
     if (ss?.timeout) { clearTimeout(ss.timeout); ss.timeout = null; }

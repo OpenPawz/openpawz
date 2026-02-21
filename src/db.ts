@@ -103,175 +103,170 @@ export function isEncryptionReady(): boolean {
   return _cryptoKey !== null;
 }
 
-async function runMigrations(db: Database) {
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS agent_modes (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      model TEXT,
-      system_prompt TEXT,
-      skills TEXT, -- JSON array
-      thinking_level TEXT DEFAULT 'normal',
-      temperature REAL DEFAULT 1.0,
-      icon TEXT DEFAULT '',
-      color TEXT DEFAULT '#0073EA',
-      is_default INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
+// ── Schema migration SQL statements ────────────────────────────────────────
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS projects (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      space TEXT NOT NULL, -- 'build', 'research', 'create'
-      description TEXT,
-      session_key TEXT,
-      metadata TEXT, -- JSON
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
+/**
+ * Versioned migrations. Each entry is [version, description, ...sql_statements].
+ * Migrations are run in order; only those with version > current schema_version
+ * are executed. Each migration runs inside a transaction.
+ *
+ * Rules for adding new migrations:
+ *   1. Append a new entry with the next sequential version number.
+ *   2. Never modify or reorder existing migrations.
+ *   3. Use IF NOT EXISTS / IF EXISTS guards where appropriate.
+ */
+interface Migration {
+  version: number;
+  description: string;
+  statements: string[];
+}
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS project_files (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      path TEXT NOT NULL,
-      content TEXT,
-      language TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-    )
-  `);
+const MIGRATIONS: Migration[] = [
+  {
+    version: 1,
+    description: 'Initial schema — core tables',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS agent_modes (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        model TEXT,
+        system_prompt TEXT,
+        skills TEXT, -- JSON array
+        thinking_level TEXT DEFAULT 'normal',
+        temperature REAL DEFAULT 1.0,
+        icon TEXT DEFAULT '',
+        color TEXT DEFAULT '#0073EA',
+        is_default INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        space TEXT NOT NULL, -- 'build', 'research', 'create'
+        description TEXT,
+        session_key TEXT,
+        metadata TEXT, -- JSON
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS project_files (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        content TEXT,
+        language TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS automation_runs (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        status TEXT DEFAULT 'running',
+        output TEXT,
+        error TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS research_findings (
+        id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        title TEXT,
+        content TEXT,
+        source_url TEXT,
+        source_title TEXT,
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS content_documents (
+        id TEXT PRIMARY KEY,
+        project_id TEXT,
+        title TEXT NOT NULL,
+        content TEXT DEFAULT '',
+        content_type TEXT DEFAULT 'markdown', -- markdown, html, plaintext
+        word_count INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS email_accounts (
+        id TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        display_name TEXT,
+        imap_host TEXT,
+        imap_port INTEGER DEFAULT 993,
+        smtp_host TEXT,
+        smtp_port INTEGER DEFAULT 587,
+        connected INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS emails (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL,
+        message_id TEXT,
+        folder TEXT DEFAULT 'inbox',
+        from_addr TEXT,
+        from_name TEXT,
+        to_addr TEXT,
+        subject TEXT,
+        body_text TEXT,
+        body_html TEXT,
+        date TEXT,
+        is_read INTEGER DEFAULT 0,
+        is_starred INTEGER DEFAULT 0,
+        agent_draft TEXT, -- AI-drafted reply
+        agent_draft_status TEXT, -- 'pending', 'approved', 'sent'
+        created_at TEXT DEFAULT (datetime('now')),
+        FOREIGN KEY (account_id) REFERENCES email_accounts(id) ON DELETE CASCADE
+      )`,
+      `CREATE TABLE IF NOT EXISTS credential_activity_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT DEFAULT (datetime('now')),
+        account_name TEXT,
+        action TEXT NOT NULL,
+        tool_name TEXT,
+        detail TEXT,
+        session_key TEXT,
+        was_allowed INTEGER DEFAULT 1
+      )`,
+      `CREATE TABLE IF NOT EXISTS security_audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT DEFAULT (datetime('now')),
+        event_type TEXT NOT NULL,
+        risk_level TEXT,
+        tool_name TEXT,
+        command TEXT,
+        detail TEXT,
+        session_key TEXT,
+        was_allowed INTEGER DEFAULT 1,
+        matched_pattern TEXT
+      )`,
+      `CREATE TABLE IF NOT EXISTS security_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        rule_type TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        description TEXT,
+        enabled INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now'))
+      )`,
+      `CREATE TABLE IF NOT EXISTS security_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        settings_json TEXT NOT NULL DEFAULT '{}'
+      )`,
+    ],
+  },
+  // ── Future migrations go here ──
+  // {
+  //   version: 2,
+  //   description: 'Add foo column to bar table',
+  //   statements: [
+  //     `ALTER TABLE bar ADD COLUMN foo TEXT DEFAULT ''`,
+  //   ],
+  // },
+];
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS automation_runs (
-      id TEXT PRIMARY KEY,
-      job_id TEXT NOT NULL,
-      started_at TEXT,
-      finished_at TEXT,
-      status TEXT DEFAULT 'running',
-      output TEXT,
-      error TEXT
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS research_findings (
-      id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      title TEXT,
-      content TEXT,
-      source_url TEXT,
-      source_title TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS content_documents (
-      id TEXT PRIMARY KEY,
-      project_id TEXT,
-      title TEXT NOT NULL,
-      content TEXT DEFAULT '',
-      content_type TEXT DEFAULT 'markdown', -- markdown, html, plaintext
-      word_count INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS email_accounts (
-      id TEXT PRIMARY KEY,
-      email TEXT NOT NULL,
-      display_name TEXT,
-      imap_host TEXT,
-      imap_port INTEGER DEFAULT 993,
-      smtp_host TEXT,
-      smtp_port INTEGER DEFAULT 587,
-      connected INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS emails (
-      id TEXT PRIMARY KEY,
-      account_id TEXT NOT NULL,
-      message_id TEXT,
-      folder TEXT DEFAULT 'inbox',
-      from_addr TEXT,
-      from_name TEXT,
-      to_addr TEXT,
-      subject TEXT,
-      body_text TEXT,
-      body_html TEXT,
-      date TEXT,
-      is_read INTEGER DEFAULT 0,
-      is_starred INTEGER DEFAULT 0,
-      agent_draft TEXT, -- AI-drafted reply
-      agent_draft_status TEXT, -- 'pending', 'approved', 'sent'
-      created_at TEXT DEFAULT (datetime('now')),
-      FOREIGN KEY (account_id) REFERENCES email_accounts(id) ON DELETE CASCADE
-    )
-  `);
-
-  // Credential activity log — every agent action involving credentials
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS credential_activity_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT DEFAULT (datetime('now')),
-      account_name TEXT,
-      action TEXT NOT NULL,        -- 'read', 'send', 'delete', 'manage', 'blocked', 'approved', 'denied'
-      tool_name TEXT,              -- e.g. 'himalaya envelope list', 'himalaya send'
-      detail TEXT,                 -- human-readable description
-      session_key TEXT,
-      was_allowed INTEGER DEFAULT 1  -- 0 = blocked by permission policy
-    )
-  `);
-
-  // Unified security audit log — all security-relevant events in one place
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS security_audit_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      timestamp TEXT DEFAULT (datetime('now')),
-      event_type TEXT NOT NULL,     -- 'exec_approval', 'credential_access', 'skill_install', 'config_change', 'auto_deny', 'auto_allow', 'security_policy'
-      risk_level TEXT,              -- 'critical', 'high', 'medium', 'low', 'safe', null
-      tool_name TEXT,
-      command TEXT,                 -- the raw command or tool invocation
-      detail TEXT,                  -- human-readable description
-      session_key TEXT,
-      was_allowed INTEGER DEFAULT 1,
-      matched_pattern TEXT          -- which security rule or pattern triggered
-    )
-  `);
-
-  // Command security rules — user-defined allowlist/denylist patterns
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS security_rules (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      rule_type TEXT NOT NULL,      -- 'allow' or 'deny'
-      pattern TEXT NOT NULL,        -- regex pattern
-      description TEXT,             -- optional human label
-      enabled INTEGER DEFAULT 1,
-      created_at TEXT DEFAULT (datetime('now'))
-    )
-  `);
-
-  // Single-row table for security settings (moved from localStorage for XSS protection)
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS security_settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),  -- single row
-      settings_json TEXT NOT NULL DEFAULT '{}'
-    )
-  `);
-
-  // Seed default agent mode if none exist
+/** Seed default agent modes if the table is empty */
+async function seedDefaultModes(db: Database): Promise<void> {
   const modes = await db.select<{ count: number }[]>('SELECT COUNT(*) as count FROM agent_modes');
   if (modes[0]?.count === 0) {
     await db.execute(
@@ -287,6 +282,45 @@ async function runMigrations(db: Database) {
       ['fast-chat', 'Quick Chat', null, 'Be concise and direct. Short answers preferred.', 'QC', '#FDAB3D']
     );
   }
+}
+
+async function runMigrations(db: Database) {
+  // Ensure schema_version table exists (bootstrap — not versioned itself)
+  await db.execute(`CREATE TABLE IF NOT EXISTS schema_version (
+    version INTEGER PRIMARY KEY,
+    description TEXT,
+    applied_at TEXT DEFAULT (datetime('now'))
+  )`);
+
+  // Get current version
+  const rows = await db.select<{ version: number }[]>(
+    'SELECT COALESCE(MAX(version), 0) as version FROM schema_version'
+  );
+  const currentVersion = rows[0]?.version ?? 0;
+
+  // Run pending migrations in order
+  for (const migration of MIGRATIONS) {
+    if (migration.version <= currentVersion) continue;
+
+    console.debug(`[db] Running migration v${migration.version}: ${migration.description}`);
+    try {
+      // Wrap each migration in a transaction for atomicity
+      await db.execute('BEGIN TRANSACTION');
+      for (const sql of migration.statements) {
+        await db.execute(sql);
+      }
+      await db.execute(
+        'INSERT INTO schema_version (version, description) VALUES (?, ?)',
+        [migration.version, migration.description]
+      );
+      await db.execute('COMMIT');
+    } catch (e) {
+      await db.execute('ROLLBACK').catch(() => {});
+      throw new Error(`Migration v${migration.version} failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  await seedDefaultModes(db);
 }
 
 // ── Agent Modes CRUD ─────────────────────────────────────────────────────

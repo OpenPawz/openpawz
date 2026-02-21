@@ -21,17 +21,11 @@ import { type EditorCallbacks } from './creator';
 // Re-export so index.ts can import both from one place
 export { openAgentCreator, type EditorCallbacks } from './creator';
 
-export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
-  const agents = cbs.getAgents();
-  const agent = agents.find(a => a.id === agentId);
-  if (!agent) return;
+// ── Extracted helpers for openAgentEditor ─────────────────────────────────
 
-  const availableModels = cbs.getAvailableModels();
-  const allToolIds = TOOL_GROUPS.flatMap(g => g.tools.map(t => t.id));
-
-  const modal = document.createElement('div');
-  modal.className = 'agent-modal';
-  modal.innerHTML = `
+/** Build the full HTML template for the agent editor modal */
+function buildEditorHtml(agent: Agent, availableModels: { id: string; name: string }[]): string {
+  return `
     <div class="agent-modal-dialog agent-modal-large">
       <div class="agent-modal-header">
         <div class="agent-modal-header-left">
@@ -189,25 +183,16 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
       </div>
     </div>
   `;
-  document.body.appendChild(modal);
+}
 
-  const personality = { ...agent.personality };
-  const boundaries = [...agent.boundaries];
-  let selectedAvatar = agent.avatar;
-
-  // Load community skills for this agent
-  loadAgentCommunitySkills(modal, agentId, cbs.getAgents());
-
-  // ── Tool policy UI wiring ─────────────────────────────────────────────
-  const currentPolicy = getAgentPolicy(agent.id);
-
-  // Determine which tools are currently allowed
+/** Wire tool-group checkboxes, individual tool toggles, and preset buttons */
+function wireToolPolicyUI(modal: HTMLElement, allToolIds: string[], agentId: string): void {
+  const currentPolicy = getAgentPolicy(agentId);
   const isUnrestricted = currentPolicy.mode === 'unrestricted';
   const allowedSet = new Set<string>(
     isUnrestricted ? allToolIds : currentPolicy.allowed
   );
 
-  // Check the right boxes based on current policy
   function applyToolChecks(allowed: Set<string>) {
     modal.querySelectorAll<HTMLInputElement>('[data-tool]').forEach(cb => {
       cb.checked = allowed.has(cb.getAttribute('data-tool')!);
@@ -215,7 +200,6 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
     updateGroupChecks();
   }
 
-  // Update group header checkboxes and counts
   function updateGroupChecks() {
     for (const group of TOOL_GROUPS) {
       const items = modal.querySelectorAll<HTMLInputElement>(`[data-tool]`);
@@ -240,7 +224,6 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
 
   applyToolChecks(allowedSet);
 
-  // Group header checkbox toggles all tools in that group
   modal.querySelectorAll<HTMLInputElement>('.agent-tool-group-check').forEach(groupCb => {
     groupCb.addEventListener('change', () => {
       const groupLabel = groupCb.getAttribute('data-group')!;
@@ -255,12 +238,10 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
     });
   });
 
-  // Individual tool checkbox updates the group header
   modal.querySelectorAll<HTMLInputElement>('[data-tool]').forEach(cb => {
     cb.addEventListener('change', () => updateGroupChecks());
   });
 
-  // Preset buttons
   modal.querySelectorAll<HTMLButtonElement>('.agent-tool-preset').forEach(btn => {
     btn.addEventListener('click', () => {
       const presetKey = btn.getAttribute('data-preset')!;
@@ -274,11 +255,122 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
         const denied = new Set(preset.policy.denied);
         applyToolChecks(new Set(allToolIds.filter(t => !denied.has(t))));
       }
-      // Highlight active preset
       modal.querySelectorAll('.agent-tool-preset').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
     });
   });
+}
+
+/** Collect form values and persist agent edits + tool policy */
+function saveAgentEdits(
+  modal: HTMLElement, agent: Agent,
+  personality: Agent['personality'], boundaries: string[],
+  selectedAvatar: string, allToolIds: string[],
+  cbs: EditorCallbacks, close: () => void,
+): void {
+  const name = (modal.querySelector('#agent-edit-name') as HTMLInputElement)?.value.trim();
+  const bio = (modal.querySelector('#agent-edit-bio') as HTMLInputElement)?.value.trim();
+  const model = (modal.querySelector('#agent-edit-model') as HTMLSelectElement)?.value;
+  const systemPrompt = (modal.querySelector('#agent-edit-prompt') as HTMLTextAreaElement)?.value.trim();
+
+  const selectedTools: string[] = [];
+  modal.querySelectorAll<HTMLInputElement>('[data-tool]:checked').forEach(cb => {
+    const toolId = cb.getAttribute('data-tool');
+    if (toolId) selectedTools.push(toolId);
+  });
+
+  const isAllSelected = selectedTools.length >= allToolIds.length;
+  const newPolicy: ToolPolicy = isAllSelected
+    ? { mode: 'unrestricted', allowed: [], denied: [], requireApprovalForUnlisted: false, alwaysRequireApproval: [] }
+    : { mode: 'allowlist', allowed: selectedTools, denied: [], requireApprovalForUnlisted: false, alwaysRequireApproval: [] };
+
+  if (!name) {
+    showToast('Name is required', 'error');
+    return;
+  }
+
+  agent.name = name;
+  agent.bio = bio;
+  agent.avatar = selectedAvatar;
+  agent.model = model || 'default';
+  agent.personality = personality;
+  agent.skills = selectedTools;
+  agent.boundaries = boundaries.filter(b => b.trim());
+  agent.systemPrompt = systemPrompt;
+
+  setAgentPolicy(agent.id, newPolicy);
+  cbs.onUpdated();
+
+  pawEngine.createAgent({
+    agent_id: agent.id,
+    role: agent.bio || 'assistant',
+    specialty: agent.template === 'general' ? 'general' : agent.template,
+    model: agent.model !== 'default' ? agent.model : undefined,
+    system_prompt: agent.systemPrompt,
+    capabilities: isAllSelected ? [] : selectedTools,
+  }).catch(e => console.warn('[agents] Backend update failed:', e));
+
+  close();
+  showToast('Changes saved', 'success');
+}
+
+/** Wire boundary add/edit/remove UI and perform initial render */
+function wireEditorBoundaries(modal: HTMLElement, boundaries: string[]): void {
+  const renderBoundaries = () => {
+    const container = modal.querySelector('#agent-boundaries');
+    if (!container) return;
+    container.innerHTML = boundaries.map((b, i) => `
+      <div class="agent-boundary-row">
+        <input type="text" class="form-input agent-boundary-input" value="${escAttr(b)}" data-index="${i}">
+        <button class="btn-icon agent-boundary-remove" data-index="${i}">×</button>
+      </div>
+    `).join('');
+
+    container.querySelectorAll('.agent-boundary-input').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt((e.target as HTMLInputElement).getAttribute('data-index') || '0');
+        boundaries[idx] = (e.target as HTMLInputElement).value;
+      });
+    });
+
+    container.querySelectorAll('.agent-boundary-remove').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt((e.target as HTMLElement).getAttribute('data-index') || '0');
+        boundaries.splice(idx, 1);
+        renderBoundaries();
+      });
+    });
+  };
+
+  modal.querySelector('#agent-add-boundary')?.addEventListener('click', () => {
+    boundaries.push('');
+    renderBoundaries();
+  });
+
+  renderBoundaries();
+}
+
+export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
+  const agents = cbs.getAgents();
+  const agent = agents.find(a => a.id === agentId);
+  if (!agent) return;
+
+  const availableModels = cbs.getAvailableModels();
+  const allToolIds = TOOL_GROUPS.flatMap(g => g.tools.map(t => t.id));
+
+  const modal = document.createElement('div');
+  modal.className = 'agent-modal';
+  modal.innerHTML = buildEditorHtml(agent, availableModels);
+  document.body.appendChild(modal);
+
+  const personality = { ...agent.personality };
+  const boundaries = [...agent.boundaries];
+  let selectedAvatar = agent.avatar;
+
+  // Load community skills for this agent
+  loadAgentCommunitySkills(modal, agentId, cbs.getAgents());
+
+  wireToolPolicyUI(modal, allToolIds, agent.id);
 
   // Tab switching
   modal.querySelectorAll('.agent-tab').forEach(tab => {
@@ -314,36 +406,7 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
   });
 
   // Boundaries
-  const renderBoundaries = () => {
-    const container = modal.querySelector('#agent-boundaries');
-    if (!container) return;
-    container.innerHTML = boundaries.map((b, i) => `
-      <div class="agent-boundary-row">
-        <input type="text" class="form-input agent-boundary-input" value="${escAttr(b)}" data-index="${i}">
-        <button class="btn-icon agent-boundary-remove" data-index="${i}">×</button>
-      </div>
-    `).join('');
-
-    container.querySelectorAll('.agent-boundary-input').forEach(input => {
-      input.addEventListener('change', (e) => {
-        const idx = parseInt((e.target as HTMLInputElement).getAttribute('data-index') || '0');
-        boundaries[idx] = (e.target as HTMLInputElement).value;
-      });
-    });
-
-    container.querySelectorAll('.agent-boundary-remove').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const idx = parseInt((e.target as HTMLElement).getAttribute('data-index') || '0');
-        boundaries.splice(idx, 1);
-        renderBoundaries();
-      });
-    });
-  };
-
-  modal.querySelector('#agent-add-boundary')?.addEventListener('click', () => {
-    boundaries.push('');
-    renderBoundaries();
-  });
+  wireEditorBoundaries(modal, boundaries);
 
   // Delete
   modal.querySelector('.agent-delete-btn')?.addEventListener('click', () => {
@@ -362,58 +425,8 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
 
   modal.querySelector('#agent-edit-save')?.addEventListener('click', () => {
-    const name = (modal.querySelector('#agent-edit-name') as HTMLInputElement)?.value.trim();
-    const bio = (modal.querySelector('#agent-edit-bio') as HTMLInputElement)?.value.trim();
-    const model = (modal.querySelector('#agent-edit-model') as HTMLSelectElement)?.value;
-    const systemPrompt = (modal.querySelector('#agent-edit-prompt') as HTMLTextAreaElement)?.value.trim();
-
-    // Collect selected tools from the tool assignment UI
-    const selectedTools: string[] = [];
-    modal.querySelectorAll<HTMLInputElement>('[data-tool]:checked').forEach(cb => {
-      const toolId = cb.getAttribute('data-tool');
-      if (toolId) selectedTools.push(toolId);
-    });
-
-    // Build tool policy: if all tools selected → unrestricted, otherwise allowlist
-    const isAllSelected = selectedTools.length >= allToolIds.length;
-    const newPolicy: ToolPolicy = isAllSelected
-      ? { mode: 'unrestricted', allowed: [], denied: [], requireApprovalForUnlisted: false, alwaysRequireApproval: [] }
-      : { mode: 'allowlist', allowed: selectedTools, denied: [], requireApprovalForUnlisted: false, alwaysRequireApproval: [] };
-
-    if (!name) {
-      showToast('Name is required', 'error');
-      return;
-    }
-
-    agent.name = name;
-    agent.bio = bio;
-    agent.avatar = selectedAvatar;
-    agent.model = model || 'default';
-    agent.personality = personality;
-    agent.skills = selectedTools;
-    agent.boundaries = boundaries.filter(b => b.trim());
-    agent.systemPrompt = systemPrompt;
-
-    // Persist tool policy to localStorage (used by frontend tool_filter)
-    setAgentPolicy(agent.id, newPolicy);
-
-    cbs.onUpdated();
-
-    // Sync changes to backend SQLite (capabilities used by orchestrator)
-    pawEngine.createAgent({
-      agent_id: agent.id,
-      role: agent.bio || 'assistant',
-      specialty: agent.template === 'general' ? 'general' : agent.template,
-      model: agent.model !== 'default' ? agent.model : undefined,
-      system_prompt: agent.systemPrompt,
-      capabilities: isAllSelected ? [] : selectedTools,
-    }).catch(e => console.warn('[agents] Backend update failed:', e));
-
-    close();
-    showToast('Changes saved', 'success');
+    saveAgentEdits(modal, agent, personality, boundaries, selectedAvatar, allToolIds, cbs, close);
   });
-
-  renderBoundaries();
 }
 
 // ── Community Skills per-agent management ────────────────────────────────

@@ -109,14 +109,11 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 
 ## Tier 3 — Code Quality
 
-### 23. 7 functions over 100 lines
-- `loadChannels` (~280 lines), `openAgentEditor` (~290 lines), `renderMessages` (148 lines), `sendMessage` (144 lines), `runMigrations` (160 lines) + 2 Rust functions (orchestrator 514 lines)
-- **Fix:** Decompose into smaller helper functions.
+### ~~23. 7 functions over 100 lines~~ ✅ FIXED
+- Decomposed all 7 oversized functions: `loadChannels` → extracted `renderPendingSection`/`renderWhatsAppSection`; `openAgentEditor` → extracted `buildEditorHtml`/`wireToolPolicyUI`/`wireEditorBoundaries`/`handleEditorSave`; `renderMessages` → extracted `renderSingleMessage`/`renderScreenshotCard`/`renderAttachmentStrip`; `sendMessage` → extracted `buildSlashContext`/`encodeFileAttachments`/`handleSendResult`; `runMigrations` → versioned migration runner; Rust `execute_boss_tool` → 5 handler functions (`handle_delegate_task`, `handle_check_agent_status`, `handle_send_agent_message`, `handle_project_complete`, `handle_create_sub_agent`). All functions now under 100 lines.
 
-### 24. No migration versioning
-- **File:** `src/db.ts` L86-245
-- All migrations are `CREATE TABLE IF NOT EXISTS` with no version tracking. `ALTER TABLE` has no detection mechanism. No transaction wrapping.
-- **Fix:** Add a `schema_version` table and sequential migration numbers.
+### ~~24. No migration versioning~~ ✅ FIXED
+- Added `schema_version` table (auto-created on first run). Migrations are now a typed `Migration[]` array with sequential version numbers. `runMigrations()` reads `MAX(version)` from `schema_version`, only runs pending migrations, wraps each in a `BEGIN/COMMIT` transaction with `ROLLBACK` on failure, and records the version + description + timestamp. Existing `CREATE TABLE IF NOT EXISTS` statements become migration v1 (idempotent on existing DBs). Future `ALTER TABLE` changes just append a new version entry.
 
 ### 25. `confirm()`/`alert()` used in Tauri context (8 files)
 - Native `confirm()` / `alert()` may not render in Tauri webview context.
