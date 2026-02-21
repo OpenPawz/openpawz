@@ -53,10 +53,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 ### ~~10. Encryption silently falls back to plaintext~~ ✅ FIXED
 - Added persistent global warning banner (`#encryption-warning-banner`) that appears at the top of every view when the OS keychain is unavailable and encryption can't be initialised. `initDbEncryption()` return value now drives banner visibility. `encryptField()` logs an explicit warning on each plaintext fallback. Banner is dismissible but reappears on next app launch.
 
-### 11. Non-null assertion crash on empty encryption key
+### ~~11. Non-null assertion crash on empty encryption key~~ ✅ FIXED
 - **File:** `src/db.ts` L38
 - **Bug:** `hexKey.match(/.{1,2}/g)!` crashes if `hexKey` is empty string (`.match()` returns `null`).
-- **Fix:** Add `if (!hexKey) return false;` guard before the match.
+- **Fix:** Removed non-null assertion. Match result is now stored in a variable with an explicit `if (!hexPairs) return false;` guard, making the code defensive against future refactors that might remove the earlier `!hexKey` check.
 
 ### 12. Event listener leak on task-updated
 - **File:** `src/main.ts` L128-130

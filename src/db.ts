@@ -39,7 +39,9 @@ export async function initDbEncryption(): Promise<boolean> {
     if (!hexKey || hexKey.length < 32) return false;
 
     // Convert hex string to raw bytes
-    const keyBytes = new Uint8Array(hexKey.match(/.{1,2}/g)!.map(b => parseInt(b, 16)));
+    const hexPairs = hexKey.match(/.{1,2}/g);
+    if (!hexPairs) return false;
+    const keyBytes = new Uint8Array(hexPairs.map(b => parseInt(b, 16)));
     _cryptoKey = await crypto.subtle.importKey(
       'raw', keyBytes, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']
     );
