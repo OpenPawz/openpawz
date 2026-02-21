@@ -272,7 +272,7 @@ function bindChannelCardActions(card: HTMLElement, ch: string, name: string): vo
       await startChannel(ch);
       if (ch !== 'whatsapp') {
         showToast(`${name} started`, 'success');
-        setTimeout(() => loadChannels(), 1000);
+        loadChannels();
       }
     }
     catch (e) {
@@ -293,7 +293,7 @@ function bindChannelCardActions(card: HTMLElement, ch: string, name: string): vo
     }
   });
   $(`${cardId}-stop`)?.addEventListener('click', async () => {
-    try { await stopChannel(ch); showToast(`${name} stopped`, 'success'); setTimeout(() => loadChannels(), 500); }
+    try { await stopChannel(ch); showToast(`${name} stopped`, 'success'); loadChannels(); }
     catch (e) { showToast(`Stop failed: ${e}`, 'error'); }
   });
   $(`${cardId}-edit`)?.addEventListener('click', () => _openChannelSetup(ch));
@@ -361,11 +361,11 @@ export async function loadChannels() {
         list.appendChild(tgCard);
 
         $(`${cardId}-start`)?.addEventListener('click', async () => {
-          try { await pawEngine.telegramStart(); showToast('Telegram started', 'success'); setTimeout(() => loadChannels(), 1000); }
+          try { await pawEngine.telegramStart(); showToast('Telegram started', 'success'); loadChannels(); }
           catch (e) { showToast(`Start failed: ${e}`, 'error'); }
         });
         $(`${cardId}-stop`)?.addEventListener('click', async () => {
-          try { await pawEngine.telegramStop(); showToast('Telegram stopped', 'success'); setTimeout(() => loadChannels(), 500); }
+          try { await pawEngine.telegramStop(); showToast('Telegram stopped', 'success'); loadChannels(); }
           catch (e) { showToast(`Stop failed: ${e}`, 'error'); }
         });
         $(`${cardId}-edit`)?.addEventListener('click', () => _openChannelSetup('telegram'));

@@ -153,7 +153,7 @@ function wireCardActions(container: HTMLElement | null) {
       try {
         await pawEngine.taskRun(id);
         (btn as HTMLElement).textContent = '⏳ Running…';
-        setTimeout(() => loadCron(), 3000);
+        loadCron();
       } catch (e) { showToast(`Run failed: ${e}`, 'error'); }
     });
   });

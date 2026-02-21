@@ -392,7 +392,7 @@ function toggleTask(taskId: string) {
     task.done = !task.done;
     _state.setTasks(tasks);
     saveTasks();
-    setTimeout(() => renderToday(), 300);
+    renderToday();
   }
 }
 

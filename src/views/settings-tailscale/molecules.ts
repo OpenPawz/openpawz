@@ -76,7 +76,7 @@ export async function loadTailscaleSettings() {
     connBtns.appendChild(disconnectBtn);
   } else {
     const connectBtn = makeBtn('Connect', 'btn-primary', async () => {
-      try { await pawEngine.tailscaleConnect(config.auth_key || undefined); showToast('Connecting…', 'info'); setTimeout(() => loadTailscaleSettings(), 3000); }
+      try { await pawEngine.tailscaleConnect(config.auth_key || undefined); showToast('Connecting…', 'info'); loadTailscaleSettings(); }
       catch (e: unknown) { showToast(`Failed: ${e instanceof Error ? e.message : String(e)}`, 'error'); }
     });
     connBtns.appendChild(connectBtn);

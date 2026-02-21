@@ -238,7 +238,7 @@ export async function saveMailImapSetup(): Promise<void> {
     showToast(`${email} connected! Your agent can now read and send emails.`, 'success');
     closeChannelSetupFn?.();
 
-    setTimeout(() => _loadMail(), 500);
+    _loadMail();
   } catch (e) {
     showToast(`Failed to connect: ${e instanceof Error ? e.message : e}`, 'error');
   } finally {

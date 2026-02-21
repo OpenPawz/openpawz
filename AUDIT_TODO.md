@@ -120,9 +120,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Fix:** Replace with Tauri dialog API or custom modal.
 - Added `confirmModal()` in `helpers.ts` — a Promise-based custom modal (`#confirm-modal` in `index.html`) with keyboard support (Enter/Escape) and backdrop dismiss. Replaced all 21 `confirm()` calls across 14 files with `await confirmModal()`. Replaced all 11 `alert()` calls (4 files) with `showToast(message, 'error')`. Zero native dialog usage remains.
 
-### 26. `setTimeout` as polling substitute (10+ instances)
+### 26. ~~`setTimeout` as polling substitute (10+ instances)~~ ✅ FIXED
 - Arbitrary `setTimeout` delays instead of listening for backend completion events.
 - **Fix:** Use Tauri events or IPC callbacks.
+- Audited all 32 `setTimeout` calls. Identified 13 polling-pattern instances where an IPC call was already `await`ed but a blind `setTimeout` delayed before refreshing the UI. Replaced all 13 with immediate reload calls (`loadChannels()`, `loadCron()`, `loadPalaceStats()`, `loadTailscaleSettings()`, `_loadMail()`, `renderToday()`). Remaining 19 `setTimeout` calls are legitimate: CSS animation delays, button-revert timeouts, toast auto-dismiss, streaming safety timeouts, recording-cycle timing, retry backoff, and event-bus grace periods.
 
 ### 27. `setInterval` without view-switch cleanup (3 views)
 - Orchestrator, settings, tasks views start intervals that aren't cleared on navigation.

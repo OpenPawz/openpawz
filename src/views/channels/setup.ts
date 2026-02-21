@@ -224,7 +224,7 @@ export async function saveChannelSetup() {
         console.warn('Auto-start failed:', e);
       }
 
-      setTimeout(() => loadChannels(), 1000);
+      loadChannels();
     } catch (e) {
       showToast(`Failed to save: ${e instanceof Error ? e.message : e}`, 'error');
     } finally {
@@ -308,7 +308,7 @@ export async function saveChannelSetup() {
         } catch (e) {
           console.warn('Auto-start failed:', e);
         }
-        setTimeout(() => loadChannels(), 1000);
+        loadChannels();
       }
     } catch (e) {
       showToast(`Failed to save: ${e instanceof Error ? e.message : e}`, 'error');

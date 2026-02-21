@@ -141,7 +141,7 @@ export async function renderEmbeddingStatus(stats: { total_memories: number; has
           if (prog) prog.textContent = `✓ ${result}`;
           if (btn) btn.textContent = '✓ Done';
           showToast('Embedding model ready!', 'success');
-          setTimeout(() => loadPalaceStats(), 1000);
+          loadPalaceStats();
         } catch (e) {
           if (prog) prog.textContent = `✗ Failed: ${e}`;
           if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
@@ -173,7 +173,7 @@ export async function renderEmbeddingStatus(stats: { total_memories: number; has
           if (prog) prog.textContent = `✓ ${result.success} embedded${result.failed > 0 ? `, ${result.failed} failed` : ''}`;
           if (btn) btn.textContent = '✓ Done';
           showToast(`Embedded ${result.success} memories`, 'success');
-          setTimeout(() => loadPalaceStats(), 1000);
+          loadPalaceStats();
         } catch (e) {
           if (prog) prog.textContent = `✗ Failed: ${e}`;
           if (btn) { btn.disabled = false; btn.textContent = 'Retry'; }
