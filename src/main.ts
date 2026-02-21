@@ -11,8 +11,7 @@ import { initTheme } from './components/molecules/theme';
 import { initHILModal } from './components/molecules/hil_modal';
 import { initChatListeners, switchToAgent, populateAgentSelect, appendStreamingDelta, recordTokenUsage, updateContextLimitFromModel } from './engine/organisms/chat_controller';
 import { registerStreamHandlers, registerResearchRouter } from './engine/molecules/event_bus';
-import { setLogTransport, flushBufferToTransport } from './logger';
-import type { LogEntry } from './logger';
+import { setLogTransport, flushBufferToTransport, type LogEntry } from './logger';
 import * as ResearchModule from './views/research';
 
 // ── Wire event_bus callbacks (engine ← view layer) ──

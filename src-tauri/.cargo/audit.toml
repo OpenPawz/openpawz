@@ -1,0 +1,17 @@
+# Ignored advisories — transitive dependencies beyond our direct control.
+# Review periodically and remove when upstream crates are patched.
+
+[advisories]
+ignore = [
+    # matrix-sdk-base: DoS via custom m.room.join_rules events
+    "RUSTSEC-2025-0135",
+    # matrix-sdk-base: panic in RoomMember::normalized_power_level()
+    "RUSTSEC-2025-0065",
+    # matrix-sdk-crypto: encrypted event sender spoofing by homeserver admin
+    "RUSTSEC-2025-0041",
+    # rsa crate: Marvin Attack timing sidechannel (transitive dep)
+    "RUSTSEC-2023-0071",
+    # atk / atk-sys: GTK3 bindings unmaintained (pulled in by Tauri/webkit2gtk)
+    "RUSTSEC-2024-0413",
+    "RUSTSEC-2024-0416",
+]

@@ -47,7 +47,7 @@ pub(crate) fn resolve_token(sym_or_addr: &str) -> EngineResult<(String, u8)> {
     }
 
     Err(EngineError::Other(format!("Unknown Solana token: '{}'. Use a mint address or known symbol: {}", sym_or_addr,
-        KNOWN_TOKENS.iter().map(|(s, _, _)| *s).collect::<Vec<_>>().join(", ")))
+        KNOWN_TOKENS.iter().map(|(s, _, _)| *s).collect::<Vec<_>>().join(", "))))
 }
 
 /// Format lamports to SOL (9 decimals) or SPL token amount
