@@ -102,9 +102,8 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 ### ~~21. Duplicate / dead error boundary~~ ✅ FIXED
 - Wired up `installErrorBoundary()` from `error-boundary.ts` in `main.ts` at module level. Removed duplicate inline `window.addEventListener` handlers. Connected `setErrorHandler()` callback to `crashLog()` for localStorage crash persistence.
 
-### 22. Event listeners re-bound on every render (12 views)
-- Multiple view files re-bind click handlers on every `load*()` call without cleanup or delegation.
-- **Fix:** Use event delegation or track/remove previous listeners.
+### ~~22. Event listeners re-bound on every render~~ ✅ FIXED
+- Audited all view files; only 2 had actual leaks on static DOM elements (most views use innerHTML replacement which is safe). Added boolean bind-once guards to: `initPalaceTabs`, `initPalaceRecall`, `initPalaceRemember`, `initPalaceGraph` (molecules/graph.ts), `initPalaceInstall` (index.ts), and `agents-create-btn` binding (agents/molecules.ts). Follows existing `_refreshBound` pattern from trading view.
 
 ---
 

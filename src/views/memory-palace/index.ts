@@ -101,7 +101,10 @@ export async function loadMemoryPalace(): Promise<void> {
 
 // ── Install / Setup form ───────────────────────────────────────────────────
 
+let _installBound = false;
 function initPalaceInstall(): void {
+  if (_installBound) return;
+  _installBound = true;
   // Provider dropdown — toggle fields on change
   $('palace-provider')?.addEventListener('change', updateProviderFields);
   updateProviderFields();

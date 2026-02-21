@@ -316,7 +316,10 @@ export function renderRecallCard(mem: RecallCardData): HTMLElement {
 
 // ── Tab switching ──────────────────────────────────────────────────────────
 
+let _tabsBound = false;
 export function initPalaceTabs(): void {
+  if (_tabsBound) return;
+  _tabsBound = true;
   document.querySelectorAll('.palace-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       const target = (tab as HTMLElement).dataset.palaceTab;
@@ -334,7 +337,10 @@ export function initPalaceTabs(): void {
 
 // ── Recall search ──────────────────────────────────────────────────────────
 
+let _recallBound = false;
 export function initPalaceRecall(): void {
+  if (_recallBound) return;
+  _recallBound = true;
   const btn = $('palace-recall-btn');
   const input = $('palace-recall-input') as HTMLTextAreaElement | null;
   if (!btn || !input) return;
@@ -377,7 +383,10 @@ async function palaceRecallSearch(): Promise<void> {
 
 // ── Remember form ──────────────────────────────────────────────────────────
 
+let _rememberBound = false;
 export function initPalaceRemember(onSaved?: () => Promise<void>): void {
+  if (_rememberBound) return;
+  _rememberBound = true;
   const btn = $('palace-remember-save');
   if (!btn) return;
 

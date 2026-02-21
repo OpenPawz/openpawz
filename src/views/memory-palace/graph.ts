@@ -6,7 +6,10 @@ import { CATEGORY_COLORS, type RecallCardData } from './atoms';
 
 // ── Graph init ─────────────────────────────────────────────────────────────
 
+let _graphBound = false;
 export function initPalaceGraph(): void {
+  if (_graphBound) return;
+  _graphBound = true;
   const renderBtn = $('palace-graph-render');
   if (!renderBtn) return;
 

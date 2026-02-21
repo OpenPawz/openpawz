@@ -5,6 +5,8 @@ import { $, escHtml } from '../../components/helpers';
 import { getAgentPolicy } from '../../features/agent-policies';
 import { type Agent, spriteAvatar } from './atoms';
 
+let _createBtnBound = false;
+
 export interface RenderAgentsCallbacks {
   onChat: (agentId: string) => void;
   onMiniChat: (agentId: string) => void;
@@ -75,7 +77,10 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
   });
 
   $('agent-card-new')?.addEventListener('click', () => cbs.onCreate());
-  $('agents-create-btn')?.addEventListener('click', () => cbs.onCreate());
+  if (!_createBtnBound) {
+    _createBtnBound = true;
+    $('agents-create-btn')?.addEventListener('click', () => cbs.onCreate());
+  }
 }
 
 // ── Dock badge / active helpers (exported so mini-chat.ts can call them) ────
