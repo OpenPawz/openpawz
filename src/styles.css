@@ -1201,6 +1201,29 @@ body {
   fill: none;
 }
 
+/* Encryption unavailable warning — persistent global banner */
+.encryption-warning-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(255, 140, 0, 0.12);
+  border-bottom: 1px solid rgba(255, 140, 0, 0.3);
+  color: #e67e00;
+  font-size: 13px;
+  animation: slideDown 200ms steps(4);
+}
+.encryption-warning-banner .btn {
+  color: #e67e00;
+  font-size: 18px;
+  line-height: 1;
+  padding: 0 4px;
+  flex-shrink: 0;
+}
+.encryption-warning-banner span {
+  flex: 1;
+}
+
 /* Budget settings in usage section */
 .budget-settings {
   margin-top: 16px;

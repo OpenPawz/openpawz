@@ -172,8 +172,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     crashLog('startup');
 
     await initDb().catch(e => console.warn('[main] DB init failed:', e));
-    await initDbEncryption().catch(e => console.warn('[main] DB encryption init failed:', e));
+    const encReady = await initDbEncryption().catch(e => {
+      console.warn('[main] DB encryption init failed:', e);
+      return false;
+    });
     await initSecuritySettings().catch(e => console.warn('[main] Security settings init failed:', e));
+
+    // Show persistent warning banner when encryption is unavailable
+    if (!encReady) {
+      const encBanner = $('encryption-warning-banner');
+      if (encBanner) {
+        encBanner.style.display = 'flex';
+        $('encryption-warning-dismiss')?.addEventListener('click', () => {
+          encBanner.style.display = 'none';
+        });
+      }
+    }
 
     MemoryPalaceModule.initPalaceEvents();
     window.addEventListener('palace-open-file', (e: Event) => {

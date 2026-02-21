@@ -50,10 +50,8 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 ### ~~9. chatAbort is a no-op~~ ✅ FIXED
 - Added `active_runs: HashMap<String, AbortHandle>` to `EngineState`. `engine_chat_send` registers the spawned task's abort handle keyed by session_id. New `engine_chat_abort` Tauri command looks up and aborts the task. The panic safety monitor detects cancellation vs crash and emits appropriate `Complete`/`Error` events. Frontend `chatAbort()` now invokes the real backend command. Research abort also works via same path.
 
-### 10. Encryption silently falls back to plaintext
-- **File:** `src/db.ts` L62-68
-- **Bug:** If `_cryptoKey` is null (keychain unavailable), `encryptField()` returns plaintext with no user-visible indicator. Sensitive data stored unencrypted.
-- **Fix:** Show a persistent warning banner when encryption is unavailable. Consider blocking credential storage without encryption.
+### ~~10. Encryption silently falls back to plaintext~~ ✅ FIXED
+- Added persistent global warning banner (`#encryption-warning-banner`) that appears at the top of every view when the OS keychain is unavailable and encryption can't be initialised. `initDbEncryption()` return value now drives banner visibility. `encryptField()` logs an explicit warning on each plaintext fallback. Banner is dismissible but reappears on next app launch.
 
 ### 11. Non-null assertion crash on empty encryption key
 - **File:** `src/db.ts` L38

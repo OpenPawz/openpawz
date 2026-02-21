@@ -102,6 +102,13 @@
       <!-- Main Content -->
       <main class="main">
 
+        <!-- Global encryption warning banner (shown when OS keychain unavailable) -->
+        <div class="encryption-warning-banner" id="encryption-warning-banner" style="display:none">
+          <span class="ms ms-sm">warning</span>
+          <span>Database encryption unavailable — sensitive data (API keys, credentials) will be stored as plaintext. Check OS keychain access.</span>
+          <button class="btn btn-ghost btn-sm" id="encryption-warning-dismiss" title="Dismiss">×</button>
+        </div>
+
         <!-- ═══ Dashboard ═══ -->
         <div class="view dashboard-view" id="dashboard-view">
           <div class="dashboard-greeting">

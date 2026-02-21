@@ -54,9 +54,15 @@ export async function initDbEncryption(): Promise<boolean> {
 /**
  * Encrypt a plaintext string. Returns "enc:<base64(iv+ciphertext)>".
  * Falls back to plaintext if encryption isn't initialised.
+ *
+ * WARNING: When encryption is unavailable, sensitive data is stored in the
+ * clear. The UI shows a persistent warning banner in this state.
  */
 export async function encryptField(plaintext: string): Promise<string> {
-  if (!_cryptoKey) return plaintext;
+  if (!_cryptoKey) {
+    console.warn('[db] Encryption unavailable — storing field as plaintext. Sensitive data is NOT protected.');
+    return plaintext;
+  }
   try {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encoded = new TextEncoder().encode(plaintext);
