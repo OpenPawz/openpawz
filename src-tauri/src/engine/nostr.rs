@@ -10,10 +10,7 @@
 //   - NIP-01: Basic event subscription + publishing
 //   - kind 1 (text notes): Respond to @mentions in public
 //   - kind 4 (encrypted DMs): NOT supported yet (needs NIP-04/NIP-44 crypto)
-//   - Events are signed with secp256k1 Schnorr (BIP-340)
-//
-// Note: Nostr signing requires the secp256k1 crate. If not available,
-//       the bridge will operate in read-only mode (no replies).
+//   - Events are signed with secp256k1 Schnorr (BIP-340) via the k256 crate
 //
 // Security:
 //   - Allowlist by npub / hex pubkey
@@ -356,22 +353,17 @@ async fn run_relay_loop(
 //
 // NIP-01 event structure:
 //   id: sha256([0, pubkey, created_at, kind, tags, content])
-//   sig: schnorr signature of id using secret key
-//
-// We use a minimal pure-Rust approach here. For production, the `secp256k1`
-// crate with Schnorr support would be ideal. This implementation uses the
-// already-available `sha2` crate for hashing and constructs unsigned events.
-// Signing is deferred — if secp256k1 is not available, events are published
-// unsigned (some relays accept, some don't).
+//   sig: schnorr signature of id using secret key (via k256 crate)
 
 fn build_reply_event(
-    _secret_key: &[u8],
+    secret_key: &[u8],
     pubkey_hex: &str,
     content: &str,
     reply_to_id: &str,
     reply_to_pk: &str,
 ) -> Result<serde_json::Value, String> {
     use sha2::{Sha256, Digest};
+    use k256::schnorr::SigningKey;
 
     let created_at = chrono::Utc::now().timestamp();
     let kind = 1u64;
@@ -392,11 +384,13 @@ fn build_reply_event(
     let id_bytes = hasher.finalize();
     let id_hex = hex_encode(&id_bytes);
 
-    // NOTE: Without the secp256k1 crate, we cannot produce a valid Schnorr signature.
-    // We set sig to all zeros — many relays will reject this.
-    // To fully enable Nostr, add `secp256k1 = { version = "0.29", features = ["rand-std"] }`
-    // to Cargo.toml and implement proper BIP-340 signing here.
-    let sig_hex = "0".repeat(128);
+    // BIP-340 Schnorr signature over the event id
+    let signing_key = SigningKey::from_bytes(secret_key)
+        .map_err(|e| format!("Invalid signing key: {}", e))?;
+    let aux_rand: [u8; 32] = rand::random();
+    let sig = signing_key.sign_raw(&id_bytes, &aux_rand)
+        .map_err(|e| format!("Schnorr sign failed: {}", e))?;
+    let sig_hex = hex_encode(&sig.to_bytes());
 
     Ok(json!({
         "id": id_hex,
@@ -409,30 +403,25 @@ fn build_reply_event(
     }))
 }
 
-// ── Minimal secp256k1 Pubkey Derivation ────────────────────────────────
+// ── secp256k1 Pubkey Derivation (BIP-340 x-only) ──────────────────────
 //
 // Nostr uses the x-coordinate of the secp256k1 public key (BIP-340).
-// We use a minimal implementation that computes this without a full
-// secp256k1 library. For a proper implementation, use the `secp256k1` crate.
+// We use the `k256` crate (already a dependency for DEX/Ethereum wallet)
+// to perform proper elliptic curve point multiplication.
 
 fn derive_pubkey(secret_key: &[u8]) -> Result<Vec<u8>, String> {
-    // Simplified: return SHA-256 of the secret key as placeholder pubkey.
-    // This is NOT cryptographically correct — it's a placeholder until
-    // secp256k1 crate is added.
-    //
-    // TODO: Replace with actual secp256k1 point multiplication:
-    //   let secp = secp256k1::Secp256k1::new();
-    //   let sk = secp256k1::SecretKey::from_slice(secret_key)?;
-    //   let pk = sk.x_only_public_key(&secp).0;
-    //   Ok(pk.serialize().to_vec())
-    use sha2::{Sha256, Digest};
-    let mut hasher = Sha256::new();
-    hasher.update(secret_key);
-    // Double-hash to differentiate from event ID computation
-    let first = hasher.finalize();
-    let mut hasher2 = Sha256::new();
-    hasher2.update(first);
-    Ok(hasher2.finalize().to_vec())
+    use k256::elliptic_curve::sec1::ToEncodedPoint;
+
+    let sk = k256::SecretKey::from_slice(secret_key)
+        .map_err(|e| format!("Invalid secret key: {}", e))?;
+    let pk = sk.public_key();
+    let point = pk.to_encoded_point(true); // compressed
+    // BIP-340 x-only: skip the 0x02/0x03 prefix byte, take the 32-byte x-coordinate
+    let compressed = point.as_bytes();
+    if compressed.len() != 33 {
+        return Err("Unexpected compressed pubkey length".into());
+    }
+    Ok(compressed[1..].to_vec())
 }
 
 // ── Hex Utils ──────────────────────────────────────────────────────────

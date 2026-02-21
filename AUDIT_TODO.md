@@ -27,10 +27,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Bug:** The "Compact" button handler called `pawEngine.sessionClear()` (destroys all messages) instead of `pawEngine.sessionCompact()` (summarizes them). Users lost their entire session.
 - **Fix applied:** Changed to `pawEngine.sessionCompact()`, added toast showing before/after message count, and reloads compacted history into the UI so the user sees the summarized conversation.
 
-### 5. Nostr crypto uses SHA-256 placeholder (CRITICAL)
-- **File:** `src-tauri/src/engine/nostr.rs` L418-436
-- **Bug:** `derive_pubkey()` uses SHA-256 instead of secp256k1, producing invalid Nostr signatures. There's a TODO in production code.
-- **Fix:** Implement proper secp256k1 key derivation or use the `secp256k1` crate.
+### ~~5. Nostr crypto uses SHA-256 placeholder (CRITICAL)~~ ✅ FIXED
+- **File:** `src-tauri/src/engine/nostr.rs` L418-436, `src-tauri/Cargo.toml`
+- **Bug:** `derive_pubkey()` used double SHA-256 hash instead of secp256k1 point multiplication, producing invalid public keys. `build_reply_event()` set signature to 128 zeros instead of computing a BIP-340 Schnorr signature.
+- **Fix applied:** Added `schnorr` feature to existing `k256` crate dependency. Replaced `derive_pubkey()` with proper secp256k1 `SecretKey → PublicKey → x-only` derivation. Replaced zero-signature with real BIP-340 Schnorr signing via `k256::schnorr::SigningKey::sign_raw()` with random auxiliary data. Nostr events are now cryptographically valid and will be accepted by relays.
 
 ### 6. Docs claim unimplemented security features (CRITICAL)
 - **File:** `docs/docs/channels/nostr.md` L31, `docs/docs/channels/matrix.md` L35
