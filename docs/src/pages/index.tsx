@@ -17,14 +17,14 @@ const vsFeatures = [
 ];
 
 const stats = [
-  { number: '22', label: 'Built-in Tools', sub: 'core engine tools' },
-  { number: '∞', label: 'Skills', sub: 'plugin-based — PawzHub' },
-  { number: '∞', label: 'AI Providers', sub: 'any OpenAI-compatible' },
-  { number: '10+', label: 'Chat Platforms', sub: 'bridged channels' },
+  { number: '530', label: 'Automated Tests', sub: '164 Rust + 366 TypeScript' },
+  { number: '33k', label: 'Lines of Rust', sub: 'async engine — zero JS backend' },
+  { number: '134', label: 'IPC Commands', sub: 'typed Tauri bridge' },
   { number: '7', label: 'Security Layers', sub: 'defense-in-depth' },
-  { number: '8', label: 'DeFi Chains', sub: 'EVM + Solana' },
-  { number: '16', label: 'Views', sub: 'full desktop app' },
-  { number: '$0', label: 'Cost', sub: 'forever' },
+  { number: '11', label: 'Chat Platforms', sub: 'bridged channels' },
+  { number: '0', label: 'Clippy Warnings', sub: 'enforced in CI' },
+  { number: '0', label: 'Known CVEs', sub: 'cargo audit + npm audit' },
+  { number: '$0', label: 'Cost', sub: 'MIT licensed — forever' },
 ];
 
 const avatarSprites = [1, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50];
@@ -137,12 +137,21 @@ const moreFeatures = [
 ];
 
 const worldFirsts = [
-  { title: 'Dual-language injection scanning', desc: 'TypeScript frontend + Rust backend — 16+ patterns, 4 severity levels — the only desktop AI with pre-routing injection defense on external channels' },
+  { title: 'Dual-language injection scanning', desc: 'TypeScript frontend + Rust backend — 30+ patterns, 4 severity levels — the only desktop AI with pre-routing injection defense on external channels' },
   { title: 'Self-custody DeFi on ETH + Solana', desc: 'Honeypot detection, whale tracking, smart money analysis on 7 EVM chains + Solana — private keys encrypted in OS keychain, decrypted only in Rust for signing' },
-  { title: '10-channel bridge with agent routing', desc: 'Telegram, Discord, Slack, Matrix, IRC, Mattermost, Nextcloud, Nostr, Twitch, Webchat — all with same memory, tools, and per-user isolated sessions' },
+  { title: '11-channel bridge with agent routing', desc: 'Telegram, Discord, Slack, Matrix, IRC, Mattermost, Nextcloud, Nostr, Twitch, Webchat, WhatsApp — all with same memory, tools, and per-user isolated sessions' },
   { title: 'BM25 + vector + decay + MMR memory', desc: '6-stage hybrid retrieval pipeline with auto-managed local Ollama embeddings, keyword fallback, and Memory Palace visualization' },
   { title: 'Multi-agent orchestrator with live bus', desc: 'Boss/worker delegation with 8 agent specialties, async parallel Tokio execution, dynamic agent spawning, and real-time message tracking' },
-  { title: '7-layer security in a free app', desc: 'Prompt injection scanner, agent policies, HIL approval, Docker sandbox, browser network policy, command risk classifier, encrypted credential vault — all MIT licensed' },
+  { title: '530 tests + 3-job CI in a free app', desc: '164 Rust tests, 366 TypeScript tests, cargo clippy with zero warnings, cargo audit + npm audit — enterprise quality without enterprise pricing' },
+];
+
+const trustItems = [
+  { metric: '530', label: 'Automated Tests', detail: '164 Rust (14 unit test modules + 4 integration files) + 366 TypeScript (24 test files). Cryptography, injection detection, access control, DeFi primitives, session lifecycle, risk classification.' },
+  { metric: '3-Job CI', label: 'Pipeline', detail: 'Every push runs cargo check → cargo test → cargo clippy -D warnings (Rust), tsc → eslint → vitest → prettier (TypeScript), and cargo audit + npm audit (Security). All must pass.' },
+  { metric: 'AES-256-GCM', label: 'Encryption', detail: 'All credentials encrypted at rest with AES-256-GCM. 12-byte random nonce per field. Key stored in OS keychain (macOS Keychain / Linux libsecret / Windows Credential Manager). No silent plaintext fallback.' },
+  { metric: '12-Variant', label: 'Error Types', detail: 'Typed EngineError enum via thiserror 2 — Database, Network, IO, JSON, Keychain, Provider, Tool, Channel, Auth, Config, and more. No Result<T, String> in the engine.' },
+  { metric: 'Backoff', label: 'Retry Logic', detail: 'Exponential backoff with jitter (1s base, 30s max, 3 retries). Retry-After header support. Circuit breaker trips after 5 failures (60s cooldown). Bridge auto-reconnect.' },
+  { metric: '0', label: 'Known CVEs', detail: 'cargo audit and npm audit run in CI on every commit. Dependabot enabled for automated dependency updates. Zero known vulnerabilities enforced.' },
 ];
 
 /* ── Components ────────────────────────────────────── */
@@ -165,10 +174,10 @@ function HeroSection() {
             The most secure, capable, and extensible AI agent platform ever built for the desktop.
           </p>
           <p className="hero-description">
-            Unlimited providers. Unlimited skills via PawzHub.
-            10+ channel bridges. 7 security layers. 22,000 lines of Rust.
-            Multi-agent orchestration. DeFi trading. Research-grade memory.
-            Modular — install only what you need. $0 forever.
+            530 automated tests. 33,000 lines of async Rust. 3-job CI pipeline.
+            AES-256-GCM encryption. Zero clippy warnings. Zero known CVEs.
+            11 channel bridges. 7 security layers. Unlimited providers.
+            Multi-agent orchestration. DeFi trading. Research-grade memory. $0 forever.
           </p>
           <div className="hero-buttons">
             <Link className="hero-btn hero-btn-primary" to="/docs/start/installation">
@@ -261,6 +270,40 @@ function ComparisonSection() {
   );
 }
 
+function TrustSection() {
+  return (
+    <section className="trust-section">
+      <div className="container">
+        <div className="section-header">
+          <div className="section-badge">Enterprise Quality</div>
+          <h2>Trust isn't a feature. It's the foundation.</h2>
+          <p>530 tests. 3-job CI. AES-256-GCM encryption. Typed errors. Zero warnings. Zero CVEs. Verified on every single commit.</p>
+        </div>
+        <div className="trust-grid">
+          {trustItems.map((t, i) => (
+            <div key={i} className="trust-card">
+              <div className="trust-metric">{t.metric}</div>
+              <div className="trust-label">{t.label}</div>
+              <p className="trust-detail">{t.detail}</p>
+            </div>
+          ))}
+        </div>
+        <div className="trust-bottom">
+          <Link to="https://github.com/elisplash/paw/actions/workflows/ci.yml" className="trust-link">
+            <span className="ms">check_circle</span> View live CI status
+          </Link>
+          <Link to="https://github.com/elisplash/paw/blob/main/ENTERPRISE_PLAN.md" className="trust-link">
+            <span className="ms">description</span> Read the full hardening audit
+          </Link>
+          <Link to="https://github.com/elisplash/paw/blob/main/SECURITY.md" className="trust-link">
+            <span className="ms">shield</span> Security architecture
+          </Link>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PillarsSection() {
   return (
     <section className="pillars-section">
@@ -268,7 +311,7 @@ function PillarsSection() {
         <div className="section-header">
           <div className="section-badge">Deep Dive</div>
           <h2>Built different. Proven in code.</h2>
-          <p>Not marketing promises — real features backed by 22,638 lines of Rust. Plugin architecture means it keeps growing.</p>
+          <p>Not marketing promises — real features backed by 33,000 lines of Rust, 530 tests, and a 3-job CI pipeline. Every commit verified.</p>
         </div>
         <div className="pillars-grid">
           {pillars.map((p, i) => (
@@ -368,7 +411,7 @@ function ArchSection() {
             <div className="flow-node flow-node-core">
               <span className="ms">memory</span>
               <strong>Pawz Engine</strong>
-              <span className="flow-sub">22,638 lines of async Rust + Tokio</span>
+              <span className="flow-sub">33,000 lines of async Rust + Tokio</span>
               <div className="flow-modules">
                 <span>Agent Loop</span><span>Memory</span><span>Security</span>
                 <span>Orchestrator</span><span>Trading</span><span>Skills</span>
@@ -444,6 +487,7 @@ export default function Home() {
       <HeroSection />
       <StatsSection />
       <ComparisonSection />
+      <TrustSection />
       <PillarsSection />
       <MoreFeaturesSection />
       <WorldFirstsSection />
