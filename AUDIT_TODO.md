@@ -83,10 +83,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Bug:** Every user sees "Hello, Eli" on the dashboard.
 - **Fix:** Replaced hardcoded name with `localStorage.getItem('paw-user-name')`. When set, greeting shows "Good morning, Name"; when unset, shows just "Good morning". Name is HTML-escaped via `escHtml()`.
 
-### 17. `rm` in default command allowlist
+### ~~17. `rm` in default command allowlist~~ ✅ FIXED
 - **File:** `src/security.ts` L309-315
 - **Bug:** `'^rm\\b'` auto-approves all `rm` commands even though `rm -rf /` is classified as critical. Allowlist vs danger-pattern precedence is undefined.
-- **Fix:** Remove `rm` from default allowlist or ensure danger patterns take precedence over allowlist.
+- **Fix:** Removed `rm` from the default allowlist. The HIL modal code already checks `!risk` before applying the allowlist (so `rm -rf /` was caught as critical first), but even plain `rm file.txt` is a destructive operation that should require explicit user approval. Users can still add `^rm\\b` to their personal allowlist if desired.
 
 ### 18. Exfiltration tools in safe_tools
 - **Rust channel bridge auto-approves `email_send`, `slack_send`, `webhook_send` — data exfiltration vectors.

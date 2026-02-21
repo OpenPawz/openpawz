@@ -241,7 +241,6 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '^touch\\b',
     '^cp\\b',
     '^mv\\b',
-    '^rm\\b',
     '^chmod\\b',
     '^chown\\b',
     '^ln\\b',
