@@ -99,10 +99,8 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 ### ~~20. DB init failure silently swallowed~~ ✅ FIXED
 - Auto-retries 3× with backoff; shows red error banner with manual Retry button; skips encryption/security init if DB unavailable.
 
-### 21. Duplicate / dead error boundary
-- **File:** `src/main.ts` L71-78, `src/error-boundary.ts`
-- **Bug:** `main.ts` installs its own global error handlers. `installErrorBoundary()` is exported but never called — dead code.
-- **Fix:** Wire up `installErrorBoundary()` from `main.ts` and remove the duplicate handlers, or delete `error-boundary.ts`.
+### ~~21. Duplicate / dead error boundary~~ ✅ FIXED
+- Wired up `installErrorBoundary()` from `error-boundary.ts` in `main.ts` at module level. Removed duplicate inline `window.addEventListener` handlers. Connected `setErrorHandler()` callback to `crashLog()` for localStorage crash persistence.
 
 ### 22. Event listeners re-bound on every render (12 views)
 - Multiple view files re-bind click handlers on every `load*()` call without cleanup or delegation.

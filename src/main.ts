@@ -3,6 +3,7 @@ import { isEngineMode, setEngineMode, startEngineBridge } from './engine-bridge'
 import { pawEngine } from './engine';
 import { initDb, initDbEncryption } from './db';
 import { initSecuritySettings } from './security';
+import { installErrorBoundary, setErrorHandler } from './error-boundary';
 import { appState } from './state/index';
 import { escHtml, populateModelSelect, promptModal, icon } from './components/helpers';
 import { showToast } from './components/toast';
@@ -65,16 +66,10 @@ function crashLog(msg: string) {
     localStorage.setItem('paw-crash-log', JSON.stringify(log));
   } catch { /* localStorage might be full */ }
 }
-window.addEventListener('unhandledrejection', (event) => {
-  const msg = event.reason?.message ?? event.reason ?? 'unknown';
-  crashLog(`unhandledrejection: ${msg}`);
-  console.error('Unhandled promise rejection:', msg);
-  event.preventDefault();
-});
-window.addEventListener('error', (event) => {
-  const msg = event.error?.message ?? event.message ?? 'unknown';
-  crashLog(`error: ${msg}`);
-  console.error('Uncaught error:', msg);
+// Wire up the centralized error boundary (replaces inline error handlers)
+installErrorBoundary();
+setErrorHandler((report) => {
+  crashLog(`${report.source}: ${report.message}`);
 });
 
 // ── DOM convenience ────────────────────────────────────────────────────────────────
