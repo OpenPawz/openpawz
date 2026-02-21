@@ -4339,7 +4339,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-shell",
  "tauri-plugin-sql",
- "thiserror 1.0.69",
+ "thiserror 2.0.18",
  "tiny-keccak",
  "tokio",
  "tokio-rustls 0.26.4",
