@@ -641,6 +641,57 @@ class PawEngineClient {
   async tailscaleDisconnect(): Promise<void> {
     return invoke('engine_tailscale_disconnect');
   }
+
+  // ── Mail (Himalaya) ────────────────────────────────────────────────
+
+  async mailReadConfig(): Promise<string> {
+    return invoke<string>('read_himalaya_config');
+  }
+
+  async mailWriteConfig(opts: {
+    accountName: string;
+    email: string;
+    displayName: string | null;
+    imapHost: string;
+    imapPort: number;
+    smtpHost: string;
+    smtpPort: number;
+    password: string;
+  }): Promise<void> {
+    return invoke('write_himalaya_config', opts);
+  }
+
+  async mailRemoveAccount(accountName: string): Promise<void> {
+    return invoke('remove_himalaya_account', { accountName });
+  }
+
+  async mailFetchEmails(account?: string, folder?: string, pageSize?: number): Promise<string> {
+    return invoke<string>('fetch_emails', {
+      account: account ?? null,
+      folder: folder ?? null,
+      pageSize: pageSize ?? null,
+    });
+  }
+
+  async mailFetchContent(account: string | undefined, folder: string, id: string): Promise<string> {
+    return invoke<string>('fetch_email_content', {
+      account: account ?? null,
+      folder,
+      id,
+    });
+  }
+
+  async mailSend(account: string | undefined, to: string, subject: string, body: string): Promise<void> {
+    return invoke('send_email', { account: account ?? null, to, subject, body });
+  }
+
+  async mailMove(account: string | undefined, id: string, folder: string): Promise<void> {
+    return invoke('move_email', { account: account ?? null, id, folder });
+  }
+
+  async mailDelete(account: string | undefined, id: string): Promise<void> {
+    return invoke('delete_email', { account: account ?? null, id });
+  }
 }
 
 /** Singleton engine client — import this in all consumers. */
