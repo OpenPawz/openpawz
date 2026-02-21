@@ -96,10 +96,8 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Rust filesystem tools accept absolute paths with no sandbox enforcement. Agents can read/write anywhere on the host.
 - **Fix:** Added `resolve_and_validate()` function to `filesystem.rs` that all 5 tools (read_file, write_file, list_directory, append_file, delete_file) now call. It canonicalizes paths (resolving `..` and symlinks), blocks `..` traversal that would escape the agent workspace, and checks against a `SENSITIVE_PATHS` deny-list covering credential stores (`.ssh`, `.gnupg`, `.aws/credentials`, etc.), system files (`/etc/shadow`, `/etc/passwd`), and engine internals.
 
-### 20. DB init failure silently swallowed
-- **File:** `src/main.ts` L177-178
-- **Bug:** `.catch(e => console.warn(...))` on `initDb()` — app runs without database, all DB ops return null.
-- **Fix:** Show error state or retry logic when DB fails to initialize.
+### ~~20. DB init failure silently swallowed~~ ✅ FIXED
+- Auto-retries 3× with backoff; shows red error banner with manual Retry button; skips encryption/security init if DB unavailable.
 
 ### 21. Duplicate / dead error boundary
 - **File:** `src/main.ts` L71-78, `src/error-boundary.ts`

@@ -102,6 +102,14 @@
       <!-- Main Content -->
       <main class="main">
 
+        <!-- DB initialization error banner -->
+        <div class="db-error-banner" id="db-error-banner" style="display:none">
+          <span class="ms ms-sm">error</span>
+          <span id="db-error-message">Database failed to initialize — features requiring storage will not work.</span>
+          <button class="btn btn-ghost btn-sm" id="db-error-retry" title="Retry">Retry</button>
+          <button class="btn btn-ghost btn-sm" id="db-error-dismiss" title="Dismiss">×</button>
+        </div>
+
         <!-- Global encryption warning banner (shown when OS keychain unavailable) -->
         <div class="encryption-warning-banner" id="encryption-warning-banner" style="display:none">
           <span class="ms ms-sm">warning</span>

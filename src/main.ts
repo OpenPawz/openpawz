@@ -173,12 +173,49 @@ document.addEventListener('DOMContentLoaded', async () => {
     } catch { /* ignore */ }
     crashLog('startup');
 
-    await initDb().catch(e => console.warn('[main] DB init failed:', e));
-    const encReady = await initDbEncryption().catch(e => {
-      console.warn('[main] DB encryption init failed:', e);
-      return false;
-    });
-    await initSecuritySettings().catch(e => console.warn('[main] Security settings init failed:', e));
+    let dbReady = false;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await initDb();
+        dbReady = true;
+        break;
+      } catch (e) {
+        console.warn(`[main] DB init attempt ${attempt}/3 failed:`, e);
+        if (attempt < 3) await new Promise(r => setTimeout(r, 500 * attempt));
+      }
+    }
+    if (!dbReady) {
+      const dbBanner = $('db-error-banner');
+      if (dbBanner) {
+        dbBanner.style.display = 'flex';
+        $('db-error-retry')?.addEventListener('click', async () => {
+          try {
+            await initDb();
+            dbBanner.style.display = 'none';
+            showToast('Database connected successfully', 'success');
+            // Continue the init chain that was skipped
+            await initDbEncryption().catch(() => {});
+            await initSecuritySettings().catch(() => {});
+          } catch (retryErr) {
+            const msg = $('db-error-message');
+            if (msg) msg.textContent = `Retry failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`;
+          }
+        });
+        $('db-error-dismiss')?.addEventListener('click', () => {
+          dbBanner.style.display = 'none';
+        });
+      }
+    }
+
+    const encReady = dbReady
+      ? await initDbEncryption().catch(e => {
+          console.warn('[main] DB encryption init failed:', e);
+          return false;
+        })
+      : false;
+    if (dbReady) {
+      await initSecuritySettings().catch(e => console.warn('[main] Security settings init failed:', e));
+    }
 
     // Show persistent warning banner when encryption is unavailable
     if (!encReady) {

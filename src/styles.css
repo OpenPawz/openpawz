@@ -1202,6 +1202,28 @@ body {
 }
 
 /* Encryption unavailable warning — persistent global banner */
+.db-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(220, 38, 38, 0.12);
+  border-bottom: 1px solid rgba(220, 38, 38, 0.3);
+  color: #dc2626;
+  font-size: 13px;
+  animation: slideDown 200ms steps(4);
+}
+.db-error-banner .btn {
+  color: #dc2626;
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.db-error-banner span {
+  flex: 1;
+}
+
 .encryption-warning-banner {
   display: flex;
   align-items: center;
