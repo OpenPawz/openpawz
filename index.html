@@ -1645,6 +1645,7 @@
             <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="browser">Browser & Sandbox</button>
             <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="tailscale">Tailscale</button>
             <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="security">Security</button>
+            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="logs">Logs</button>
           </div>
 
           <!-- ── Tab: General ── -->
@@ -1965,6 +1966,18 @@
           </div>
 
           </div><!-- end settings-panel-security -->
+
+          <!-- ── Tab: Logs ── -->
+          <div class="settings-tab-panel" id="settings-panel-logs" style="display:none">
+            <div class="settings-section">
+              <h2 class="settings-section-title">
+                <span class="ms ms-sm">description</span>
+                Application Logs
+              </h2>
+              <p class="settings-section-desc">View live logs or browse historical log files. Logs are stored in ~/Documents/Paw/logs/ with 7-day retention.</p>
+              <div id="settings-logs-content"></div>
+            </div>
+          </div>
 
         </div>
       </main>

@@ -8,6 +8,7 @@ import * as VoiceSettings from './settings-voice';
 import * as SkillsSettings from './settings-skills';
 import * as BrowserSettings from './settings-browser';
 import * as TailscaleSettings from './settings-tailscale';
+import * as LogsSettings from './settings-logs';
 
 import { $ } from '../components/helpers';
 
@@ -35,6 +36,9 @@ export function loadActiveSettingsTab() {
       break;
     case 'tailscale':
       TailscaleSettings.loadTailscaleSettings();
+      break;
+    case 'logs':
+      LogsSettings.loadLogsSettings();
       break;
     default:
       break;
