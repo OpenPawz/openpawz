@@ -160,13 +160,19 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
             let pk_hex = pubkey_hex.clone();
             let sk = sk_bytes.clone();
             let handle = tauri::async_runtime::spawn(async move {
+                let mut attempt: u32 = 0;
                 loop {
                     if get_stop_signal().load(Ordering::Relaxed) { break; }
-                    if let Err(e) = relay::run_relay_loop(&app, &cfg, &relay_url, &pk_hex, &sk).await {
-                        warn!("[nostr] Relay {} error: {}", relay_url, e);
+                    match relay::run_relay_loop(&app, &cfg, &relay_url, &pk_hex, &sk).await {
+                        Ok(()) => { attempt = 0; }
+                        Err(e) => {
+                            warn!("[nostr] Relay {} error: {}", relay_url, e);
+                        }
                     }
                     if get_stop_signal().load(Ordering::Relaxed) { break; }
-                    tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+                    let delay = crate::engine::http::reconnect_delay(attempt).await;
+                    debug!("[nostr] Relay {} reconnect in {}ms (attempt {})", relay_url, delay.as_millis(), attempt + 1);
+                    attempt += 1;
                 }
             });
             handles.push(handle);

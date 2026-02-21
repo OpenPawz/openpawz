@@ -5,12 +5,16 @@
 use crate::engine::types::*;
 use crate::atoms::traits::{AiProvider, ProviderError};
 use crate::engine::providers::openai::{MAX_RETRIES, is_retryable_status, retry_delay, parse_retry_after};
+use crate::engine::http::CircuitBreaker;
 use async_trait::async_trait;
 use futures::StreamExt;
 use log::{info, warn, error};
 use reqwest::Client;
 use serde_json::{json, Value};
-use crate::atoms::error::EngineResult;
+use std::sync::LazyLock;
+
+/// Circuit breaker shared across all Anthropic requests.
+static ANTHROPIC_CIRCUIT: LazyLock<CircuitBreaker> = LazyLock::new(|| CircuitBreaker::new(5, 60));
 
 // ── Struct ────────────────────────────────────────────────────────────────────
 
@@ -346,14 +350,14 @@ impl AnthropicProvider {
         }
     }
 
-    /// Inner implementation returning `Result<_, String>` — wraps full SSE + retry logic.
+    /// Inner implementation with full SSE + retry logic + error classification.
     async fn chat_stream_inner(
         &self,
         messages: &[Message],
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
-    ) -> EngineResult<Vec<StreamChunk>> {
+    ) -> Result<Vec<StreamChunk>, ProviderError> {
         let url = if self.is_azure {
             let base = self.base_url.trim_end_matches('/');
             if base.contains('?') {
@@ -417,7 +421,13 @@ impl AnthropicProvider {
 
         info!("[engine] Anthropic request to {} model={}", url, model);
 
+        // Circuit breaker: reject immediately if too many recent failures
+        if let Err(msg) = ANTHROPIC_CIRCUIT.check() {
+            return Err(ProviderError::Transport(msg));
+        }
+
         let mut last_error = String::new();
+        let mut last_status: u16 = 0;
         let mut retry_after: Option<u64> = None;
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
@@ -439,14 +449,17 @@ impl AnthropicProvider {
             let response = match req.json(&body).send().await {
                 Ok(r) => r,
                 Err(e) => {
+                    ANTHROPIC_CIRCUIT.record_failure();
                     last_error = format!("HTTP request failed: {}", e);
+                    last_status = 0;
                     if attempt < MAX_RETRIES { continue; }
-                    return Err(last_error);
+                    return Err(ProviderError::Transport(last_error));
                 }
             };
 
             if !response.status().is_success() {
                 let status = response.status().as_u16();
+                last_status = status;
                 retry_after = response.headers()
                     .get("retry-after")
                     .and_then(|v| v.to_str().ok())
@@ -454,10 +467,25 @@ impl AnthropicProvider {
                 let body_text = response.text().await.unwrap_or_default();
                 last_error = format!("API error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 200));
                 error!("[engine] Anthropic error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 500));
+
+                ANTHROPIC_CIRCUIT.record_failure();
+
+                // Auth errors are never retried
+                if status == 401 || status == 403 {
+                    return Err(ProviderError::Auth(last_error));
+                }
                 if is_retryable_status(status) && attempt < MAX_RETRIES {
                     continue;
                 }
-                return Err(last_error);
+                // Non-retryable API error or retries exhausted
+                return if status == 429 {
+                    Err(ProviderError::RateLimited {
+                        message: last_error,
+                        retry_after_secs: retry_after.take(),
+                    })
+                } else {
+                    Err(ProviderError::Api { status, message: last_error })
+                };
             }
 
             let mut chunks = Vec::new();
@@ -465,7 +493,9 @@ impl AnthropicProvider {
             let mut buffer = String::new();
 
             while let Some(result) = byte_stream.next().await {
-                let bytes = result?;
+                let bytes = result.map_err(|e| {
+                    ProviderError::Transport(format!("Stream read error: {}", e))
+                })?;
                 buffer.push_str(&String::from_utf8_lossy(&bytes));
 
                 while let Some(line_end) = buffer.find('\n') {
@@ -481,10 +511,19 @@ impl AnthropicProvider {
                 }
             }
 
+            ANTHROPIC_CIRCUIT.record_success();
             return Ok(chunks);
         }
 
-        Err(last_error)
+        // All retries exhausted — classify the last error
+        match last_status {
+            0 => Err(ProviderError::Transport(last_error)),
+            429 => Err(ProviderError::RateLimited {
+                message: last_error,
+                retry_after_secs: retry_after,
+            }),
+            s => Err(ProviderError::Api { status: s, message: last_error }),
+        }
     }
 }
 
@@ -507,8 +546,6 @@ impl AiProvider for AnthropicProvider {
         model: &str,
         temperature: Option<f64>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
-        self.chat_stream_inner(messages, tools, model, temperature)
-            .await
-            .map_err(ProviderError::Transport)
+        self.chat_stream_inner(messages, tools, model, temperature).await
     }
 }

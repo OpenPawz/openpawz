@@ -94,8 +94,20 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
     info!("[slack] Starting Socket Mode bridge");
 
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = run_socket_mode(app_handle, config).await {
-            error!("[slack] Bridge crashed: {}", e);
+        let mut reconnect_attempt: u32 = 0;
+        loop {
+            match run_socket_mode(app_handle.clone(), config.clone()).await {
+                Ok(()) => break, // Clean shutdown
+                Err(e) => {
+                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    error!("[slack] Bridge error: {} — reconnecting", e);
+                    let delay = crate::engine::http::reconnect_delay(reconnect_attempt).await;
+                    warn!("[slack] Reconnecting in {}ms (attempt {})", delay.as_millis(), reconnect_attempt + 1);
+                    reconnect_attempt += 1;
+                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                }
+            }
+            reconnect_attempt = 0;
         }
         BRIDGE_RUNNING.store(false, Ordering::Relaxed);
         info!("[slack] Bridge stopped");
