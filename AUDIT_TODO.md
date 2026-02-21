@@ -68,10 +68,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Bug:** `streamingTimeout` is a single value so concurrent streams overwrite each other's timeouts.
 - **Fix:** Removed global `appState.streamingTimeout`. Timeout now lives in the per-session `StreamState.timeout` field (which already existed but was unused). Set and cleared via `ss.timeout` in chat_controller.ts, so concurrent streams each have independent timeouts.
 
-### 14. Non-null assertion on stream state
+### ~~14. Non-null assertion on stream state~~ ✅ FIXED
 - **File:** `src/engine/organisms/chat_controller.ts` L858-861
 - **Bug:** `activeStreams.get(streamKey)!` can crash if session key mutated between setup and use.
-- **Fix:** Add null check with graceful fallback.
+- **Fix:** Replaced `!` assertion with explicit null check. If stream state is missing, logs an error, re-enables the send button, and returns early instead of crashing.
 
 ### 15. Timer leak in voice recording
 - **File:** `src/engine/organisms/chat_controller.ts` L1215

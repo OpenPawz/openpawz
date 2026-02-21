@@ -860,7 +860,13 @@ export async function sendMessage(): Promise<void> {
 
   // Get stream state (created by showStreamingMessage)
   const streamKey = appState.currentSessionKey ?? '';
-  const ss = appState.activeStreams.get(streamKey)!;
+  const ss = appState.activeStreams.get(streamKey);
+  if (!ss) {
+    console.error('[chat] Stream state missing for key:', streamKey);
+    appState.isLoading = false;
+    if (chatSend) chatSend.disabled = false;
+    return;
+  }
 
   const responsePromise = new Promise<string>((resolve) => {
     ss.resolve = resolve;
