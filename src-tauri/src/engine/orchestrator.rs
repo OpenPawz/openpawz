@@ -762,10 +762,12 @@ async fn run_boss_agent_loop(
         "memory_store", "memory_search",
         // Self-awareness
         "self_info",
-        // Skill tools
-        "email_send", "email_read",
-        "slack_send", "slack_read",
-        "github_api", "rest_api_call", "webhook_send", "image_generate",
+        // Skill tools (read-only)
+        "email_read",
+        "slack_read",
+        "github_api", "image_generate",
+        // Exfiltration-capable tools (email_send, slack_send, webhook_send,
+        // rest_api_call) intentionally excluded — require HIL approval.
         // Orchestrator tools
         "delegate_task", "check_agent_status", "send_agent_message", "project_complete",
     ];
@@ -1171,10 +1173,12 @@ async fn run_worker_agent_loop(
         "memory_store", "memory_search",
         // Self-awareness
         "self_info",
-        // Skill tools
-        "email_send", "email_read",
-        "slack_send", "slack_read",
-        "github_api", "rest_api_call", "webhook_send", "image_generate",
+        // Skill tools (read-only)
+        "email_read",
+        "slack_read",
+        "github_api", "image_generate",
+        // Exfiltration-capable tools (email_send, slack_send, webhook_send,
+        // rest_api_call) intentionally excluded — require HIL approval.
         // Worker tool
         "report_progress",
     ];

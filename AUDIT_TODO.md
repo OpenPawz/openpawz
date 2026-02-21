@@ -88,9 +88,9 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Bug:** `'^rm\\b'` auto-approves all `rm` commands even though `rm -rf /` is classified as critical. Allowlist vs danger-pattern precedence is undefined.
 - **Fix:** Removed `rm` from the default allowlist. The HIL modal code already checks `!risk` before applying the allowlist (so `rm -rf /` was caught as critical first), but even plain `rm file.txt` is a destructive operation that should require explicit user approval. Users can still add `^rm\\b` to their personal allowlist if desired.
 
-### 18. Exfiltration tools in safe_tools
+### ~~18. Exfiltration tools in safe_tools~~ ✅ FIXED
 - **Rust channel bridge auto-approves `email_send`, `slack_send`, `webhook_send` — data exfiltration vectors.
-- **Fix:** Remove exfiltration-capable tools from the auto-approve set.
+- **Fix:** Removed `email_send`, `slack_send`, `webhook_send`, and `rest_api_call` from the auto-approved `safe_tools` lists in both the boss and worker orchestrator loops. These tools now require HIL approval. Read-only counterparts (`email_read`, `slack_read`) remain auto-approved.
 
 ### 19. Path traversal in filesystem tools
 - **Rust filesystem tools accept absolute paths with no sandbox enforcement. Agents can read/write anywhere on the host.
