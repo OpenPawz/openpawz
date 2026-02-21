@@ -2,8 +2,9 @@
 // Extracted from main.ts for maintainability
 
 import { pawEngine } from '../engine';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml } from '../components/helpers';
+import { showToast } from '../components/toast';
+import { isConnected, setConnected } from '../state/connection';
 
 // ── Tauri bridge ───────────────────────────────────────────────────────────
 interface TauriWindow {
@@ -18,10 +19,9 @@ const invoke = tauriWindow.__TAURI__?.core?.invoke;
 let _palaceInitialized = false;
 let _palaceAvailable = false;
 let _palaceSkipped = false;
-let wsConnected = false;
 
 export function setWsConnected(connected: boolean) {
-  wsConnected = connected;
+  setConnected(connected);
 }
 
 export function setCurrentSessionKey(_key: string | null) {
@@ -37,31 +37,9 @@ export function resetPalaceState() {
   _palaceSkipped = false;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function showToast(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', durationMs = 3500) {
-  const existing = document.querySelector('.toast-notification');
-  if (existing) existing.remove();
-
-  const toast = document.createElement('div');
-  toast.className = `toast-notification toast-${type}`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  requestAnimationFrame(() => toast.classList.add('show'));
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, durationMs);
-}
-
 // ── Main loader ────────────────────────────────────────────────────────────
 export async function loadMemoryPalace() {
-  if (!wsConnected) return;
+  if (!isConnected()) return;
 
   // Check if memory is available
   if (!_palaceInitialized) {

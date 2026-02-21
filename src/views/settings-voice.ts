@@ -3,7 +3,7 @@
 import { pawEngine, TtsConfig } from '../engine';
 import { showToast } from '../components/toast';
 
-const $ = (id: string) => document.getElementById(id);
+import { $ } from '../components/helpers';
 
 // ── Google Cloud TTS voice catalog ──────────────────────────────────────
 

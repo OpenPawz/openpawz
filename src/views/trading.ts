@@ -2,8 +2,7 @@
 // Visual representation of Coinbase + DEX trading activity and automated guidelines.
 
 import { pawEngine, type TradeRecord, type TradingSummary, type TradingPolicy, type Position } from '../engine';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml } from '../components/helpers';
 
 // ── Module state ───────────────────────────────────────────────────────────
 let wsConnected = false;
@@ -16,12 +15,6 @@ export function setWsConnected(connected: boolean) {
     refreshBtn.dataset.bound = '1';
     refreshBtn.addEventListener('click', () => loadTrading());
   }
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function formatUsd(value: number | string | null): string {

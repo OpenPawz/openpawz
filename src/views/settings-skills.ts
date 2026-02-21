@@ -3,24 +3,8 @@
 
 import { pawEngine, type EngineSkillStatus, type CommunitySkill, type DiscoveredSkill } from '../engine';
 import { isEngineMode } from '../engine-bridge';
-
-const $ = (id: string) => document.getElementById(id);
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function showVaultToast(message: string, type: 'success' | 'error' | 'info') {
-  const toast = $('skills-vault-toast');
-  if (!toast) return;
-  toast.textContent = message;
-  toast.style.display = 'block';
-  toast.style.background = type === 'error' ? 'var(--bg-danger)' :
-    type === 'success' ? 'var(--bg-success)' : 'var(--bg-info)';
-  toast.style.color = '#fff';
-  setTimeout(() => { toast.style.display = 'none'; }, type === 'error' ? 6000 : 3000);
-}
+import { $, escHtml } from '../components/helpers';
+import { showToast } from '../components/toast';
 
 const CATEGORY_META: Record<string, { label: string; icon: string; order: number }> = {
   Vault:         { label: 'Vault (Credentials)', icon: 'enhanced_encryption', order: 0 },
@@ -317,10 +301,10 @@ function bindSkillEvents(_skills: EngineSkillStatus[]): void {
       const skillId = input.dataset.skill!;
       try {
         await pawEngine.skillSetEnabled(skillId, input.checked);
-        showVaultToast(`${skillId} ${input.checked ? 'enabled' : 'disabled'}`, 'success');
+        showToast(`${skillId} ${input.checked ? 'enabled' : 'disabled'}`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
         input.checked = !input.checked;
       }
     });
@@ -334,15 +318,15 @@ function bindSkillEvents(_skills: EngineSkillStatus[]): void {
       const key = btn.dataset.key!;
       const input = document.querySelector(`.skill-cred-input[data-skill="${skillId}"][data-key="${key}"]`) as HTMLInputElement;
       const value = input?.value?.trim();
-      if (!value) { showVaultToast('Enter a value first', 'info'); return; }
+      if (!value) { showToast('Enter a value first', 'info'); return; }
 
       try {
         await pawEngine.skillSetCredential(skillId, key, value);
-        showVaultToast(`${key} saved securely`, 'success');
+        showToast(`${key} saved securely`, 'success');
         input.value = '';
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
       }
     });
   });
@@ -356,10 +340,10 @@ function bindSkillEvents(_skills: EngineSkillStatus[]): void {
 
       try {
         await pawEngine.skillDeleteCredential(skillId, key);
-        showVaultToast(`${key} removed`, 'success');
+        showToast(`${key} removed`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
       }
     });
   });
@@ -374,10 +358,10 @@ function bindSkillEvents(_skills: EngineSkillStatus[]): void {
 
       try {
         await pawEngine.skillRevokeAll(skillId);
-        showVaultToast(`All ${skillId} credentials revoked`, 'success');
+        showToast(`All ${skillId} credentials revoked`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
       }
     });
   });
@@ -392,10 +376,10 @@ function bindSkillEvents(_skills: EngineSkillStatus[]): void {
 
       try {
         await pawEngine.skillSetInstructions(skillId, value);
-        showVaultToast(`Instructions saved for ${skillId}`, 'success');
+        showToast(`Instructions saved for ${skillId}`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
       }
     });
   });
@@ -410,10 +394,10 @@ function bindSkillEvents(_skills: EngineSkillStatus[]): void {
 
       try {
         await pawEngine.skillSetInstructions(skillId, '');
-        showVaultToast(`Instructions reset for ${skillId}`, 'success');
+        showToast(`Instructions reset for ${skillId}`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
       }
     });
   });
@@ -646,10 +630,10 @@ function bindCommunityEvents(_installed: CommunitySkill[]): void {
       const skillId = input.dataset.skill!;
       try {
         await pawEngine.communitySkillSetEnabled(skillId, input.checked);
-        showVaultToast(`${skillId.split('/').pop()} ${input.checked ? 'enabled' : 'disabled'}`, 'success');
+        showToast(`${skillId.split('/').pop()} ${input.checked ? 'enabled' : 'disabled'}`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
         input.checked = !input.checked;
       }
     });
@@ -666,10 +650,10 @@ function bindCommunityEvents(_installed: CommunitySkill[]): void {
 
       try {
         await pawEngine.communitySkillRemove(skillId);
-        showVaultToast(`${name} removed`, 'success');
+        showToast(`${name} removed`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Failed: ${err}`, 'error');
+        showToast(`Failed: ${err}`, 'error');
       }
     });
   });
@@ -777,10 +761,10 @@ function wireInstallButtons(container: HTMLElement, skills: DiscoveredSkill[]): 
 
       try {
         await pawEngine.communitySkillInstall(src, path);
-        showVaultToast(`${name} installed and enabled!`, 'success');
+        showToast(`${name} installed and enabled!`, 'success');
         await loadSkillsSettings();
       } catch (err) {
-        showVaultToast(`Install failed: ${err}`, 'error');
+        showToast(`Install failed: ${err}`, 'error');
         btn.disabled = false;
         btn.innerHTML = `${msIcon('download')} Install`;
       }
@@ -801,7 +785,7 @@ function wireInstallButtons(container: HTMLElement, skills: DiscoveredSkill[]): 
         console.warn(`Failed to install ${s.name}:`, err);
       }
     }
-    showVaultToast(`${installed} skills installed!`, 'success');
+    showToast(`${installed} skills installed!`, 'success');
     await loadSkillsSettings();
   });
 }

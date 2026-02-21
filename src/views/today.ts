@@ -3,8 +3,8 @@
 import { pawEngine } from '../engine';
 import { getCurrentAgent, spriteAvatar } from './agents';
 import { switchView } from './router';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml } from '../components/helpers';
+import { showToast } from '../components/toast';
 
 // ── Tauri bridge ───────────────────────────────────────────────────────────
 interface TauriWindow {
@@ -502,21 +502,6 @@ function isToday(dateStr: string): boolean {
   return date.toDateString() === today.toDateString();
 }
 
-function showToast(message: string, type: 'success' | 'error' = 'success') {
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.classList.add('show'), 10);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
 
 export function initToday() {
   // Called on app startup

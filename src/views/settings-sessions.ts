@@ -9,7 +9,7 @@ import {
   esc
 } from './settings-config';
 
-const $ = (id: string) => document.getElementById(id);
+import { $ } from '../components/helpers';
 
 // ── State ───────────────────────────────────────────────────────────────────
 

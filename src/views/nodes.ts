@@ -5,7 +5,7 @@
 import { pawEngine } from '../engine';
 import { showToast } from '../components/toast';
 
-const $ = (id: string) => document.getElementById(id);
+import { $ } from '../components/helpers';
 
 // ── Compat stubs (called from main.ts — kept to avoid breaking imports) ───
 export function setWsConnected(_connected: boolean) { /* engine is always local */ }

@@ -1,12 +1,10 @@
 // ── Channels — Connection Hub ──────────────────────────────────────────────
 import { pawEngine } from '../engine';
 import type { ChannelStatus } from '../engine';
-import { escHtml, escAttr } from '../components/molecules/markdown';
+import { $, escHtml, escAttr } from '../components/helpers';
 import { showToast } from '../components/toast';
 import { appState } from '../state/index';
 import { getChannelSetupType, saveMailImapSetup, clearChannelSetupType } from './mail';
-
-const $ = (id: string) => document.getElementById(id);
 
 const CHANNEL_CLASSES: Record<string, string> = {
   telegram: 'telegram',

@@ -4,13 +4,7 @@
 
 import { pawEngine, type EngineProviderConfig } from '../engine';
 import { setEngineMode } from '../engine-bridge';
-
-const $ = (id: string) => document.getElementById(id);
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+import { $, escHtml } from '../components/helpers';
 
 const KIND_LABELS: Record<string, string> = {
   anthropic: 'Anthropic', openai: 'OpenAI', google: 'Google',

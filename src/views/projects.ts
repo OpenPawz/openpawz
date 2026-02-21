@@ -3,8 +3,7 @@
 
 import { showToast } from '../components/toast';
 import { logSecurityEvent } from '../db';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml, escAttr } from '../components/helpers';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -267,7 +266,7 @@ export async function addProjectFolder(path: string, name?: string): Promise<voi
 
   // Check if already added
   if (_projects.some(p => p.path === path)) {
-    showProjectsToast('Project already added', 'warning');
+    showToast('Project already added', 'warning');
     return;
   }
 
@@ -395,23 +394,23 @@ function renderProjectsSidebar(): void {
   sidebar.innerHTML = _projects.map(p => {
     const cached = _gitInfoCache.get(p.path);
     const branchHint = cached?.isRepo && cached.branch
-      ? `<span style="font-size:10px;color:var(--accent);font-family:var(--font-mono);opacity:0.8">${escapeHtml(cached.branch)}</span>`
+      ? `<span style="font-size:10px;color:var(--accent);font-family:var(--font-mono);opacity:0.8">${escHtml(cached.branch)}</span>`
       : '';
     const dirtyDot = cached?.isRepo && cached.dirty
       ? '<span style="color:var(--warning);font-size:8px;margin-left:2px">●</span>'
       : '';
     return `
     <div class="projects-folder-item${_selectedFile && getProjectRoot(_selectedFile.path) === p.path ? ' active' : ''}" 
-         data-path="${escapeAttr(p.path)}" title="${escapeAttr(p.path)}">
+         data-path="${escAttr(p.path)}" title="${escAttr(p.path)}">
       <div class="projects-folder-row">
         <span class="ms ms-sm">folder</span>
-        <span class="projects-folder-name">${escapeHtml(p.name)}</span>
+        <span class="projects-folder-name">${escHtml(p.name)}</span>
         ${dirtyDot}
-        <button class="btn-icon projects-remove-btn" data-remove="${escapeAttr(p.path)}" title="Remove project">
+        <button class="btn-icon projects-remove-btn" data-remove="${escAttr(p.path)}" title="Remove project">
           <span class="ms" style="font-size:14px">close</span>
         </button>
       </div>
-      <div class="projects-folder-path">${escapeHtml(shortenPath(p.path))}${branchHint ? ' · ' + branchHint : ''}</div>
+      <div class="projects-folder-path">${escHtml(shortenPath(p.path))}${branchHint ? ' · ' + branchHint : ''}</div>
     </div>`;
   }).join('');
 
@@ -459,7 +458,7 @@ async function selectProject(project: ProjectFolder): Promise<void> {
   _expandedPaths.add(project.path);
   
   if (treeContainer) {
-    treeContainer.innerHTML = `<div class="tree-root" data-path="${escapeAttr(project.path)}">
+    treeContainer.innerHTML = `<div class="tree-root" data-path="${escAttr(project.path)}">
       ${renderTreeEntries(entries, 0)}
     </div>`;
     bindTreeEvents(treeContainer);
@@ -478,9 +477,9 @@ async function selectProject(project: ProjectFolder): Promise<void> {
         <div class="projects-viewer-welcome-icon">
           <span class="ms" style="font-size:48px">folder</span>
         </div>
-        <div class="projects-viewer-welcome-title">${escapeHtml(project.name)}</div>
+        <div class="projects-viewer-welcome-title">${escHtml(project.name)}</div>
         <div class="projects-viewer-welcome-sub">${dirCount} folders, ${fileCount} files</div>
-        <div class="projects-viewer-welcome-path">${escapeHtml(project.path)}</div>
+        <div class="projects-viewer-welcome-path">${escHtml(project.path)}</div>
       </div>
       ${renderGitBanner(gitInfo, project.path)}
     `;
@@ -497,14 +496,14 @@ function renderGitBanner(git: GitInfo, projectPath: string): string {
     return `
       <div class="git-banner git-banner--none" style="margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--surface-2, rgba(255,255,255,0.04));font-size:12px;color:var(--text-muted)">
         <span style="opacity:0.6">Not a git repository</span>
-        <button class="btn btn-sm git-action" data-action="init" data-path="${escapeAttr(projectPath)}" style="margin-left:auto;font-size:11px">
+        <button class="btn btn-sm git-action" data-action="init" data-path="${escAttr(projectPath)}" style="margin-left:auto;font-size:11px">
           git init
         </button>
       </div>`;
   }
 
   const branchBadge = git.branch
-    ? `<span style="font-weight:600;font-family:var(--font-mono);font-size:12px;background:var(--accent-alpha, rgba(99,102,241,0.15));color:var(--accent);padding:2px 8px;border-radius:4px">${escapeHtml(git.branch)}</span>`
+    ? `<span style="font-weight:600;font-family:var(--font-mono);font-size:12px;background:var(--accent-alpha, rgba(99,102,241,0.15));color:var(--accent);padding:2px 8px;border-radius:4px">${escHtml(git.branch)}</span>`
     : '';
 
   const dirtyBadge = git.dirty !== undefined && git.dirty > 0
@@ -520,12 +519,12 @@ function renderGitBanner(git: GitInfo, projectPath: string): string {
   }
 
   const remoteBadge = git.remote
-    ? `<span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:250px" title="${escapeAttr(git.remote)}">${escapeHtml(shortenRemote(git.remote))}</span>`
+    ? `<span style="font-size:11px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:250px" title="${escAttr(git.remote)}">${escHtml(shortenRemote(git.remote))}</span>`
     : '';
 
   const lastCommitLine = git.lastCommit
     ? `<div style="font-size:11px;color:var(--text-muted);margin-top:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-        Latest: ${escapeHtml(git.lastCommit)}${git.lastCommitDate ? ` <span style="opacity:0.6">(${escapeHtml(git.lastCommitDate)})</span>` : ''}
+        Latest: ${escHtml(git.lastCommit)}${git.lastCommitDate ? ` <span style="opacity:0.6">(${escHtml(git.lastCommitDate)})</span>` : ''}
       </div>`
     : '';
 
@@ -540,10 +539,10 @@ function renderGitBanner(git: GitInfo, projectPath: string): string {
       </div>
       ${lastCommitLine}
       <div class="git-actions" style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-        ${git.remote ? `<button class="btn btn-sm git-action" data-action="pull" data-path="${escapeAttr(projectPath)}">⬇ Pull</button>` : ''}
-        ${git.remote ? `<button class="btn btn-sm git-action" data-action="push" data-path="${escapeAttr(projectPath)}">⬆ Push</button>` : ''}
-        <button class="btn btn-sm git-action" data-action="commit" data-path="${escapeAttr(projectPath)}"><span class="ms ms-sm">save</span> Commit</button>
-        <button class="btn btn-sm git-action" data-action="status" data-path="${escapeAttr(projectPath)}" style="margin-left:auto;opacity:0.7;font-size:11px">↻ Refresh</button>
+        ${git.remote ? `<button class="btn btn-sm git-action" data-action="pull" data-path="${escAttr(projectPath)}">⬇ Pull</button>` : ''}
+        ${git.remote ? `<button class="btn btn-sm git-action" data-action="push" data-path="${escAttr(projectPath)}">⬆ Push</button>` : ''}
+        <button class="btn btn-sm git-action" data-action="commit" data-path="${escAttr(projectPath)}"><span class="ms ms-sm">save</span> Commit</button>
+        <button class="btn btn-sm git-action" data-action="status" data-path="${escAttr(projectPath)}" style="margin-left:auto;opacity:0.7;font-size:11px">↻ Refresh</button>
       </div>
     </div>`;
 }
@@ -643,21 +642,21 @@ function renderTreeEntries(entries: FileEntry[], depth: number): string {
       const childrenHtml = isExpanded && entry.children
         ? renderTreeEntries(entry.children, depth + 1) : '';
       return `
-        <div class="tree-item tree-dir${isExpanded ? ' expanded' : ''}" data-path="${escapeAttr(entry.path)}" style="padding-left:${indent + 8}px">
+        <div class="tree-item tree-dir${isExpanded ? ' expanded' : ''}" data-path="${escAttr(entry.path)}" style="padding-left:${indent + 8}px">
           <span class="ms tree-chevron" style="font-size:14px">chevron_right</span>
           <span class="ms ms-sm tree-icon">${isExpanded ? 'folder_open' : 'folder'}</span>
-          <span class="tree-name">${escapeHtml(entry.name)}</span>
+          <span class="tree-name">${escHtml(entry.name)}</span>
         </div>
-        <div class="tree-children${isExpanded ? ' expanded' : ''}" data-parent="${escapeAttr(entry.path)}">
+        <div class="tree-children${isExpanded ? ' expanded' : ''}" data-parent="${escAttr(entry.path)}">
           ${childrenHtml}
         </div>`;
     } else {
       const ext = entry.name.split('.').pop()?.toLowerCase() || '';
       const iconName = getFileIcon(ext);
       return `
-        <div class="tree-item tree-file${_selectedFile?.path === entry.path ? ' active' : ''}" data-path="${escapeAttr(entry.path)}" style="padding-left:${indent + 22}px">
+        <div class="tree-item tree-file${_selectedFile?.path === entry.path ? ' active' : ''}" data-path="${escAttr(entry.path)}" style="padding-left:${indent + 22}px">
           <span class="ms ms-sm tree-icon">${iconName}</span>
-          <span class="tree-name">${escapeHtml(entry.name)}</span>
+          <span class="tree-name">${escHtml(entry.name)}</span>
           <span class="tree-ext">${ext ? `.${ext}` : ''}</span>
         </div>`;
     }
@@ -730,8 +729,8 @@ async function openFile(filePath: string): Promise<void> {
   if (binaryExts.includes(ext)) {
     viewer.innerHTML = `
       <div class="projects-viewer-header">
-        <span class="projects-viewer-filename">${escapeHtml(fileName)}</span>
-        <span class="projects-viewer-path">${escapeHtml(shortenPath(filePath))}</span>
+        <span class="projects-viewer-filename">${escHtml(fileName)}</span>
+        <span class="projects-viewer-path">${escHtml(shortenPath(filePath))}</span>
       </div>
       <div class="projects-viewer-binary">
         <span class="ms" style="font-size:32px">insert_drive_file</span>
@@ -744,8 +743,8 @@ async function openFile(filePath: string): Promise<void> {
   // Show loading state
   viewer.innerHTML = `
     <div class="projects-viewer-header">
-      <span class="projects-viewer-filename">${escapeHtml(fileName)}</span>
-      <span class="projects-viewer-path">${escapeHtml(shortenPath(filePath))}</span>
+      <span class="projects-viewer-filename">${escHtml(fileName)}</span>
+      <span class="projects-viewer-path">${escHtml(shortenPath(filePath))}</span>
     </div>
     <div class="projects-viewer-loading">Loading...</div>`;
 
@@ -753,7 +752,7 @@ async function openFile(filePath: string): Promise<void> {
   if (content === null) {
     viewer.innerHTML = `
       <div class="projects-viewer-header">
-        <span class="projects-viewer-filename">${escapeHtml(fileName)}</span>
+        <span class="projects-viewer-filename">${escHtml(fileName)}</span>
       </div>
       <div class="projects-viewer-binary">
         <span>Could not read file</span>
@@ -771,13 +770,13 @@ async function openFile(filePath: string): Promise<void> {
 
   viewer.innerHTML = `
     <div class="projects-viewer-header">
-      <span class="projects-viewer-filename">${escapeHtml(fileName)}</span>
-      <span class="projects-viewer-path">${escapeHtml(shortenPath(filePath))}</span>
+      <span class="projects-viewer-filename">${escHtml(fileName)}</span>
+      <span class="projects-viewer-path">${escHtml(shortenPath(filePath))}</span>
       <span class="projects-viewer-lines">${lines.length} lines</span>
     </div>
     <div class="projects-viewer-code">
       <div class="projects-line-numbers">${lineNumbers}</div>
-      <pre class="projects-code-content"><code class="${lang}">${escapeHtml(displayContent)}</code></pre>
+      <pre class="projects-code-content"><code class="${lang}">${escHtml(displayContent)}</code></pre>
     </div>`;
 }
 
@@ -868,7 +867,7 @@ export function bindEvents(): void {
     if (project) {
       await selectProject(project);
     }
-    showProjectsToast('Refreshed', 'success');
+    showToast('Refreshed', 'success');
   });
 }
 
@@ -939,18 +938,3 @@ function shortenPath(path: string): string {
   return path.replace(/^\/Users\/[^/]+/, '~').replace(/^\/home\/[^/]+/, '~');
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function escapeAttr(str: string): string {
-  return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function showProjectsToast(msg: string, type: 'info' | 'success' | 'error' | 'warning' = 'info'): void {
-  showToast(msg, type);
-}

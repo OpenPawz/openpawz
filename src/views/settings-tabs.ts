@@ -9,7 +9,7 @@ import * as SkillsSettings from './settings-skills';
 import * as BrowserSettings from './settings-browser';
 import * as TailscaleSettings from './settings-tailscale';
 
-const $ = (id: string) => document.getElementById(id);
+import { $ } from '../components/helpers';
 
 let _activeSettingsTab = 'general';
 

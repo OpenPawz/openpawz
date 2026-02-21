@@ -4,24 +4,17 @@
 
 import { loadSecuritySettings, saveSecuritySettings, getSessionOverrideRemaining, clearSessionOverride, type SecuritySettings } from '../security';
 import { getSecurityAuditLog, isEncryptionReady } from '../db';
-
-const $ = (id: string) => document.getElementById(id);
-
-// Shared state — will be passed from main
-let wsConnected = false;
+import { $, escHtml } from '../components/helpers';
+import { showToast } from '../components/toast';
+import { isConnected, setConnected } from '../state/connection';
 
 export function setWsConnected(connected: boolean) {
-  wsConnected = connected;
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  setConnected(connected);
 }
 
 // ── Engine Status ──────────────────────────────────────────────────────────
 export async function loadSettingsStatus() {
-  if (!wsConnected) return;
+  if (!isConnected()) return;
   const section = $('settings-status-section');
   const content = $('settings-status-content');
   // Engine status — show basic info
@@ -31,7 +24,7 @@ export async function loadSettingsStatus() {
 
 // ── Logs Viewer ────────────────────────────────────────────────────────────
 export async function loadSettingsLogs() {
-  if (!wsConnected) return;
+  if (!isConnected()) return;
   const section = $('settings-logs-section');
   const output = $('settings-logs-output');
   // Engine logs — coming soon via Tauri
@@ -43,7 +36,7 @@ export async function loadSettingsLogs() {
 let _usageRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
 export async function loadSettingsUsage() {
-  if (!wsConnected) return;
+  if (!isConnected()) return;
   const section = $('settings-usage-section');
   const content = $('settings-usage-content');
   // Engine usage tracking — coming soon
@@ -58,7 +51,7 @@ export async function loadSettingsUsage() {
 export function startUsageAutoRefresh() {
   stopUsageAutoRefresh();
   _usageRefreshInterval = setInterval(() => {
-    if (wsConnected) loadSettingsUsage().catch(() => {});
+    if (isConnected()) loadSettingsUsage().catch(() => {});
   }, 30_000);
 }
 
@@ -120,11 +113,11 @@ export function initBudgetSettings() {
   saveBtn?.addEventListener('click', () => {
     const val = parseFloat((input as HTMLInputElement)?.value ?? '');
     if (isNaN(val) || val <= 0) {
-      showSettingsToast('Enter a valid budget amount', 'error');
+      showToast('Enter a valid budget amount', 'error');
       return;
     }
     setBudgetLimit(val);
-    showSettingsToast(`Budget alert set at $${val.toFixed(2)}`, 'success');
+    showToast(`Budget alert set at $${val.toFixed(2)}`, 'success');
     // Re-check immediately
     loadSettingsUsage().catch(() => {});
   });
@@ -134,7 +127,7 @@ export function initBudgetSettings() {
     if (input) (input as HTMLInputElement).value = '';
     const alertEl = $('budget-alert');
     if (alertEl) alertEl.style.display = 'none';
-    showSettingsToast('Budget alert cleared', 'info');
+    showToast('Budget alert cleared', 'info');
   });
 }
 
@@ -167,11 +160,11 @@ export async function loadSettingsWizard() {
 }
 
 async function startWizard() {
-  showSettingsToast('Wizard not available in engine mode', 'info');
+  showToast('Wizard not available in engine mode', 'info');
 }
 
 async function wizardNext() {
-  showSettingsToast('Wizard not available in engine mode', 'info');
+  showToast('Wizard not available in engine mode', 'info');
 }
 
 async function cancelWizard() {
@@ -180,7 +173,7 @@ async function cancelWizard() {
 
 // ── Self-Update ────────────────────────────────────────────────────────
 async function runUpdate() {
-  showSettingsToast('Self-update not available in engine mode — use your package manager', 'info');
+  showToast('Self-update not available in engine mode — use your package manager', 'info');
 }
 
 // ── Browser Control ────────────────────────────────────────────────────
@@ -190,7 +183,7 @@ export async function loadSettingsBrowser() {
 }
 
 async function startBrowser() {
-  showSettingsToast('Browser control coming soon to the Paw engine', 'info');
+  showToast('Browser control coming soon to the Paw engine', 'info');
 }
 
 async function stopBrowser() {
@@ -289,7 +282,7 @@ function addToolRule() {
       cleanup();
       if (!name) return;
       if (_toolRules.some(r => r.name === name)) {
-        showSettingsToast(`"${name}" already has a rule`, 'info');
+        showToast(`"${name}" already has a rule`, 'info');
         return;
       }
       _toolRules.push({ name, state: 'ask' });
@@ -306,7 +299,7 @@ function addToolRule() {
     if (!name?.trim()) return;
     const trimmed = name.trim();
     if (_toolRules.some(r => r.name === trimmed)) {
-      showSettingsToast(`"${trimmed}" already has a rule`, 'info');
+      showToast(`"${trimmed}" already has a rule`, 'info');
       return;
     }
     _toolRules.push({ name: trimmed, state: 'ask' });
@@ -331,7 +324,7 @@ async function saveSettingsApprovals() {
 
   // Save locally — engine approvals managed via security.ts
   localStorage.setItem('paw-tool-approvals', JSON.stringify({ allow, deny, askPolicy: policy }));
-  showSettingsToast('Approval rules saved locally', 'success');
+  showToast('Approval rules saved locally', 'success');
 }
 
 // ── Security Audit Dashboard ───────────────────────────────────────────────
@@ -427,7 +420,7 @@ function exportAuditJSON() {
   getSecurityAuditLog(limit, filterType).then(entries => {
     const json = JSON.stringify(entries, null, 2);
     downloadFile('paw-security-audit.json', json, 'application/json');
-  }).catch(e => showSettingsToast(`Export failed: ${e}`, 'error'));
+  }).catch(e => showToast(`Export failed: ${e}`, 'error'));
 }
 
 function exportAuditCSV() {
@@ -444,7 +437,7 @@ function exportAuditCSV() {
     );
     const csv = [headers.join(','), ...rows].join('\n');
     downloadFile('paw-security-audit.csv', csv, 'text/csv');
-  }).catch(e => showSettingsToast(`Export failed: ${e}`, 'error'));
+  }).catch(e => showToast(`Export failed: ${e}`, 'error'));
 }
 
 function downloadFile(filename: string, content: string, mimeType: string) {
@@ -506,7 +499,7 @@ function saveSecurityPolicies() {
   for (const p of [...commandAllowlist, ...commandDenylist]) {
     try { new RegExp(p); }
     catch {
-      showSettingsToast(`Invalid regex pattern: ${p}`, 'error');
+      showToast(`Invalid regex pattern: ${p}`, 'error');
       return;
     }
   }
@@ -525,13 +518,13 @@ function saveSecurityPolicies() {
     readOnlyProjects,
   };
   saveSecuritySettings(settings);
-  showSettingsToast('Security policies saved', 'success');
+  showToast('Security policies saved', 'success');
 }
 
 function resetSecurityPolicies() {
   localStorage.removeItem('paw_security_settings');
   loadSecurityPolicies();
-  showSettingsToast('Security policies reset to defaults', 'info');
+  showToast('Security policies reset to defaults', 'info');
 }
 
 // ── Session override banner management ─────────────────────────────────────
@@ -574,17 +567,6 @@ export async function checkTokenAutoRotation(): Promise<void> {
   // Device token rotation not available in engine mode
 }
 
-// ── Settings toast (inline) ────────────────────────────────────────────────
-function showSettingsToast(message: string, type: 'success' | 'error' | 'info' = 'info') {
-  // Try to use the global toast if available
-  const toast = document.getElementById('global-toast');
-  if (toast) {
-    toast.textContent = message;
-    toast.className = `global-toast toast-${type}`;
-    toast.style.display = 'block';
-    setTimeout(() => { toast.style.display = 'none'; }, 3500);
-  }
-}
 
 // ── Initialize event listeners ─────────────────────────────────────────────
 export function initSettings() {
@@ -621,7 +603,7 @@ export function initSettings() {
   $('session-override-cancel')?.addEventListener('click', () => {
     clearSessionOverride();
     updateSessionOverrideBanner();
-    showSettingsToast('Session override cancelled — approval modal restored', 'info');
+    showToast('Session override cancelled — approval modal restored', 'info');
   });
   // Budget
   initBudgetSettings();

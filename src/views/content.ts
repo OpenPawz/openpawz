@@ -1,11 +1,9 @@
 // ── Content Studio ─────────────────────────────────────────────────────────
 import { listDocs, saveDoc, getDoc, deleteDoc } from '../db';
 import { pawEngine } from '../engine';
-import { escHtml } from '../components/molecules/markdown';
+import { $, escHtml } from '../components/helpers';
 import { showToast } from '../components/toast';
 import { appState } from '../state/index';
-
-const $ = (id: string) => document.getElementById(id);
 
 let _activeDocId: string | null = null;
 

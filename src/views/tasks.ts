@@ -5,15 +5,8 @@
 import { pawEngine } from '../engine';
 import type { EngineTask, EngineTaskActivity, TaskStatus, TaskPriority, TaskAgent } from '../engine';
 import { showToast } from '../components/toast';
-import { populateModelSelect } from '../components/helpers';
+import { populateModelSelect, $, escHtml, formatTimeAgo } from '../components/helpers';
 import { spriteAvatar } from './agents';
-
-const $ = (id: string) => document.getElementById(id);
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
 
 // ── State ──────────────────────────────────────────────────────────────
 
@@ -511,22 +504,6 @@ function getAgentAvatar(agentId?: string | null): string {
   if (!agentId) return '<span class="ms">build</span>';
   const agent = _agents.find(a => a.id === agentId || a.name === agentId);
   return agent ? spriteAvatar(agent.avatar, 20) : '<span class="ms">smart_toy</span>';
-}
-
-function formatTimeAgo(dateStr: string): string {
-  if (!dateStr) return '';
-  try {
-    const d = new Date(dateStr);
-    const now = Date.now();
-    const diff = now - d.getTime();
-    if (diff < 60_000) return 'just now';
-    if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-    if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-    if (diff < 604_800_000) return `${Math.floor(diff / 86_400_000)}d ago`;
-    return d.toLocaleDateString();
-  } catch {
-    return '';
-  }
 }
 
 // ── Event Binding ──────────────────────────────────────────────────────

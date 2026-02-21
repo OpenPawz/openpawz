@@ -4,8 +4,7 @@
 
 import { pawEngine } from '../engine';
 import type { EngineTask, EngineTaskActivity } from '../engine';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml, escAttr } from '../components/helpers';
 
 let wsConnected = false;
 let _agents: { id: string; name: string; avatar: string }[] = [];
@@ -16,15 +15,6 @@ export function setWsConnected(connected: boolean) {
 
 export function setAgents(agents: { id: string; name: string; avatar: string }[]) {
   _agents = agents;
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function escAttr(s: string): string {
-  return escHtml(s).replace(/\n/g, '&#10;');
 }
 
 /** Currently editing task id (null = creating new) */

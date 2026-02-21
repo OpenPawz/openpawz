@@ -5,8 +5,7 @@
 import { listModes, saveMode, deleteMode } from '../db';
 import type { AgentMode } from '../db';
 import { pawEngine } from '../engine';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml } from '../components/helpers';
 
 // ── Module state ───────────────────────────────────────────────────────────
 let _cachedModels: { id: string; name?: string; provider?: string; contextWindow?: number; reasoning?: boolean }[] = [];
@@ -18,11 +17,6 @@ export function getCachedModels() {
   return _cachedModels;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
 
 // ── Models ─────────────────────────────────────────────────────────────────
 export async function loadModels() {

@@ -4,11 +4,11 @@
 import { pawEngine } from '../engine';
 import * as workspace from '../workspace';
 import type { ResearchProject, ResearchFinding, ResearchSource, ResearchReport } from '../workspace';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml, formatMarkdown } from '../components/helpers';
+import { showToast } from '../components/toast';
+import { isConnected, setConnected } from '../state/connection';
 
 // ── Module state ───────────────────────────────────────────────────────────
-let wsConnected = false;
 let _activeProject: ResearchProject | null = null;
 let _findings: ResearchFinding[] = [];
 let _isResearching = false;
@@ -20,7 +20,7 @@ let _liveSources: ResearchSource[] = [];
 let _liveSteps: string[] = [];
 
 export function setWsConnected(connected: boolean) {
-  wsConnected = connected;
+  setConnected(connected);
 }
 
 // For agent event routing
@@ -83,31 +83,12 @@ export function setContent(text: string) {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
 function extractDomain(url: string): string {
   try {
     return new URL(url).hostname.replace('www.', '');
   } catch {
     return url.slice(0, 30);
   }
-}
-
-function showToast(message: string, type: 'info' | 'success' | 'error' = 'info') {
-  const existing = document.querySelector('.toast-notification');
-  if (existing) existing.remove();
-  const toast = document.createElement('div');
-  toast.className = `toast-notification toast-${type}`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  requestAnimationFrame(() => toast.classList.add('show'));
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
 }
 
 function parseProgressStep(text: string) {
@@ -444,23 +425,12 @@ function showFindingDetail(finding: ResearchFinding) {
   modal.style.display = 'flex';
 }
 
-function formatMarkdown(text: string): string {
-  return escHtml(text)
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.*?)\*/g, '<em>$1</em>')
-    .replace(/```[\s\S]*?```/g, m => `<pre><code>${m.slice(3, -3)}</code></pre>`)
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
-    .replace(/^### (.+)$/gm, '<h4>$1</h4>')
-    .replace(/^## (.+)$/gm, '<h3>$1</h3>')
-    .replace(/^# (.+)$/gm, '<h2>$1</h2>')
-    .replace(/^[-•] (.+)$/gm, '<li>$1</li>')
-    .replace(/\n/g, '<br>');
-}
+
 
 // ── Research Execution ─────────────────────────────────────────────────────
 
 async function runResearch() {
-  if (!_activeProject || !wsConnected || _isResearching) return;
+  if (!_activeProject || !isConnected() || _isResearching) return;
   
   const input = $('research-topic-input') as HTMLInputElement;
   const query = input?.value.trim();
@@ -565,7 +535,7 @@ async function stopResearch() {
 }
 
 async function generateReport() {
-  if (!_activeProject || !_findings.length || !wsConnected) {
+  if (!_activeProject || !_findings.length || !isConnected()) {
     showToast('No findings to generate report from', 'error');
     return;
   }

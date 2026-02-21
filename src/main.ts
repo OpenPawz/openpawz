@@ -34,6 +34,7 @@ import * as SessionsSettings from './views/settings-sessions';
 import * as VoiceSettings from './views/settings-voice';
 import * as SkillsSettings from './views/settings-skills';
 import { setConnected as setSettingsConnected } from './views/settings-config';
+import { setConnected } from './state/connection';
 import * as AutomationsModule from './views/automations';
 import * as MemoryPalaceModule from './views/memory-palace';
 import * as MailModule from './views/mail';
@@ -106,6 +107,7 @@ async function connectEngine(): Promise<boolean> {
     await startEngineBridge();
     appState.wsConnected = true;
     setSettingsConnected(true);
+    setConnected(true);
     SettingsModule.setWsConnected(true);
     MemoryPalaceModule.setWsConnected(true);
     MailModule.setWsConnected(true);

@@ -9,7 +9,7 @@ import {
   esc, formRow, selectInput, textInput, saveReloadButtons
 } from './settings-config';
 
-const $ = (id: string) => document.getElementById(id);
+import { $ } from '../components/helpers';
 
 // ── Provider Kinds ──────────────────────────────────────────────────────────
 

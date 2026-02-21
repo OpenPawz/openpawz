@@ -3,8 +3,9 @@
 
 import type { SkillEntry } from '../types';
 import { logCredentialActivity, getCredentialActivityLog } from '../db';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml, escAttr, formatMarkdown } from '../components/helpers';
+import { showToast } from '../components/toast';
+import { isConnected, setConnected } from '../state/connection';
 
 // ── Tauri bridge ───────────────────────────────────────────────────────────
 interface TauriWindow {
@@ -22,7 +23,6 @@ let _mailHimalayaReady = false;
 let _mailMessages: { id: string; from: string; subject: string; snippet: string; date: Date; body?: string; sessionKey?: string; read?: boolean }[] = [];
 let _mailSelectedId: string | null = null;
 let _mailAccounts: { name: string; email: string }[] = [];
-let wsConnected = false;
 let _channelSetupType: string | null = null;
 
 export function getMailAccounts(): { name: string; email: string }[] {
@@ -35,7 +35,7 @@ let onSetCurrentSession: ((key: string | null) => void) | null = null;
 let getChatInput: (() => HTMLTextAreaElement | null) | null = null;
 
 export function setWsConnected(connected: boolean) {
-  wsConnected = connected;
+  setConnected(connected);
 }
 
 export function configure(opts: {
@@ -52,31 +52,6 @@ export function configure(opts: {
 
 let closeChannelSetupFn: (() => void) | null = null;
 
-// ── Helpers ────────────────────────────────────────────────────────────────
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function escAttr(s: string): string {
-  return s.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
-
-function showToast(message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', durationMs = 3500) {
-  const existing = document.querySelector('.toast-notification');
-  if (existing) existing.remove();
-
-  const toast = document.createElement('div');
-  toast.className = `toast-notification toast-${type}`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-
-  requestAnimationFrame(() => toast.classList.add('show'));
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, durationMs);
-}
 
 function _extractContent(content: unknown): string {
   if (typeof content === 'string') return content;
@@ -86,18 +61,6 @@ function _extractContent(content: unknown): string {
   return '';
 }
 void _extractContent;
-
-function formatMarkdown(text: string): string {
-  // Basic markdown formatting for display
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/`(.+?)`/g, '<code>$1</code>')
-    .replace(/\n/g, '<br>');
-}
 
 // ── Mail permissions ───────────────────────────────────────────────────────
 export interface MailPermissions {
@@ -125,7 +88,7 @@ function removeMailPermissions(accountName: string) {
 
 // ── Main loader ────────────────────────────────────────────────────────────
 export async function loadMail() {
-  if (!wsConnected) {
+  if (!isConnected()) {
     console.warn('[mail] loadMail skipped — engine not connected');
     // Still try to render local accounts so user sees their config
     await renderMailAccounts(null, null);

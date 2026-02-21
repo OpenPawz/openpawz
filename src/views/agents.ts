@@ -11,8 +11,8 @@ import {
   getAgentPolicy,
   setAgentPolicy,
 } from '../features/agent-policies';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml, escAttr } from '../components/helpers';
+import { showToast } from '../components/toast';
 
 /**
  * Seed initial soul files for a new agent so it knows who it is from the first conversation.
@@ -1109,26 +1109,6 @@ async function loadAgentCommunitySkills(modal: HTMLElement, agentId: string): Pr
   } catch (err) {
     grid.innerHTML = `<div style="font-size:12px;color:var(--text-muted);padding:8px">Could not load community skills</div>`;
   }
-}
-
-function showToast(message: string, type: 'success' | 'error' = 'success') {
-  const toast = document.createElement('div');
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  document.body.appendChild(toast);
-  setTimeout(() => toast.classList.add('show'), 10);
-  setTimeout(() => {
-    toast.classList.remove('show');
-    setTimeout(() => toast.remove(), 300);
-  }, 3000);
-}
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function escAttr(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 }
 
 // ═══ Mini-Chat Popup System (FB Messenger–style) ═══════════════════════════

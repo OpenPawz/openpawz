@@ -4,8 +4,7 @@
 import { pawEngine } from '../engine';
 import { showToast } from '../components/toast';
 import { formatBytes, timeAgo, isValidDomain } from '../features/browser-sandbox';
-
-const $ = (id: string) => document.getElementById(id);
+import { $, escHtml } from '../components/helpers';
 
 // ── Render ────────────────────────────────────────────────────────────────
 
@@ -554,10 +553,4 @@ async function browseWorkspace(agentId: string, parentSection: HTMLElement) {
   } catch (e) {
     showToast(`Failed to browse workspace: ${e}`, 'error');
   }
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────
-
-function escHtml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }

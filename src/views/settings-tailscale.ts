@@ -5,7 +5,7 @@ import { pawEngine } from '../engine';
 import { showToast } from '../components/toast';
 import type { TailscaleStatus, TailscaleConfig } from '../engine/atoms/types';
 
-const $ = (id: string) => document.getElementById(id);
+import { $ } from '../components/helpers';
 
 export async function loadTailscaleSettings() {
   const container = $('settings-tailscale-content');

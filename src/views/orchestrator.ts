@@ -4,7 +4,7 @@
 
 import { pawEngine, EngineProject, EngineProjectAgent, EngineProjectMessage } from '../engine';
 import { showToast } from '../components/toast';
-import { populateModelSelect } from '../components/helpers';
+import { populateModelSelect, escHtml, formatTimeAgo } from '../components/helpers';
 import { listen } from '@tauri-apps/api/event';
 
 let projects: EngineProject[] = [];
@@ -105,13 +105,13 @@ function renderList() {
   container.innerHTML = projects.map(p => `
     <div class="orch-project-card" data-id="${p.id}">
       <div class="orch-card-header">
-        <span class="orch-card-title">${escapeHtml(p.title)}</span>
+        <span class="orch-card-title">${escHtml(p.title)}</span>
         <span class="orch-status-badge orch-status-${p.status}">${p.status}</span>
       </div>
-      <div class="orch-card-goal">${escapeHtml(p.goal.substring(0, 120))}${p.goal.length > 120 ? '...' : ''}</div>
+      <div class="orch-card-goal">${escHtml(p.goal.substring(0, 120))}${p.goal.length > 120 ? '...' : ''}</div>
       <div class="orch-card-footer">
         <span class="orch-card-agents">${p.agents.length} agent${p.agents.length !== 1 ? 's' : ''}</span>
-        <span class="orch-card-time">${timeAgo(p.updated_at)}</span>
+        <span class="orch-card-time">${formatTimeAgo(p.updated_at)}</span>
       </div>
     </div>
   `).join('');
@@ -190,15 +190,15 @@ function renderAgentRoster(agents: EngineProjectAgent[]) {
     <div class="orch-agent-card orch-agent-${a.status}">
       <div class="orch-agent-header">
         <span class="orch-agent-icon">${specialtyIcon(a.specialty)}</span>
-        <span class="orch-agent-name">${escapeHtml(a.agent_id)}</span>
+        <span class="orch-agent-name">${escHtml(a.agent_id)}</span>
         <span class="orch-agent-role-badge">${a.role}</span>
         <span class="orch-agent-status-dot orch-dot-${a.status}" title="${a.status}"></span>
         <button class="btn btn-ghost btn-xs orch-remove-agent" data-agent="${a.agent_id}" title="Remove">×</button>
       </div>
       <div class="orch-agent-meta">
         <span class="orch-agent-specialty">${a.specialty}</span>
-        ${a.model ? `<span class="orch-agent-model" title="Model: ${escapeHtml(a.model)}">${escapeHtml(a.model)}</span>` : ''}
-        ${a.current_task ? `<span class="orch-agent-task" title="${escapeHtml(a.current_task)}">${escapeHtml(a.current_task.substring(0, 60))}</span>` : ''}
+        ${a.model ? `<span class="orch-agent-model" title="Model: ${escHtml(a.model)}">${escHtml(a.model)}</span>` : ''}
+        ${a.current_task ? `<span class="orch-agent-task" title="${escHtml(a.current_task)}">${escHtml(a.current_task.substring(0, 60))}</span>` : ''}
       </div>
     </div>
   `).join('');
@@ -250,15 +250,15 @@ function renderMessageBus(messages: EngineProjectMessage[]) {
 
   els.messageBus.innerHTML = messages.map(m => {
     const kindClass = `orch-msg-${m.kind}`;
-    const arrow = m.to_agent ? ` → ${escapeHtml(m.to_agent)}` : ' (broadcast)';
+    const arrow = m.to_agent ? ` → ${escHtml(m.to_agent)}` : ' (broadcast)';
     return `
       <div class="orch-message ${kindClass}">
         <div class="orch-msg-header">
           <span class="orch-msg-kind">${messageKindLabel(m.kind)}</span>
-          <span class="orch-msg-from">${escapeHtml(m.from_agent)}${arrow}</span>
+          <span class="orch-msg-from">${escHtml(m.from_agent)}${arrow}</span>
           <span class="orch-msg-time">${formatTime(m.created_at)}</span>
         </div>
-        <div class="orch-msg-content">${escapeHtml(m.content)}</div>
+        <div class="orch-msg-content">${escHtml(m.content)}</div>
       </div>
     `;
   }).join('');
@@ -456,12 +456,6 @@ async function addAgent() {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function escapeHtml(text: string): string {
-  const div = document.createElement('div');
-  div.textContent = text;
-  return div.innerHTML;
-}
-
 function specialtyIcon(specialty: string): string {
   const icons: Record<string, string> = {
     coder: 'code',
@@ -484,19 +478,6 @@ function messageKindLabel(kind: string): string {
     message: 'Message',
   };
   return labels[kind] || kind;
-}
-
-function timeAgo(dateStr: string): string {
-  const date = new Date(dateStr);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
 }
 
 function formatTime(dateStr: string): string {
