@@ -17,7 +17,13 @@ import {
   getInitials,
   formatMailDate,
 } from './atoms';
-import { openMailAccountSetup } from './setup';
+
+// ── Injected dependencies (set by index.ts to break circular imports) ──────
+
+let _openMailAccountSetup: () => void = () => {};
+let _loadMail: () => void = () => {};
+export function setOpenMailAccountSetup(fn: () => void): void { _openMailAccountSetup = fn; }
+export function setLoadMailRef(fn: () => void): void { _loadMail = fn; }
 
 // ── Module state refs (set by index.ts configure) ──────────────────────────
 
@@ -178,9 +184,7 @@ export async function renderMailAccounts(_gmail: Record<string, unknown> | null,
           detail: `Account revoked: ${acct.email} — credentials deleted from device`,
         });
         showToast(`${acct.email} revoked — credentials removed from this device`, 'success');
-        // Re-import loadMail lazily to avoid circular dependency
-        const { loadMail } = await import('./index');
-        loadMail();
+        _loadMail();
       } catch (err) {
         showToast(`Remove failed: ${err instanceof Error ? err.message : err}`, 'error');
       }
@@ -405,7 +409,7 @@ export function showMailEmpty(show: boolean) {
           <div class="empty-subtitle">Add an email account so your agent can read, draft, and send emails on your behalf.</div>
           <button class="btn btn-primary" id="mail-setup-account" style="margin-top:16px">Add Email Account</button>
         `;
-        $('mail-setup-account')?.addEventListener('click', () => openMailAccountSetup());
+        $('mail-setup-account')?.addEventListener('click', () => _openMailAccountSetup());
       }
     }
   }

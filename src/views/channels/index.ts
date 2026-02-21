@@ -7,8 +7,11 @@ import { showToast } from '../../components/toast';
 import { appState } from '../../state/index';
 import { escHtml } from '../../components/helpers';
 import { CHANNEL_SETUPS, CHANNEL_CLASSES } from './atoms';
-import { loadChannels, getChannelConfig, getChannelStatus, startChannel } from './molecules';
+import { loadChannels, getChannelConfig, getChannelStatus, startChannel, setOpenChannelSetup } from './molecules';
 import { openChannelSetup, closeChannelSetup, saveChannelSetup } from './setup';
+
+// Wire the circular dependency: molecules needs openChannelSetup from setup
+setOpenChannelSetup(openChannelSetup);
 
 // ── Cron modal helpers ─────────────────────────────────────────────────────
 

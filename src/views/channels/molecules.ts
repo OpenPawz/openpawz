@@ -6,7 +6,11 @@ import type { ChannelStatus } from '../../engine';
 import { $, escHtml, escAttr } from '../../components/helpers';
 import { showToast } from '../../components/toast';
 import { CHANNEL_CLASSES, CHANNEL_SETUPS, isChannelConfigured, emptyChannelConfig } from './atoms';
-import { openChannelSetup } from './setup';
+
+// ── Injected dependency (set by index.ts to break circular import) ─────────
+
+let _openChannelSetup: (channelType: string) => void = () => {};
+export function setOpenChannelSetup(fn: (channelType: string) => void): void { _openChannelSetup = fn; }
 
 // ── Channel Operation Helpers ──────────────────────────────────────────────
 
@@ -168,7 +172,7 @@ export async function loadChannels() {
           try { await pawEngine.telegramStop(); showToast('Telegram stopped', 'success'); setTimeout(() => loadChannels(), 500); }
           catch (e) { showToast(`Stop failed: ${e}`, 'error'); }
         });
-        $(`${cardId}-edit`)?.addEventListener('click', () => openChannelSetup('telegram'));
+        $(`${cardId}-edit`)?.addEventListener('click', () => _openChannelSetup('telegram'));
         $(`${cardId}-remove`)?.addEventListener('click', async () => {
           if (!confirm('Remove Telegram configuration?')) return;
           try {
@@ -351,7 +355,7 @@ export async function loadChannels() {
           try { await stopChannel(ch); showToast(`${name} stopped`, 'success'); setTimeout(() => loadChannels(), 500); }
           catch (e) { showToast(`Stop failed: ${e}`, 'error'); }
         });
-        $(`${cardId}-edit`)?.addEventListener('click', () => openChannelSetup(ch));
+        $(`${cardId}-edit`)?.addEventListener('click', () => _openChannelSetup(ch));
         $(`${cardId}-remove`)?.addEventListener('click', async function removeHandler() {
           const btn = this as HTMLButtonElement;
           // Two-click safety: first click asks, second click confirms

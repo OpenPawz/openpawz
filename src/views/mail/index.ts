@@ -12,8 +12,16 @@ import {
   getMailAccountsRef,
   setMailFolder,
   setMailSelectedId,
+  setOpenMailAccountSetup,
+  setLoadMailRef,
 } from './molecules';
-import { setCloseChannelSetupFn, openMailAccountSetup as _openMailAccountSetup } from './setup';
+import { setCloseChannelSetupFn, openMailAccountSetup as _openMailAccountSetup, setLoadMailRefSetup } from './setup';
+
+// ── Wire injected dependencies (break circular imports) ────────────────────
+
+setOpenMailAccountSetup(() => _openMailAccountSetup());
+setLoadMailRef(() => loadMail());
+setLoadMailRefSetup(() => loadMail());
 
 // ── Public re-exports ──────────────────────────────────────────────────────
 

@@ -6,6 +6,11 @@ import { pawEngine } from '../../engine';
 import { logCredentialActivity } from '../../db';
 import { EMAIL_PROVIDERS, saveMailPermissions } from './atoms';
 
+// ── Injected dependency (set by index.ts to break circular imports) ────────
+
+let _loadMail: () => void = () => {};
+export function setLoadMailRefSetup(fn: () => void): void { _loadMail = fn; }
+
 // ── Setup state ────────────────────────────────────────────────────────────
 
 let _channelSetupType: string | null = null;
@@ -233,9 +238,7 @@ export async function saveMailImapSetup(): Promise<void> {
     showToast(`${email} connected! Your agent can now read and send emails.`, 'success');
     closeChannelSetupFn?.();
 
-    // Lazy import to avoid circular dependency
-    const { loadMail } = await import('./index');
-    setTimeout(() => loadMail(), 500);
+    setTimeout(() => _loadMail(), 500);
   } catch (e) {
     showToast(`Failed to connect: ${e instanceof Error ? e.message : e}`, 'error');
   } finally {
