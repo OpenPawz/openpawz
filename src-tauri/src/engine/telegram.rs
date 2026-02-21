@@ -12,13 +12,8 @@
 //   - All communication goes through Telegram's TLS API
 //   - Bot token stored encrypted in engine DB
 
-use crate::engine::types::*;
-use crate::engine::providers::AnyProvider;
-use crate::engine::agent_loop;
-use crate::engine::skills;
-use crate::engine::memory;
-use crate::engine::chat as chat_org;
-use crate::engine::state::{EngineState, PendingApprovals, normalize_model_name, resolve_provider_for_model};
+use crate::engine::channels;
+use crate::engine::state::EngineState;
 use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -196,7 +191,7 @@ async fn tg_send_message(
     reply_to: Option<i64>,
 ) -> Result<(), String> {
     // Telegram message limit = 4096 chars. Split if needed.
-    let chunks = split_message(text, 4000);
+    let chunks = channels::split_message(text, 4000);
     for (i, chunk) in chunks.iter().enumerate() {
         let mut body = serde_json::json!({
             "chat_id": chat_id,
@@ -251,28 +246,6 @@ async fn tg_send_chat_action(
     });
     let _ = client.post(&url).json(&body).send().await;
     Ok(())
-}
-
-fn split_message(text: &str, max_len: usize) -> Vec<String> {
-    if text.len() <= max_len {
-        return vec![text.to_string()];
-    }
-    let mut chunks = Vec::new();
-    let mut remaining = text;
-    while !remaining.is_empty() {
-        if remaining.len() <= max_len {
-            chunks.push(remaining.to_string());
-            break;
-        }
-        // Try to split at a newline or space near the limit
-        let split_at = remaining[..max_len]
-            .rfind('\n')
-            .or_else(|| remaining[..max_len].rfind(' '))
-            .unwrap_or(max_len);
-        chunks.push(remaining[..split_at].to_string());
-        remaining = &remaining[split_at..].trim_start();
-    }
-    chunks
 }
 
 /// Check if the Telegram bridge is currently running.
@@ -451,11 +424,21 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                         let _ = tg_send_chat_action(&client, &token, chat_id).await;
 
                         // ── Route to agent loop ─────────────────────────
-                        let response = run_telegram_agent(
+                        // Prune old messages to bound TG session growth
+                        let agent_id_str = current_config.agent_id.as_deref().unwrap_or("default");
+                        if let Some(st) = app_handle.try_state::<EngineState>() {
+                            let tg_session_id = format!("eng-telegram-{}-{}", agent_id_str, user_id);
+                            let _ = st.store.prune_session_messages(&tg_session_id, 50);
+                        }
+                        let response = channels::run_channel_agent(
                             &app_handle,
+                            "telegram",
+                            "You are chatting via Telegram. The user is messaging you from their phone. \
+                             Keep responses concise and mobile-friendly. Use Markdown formatting supported by Telegram \
+                             (bold, italic, code, links). Avoid very long responses unless explicitly asked.",
                             &text,
-                            user_id,
-                            current_config.agent_id.as_deref().unwrap_or("default"),
+                            &user_id.to_string(),
+                            agent_id_str,
                         ).await;
 
                         match response {
@@ -492,337 +475,6 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
     Ok(())
 }
 
-// ── Agent Integration ──────────────────────────────────────────────────
-
-/// Run a message through the agent loop and return the final text response.
-/// This creates a per-user session so each Telegram user gets their own conversation.
-async fn run_telegram_agent(
-    app_handle: &tauri::AppHandle,
-    message: &str,
-    user_id: i64,
-    agent_id: &str,
-) -> Result<String, String> {
-    let engine_state = app_handle.try_state::<EngineState>()
-        .ok_or("Engine not initialized")?;
-
-    // Per-user per-agent session: eng-tg-{agent}-{user_id}
-    let session_id = format!("eng-tg-{}-{}", agent_id, user_id);
-
-    // Get provider config — use model_routing.resolve() so the worker_model
-    // setting is respected for Telegram (instead of burning the expensive
-    // default_model on every DM)
-    let (provider_config, model, system_prompt, max_rounds, tool_timeout) = {
-        let cfg = engine_state.config.lock();
-
-        let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".into());
-        let model = normalize_model_name(
-            &cfg.model_routing.resolve(agent_id, "worker", "", &default_model)
-        ).to_string();
-        let provider = resolve_provider_for_model(&model, &cfg.providers)
-            .or_else(|| {
-                cfg.default_provider.as_ref()
-                    .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned())
-            })
-            .or_else(|| cfg.providers.first().cloned())
-            .ok_or("No AI provider configured")?;
-
-        let sp = cfg.default_system_prompt.clone();
-        info!("[telegram] Resolved model for agent '{}': {} (default: {})", agent_id, model, default_model);
-        (provider, model, sp, cfg.max_tool_rounds, cfg.tool_timeout_secs)
-    };
-
-    // Ensure session exists
-    let session_exists = engine_state.store.get_session(&session_id)
-        .map(|opt| opt.is_some())
-        .unwrap_or(false);
-    if !session_exists {
-        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref(), Some(agent_id))?;
-    }
-
-    // ── Cost control: prune old Telegram session messages ──
-    // Telegram sessions persist per-user and grow unboundedly.
-    // Keep the last 50 messages (~5-10 conversation turns) to provide
-    // useful context without sending huge histories to the API.
-    const TG_SESSION_KEEP_MESSAGES: i64 = 50;
-    if let Err(e) = engine_state.store.prune_session_messages(&session_id, TG_SESSION_KEEP_MESSAGES) {
-        warn!("[telegram] Failed to prune session {}: {}", session_id, e);
-    }
-
-    // Store user message
-    let user_msg = StoredMessage {
-        id: uuid::Uuid::new_v4().to_string(),
-        session_id: session_id.clone(),
-        role: "user".into(),
-        content: message.to_string(),
-        tool_calls_json: None,
-        tool_call_id: None,
-        name: None,
-        created_at: chrono::Utc::now().to_rfc3339(),
-    };
-    engine_state.store.add_message(&user_msg)?;
-
-    // Compose system prompt with agent context + memory + skills
-    let agent_context = engine_state.store.compose_agent_context(agent_id).unwrap_or(None);
-    let skill_instructions = skills::get_enabled_skill_instructions(&engine_state.store, agent_id).unwrap_or_default();
-
-    // Load core soul files (IDENTITY.md, SOUL.md, USER.md) — same as UI chat
-    let core_context = engine_state.store.compose_core_context(agent_id).unwrap_or(None);
-    if let Some(ref cc) = core_context {
-        info!("[telegram] Core soul context loaded ({} chars) for agent '{}'", cc.len(), agent_id);
-    }
-
-    // Load today's memory notes — same as UI chat
-    let todays_memories = engine_state.store.get_todays_memories(agent_id).unwrap_or(None);
-
-    // Auto-recall memories
-    let (auto_recall_on, recall_limit, recall_threshold) = {
-        let mcfg = engine_state.memory_config.lock();
-        (mcfg.auto_recall, mcfg.recall_limit, mcfg.recall_threshold)
-    };
-
-    let memory_context = if auto_recall_on {
-        let emb_client = engine_state.embedding_client();
-        match memory::search_memories(
-            &engine_state.store, message, recall_limit, recall_threshold, emb_client.as_ref(), None
-        ).await {
-            Ok(mems) if !mems.is_empty() => {
-                let ctx: Vec<String> = mems.iter().map(|m| format!("- [{}] {}", m.category, m.content)).collect();
-                Some(format!("## Relevant Memories\n{}", ctx.join("\n")))
-            }
-            _ => None,
-        }
-    } else {
-        None
-    };
-
-    // Build full system prompt — use the same rich prompt as the UI chat
-    // so the agent has full awareness of its tools, soul files, and memory.
-    let full_system_prompt = {
-        // Build base prompt with Telegram-specific context prepended
-        let tg_context = "You are chatting via Telegram. The user is messaging you from their phone. \
-             Keep responses concise and mobile-friendly. Use Markdown formatting supported by Telegram \
-             (bold, italic, code, links). Avoid very long responses unless explicitly asked.";
-
-        let base_prompt = match &system_prompt {
-            Some(sp) => Some(format!("{}\n\n{}", tg_context, sp)),
-            None => Some(tg_context.to_string()),
-        };
-
-        // Build runtime context (model, provider, session, agent, time, workspace)
-        let provider_name = format!("{:?}", provider_config.kind);
-        let user_tz = {
-            let cfg = engine_state.config.lock();
-            cfg.user_timezone.clone()
-        };
-        let runtime_context = chat_org::build_runtime_context(
-            &model, &provider_name, &session_id, agent_id, &user_tz,
-        );
-
-        // Compose the full prompt with Soul Files + Memory instructions
-        let mut prompt = chat_org::compose_chat_system_prompt(
-            base_prompt.as_deref(),
-            runtime_context,
-            core_context.as_deref(),
-            todays_memories.as_deref(),
-            &skill_instructions,
-        );
-
-        // Append agent-specific context and auto-recalled memories
-        if let Some(ref mut p) = prompt {
-            if let Some(ac) = &agent_context {
-                p.push_str("\n\n---\n\n");
-                p.push_str(ac);
-            }
-            if let Some(mc) = &memory_context {
-                p.push_str("\n\n---\n\n");
-                p.push_str(mc);
-            }
-        }
-
-        prompt
-    };
-
-    // Load conversation history
-    let mut messages = engine_state.store.load_conversation(
-        &session_id,
-        full_system_prompt.as_deref(),
-    )?;
-
-    // Build tools (with HIL disabled for Telegram — auto-approve safe tools)
-    let tools = {
-        let mut t = ToolDefinition::builtins();
-        let enabled_ids: Vec<String> = skills::builtin_skills().iter()
-            .filter(|s| engine_state.store.is_skill_enabled(&s.id).unwrap_or(false))
-            .map(|s| s.id.clone())
-            .collect();
-        if !enabled_ids.is_empty() {
-            t.extend(ToolDefinition::skill_tools(&enabled_ids));
-        }
-        t
-    };
-
-    let provider = AnyProvider::from_config(&provider_config);
-    let run_id = uuid::Uuid::new_v4().to_string();
-
-    // For Telegram, we auto-approve all tool calls (no HIL — user is on phone)
-    // Create approvals map that auto-resolves
-    let approvals: PendingApprovals = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
-
-    // Spawn auto-approver: listen for tool requests and approve them
-    let _app_clone = app_handle.clone();
-    let approvals_clone = approvals.clone();
-    let auto_approver = tauri::async_runtime::spawn(async move {
-        // This task just ensures any pending approvals get auto-approved
-        // The actual approval happens via the engine_approve_tool mechanism
-        // For Telegram we'll handle it differently — see below
-        loop {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-            let mut map = approvals_clone.lock();
-            let keys: Vec<String> = map.keys().cloned().collect();
-            for key in keys {
-                if let Some(sender) = map.remove(&key) {
-                    info!("[telegram] Auto-approving tool call: {}", key);
-                    let _ = sender.send(true);
-                }
-            }
-            // Exit if no more pending after a reasonable time
-            drop(map);
-        }
-    });
-
-    let pre_loop_msg_count = messages.len();
-
-    // Cap tool rounds for Telegram — mobile context, keep it snappy
-    const TG_MAX_TOOL_ROUNDS: u32 = 15;
-    let effective_max_rounds = max_rounds.min(TG_MAX_TOOL_ROUNDS);
-
-    // Get daily budget config
-    let daily_budget = {
-        let cfg = engine_state.config.lock();
-        cfg.daily_budget_usd
-    };
-    let daily_tokens_tracker = engine_state.daily_tokens.clone();
-
-    // Run the agent loop — with provider fallback on billing/auth errors
-    let result = {
-        let primary_result = agent_loop::run_agent_turn(
-            app_handle,
-            &provider,
-            &model,
-            &mut messages,
-            &tools,
-            &session_id,
-            &run_id,
-            effective_max_rounds,
-            None, // temperature
-            &approvals,
-            tool_timeout,
-            agent_id,
-            daily_budget,
-            Some(&daily_tokens_tracker),
-        ).await;
-
-        // If the primary provider failed with a billing/auth/rate error, try fallback providers
-        match &primary_result {
-            Err(e) if is_provider_billing_error(e) => {
-                warn!("[telegram] Primary provider failed ({}), trying fallback providers", e);
-                let fallback_providers: Vec<ProviderConfig> = {
-                    let cfg = engine_state.config.lock();
-                    cfg.providers.iter()
-                        .filter(|p| p.id != provider_config.id)
-                        .cloned()
-                        .collect()
-                };
-
-                let mut fallback_result = primary_result;
-                for fb_provider_cfg in &fallback_providers {
-                    // Find a model that works with this provider
-                    let fb_model = fb_provider_cfg.default_model.clone()
-                        .unwrap_or_else(|| normalize_model_name(&model).to_string());
-                    let fb_provider = AnyProvider::from_config(fb_provider_cfg);
-                    info!("[telegram] Trying fallback: {:?} / {}", fb_provider_cfg.kind, fb_model);
-
-                    // Reset messages to pre-loop state for retry
-                    messages.truncate(pre_loop_msg_count);
-
-                    let fb_run_id = uuid::Uuid::new_v4().to_string();
-                    match agent_loop::run_agent_turn(
-                        app_handle,
-                        &fb_provider,
-                        &fb_model,
-                        &mut messages,
-                        &tools,
-                        &session_id,
-                        &fb_run_id,
-                        effective_max_rounds,
-                        None,
-                        &approvals,
-                        tool_timeout,
-                        agent_id,
-                        daily_budget,
-                        Some(&daily_tokens_tracker),
-                    ).await {
-                        Ok(text) => {
-                            info!("[telegram] Fallback {:?} succeeded", fb_provider_cfg.kind);
-                            fallback_result = Ok(text);
-                            break;
-                        }
-                        Err(fb_err) => {
-                            warn!("[telegram] Fallback {:?} also failed: {}", fb_provider_cfg.kind, fb_err);
-                        }
-                    }
-                }
-                fallback_result
-            }
-            _ => primary_result,
-        }
-    };
-
-    // Stop the auto-approver
-    auto_approver.abort();
-
-    // Store new messages
-    for msg in messages.iter().skip(pre_loop_msg_count) {
-        if msg.role == Role::Assistant || msg.role == Role::Tool {
-            let stored = StoredMessage {
-                id: uuid::Uuid::new_v4().to_string(),
-                session_id: session_id.clone(),
-                role: match msg.role {
-                    Role::Assistant => "assistant".into(),
-                    Role::Tool => "tool".into(),
-                    _ => "user".into(),
-                },
-                content: msg.content.as_text(),
-                tool_calls_json: msg.tool_calls.as_ref()
-                    .map(|tc| serde_json::to_string(tc).unwrap_or_default()),
-                tool_call_id: msg.tool_call_id.clone(),
-                name: msg.name.clone(),
-                created_at: chrono::Utc::now().to_rfc3339(),
-            };
-            if let Err(e) = engine_state.store.add_message(&stored) {
-                error!("[telegram] Failed to store message: {}", e);
-            }
-        }
-    }
-
-    // Auto-capture memories
-    if let Ok(final_text) = &result {
-        let auto_capture = engine_state.memory_config.lock().auto_capture;
-        if auto_capture && !final_text.is_empty() {
-            let facts = memory::extract_memorable_facts(message, final_text);
-            if !facts.is_empty() {
-                let emb_client = engine_state.embedding_client();
-                for (content, category) in &facts {
-                    let _ = memory::store_memory(
-                        &engine_state.store, content, category, 5, emb_client.as_ref(), None
-                    ).await;
-                }
-            }
-        }
-    }
-
-    result
-}
 
 // ── Config Persistence ─────────────────────────────────────────────────
 
@@ -909,23 +561,4 @@ pub fn remove_user(app_handle: &tauri::AppHandle, user_id: i64) -> Result<(), St
     save_telegram_config(app_handle, &config)?;
     info!("[telegram] User {} removed from allowlist", user_id);
     Ok(())
-}
-
-// ── Provider Fallback ──────────────────────────────────────────────────
-
-/// Detect billing, auth, quota, or rate-limit errors that warrant trying
-/// a different provider instead of failing outright.
-fn is_provider_billing_error(err: &str) -> bool {
-    let lower = err.to_lowercase();
-    lower.contains("credit balance")
-        || lower.contains("insufficient_quota")
-        || lower.contains("billing")
-        || lower.contains("rate_limit")
-        || lower.contains("quota exceeded")
-        || lower.contains("payment required")
-        || lower.contains("account")
-        || (lower.contains("api error 4") && (
-            lower.contains("401") || lower.contains("402")
-            || lower.contains("403") || lower.contains("429")
-        ))
 }
