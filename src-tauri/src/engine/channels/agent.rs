@@ -1,11 +1,7 @@
-// Paw Agent Engine — Shared Channel Bridge Helpers
+// Paw Agent Engine — Channel Agent Routing
 //
-// Common infrastructure that ALL channel bridges (Telegram, Discord, IRC, Slack,
-// Matrix, Nostr, Twitch, Mattermost, Nextcloud Talk) share:
-//   - run_channel_agent()  — routes a message through the agent loop, returns text
-//   - ChannelConfig trait  — common config shape for load/save/user management
-//   - split_message()      — splits long responses for platform message limits
-//   - Access control       — allowlist / pairing logic
+// Routes user messages through the agent loop and returns text responses.
+// This is the shared core that every channel bridge calls after receiving a message.
 
 use crate::engine::types::*;
 use crate::engine::providers::AnyProvider;
@@ -16,69 +12,7 @@ use crate::engine::injection;
 use crate::engine::chat as chat_org;
 use crate::engine::state::{EngineState, PendingApprovals, normalize_model_name, resolve_provider_for_model};
 use log::{info, warn, error};
-use serde::{Deserialize, Serialize};
 use tauri::Manager;
-
-// ── Common Channel Config ──────────────────────────────────────────────
-
-/// Every channel bridge stores its config under a unique DB key (e.g. "discord_config").
-/// This helper pair handles load/save for any Serialize+Deserialize config type.
-pub fn load_channel_config<T: for<'de> Deserialize<'de> + Default>(
-    app_handle: &tauri::AppHandle,
-    config_key: &str,
-) -> Result<T, String> {
-    let engine_state = app_handle.try_state::<EngineState>()
-        .ok_or("Engine not initialized")?;
-
-    match engine_state.store.get_config(config_key) {
-        Ok(Some(json)) => {
-            serde_json::from_str::<T>(&json)
-                .map_err(|e| format!("Parse {} config: {}", config_key, e))
-        }
-        _ => Ok(T::default()),
-    }
-}
-
-pub fn save_channel_config<T: Serialize>(
-    app_handle: &tauri::AppHandle,
-    config_key: &str,
-    config: &T,
-) -> Result<(), String> {
-    let engine_state = app_handle.try_state::<EngineState>()
-        .ok_or("Engine not initialized")?;
-
-    let json = serde_json::to_string(config)
-        .map_err(|e| format!("Serialize {} config: {}", config_key, e))?;
-
-    engine_state.store.set_config(config_key, &json)?;
-    Ok(())
-}
-
-// ── Shared Pairing Struct ──────────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PendingUser {
-    pub user_id: String,
-    pub username: String,
-    pub display_name: String,
-    pub requested_at: String,
-}
-
-// ── Channel Status (generic) ───────────────────────────────────────────
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChannelStatus {
-    pub running: bool,
-    pub connected: bool,
-    pub bot_name: Option<String>,
-    pub bot_id: Option<String>,
-    pub message_count: u64,
-    pub allowed_users: Vec<String>,
-    pub pending_users: Vec<PendingUser>,
-    pub dm_policy: String,
-}
-
-// ── Agent Routing ──────────────────────────────────────────────────────
 
 /// Run a user message through the agent loop and return the text response.
 /// This is the shared core that every channel bridge calls after receiving a message.
@@ -412,7 +346,7 @@ pub async fn run_channel_agent(
 
 /// Detect billing, auth, quota, or rate-limit errors that warrant trying
 /// a different provider instead of failing outright.
-fn is_provider_billing_error(err: &str) -> bool {
+pub(crate) fn is_provider_billing_error(err: &str) -> bool {
     let lower = err.to_lowercase();
     lower.contains("credit balance")
         || lower.contains("insufficient_quota")
@@ -426,146 +360,6 @@ fn is_provider_billing_error(err: &str) -> bool {
             || lower.contains("403") || lower.contains("429")
         ))
 }
-
-/// Split a long message into chunks at a given limit, preferring newline/space breaks.
-pub fn split_message(text: &str, max_len: usize) -> Vec<String> {
-    if text.len() <= max_len {
-        return vec![text.to_string()];
-    }
-    let mut chunks = Vec::new();
-    let mut remaining = text;
-    while !remaining.is_empty() {
-        if remaining.len() <= max_len {
-            chunks.push(remaining.to_string());
-            break;
-        }
-        let split_at = remaining[..max_len]
-            .rfind('\n')
-            .or_else(|| remaining[..max_len].rfind(' '))
-            .unwrap_or(max_len);
-        chunks.push(remaining[..split_at].to_string());
-        remaining = remaining[split_at..].trim_start();
-    }
-    chunks
-}
-
-/// Check access control. Returns Ok(()) if allowed, Err(denial message) if denied.
-/// Also handles adding pending pairing requests.
-pub fn check_access(
-    dm_policy: &str,
-    user_id: &str,
-    username: &str,
-    display_name: &str,
-    allowed_users: &[String],
-    pending_users: &mut Vec<PendingUser>,
-) -> Result<(), String> {
-    match dm_policy {
-        "allowlist" => {
-            if !allowed_users.contains(&user_id.to_string()) {
-                return Err("⛔ You're not on the allowlist. Ask the Paw owner to add you.".into());
-            }
-        }
-        "pairing" => {
-            if !allowed_users.contains(&user_id.to_string()) {
-                if !pending_users.iter().any(|p| p.user_id == user_id) {
-                    pending_users.push(PendingUser {
-                        user_id: user_id.to_string(),
-                        username: username.to_string(),
-                        display_name: display_name.to_string(),
-                        requested_at: chrono::Utc::now().to_rfc3339(),
-                    });
-                }
-                return Err("🔒 Pairing request sent to Paw. Waiting for approval...".into());
-            }
-        }
-        // "open" — allow everyone
-        _ => {}
-    }
-    Ok(())
-}
-
-/// Generic approve/deny/remove user helpers for any channel config.
-pub fn approve_user_generic(
-    app_handle: &tauri::AppHandle,
-    config_key: &str,
-    user_id: &str,
-) -> Result<(), String>
-where
-{
-    // Load raw config as Value, modify, save
-    let engine_state = app_handle.try_state::<EngineState>()
-        .ok_or("Engine not initialized")?;
-    let json_str = engine_state.store.get_config(config_key)
-        .map_err(|e| format!("Load config: {}", e))?
-        .unwrap_or_else(|| "{}".into());
-    let mut val: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Parse config: {}", e))?;
-
-    // Add to allowed_users
-    if let Some(arr) = val.get_mut("allowed_users").and_then(|v| v.as_array_mut()) {
-        let uid_val = serde_json::Value::String(user_id.to_string());
-        if !arr.contains(&uid_val) {
-            arr.push(uid_val);
-        }
-    }
-    // Remove from pending_users
-    if let Some(arr) = val.get_mut("pending_users").and_then(|v| v.as_array_mut()) {
-        arr.retain(|p| p.get("user_id").and_then(|v| v.as_str()) != Some(user_id));
-    }
-
-    let new_json = serde_json::to_string(&val).map_err(|e| format!("Serialize: {}", e))?;
-    engine_state.store.set_config(config_key, &new_json)?;
-    info!("[{}] User {} approved", config_key, user_id);
-    Ok(())
-}
-
-pub fn deny_user_generic(
-    app_handle: &tauri::AppHandle,
-    config_key: &str,
-    user_id: &str,
-) -> Result<(), String> {
-    let engine_state = app_handle.try_state::<EngineState>()
-        .ok_or("Engine not initialized")?;
-    let json_str = engine_state.store.get_config(config_key)
-        .map_err(|e| format!("Load config: {}", e))?
-        .unwrap_or_else(|| "{}".into());
-    let mut val: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Parse config: {}", e))?;
-
-    if let Some(arr) = val.get_mut("pending_users").and_then(|v| v.as_array_mut()) {
-        arr.retain(|p| p.get("user_id").and_then(|v| v.as_str()) != Some(user_id));
-    }
-
-    let new_json = serde_json::to_string(&val).map_err(|e| format!("Serialize: {}", e))?;
-    engine_state.store.set_config(config_key, &new_json)?;
-    info!("[{}] User {} denied", config_key, user_id);
-    Ok(())
-}
-
-pub fn remove_user_generic(
-    app_handle: &tauri::AppHandle,
-    config_key: &str,
-    user_id: &str,
-) -> Result<(), String> {
-    let engine_state = app_handle.try_state::<EngineState>()
-        .ok_or("Engine not initialized")?;
-    let json_str = engine_state.store.get_config(config_key)
-        .map_err(|e| format!("Load config: {}", e))?
-        .unwrap_or_else(|| "{}".into());
-    let mut val: serde_json::Value = serde_json::from_str(&json_str)
-        .map_err(|e| format!("Parse config: {}", e))?;
-
-    if let Some(arr) = val.get_mut("allowed_users").and_then(|v| v.as_array_mut()) {
-        arr.retain(|v| v.as_str() != Some(user_id));
-    }
-
-    let new_json = serde_json::to_string(&val).map_err(|e| format!("Serialize: {}", e))?;
-    engine_state.store.set_config(config_key, &new_json)?;
-    info!("[{}] User {} removed", config_key, user_id);
-    Ok(())
-}
-
-// ── Routed Channel Agent ───────────────────────────────────────────────
 
 /// Convenience wrapper: resolve routing config to determine the agent_id,
 /// then call run_channel_agent with that agent. Channels should prefer this
