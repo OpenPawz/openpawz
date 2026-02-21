@@ -46,7 +46,9 @@ pub fn engine_db_path() -> PathBuf {
 
 /// Thread-safe database wrapper.
 pub struct SessionStore {
-    pub(crate) conn: Mutex<Connection>,
+    /// The SQLite connection, protected by a Mutex.
+    /// `pub` for integration tests that need to construct an in-memory store.
+    pub conn: Mutex<Connection>,
 }
 
 impl SessionStore {
@@ -64,4 +66,10 @@ impl SessionStore {
 
         Ok(SessionStore { conn: Mutex::new(conn) })
     }
+}
+
+/// Initialise an already-open connection with the full schema.
+/// Used by integration tests that create in-memory databases.
+pub fn schema_for_testing(conn: &Connection) {
+    schema::run_migrations(conn).expect("schema_for_testing: migrations failed");
 }
