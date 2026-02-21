@@ -229,10 +229,10 @@ Found during the encryption audit of all 11 channel bridges.
 - **Bug:** Basic Auth credentials (username + app password) are sent via HTTP header. If the user enters an `http://` server URL, credentials travel in plaintext.
 - **Fix applied:** Added `normalize_server_url()` helper (same pattern as Mattermost #44) that enforces HTTPS at two points: (1) `start_bridge()` coerces the URL before any network calls, and (2) `save_config()` normalizes at save time so the UI reflects the corrected value. Coerces `http://` → `https://` with a warning, adds `https://` to bare hostnames, rejects non-http(s) schemes. Basic Auth credentials now always travel over TLS.
 
-### 46. Nostr private key stored in plaintext config DB (MEDIUM)
-- **File:** `src-tauri/src/engine/nostr.rs` L35
-- **Bug:** `private_key_hex` is stored as cleartext JSON in the engine config DB, unlike Solana/EVM private keys which use the OS keychain vault.
-- **Fix:** Store the Nostr private key in the OS keychain (via `keytar` / macOS Keychain / Windows Credential Manager / Linux Secret Service), same as other wallet keys.
+### 46. ~~Nostr private key stored in plaintext config DB~~ (MEDIUM) ✅ FIXED
+- **File:** `src-tauri/src/engine/nostr.rs`
+- **Bug:** `private_key_hex` was stored as cleartext JSON in the engine config DB, unlike Solana/EVM private keys which use the OS keychain vault.
+- **Fix applied:** Moved private key to the OS keychain (macOS Keychain / Windows Credential Manager / Linux Secret Service) via the `keyring` crate (already a dependency). Added `keychain_set_private_key()`, `keychain_get_private_key()`, and `keychain_delete_private_key()` helpers using service `paw-nostr`. `save_config()` now stores the key in the keychain and saves an empty `private_key_hex` to the DB. `load_config()` hydrates the key from the keychain. Auto-migration: if the DB still contains a plaintext key (legacy), `load_config()` moves it to the keychain and clears it from the DB on first access. The private key never touches the config DB again.
 
 ### 47. All channels log message content at info level (LOW)
 - **File:** All 11 channel bridge `.rs` files

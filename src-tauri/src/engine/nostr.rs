@@ -4,7 +4,8 @@
 // The bot subscribes to mentions and DMs, then publishes signed reply events.
 //
 // Setup: Generate or import a Nostr keypair → configure relay URL(s) → enable.
-//        The private key (hex/nsec) is stored in paw's config DB.
+//        The private key is stored in the OS keychain (macOS Keychain /
+//        Windows Credential Manager / Linux Secret Service), never in the config DB.
 //
 // Protocol:
 //   - NIP-01: Basic event subscription + publishing
@@ -13,6 +14,7 @@
 //   - Events are signed with secp256k1 Schnorr (BIP-340) via the k256 crate
 //
 // Security:
+//   - Private key stored in OS keychain, never in the config DB
 //   - Allowlist by npub / hex pubkey
 //   - Optional pairing mode
 //   - All communication through relay TLS WebSockets
@@ -72,6 +74,45 @@ fn get_stop_signal() -> Arc<AtomicBool> {
 }
 
 const CONFIG_KEY: &str = "nostr_config";
+
+// ── Keychain Helpers ───────────────────────────────────────────────────
+
+const KEYRING_SERVICE: &str = "paw-nostr";
+const KEYRING_USER: &str = "private-key";
+
+/// Store the Nostr private key in the OS keychain.
+fn keychain_set_private_key(hex_key: &str) -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(|e| format!("Keyring init failed: {}", e))?;
+    entry.set_password(hex_key)
+        .map_err(|e| format!("Failed to store Nostr key in keychain: {}", e))?;
+    info!("[nostr] Private key stored in OS keychain");
+    Ok(())
+}
+
+/// Retrieve the Nostr private key from the OS keychain.
+fn keychain_get_private_key() -> Result<Option<String>, String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(|e| format!("Keyring init failed: {}", e))?;
+    match entry.get_password() {
+        Ok(key) if !key.is_empty() => Ok(Some(key)),
+        Ok(_) => Ok(None),
+        Err(keyring::Error::NoEntry) => Ok(None),
+        Err(e) => Err(format!("Keyring error: {}", e)),
+    }
+}
+
+/// Delete the Nostr private key from the OS keychain.
+#[allow(dead_code)]
+fn keychain_delete_private_key() -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
+        .map_err(|e| format!("Keyring init failed: {}", e))?;
+    match entry.delete_credential() {
+        Ok(()) => { info!("[nostr] Private key removed from OS keychain"); Ok(()) }
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("Keyring delete failed: {}", e)),
+    }
+}
 
 // ── Bridge Core ────────────────────────────────────────────────────────
 
@@ -443,11 +484,40 @@ fn hex_encode(bytes: &[u8]) -> String {
 // ── Config Persistence ─────────────────────────────────────────────────
 
 pub fn load_config(app_handle: &tauri::AppHandle) -> Result<NostrConfig, String> {
-    channels::load_channel_config(app_handle, CONFIG_KEY)
+    let mut config: NostrConfig = channels::load_channel_config(app_handle, CONFIG_KEY)?;
+
+    // Hydrate private key from OS keychain
+    if let Ok(Some(key)) = keychain_get_private_key() {
+        config.private_key_hex = key;
+    }
+
+    // Auto-migrate: if DB still has a plaintext key, move it to keychain
+    if !config.private_key_hex.is_empty() {
+        let mut db_config: NostrConfig = channels::load_channel_config(app_handle, CONFIG_KEY)?;
+        if !db_config.private_key_hex.is_empty() {
+            // Key is still in the DB — migrate it to keychain and clear from DB
+            if keychain_set_private_key(&db_config.private_key_hex).is_ok() {
+                db_config.private_key_hex = String::new();
+                let _ = channels::save_channel_config(app_handle, CONFIG_KEY, &db_config);
+                info!("[nostr] Migrated private key from config DB to OS keychain");
+            }
+        }
+    }
+
+    Ok(config)
 }
 
 pub fn save_config(app_handle: &tauri::AppHandle, config: &NostrConfig) -> Result<(), String> {
-    channels::save_channel_config(app_handle, CONFIG_KEY, config)
+    let mut config = config.clone();
+
+    // If a private key is being saved, store it in the OS keychain
+    // and clear it from the config struct before persisting to DB
+    if !config.private_key_hex.is_empty() {
+        keychain_set_private_key(&config.private_key_hex)?;
+        config.private_key_hex = String::new();
+    }
+
+    channels::save_channel_config(app_handle, CONFIG_KEY, &config)
 }
 
 pub fn approve_user(app_handle: &tauri::AppHandle, user_id: &str) -> Result<(), String> {
