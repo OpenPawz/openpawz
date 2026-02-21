@@ -8,16 +8,16 @@
 // Security:
 //   - Allowlist by IRC nick
 //   - Optional pairing mode
-//   - TLS encryption to server
+//   - TLS encryption to server (enabled by default, port 6697)
 
 use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{info, error};
+use log::{info, error, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncWriteExt, AsyncRead, AsyncWrite, BufReader};
 use tokio::net::TcpStream;
 
 // ── IRC Config ─────────────────────────────────────────────────────────
@@ -130,6 +130,10 @@ pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
 
 // ── IRC Connection Loop ────────────────────────────────────────────────
 
+/// Trait alias for TLS or plain TCP streams — both implement AsyncRead + AsyncWrite.
+trait IrcStream: AsyncRead + AsyncWrite + Unpin + Send {}
+impl<T: AsyncRead + AsyncWrite + Unpin + Send> IrcStream for T {}
+
 async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Result<(), String> {
     let stop = get_stop_signal();
     let addr = format!("{}:{}", config.server, config.port);
@@ -137,28 +141,52 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Result
     let tcp = TcpStream::connect(&addr).await
         .map_err(|e| format!("TCP connect to {} failed: {}", addr, e))?;
 
-    // IRC write helper — we'll use raw TCP (TLS handled via tokio-rustls if needed)
-    // For simplicity, we use the non-TLS path and note that production should add TLS
-    // The tokio-tungstenite crate we already have includes rustls, but for raw TCP
-    // we'll use plain text IRC for now (most dev IRC servers support it on port 6667)
+    // Wrap with TLS if enabled
+    let stream: Box<dyn IrcStream> = if config.tls {
+        info!("[irc] Upgrading to TLS for {}", addr);
 
-    let (reader, mut writer) = tokio::io::split(tcp);
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+        let tls_config = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(tls_config));
+
+        let server_name = rustls::pki_types::ServerName::try_from(config.server.clone())
+            .map_err(|e| format!("Invalid server name for TLS: {}", e))?;
+
+        let tls_stream = connector.connect(server_name, tcp).await
+            .map_err(|e| format!("TLS handshake with {} failed: {}", addr, e))?;
+
+        info!("[irc] TLS handshake complete for {}", addr);
+        Box::new(tls_stream)
+    } else {
+        warn!("[irc] Connecting WITHOUT TLS to {} — credentials will be sent in plaintext!", addr);
+        Box::new(tcp)
+    };
+
+    let (reader, writer) = tokio::io::split(stream);
     let mut lines = BufReader::new(reader).lines();
 
     // Register with the server
-    if let Some(ref pass) = config.password {
-        let cmd = format!("PASS {}\r\n", pass);
-        writer.write_all(cmd.as_bytes()).await.map_err(|e| format!("PASS: {}", e))?;
+    let write_handle = Arc::new(tokio::sync::Mutex::new(writer));
+    {
+        let mut w = write_handle.lock().await;
+        if let Some(ref pass) = config.password {
+            let cmd = format!("PASS {}\r\n", pass);
+            w.write_all(cmd.as_bytes()).await.map_err(|e| format!("PASS: {}", e))?;
+        }
+        let nick_cmd = format!("NICK {}\r\n", config.nick);
+        let user_cmd = format!("USER {} 0 * :Paw Agent\r\n", config.nick);
+        w.write_all(nick_cmd.as_bytes()).await.map_err(|e| format!("NICK: {}", e))?;
+        w.write_all(user_cmd.as_bytes()).await.map_err(|e| format!("USER: {}", e))?;
     }
-    let nick_cmd = format!("NICK {}\r\n", config.nick);
-    let user_cmd = format!("USER {} 0 * :Paw Agent\r\n", config.nick);
-    writer.write_all(nick_cmd.as_bytes()).await.map_err(|e| format!("NICK: {}", e))?;
-    writer.write_all(user_cmd.as_bytes()).await.map_err(|e| format!("USER: {}", e))?;
 
     info!("[irc] Sent NICK/USER to {}", addr);
 
     // Shared writer for sending replies
-    let write_handle = Arc::new(tokio::sync::Mutex::new(writer));
     let mut current_config = config.clone();
     let mut registered = false;
     let mut last_config_reload = std::time::Instant::now();

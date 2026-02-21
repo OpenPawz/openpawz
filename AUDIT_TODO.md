@@ -209,10 +209,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 
 Found during the encryption audit of all 11 channel bridges.
 
-### 42. IRC bridge ignores TLS config flag (CRITICAL)
+### ~~42. IRC bridge ignores TLS config flag (CRITICAL)~~ ✅ FIXED
 - **File:** `src-tauri/src/engine/irc.rs` L137-151
-- **Bug:** `NostrConfig` has a `tls: bool` field (defaults `true`), but `run_relay_loop()` always uses `TcpStream::connect()` — raw unencrypted TCP. The `PASS` command sends IRC credentials in plaintext.
-- **Fix:** When `tls: true`, wrap the `TcpStream` with `tokio-rustls` `TlsConnector` before reading/writing. Reject connections if `tls: true` but TLS handshake fails. Default port should be 6697 (TLS) not 6667.
+- **Bug:** `IrcConfig` has a `tls: bool` field (defaults `true`), but `run_irc_loop()` always uses `TcpStream::connect()` — raw unencrypted TCP. The `PASS` command sends IRC credentials in plaintext.
+- **Fix applied:** Added `tokio-rustls`, `rustls`, and `webpki-roots` as direct dependencies. When `tls: true`, the `TcpStream` is wrapped with `tokio_rustls::TlsConnector` using Mozilla's CA root store (`webpki-roots`). TLS handshake failure is a hard error — no silent fallback. When `tls: false`, a warning is logged. Used `Box<dyn IrcStream>` trait object so the rest of the code is stream-type-agnostic. Default port was already 6697 (TLS).
 
 ### 43. Webchat bridge has no TLS and exposes token (CRITICAL)
 - **File:** `src-tauri/src/engine/webchat.rs` L159, L466, L56
