@@ -130,10 +130,11 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Fix:** Clear intervals when view unmounts.
 - Audited all 4 `setInterval` usages. Orchestrator message-poll (3s) and settings override-banner (30s) were view-specific but never cleared on navigation. Added `stopMessagePoll()` to orchestrator/index.ts and `stopOverrideBannerInterval()` to settings-main/index.ts. Wired both into `switchView()` in router.ts so they clear when navigating away. Settings usage-refresh was already handled. Tasks cron timer is intentionally global (runs cron scheduling regardless of active view) — left as-is.
 
-### 28. Hardcoded model prices
+### 28. ~~Hardcoded model prices~~ ✅ FIXED
 - **File:** `src/state/index.ts` L30-80
 - Model context sizes and per-token costs will become stale.
 - **Fix:** Fetch from config, backend, or a remote source.
+- Added `model_pricing` SQLite table (migration v2) with columns: `model_key`, `context_size`, `cost_input`, `cost_output`. Added CRUD functions (`listModelPricing`, `upsertModelPricing`, `deleteModelPricing`) in `db.ts`. Refactored `MODEL_CONTEXT_SIZES` and `MODEL_COST_PER_TOKEN` from immutable `const` to mutable `let` maps initialized from built-in defaults. New `applyModelPricingOverrides()` merges DB rows on top of defaults. Called at app init in `main.ts` after DB is ready. Users/admins can now update model pricing via DB without code changes; built-in defaults remain as fallback.
 
 ### 29. `INSERT OR REPLACE` resets created_at
 - **File:** `src/db.ts` L293-311

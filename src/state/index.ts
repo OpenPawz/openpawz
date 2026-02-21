@@ -3,6 +3,7 @@
 // chat_controller, event_bus, channels, and main without circular deps.
 
 import type { AppConfig, Session, ToolCall } from '../types';
+import type { ModelPricingRow } from '../db';
 
 // ── Extended message type ──────────────────────────────────────────────────
 export interface ChatAttachmentLocal {
@@ -22,9 +23,11 @@ export interface MessageWithAttachments {
 }
 
 // ── Token metering constants ───────────────────────────────────────────────
+// Defaults are baked-in as fallbacks. DB overrides (model_pricing table)
+// are merged on top at startup via loadModelPricing().
 export const COMPACTION_WARN_THRESHOLD = 0.80;
 
-export const MODEL_CONTEXT_SIZES: Record<string, number> = {
+const DEFAULT_CONTEXT_SIZES: Record<string, number> = {
   // Gemini
   'gemini-2.5-pro':    1_048_576,
   'gemini-2.5-flash':  1_048_576,
@@ -60,7 +63,7 @@ export const MODEL_CONTEXT_SIZES: Record<string, number> = {
   'llama-4':           128_000,
 };
 
-export const MODEL_COST_PER_TOKEN: Record<string, { input: number; output: number }> = {
+const DEFAULT_COST_PER_TOKEN: Record<string, { input: number; output: number }> = {
   'gpt-4o':           { input: 2.5e-6,  output: 10e-6 },
   'gpt-4o-mini':      { input: 0.15e-6, output: 0.6e-6 },
   'gpt-4-turbo':      { input: 10e-6,   output: 30e-6 },
@@ -75,6 +78,28 @@ export const MODEL_COST_PER_TOKEN: Record<string, { input: number; output: numbe
   'claude-3-opus':    { input: 15e-6,   output: 75e-6 },
   'default':          { input: 3e-6,    output: 15e-6 },
 };
+
+// Mutable maps — start with defaults, merged with DB overrides at init
+export let MODEL_CONTEXT_SIZES: Record<string, number> = { ...DEFAULT_CONTEXT_SIZES };
+export let MODEL_COST_PER_TOKEN: Record<string, { input: number; output: number }> = { ...DEFAULT_COST_PER_TOKEN };
+
+/**
+ * Merge DB model_pricing overrides on top of built-in defaults.
+ * Call once after DB init. Safe to call multiple times (idempotent).
+ */
+export function applyModelPricingOverrides(rows: ModelPricingRow[]): void {
+  // Reset to defaults then layer overrides
+  MODEL_CONTEXT_SIZES  = { ...DEFAULT_CONTEXT_SIZES };
+  MODEL_COST_PER_TOKEN = { ...DEFAULT_COST_PER_TOKEN };
+  for (const row of rows) {
+    if (row.context_size != null) {
+      MODEL_CONTEXT_SIZES[row.model_key] = row.context_size;
+    }
+    if (row.cost_input != null && row.cost_output != null) {
+      MODEL_COST_PER_TOKEN[row.model_key] = { input: row.cost_input, output: row.cost_output };
+    }
+  }
+}
 
 // ── Per-session stream state ───────────────────────────────────────────────
 export interface StreamState {

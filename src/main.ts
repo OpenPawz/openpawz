@@ -1,10 +1,10 @@
 // Paw — Application Entry Point
 import { isEngineMode, setEngineMode, startEngineBridge } from './engine-bridge';
 import { pawEngine } from './engine';
-import { initDb, initDbEncryption } from './db';
+import { initDb, initDbEncryption, listModelPricing } from './db';
 import { initSecuritySettings } from './security';
 import { installErrorBoundary, setErrorHandler } from './error-boundary';
-import { appState } from './state/index';
+import { appState, applyModelPricingOverrides } from './state/index';
 import { escHtml, populateModelSelect, promptModal, icon } from './components/helpers';
 import { showToast } from './components/toast';
 import { initTheme } from './components/molecules/theme';
@@ -210,6 +210,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       : false;
     if (dbReady) {
       await initSecuritySettings().catch(e => console.warn('[main] Security settings init failed:', e));
+      // Load model pricing overrides from DB
+      try {
+        const pricingRows = await listModelPricing();
+        if (pricingRows.length > 0) {
+          applyModelPricingOverrides(pricingRows);
+          console.debug(`[main] Loaded ${pricingRows.length} model pricing override(s) from DB`);
+        }
+      } catch (e) {
+        console.warn('[main] Model pricing load failed:', e);
+      }
     }
 
     // Show persistent warning banner when encryption is unavailable

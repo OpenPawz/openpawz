@@ -257,12 +257,25 @@ const MIGRATIONS: Migration[] = [
   },
   // ── Future migrations go here ──
   // {
-  //   version: 2,
+  //   version: 3,
   //   description: 'Add foo column to bar table',
   //   statements: [
   //     `ALTER TABLE bar ADD COLUMN foo TEXT DEFAULT ''`,
   //   ],
   // },
+  {
+    version: 2,
+    description: 'Model pricing overrides table',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS model_pricing (
+        model_key TEXT PRIMARY KEY,
+        context_size INTEGER,
+        cost_input REAL,
+        cost_output REAL,
+        updated_at TEXT DEFAULT (datetime('now'))
+      )`,
+    ],
+  },
 ];
 
 /** Seed default agent modes if the table is empty */
@@ -436,6 +449,39 @@ export async function saveDoc(doc: Partial<ContentDoc> & { id: string; title: st
 export async function deleteDoc(id: string): Promise<void> {
   if (!db) return;
   await db.execute('DELETE FROM content_documents WHERE id = ?', [id]);
+}
+
+// ── Model Pricing CRUD ────────────────────────────────────────────────────
+
+export interface ModelPricingRow {
+  model_key: string;
+  context_size: number | null;
+  cost_input: number | null;
+  cost_output: number | null;
+}
+
+export async function listModelPricing(): Promise<ModelPricingRow[]> {
+  if (!db) return [];
+  return db.select<ModelPricingRow[]>('SELECT model_key, context_size, cost_input, cost_output FROM model_pricing ORDER BY model_key');
+}
+
+export async function upsertModelPricing(row: ModelPricingRow): Promise<void> {
+  if (!db) return;
+  await db.execute(
+    `INSERT INTO model_pricing (model_key, context_size, cost_input, cost_output, updated_at)
+     VALUES (?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(model_key) DO UPDATE SET
+       context_size = excluded.context_size,
+       cost_input   = excluded.cost_input,
+       cost_output  = excluded.cost_output,
+       updated_at   = datetime('now')`,
+    [row.model_key, row.context_size, row.cost_input, row.cost_output]
+  );
+}
+
+export async function deleteModelPricing(modelKey: string): Promise<void> {
+  if (!db) return;
+  await db.execute('DELETE FROM model_pricing WHERE model_key = ?', [modelKey]);
 }
 
 // ── Project Files ──────────────────────────────────────────────────────────
