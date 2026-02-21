@@ -5,7 +5,6 @@ use crate::atoms::types::*;
 use crate::engine::state::EngineState;
 use crate::engine::sandbox;
 use log::{info, warn};
-use std::process::Command as ProcessCommand;
 use tauri::Manager;
 use crate::atoms::error::EngineResult;
 
@@ -21,6 +20,10 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     "command": {
                         "type": "string",
                         "description": "The shell command to execute"
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Timeout in seconds (default: 120, max: 600)"
                     }
                 },
                 "required": ["command"]
@@ -83,17 +86,36 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, a
     // Set working directory to agent's workspace
     let workspace = super::ensure_workspace(agent_id)?;
 
-    // Run via sh -c (Unix) or cmd /C (Windows)
-    let output = if cfg!(target_os = "windows") {
-        ProcessCommand::new("cmd")
-            .args(["/C", command])
+    // Parse optional timeout (default 120s, max 600s)
+    let timeout_secs = args["timeout"].as_u64().unwrap_or(120).min(600);
+
+    // Run via sh -c (Unix) or cmd /C (Windows) with timeout
+    use tokio::process::Command as TokioCommand;
+    use std::time::Duration;
+
+    let mut child = if cfg!(target_os = "windows") {
+        TokioCommand::new("cmd")
+            .args(["C", command])
             .current_dir(&workspace)
-            .output()
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
     } else {
-        ProcessCommand::new("sh")
+        TokioCommand::new("sh")
             .args(["-c", command])
             .current_dir(&workspace)
-            .output()
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+    }.map_err(|e| crate::atoms::error::EngineError::Other(format!("Failed to spawn process: {}", e)))?;
+
+    let output = match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await {
+        Ok(result) => result,
+        Err(_) => {
+            // Timeout — kill the process
+            let _ = child.kill().await;
+            return Err(format!("exec: command timed out after {}s", timeout_secs).into());
+        }
     };
 
     match output {

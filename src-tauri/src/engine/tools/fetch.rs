@@ -70,31 +70,67 @@ async fn execute_fetch(args: &serde_json::Value, app_handle: &tauri::AppHandle) 
         .timeout(Duration::from_secs(30))
         .build()?;
 
-    let mut request = match method.to_uppercase().as_str() {
-        "POST"   => client.post(url),
-        "PUT"    => client.put(url),
-        "PATCH"  => client.patch(url),
-        "DELETE" => client.delete(url),
-        "HEAD"   => client.head(url),
-        _        => client.get(url),
-    };
+    // ── Retry loop for transient errors ──────────────────────────────
+    use crate::engine::http::{MAX_RETRIES, is_retryable_status, retry_delay, parse_retry_after};
 
-    if let Some(headers) = args["headers"].as_object() {
-        for (key, value) in headers {
-            if let Some(v) = value.as_str() {
-                request = request.header(key.as_str(), v);
+    let mut last_err: Option<String> = None;
+    let mut response_result: Option<(u16, String)> = None;
+
+    for attempt in 0..=MAX_RETRIES {
+        // Rebuild the request each attempt (RequestBuilder is not Clone)
+        let mut req = match method.to_uppercase().as_str() {
+            "POST"   => client.post(url),
+            "PUT"    => client.put(url),
+            "PATCH"  => client.patch(url),
+            "DELETE" => client.delete(url),
+            "HEAD"   => client.head(url),
+            _        => client.get(url),
+        };
+        if let Some(headers) = args["headers"].as_object() {
+            for (key, value) in headers {
+                if let Some(v) = value.as_str() {
+                    req = req.header(key.as_str(), v);
+                }
+            }
+        }
+        if let Some(body) = args["body"].as_str() {
+            req = req.body(body.to_string());
+        }
+
+        match req.send().await {
+            Ok(resp) => {
+                let status = resp.status().as_u16();
+                let retry_after = resp.headers()
+                    .get("retry-after")
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| parse_retry_after(v));
+
+                if is_retryable_status(status) && attempt < MAX_RETRIES {
+                    log::warn!("[fetch] Retryable status {} on attempt {}, backing off", status, attempt + 1);
+                    retry_delay(attempt, retry_after).await;
+                    continue;
+                }
+
+                let body = resp.text().await.unwrap_or_else(|e| format!("(body read error: {})", e));
+                response_result = Some((status, body));
+                break;
+            }
+            Err(e) => {
+                if attempt < MAX_RETRIES && (e.is_timeout() || e.is_connect()) {
+                    log::warn!("[fetch] Transport error on attempt {}: {} — retrying", attempt + 1, e);
+                    retry_delay(attempt, None).await;
+                    continue;
+                }
+                last_err = Some(e.to_string());
+                break;
             }
         }
     }
 
-    if let Some(body) = args["body"].as_str() {
-        request = request.body(body.to_string());
-    }
-
-    let response = request.send().await?;
-
-    let status = response.status().as_u16();
-    let body = response.text().await?;
+    let (status, body) = match response_result {
+        Some(r) => r,
+        None => return Err(format!("fetch failed after retries: {}", last_err.unwrap_or_default()).into()),
+    };
 
     const MAX_BODY: usize = 50_000;
     let truncated = if body.len() > MAX_BODY {

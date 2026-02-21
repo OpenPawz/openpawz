@@ -279,8 +279,20 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
     info!("[telegram] Starting bridge with policy={}", config.dm_policy);
 
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = run_polling_loop(app_handle, config).await {
-            error!("[telegram] Bridge crashed: {}", e);
+        let mut reconnect_attempt: u32 = 0;
+        loop {
+            match run_polling_loop(app_handle.clone(), config.clone()).await {
+                Ok(()) => break,
+                Err(e) => {
+                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    error!("[telegram] Bridge error: {} — reconnecting", e);
+                    let delay = crate::engine::http::reconnect_delay(reconnect_attempt).await;
+                    warn!("[telegram] Reconnecting in {}ms (attempt {})", delay.as_millis(), reconnect_attempt + 1);
+                    reconnect_attempt += 1;
+                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                }
+            }
+            reconnect_attempt = 0;
         }
         BRIDGE_RUNNING.store(false, Ordering::Relaxed);
         info!("[telegram] Bridge stopped");

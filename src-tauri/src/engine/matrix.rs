@@ -129,8 +129,20 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
     info!("[matrix] Starting E2EE bridge to {}", config.homeserver);
 
     tauri::async_runtime::spawn(async move {
-        if let Err(e) = run_sdk_bridge(app_handle, config).await {
-            error!("[matrix] Bridge crashed: {}", e);
+        let mut reconnect_attempt: u32 = 0;
+        loop {
+            match run_sdk_bridge(app_handle.clone(), config.clone()).await {
+                Ok(()) => break, // Clean shutdown
+                Err(e) => {
+                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    error!("[matrix] Bridge error: {} — reconnecting", e);
+                    let delay = crate::engine::http::reconnect_delay(reconnect_attempt).await;
+                    warn!("[matrix] Reconnecting in {}ms (attempt {})", delay.as_millis(), reconnect_attempt + 1);
+                    reconnect_attempt += 1;
+                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                }
+            }
+            reconnect_attempt = 0;
         }
         BRIDGE_RUNNING.store(false, Ordering::Relaxed);
         info!("[matrix] Bridge stopped");
@@ -256,6 +268,7 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
     // ── Long-polling sync loop ────────────────────────────────────────
     // We use sync_once in a loop so we can check the stop signal.
     let mut current_token: Option<String> = Some(initial_response.next_batch);
+    let mut sync_errors: u32 = 0;
     loop {
         if stop.load(Ordering::Relaxed) { break; }
 
@@ -268,10 +281,13 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
         match sdk_client.sync_once(ss).await {
             Ok(response) => {
                 current_token = Some(response.next_batch);
+                sync_errors = 0;
             }
             Err(e) => {
-                warn!("[matrix] Sync error: {} — retrying in 5s", e);
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                warn!("[matrix] Sync error: {} — backing off (attempt {})", e, sync_errors + 1);
+                let delay = crate::engine::http::reconnect_delay(sync_errors).await;
+                debug!("[matrix] Next sync retry in {}ms", delay.as_millis());
+                sync_errors += 1;
             }
         }
     }

@@ -57,7 +57,7 @@ impl AnyProvider {
         self.0
             .chat_stream(messages, tools, model, temperature)
             .await
-            
+            .map_err(|e| crate::atoms::error::EngineError::Other(e.to_string()))
     }
 
     /// The ProviderKind discriminant of the underlying provider.

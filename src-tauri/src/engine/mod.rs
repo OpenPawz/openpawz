@@ -3,6 +3,7 @@
 // for zero-network-hop communication.
 
 pub mod types;
+pub mod http;
 pub mod state;
 pub mod tools;
 pub mod pricing;

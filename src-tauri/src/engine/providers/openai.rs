@@ -15,52 +15,19 @@ use serde_json::{json, Value};
 use std::time::Duration;
 
 // ── Shared retry utilities ─────────────────────────────────────────────────
-// pub(super) so AnthropicProvider and GoogleProvider in the parent mod.rs
-// can use them without duplication.
+// Re-export from engine::http so existing callers (anthropic, google) work
+// with `use super::openai::{MAX_RETRIES, ...}` unchanged.
 
-pub(crate) const MAX_RETRIES: u32 = 3;
-const INITIAL_RETRY_DELAY_MS: u64 = 1000;
+pub(crate) use crate::engine::http::{
+    MAX_RETRIES, is_retryable_status, retry_delay, parse_retry_after,
+};
 
-/// Check if an HTTP status code should trigger a retry.
-pub(crate) fn is_retryable_status(status: u16) -> bool {
-    matches!(status, 429 | 500 | 502 | 503 | 529)
-}
+// Import the circuit breaker for provider-level use
+use crate::engine::http::CircuitBreaker;
+use std::sync::LazyLock;
 
-/// Sleep with exponential backoff + jitter.
-/// Respects Retry-After header if the provider sent one.
-pub(crate) async fn retry_delay(attempt: u32, retry_after_secs: Option<u64>) -> Duration {
-    let base_ms = INITIAL_RETRY_DELAY_MS * 2u64.pow(attempt);
-    let delay_ms = if let Some(secs) = retry_after_secs {
-        (secs.min(60) * 1000).max(base_ms)
-    } else {
-        base_ms
-    };
-    // ±25% jitter to prevent thundering herd
-    let jitter = (delay_ms / 4) as i64;
-    let jittered = delay_ms as i64 + (rand_jitter() % (2 * jitter + 1)) - jitter;
-    let delay = Duration::from_millis(jittered.max(100) as u64);
-    tokio::time::sleep(delay).await;
-    delay
-}
-
-/// Simple deterministic jitter source (no extra crate needed).
-fn rand_jitter() -> i64 {
-    use std::time::SystemTime;
-use crate::atoms::error::EngineResult;
-    let nanos = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .subsec_nanos();
-    (nanos % 1000) as i64
-}
-
-/// Parse Retry-After header value (integer seconds).
-pub(crate) fn parse_retry_after(header_value: &str) -> Option<u64> {
-    if let Ok(secs) = header_value.trim().parse::<u64>() {
-        return Some(secs);
-    }
-    None // HTTP-date parsing not implemented — fallback to backoff
-}
+/// Circuit breaker shared across all OpenAI-compatible requests.
+static OPENAI_CIRCUIT: LazyLock<CircuitBreaker> = LazyLock::new(|| CircuitBreaker::new(5, 60));
 
 // ── OpenAI provider struct ─────────────────────────────────────────────────
 
@@ -257,6 +224,11 @@ impl AiProvider for OpenAiProvider {
 
         info!("[engine] OpenAI request to {} model={}", url, model);
 
+        // Circuit breaker: reject immediately if too many recent failures
+        if let Err(msg) = OPENAI_CIRCUIT.check() {
+            return Err(ProviderError::Transport(msg));
+        }
+
         // Retry loop for transient errors
         let mut last_error = String::new();
         let mut last_status: u16 = 0;
@@ -281,6 +253,7 @@ impl AiProvider for OpenAiProvider {
             let response = match req.json(&body).send().await {
                 Ok(r) => r,
                 Err(e) => {
+                    OPENAI_CIRCUIT.record_failure();
                     last_error = format!("HTTP request failed: {}", e);
                     last_status = 0;
                     if attempt < MAX_RETRIES { continue; }
@@ -301,6 +274,8 @@ impl AiProvider for OpenAiProvider {
                     crate::engine::types::truncate_utf8(&body_text, 200));
                 error!("[engine] OpenAI error {}: {}", status,
                     crate::engine::types::truncate_utf8(&body_text, 500));
+
+                OPENAI_CIRCUIT.record_failure();
 
                 // Auth errors are never retried
                 if status == 401 || status == 403 {
@@ -341,12 +316,14 @@ impl AiProvider for OpenAiProvider {
                         if let Some(chunk) = Self::parse_sse_chunk(data) {
                             chunks.push(chunk);
                         } else if data == "[DONE]" {
+                            OPENAI_CIRCUIT.record_success();
                             return Ok(chunks);
                         }
                     }
                 }
             }
 
+            OPENAI_CIRCUIT.record_success();
             return Ok(chunks);
         }
 
