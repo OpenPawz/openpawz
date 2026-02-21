@@ -22,7 +22,7 @@ import { openMailAccountSetup } from './setup';
 // ── Module state refs (set by index.ts configure) ──────────────────────────
 
 let _mailFolder = 'inbox';
-let _mailHimalayaReady = false;
+const _mailHimalayaReady = false;
 let _mailMessages: MailMessage[] = [];
 let _mailSelectedId: string | null = null;
 let _mailAccounts: MailAccount[] = [];
@@ -261,12 +261,12 @@ export async function renderCredentialActivityLog() {
         ${entries.map(e => {
           const icon = !e.was_allowed ? 'X' : e.action === 'send' ? 'S' : e.action === 'read' ? 'R' : e.action === 'delete' ? 'D' : e.action === 'manage' ? 'F' : '--';
           const cls = !e.was_allowed ? 'vault-log-blocked' : '';
-          const time = e.timestamp ? new Date(e.timestamp + 'Z').toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+          const time = e.timestamp ? new Date(`${e.timestamp  }Z`).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
           return `<div class="vault-log-entry ${cls}">
             <span class="vault-log-icon">${icon}</span>
             <div class="vault-log-body">
               <div class="vault-log-action">${escHtml(e.detail ?? e.action)}</div>
-              <div class="vault-log-time">${time}${e.tool_name ? ' · ' + escHtml(e.tool_name) : ''}</div>
+              <div class="vault-log-time">${time}${e.tool_name ? ` · ${  escHtml(e.tool_name)}` : ''}</div>
             </div>
           </div>`;
         }).join('')}
@@ -497,7 +497,7 @@ export function openComposeModal(mode: 'reply' | 'forward', msg: { from: string;
       <div class="mail-compose-body">
         <input type="text" class="mail-compose-to" placeholder="To" value="${mode === 'reply' ? escAttr(msg.from) : ''}">
         <input type="text" class="mail-compose-subject" placeholder="Subject" value="${mode === 'reply' ? 'Re: ' : 'Fwd: '}${escAttr(msg.subject)}">
-        <textarea class="mail-compose-content" placeholder="Write your message...">${mode === 'forward' ? '\n\n--- Forwarded ---\n' + (msg.body || '') : ''}</textarea>
+        <textarea class="mail-compose-content" placeholder="Write your message...">${mode === 'forward' ? `\n\n--- Forwarded ---\n${  msg.body || ''}` : ''}</textarea>
       </div>
       <div class="mail-compose-footer">
         <button class="btn btn-ghost mail-compose-cancel">Cancel</button>

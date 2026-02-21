@@ -1,6 +1,6 @@
 // Orchestrator View — Orchestration, state, exports
 
-import { EngineProject } from '../../engine';
+import type { EngineProject } from '../../engine';
 import { listen } from '@tauri-apps/api/event';
 import {
   initMoleculesState,

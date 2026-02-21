@@ -62,9 +62,9 @@ export type FormValidationResult =
  * Caller handles DOM feedback (border highlights, focus, etc.).
  */
 export function validateMemoryForm(inputs: MemoryFormInputs): FormValidationResult {
-  let apiKey = inputs.apiKey;
+  const apiKey = inputs.apiKey;
   const provider = inputs.provider;
-  let baseUrl = provider === 'azure' ? inputs.azureBaseUrl : inputs.openaiBaseUrl;
+  const baseUrl = provider === 'azure' ? inputs.azureBaseUrl : inputs.openaiBaseUrl;
   const modelName = inputs.modelName;
   const apiVersion = inputs.apiVersion;
 

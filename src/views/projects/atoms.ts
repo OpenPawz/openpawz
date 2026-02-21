@@ -87,7 +87,7 @@ export function isOutOfProjectScope(filePath: string, activeProjectRoot: string 
   const normRoot = activeProjectRoot.replace(/\\/g, '/').replace(/\/+$/, '');
 
   // Must start with project root
-  if (!normFile.startsWith(normRoot + '/') && normFile !== normRoot) {
+  if (!normFile.startsWith(`${normRoot  }/`) && normFile !== normRoot) {
     return `Path "${filePath}" is outside the active project scope "${activeProjectRoot}"`;
   }
 

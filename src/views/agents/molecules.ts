@@ -18,7 +18,7 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
   console.log('[agents] grid element:', grid);
   if (!grid) return;
 
-  grid.innerHTML = agents.map(agent => `
+  grid.innerHTML = `${agents.map(agent => `
     <div class="agent-card${agent.source === 'backend' ? ' agent-card-backend' : ''}" data-id="${agent.id}">
       <div class="agent-card-header">
         <div class="agent-avatar" style="background:${agent.color}">${spriteAvatar(agent.avatar, 48)}</div>
@@ -42,7 +42,7 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
         <button class="btn btn-ghost btn-sm agent-edit-btn">Edit</button>
       </div>
     </div>
-  `).join('') + `
+  `).join('')  }
     <div class="agent-card agent-card-new" id="agent-card-new">
       <div class="agent-card-new-icon">+</div>
       <div class="agent-card-new-label">Create Agent</div>

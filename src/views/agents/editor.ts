@@ -192,7 +192,7 @@ export function openAgentEditor(agentId: string, cbs: EditorCallbacks) {
   document.body.appendChild(modal);
 
   const personality = { ...agent.personality };
-  let boundaries = [...agent.boundaries];
+  const boundaries = [...agent.boundaries];
   let selectedAvatar = agent.avatar;
 
   // Load community skills for this agent

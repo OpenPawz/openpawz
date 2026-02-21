@@ -1,6 +1,7 @@
 // Orchestrator View — DOM rendering + IPC
 
-import { pawEngine, EngineProject, EngineProjectAgent, EngineProjectMessage } from '../../engine';
+import type { EngineProject, EngineProjectAgent, EngineProjectMessage } from '../../engine';
+import { pawEngine } from '../../engine';
 import { showToast } from '../../components/toast';
 import { populateModelSelect, escHtml, formatTimeAgo } from '../../components/helpers';
 import { specialtyIcon, messageKindLabel, formatTime } from './atoms';

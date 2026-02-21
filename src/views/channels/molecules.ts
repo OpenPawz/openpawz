@@ -302,7 +302,7 @@ export async function loadChannels() {
                     banner.innerHTML = `<span class="wa-spinner"></span> Connecting to WhatsApp...`;
                     break;
                   case 'qr_code':
-                    banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 4px;font-weight:600">Scan with the agent's phone — not your personal one</p><p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">The number you scan becomes the agent. Use a separate number.</p>${qr ? `<img src="${qr.startsWith('data:') ? qr : 'data:image/png;base64,' + qr}" alt="WhatsApp QR code" class="wa-qr-image" />` : ''}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
+                    banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 4px;font-weight:600">Scan with the agent's phone — not your personal one</p><p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">The number you scan becomes the agent. Use a separate number.</p>${qr ? `<img src="${qr.startsWith('data:') ? qr : `data:image/png;base64,${  qr}`}" alt="WhatsApp QR code" class="wa-qr-image" />` : ''}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
                     banner.className = 'wa-status-banner wa-status-qr';
                     break;
                   case 'connected':

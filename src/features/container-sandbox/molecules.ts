@@ -2,9 +2,10 @@
 // Composed functions with side effects: Tauri IPC, localStorage.
 // Builds on atoms for sandbox config management.
 
-import {
+import type {
   SandboxConfig,
-  SandboxStatus,
+  SandboxStatus} from './atoms';
+import {
   DEFAULT_SANDBOX_CONFIG,
   SANDBOX_PRESETS,
   validateSandboxConfig,

@@ -1,6 +1,7 @@
 // Settings: Voice — DOM rendering, sliders, TTS test, talk mode
 
-import { pawEngine, TtsConfig } from '../../engine';
+import type { TtsConfig } from '../../engine';
+import { pawEngine } from '../../engine';
 import { showToast } from '../../components/toast';
 import { $ } from '../../components/helpers';
 import { LANGUAGES, voicesForProvider, providerHint } from './atoms';
@@ -189,7 +190,7 @@ function bindFormEvents() {
       await pawEngine.ttsSetConfig(config);
       showToast('Voice settings saved', 'success');
     } catch (e) {
-      showToast('Failed to save: ' + (e instanceof Error ? e.message : e), 'error');
+      showToast(`Failed to save: ${  e instanceof Error ? e.message : e}`, 'error');
     }
   });
 
@@ -211,7 +212,7 @@ function bindFormEvents() {
       audio.play();
       btn.innerHTML = `<span class="ms">volume_up</span> Test Voice`;
     } catch (e) {
-      showToast('TTS test failed: ' + (e instanceof Error ? e.message : e), 'error');
+      showToast(`TTS test failed: ${  e instanceof Error ? e.message : e}`, 'error');
       btn.innerHTML = `<span class="ms">volume_up</span> Test Voice`;
     } finally {
       btn.disabled = false;

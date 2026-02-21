@@ -86,7 +86,7 @@ export function renderCommunitySection(installed: CommunitySkill[]): string {
 
 function renderCommunityCard(s: CommunitySkill): string {
   const preview = s.instructions.length > 200
-    ? s.instructions.substring(0, 200) + '...'
+    ? `${s.instructions.substring(0, 200)  }...`
     : s.instructions;
 
   const agentLabel = (!s.agent_ids || s.agent_ids.length === 0)

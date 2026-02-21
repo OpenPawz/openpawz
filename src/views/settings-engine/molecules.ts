@@ -128,14 +128,14 @@ async function renderProvidersList(): Promise<void> {
       return;
     }
 
-    list.innerHTML = `<label class="form-label" style="margin-top:12px">Configured Providers</label>` +
+    list.innerHTML = `<label class="form-label" style="margin-top:12px">Configured Providers</label>${ 
       providers.map(p => {
         const label = ID_LABELS[p.id] || KIND_LABELS[p.kind] || p.id;
         const isDefault = p.id === config.default_provider;
         return `<div class="engine-provider-row" style="display:flex;align-items:center;gap:8px;padding:6px 10px;margin:4px 0;background:var(--bg-secondary);border-radius:6px;font-size:13px">
           <span style="flex:1">
             <strong>${escHtml(label)}</strong>
-            <span style="color:var(--text-muted);margin-left:6px">${escHtml(p.default_model ?? '')}${p.base_url ? ' · ' + escHtml(p.base_url) : ''}</span>
+            <span style="color:var(--text-muted);margin-left:6px">${escHtml(p.default_model ?? '')}${p.base_url ? ` · ${  escHtml(p.base_url)}` : ''}</span>
             ${isDefault ? '<span style="color:var(--accent);margin-left:6px">★ default</span>' : ''}
           </span>
           <span style="color:var(--text-muted)">${p.api_key ? '<span class="ms ms-sm">key</span>' : p.kind === 'ollama' ? '<span class="ms ms-sm">home</span>' : '<span class="ms ms-sm">warning</span>'}</span>
@@ -143,7 +143,7 @@ async function renderProvidersList(): Promise<void> {
           <button class="btn btn-ghost btn-sm engine-edit-provider" data-id="${escHtml(p.id)}" title="Edit" style="padding:2px 6px">✎</button>
           <button class="btn btn-ghost btn-sm engine-remove-provider" data-id="${escHtml(p.id)}" title="Remove" style="padding:2px 6px;color:var(--text-danger,red)">✕</button>
         </div>`;
-      }).join('');
+      }).join('')}`;
 
     // Wire remove buttons
     list.querySelectorAll('.engine-remove-provider').forEach(btn => {

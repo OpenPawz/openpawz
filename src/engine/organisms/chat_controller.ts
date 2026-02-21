@@ -29,7 +29,7 @@ function generateSessionLabel(message: string): string {
   // Collapse whitespace
   label = label.replace(/\s+/g, ' ');
   if (label.length > 50) {
-    label = label.slice(0, 47).replace(/\s+\S*$/, '') + '…';
+    label = `${label.slice(0, 47).replace(/\s+\S*$/, '')  }…`;
   }
   return label || 'New chat';
 }
@@ -696,7 +696,7 @@ export function renderAttachmentPreview(): void {
     meta.className = 'attachment-chip-meta';
     const nameEl = document.createElement('span');
     nameEl.className = 'attachment-chip-name';
-    nameEl.textContent = file.name.length > 24 ? file.name.slice(0, 21) + '...' : file.name;
+    nameEl.textContent = file.name.length > 24 ? `${file.name.slice(0, 21)  }...` : file.name;
     nameEl.title = file.name;
     meta.appendChild(nameEl);
     const sizeEl = document.createElement('span');
@@ -867,7 +867,7 @@ export async function sendMessage(): Promise<void> {
     }, 600_000);
   });
 
-  let chatOpts: {
+  const chatOpts: {
     model?: string;
     thinkingLevel?: string;
     temperature?: number;
@@ -977,7 +977,7 @@ export function initChatListeners(): void {
         if (selected) {
           e.preventDefault();
           const cmd = selected.dataset.command ?? '';
-          if (chatInput) { chatInput.value = cmd + ' '; chatInput.focus(); }
+          if (chatInput) { chatInput.value = `${cmd  } `; chatInput.focus(); }
           popup.style.display = 'none';
           return;
         }
@@ -998,7 +998,7 @@ export function initChatListeners(): void {
   chatInput?.addEventListener('input', () => {
     if (!chatInput) return;
     chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    chatInput.style.height = `${Math.min(chatInput.scrollHeight, 120)  }px`;
     const val = chatInput.value;
     let popup = document.getElementById('slash-autocomplete') as HTMLElement | null;
     if (val.startsWith('/') && !val.includes(' ')) {
@@ -1020,7 +1020,7 @@ export function initChatListeners(): void {
         popup.querySelectorAll('.slash-ac-item').forEach(item => {
           item.addEventListener('click', () => {
             const cmd = (item as HTMLElement).dataset.command ?? '';
-            if (chatInput) { chatInput.value = cmd + ' '; chatInput.focus(); }
+            if (chatInput) { chatInput.value = `${cmd  } `; chatInput.focus(); }
             if (popup) popup.style.display = 'none';
           });
         });
@@ -1194,7 +1194,7 @@ async function startChatTalk() {
           if (chatInput) {
             chatInput.value = transcript;
             chatInput.style.height = 'auto';
-            chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+            chatInput.style.height = `${Math.min(chatInput.scrollHeight, 120)  }px`;
             chatInput.focus();
           }
         } else {
@@ -1202,7 +1202,7 @@ async function startChatTalk() {
         }
       } catch (e) {
         console.error('[talk] Transcription error:', e);
-        showToast('Transcription failed: ' + (e instanceof Error ? e.message : e), 'error');
+        showToast(`Transcription failed: ${  e instanceof Error ? e.message : e}`, 'error');
       } finally {
         btn.innerHTML = `<span class="ms">mic</span>`;
         btn.title = 'Talk Mode — hold to speak';

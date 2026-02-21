@@ -188,7 +188,7 @@ export function renderProjectsSidebar(): void {
           <span class="ms" style="font-size:14px">close</span>
         </button>
       </div>
-      <div class="projects-folder-path">${escHtml(shortenPath(p.path))}${branchHint ? ' · ' + branchHint : ''}</div>
+      <div class="projects-folder-path">${escHtml(shortenPath(p.path))}${branchHint ? ` · ${  branchHint}` : ''}</div>
     </div>`;
   }).join('');
 
@@ -402,7 +402,7 @@ async function openFile(filePath: string): Promise<void> {
   const lineNumbers = lines.map((_, i) => `<span class="line-num">${i + 1}</span>`).join('\n');
   const maxSize = 500_000;
   const displayContent = content.length > maxSize
-    ? content.slice(0, maxSize) + `\n\n... (truncated — ${(content.length / 1024).toFixed(0)}KB total)`
+    ? `${content.slice(0, maxSize)  }\n\n... (truncated — ${(content.length / 1024).toFixed(0)}KB total)`
     : content;
 
   viewer.innerHTML = `

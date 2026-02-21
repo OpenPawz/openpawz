@@ -5,7 +5,8 @@ import { getCurrentAgent, spriteAvatar } from '../agents';
 import { switchView } from '../router';
 import { $, escHtml } from '../../components/helpers';
 import { showToast } from '../../components/toast';
-import { Task, getWeatherIcon, getGreeting, getPawzMessage, isToday } from './atoms';
+import type { Task} from './atoms';
+import { getWeatherIcon, getGreeting, getPawzMessage, isToday } from './atoms';
 
 // ── Tauri bridge (no pawEngine equivalent for these commands) ──────────
 interface TauriWindow {
@@ -67,7 +68,7 @@ export async function fetchWeather() {
     const icon = getWeatherIcon(code);
 
     const area = data.nearest_area?.[0];
-    const location = area ? `${area.areaName?.[0]?.value ?? ''}${area.country?.[0]?.value ? ', ' + area.country[0].value : ''}` : '';
+    const location = area ? `${area.areaName?.[0]?.value ?? ''}${area.country?.[0]?.value ? `, ${  area.country[0].value}` : ''}` : '';
 
     weatherEl.innerHTML = `
       <div class="today-weather-main">

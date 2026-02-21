@@ -10,8 +10,8 @@ type AgentEventHandler = (payload: unknown) => void;
 type ToolApprovalHandler = (event: EngineEvent) => void;
 
 let _engineListening = false;
-let _agentHandlers: AgentEventHandler[] = [];
-let _toolApprovalHandlers: ToolApprovalHandler[] = [];
+const _agentHandlers: AgentEventHandler[] = [];
+const _toolApprovalHandlers: ToolApprovalHandler[] = [];
 
 /** Whether the engine mode is active. */
 export function isEngineMode(): boolean {

@@ -2,12 +2,13 @@
 // Composed functions with side effects: Tauri IPC for memory operations.
 // Builds on atoms for hybrid search, temporal decay, and MMR.
 
-import {
+import type {
   Memory,
   MemorySearchOptions,
   MemoryStoreOptions,
   MemoryStats,
-  SearchConfig,
+  SearchConfig} from './atoms';
+import {
   DEFAULT_SEARCH_CONFIG,
   applyDecay,
   mmrRerank,

@@ -359,7 +359,7 @@ export async function loadSecurityAudit() {
     if (tableWrapper) tableWrapper.style.display = '';
 
     tbody.innerHTML = filtered.map(e => {
-      const time = e.timestamp ? new Date(e.timestamp + 'Z').toLocaleString() : '—';
+      const time = e.timestamp ? new Date(`${e.timestamp  }Z`).toLocaleString() : '—';
       const riskBadge = e.risk_level
         ? `<span class="audit-risk-badge risk-${escHtml(e.risk_level)}">${escHtml(e.risk_level)}</span>`
         : '<span class="audit-risk-badge">—</span>';

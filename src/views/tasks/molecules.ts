@@ -261,7 +261,7 @@ export function renderAgentPicker() {
     const agent = _state.getAgents().find(a => a.id === ta.agent_id);
     const tag = document.createElement('span');
     tag.className = `agent-tag${ta.role === 'lead' ? ' lead' : ''}`;
-    tag.innerHTML = `${agent ? spriteAvatar(agent.avatar, 18) + ' ' : ''}${escHtml(ta.agent_id)}${ta.role === 'lead' ? ' ★' : ''}<button class="agent-tag-remove" title="Remove">×</button>`;
+    tag.innerHTML = `${agent ? `${spriteAvatar(agent.avatar, 18)  } ` : ''}${escHtml(ta.agent_id)}${ta.role === 'lead' ? ' ★' : ''}<button class="agent-tag-remove" title="Remove">×</button>`;
 
     // Click tag → toggle lead/collaborator
     tag.addEventListener('click', (e) => {

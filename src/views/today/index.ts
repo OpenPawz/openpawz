@@ -1,6 +1,6 @@
 // Today View — Orchestration, state, exports
 
-import { Task } from './atoms';
+import type { Task } from './atoms';
 import {
   initMoleculesState,
   fetchWeather,

@@ -34,7 +34,7 @@ export async function openChannelSetup(channelType: string) {
 
   title.textContent = `Set Up ${def.name}`;
 
-  let existingValues: Record<string, string> = {};
+  const existingValues: Record<string, string> = {};
   try {
     if (channelType === 'telegram') {
       const cfg = await pawEngine.telegramGetConfig();
@@ -270,7 +270,7 @@ export async function saveChannelSetup() {
           enabled: false,
           instance_name: 'paw',
           api_url: 'http://127.0.0.1:8085',
-          api_key: 'paw-wa-' + Math.random().toString(36).slice(2, 18),
+          api_key: `paw-wa-${  Math.random().toString(36).slice(2, 18)}`,
           api_port: 8085,
           webhook_port: 8086,
           dm_policy: 'pairing',

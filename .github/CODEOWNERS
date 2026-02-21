@@ -1,0 +1,14 @@
+# Default code owners for all files
+* @elisplash
+
+# Frontend (TypeScript)
+/src/ @elisplash
+
+# Rust backend
+/src-tauri/ @elisplash
+
+# CI / DevOps
+/.github/ @elisplash
+
+# Documentation
+/docs/ @elisplash
