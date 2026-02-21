@@ -37,15 +37,9 @@ Connect to a Matrix homeserver so users can chat with your agents via any Matrix
 - Agent routing via channel routing rules
 - Auto-join on invite
 
-:::warning End-to-end encryption not yet supported
-The Matrix bridge uses the Client-Server API directly (no `matrix-sdk` or `vodozemac`). It **cannot decrypt messages in E2EE rooms**. Only unencrypted rooms and DMs are supported. E2EE support is planned — see the roadmap below.
+:::info End-to-end encryption supported
+The Matrix bridge uses `matrix-sdk` with **vodozemac** for Olm/Megolm encryption. Messages in E2EE rooms are automatically decrypted and replies are automatically encrypted. Device keys and room sessions are persisted in a local SQLite crypto store (`~/Documents/Paw/matrix-store/`), so key continuity is maintained across restarts.
 :::
-
-### Roadmap
-
-| Feature | Status |
-|---------|--------|
-| End-to-end encryption (Olm/Megolm via `vodozemac`) | Planned |
 
 ## Tips
 

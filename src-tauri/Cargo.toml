@@ -48,7 +48,7 @@ tokio-stream = "0.1"
 async-trait = "0.1"
 futures = "0.3"
 uuid = { version = "1", features = ["v4"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
 paste = "1"
 
 # ── Web Browsing & Scraping ──────────────────────────────────────
@@ -64,6 +64,9 @@ webpki-roots = "1.0"
 
 # ── Container Sandboxing (Docker) ───────────────────────────────
 bollard = "0.16"
+
+# ── Matrix E2EE (Olm/Megolm via vodozemac) ──────────────────────
+matrix-sdk = { version = "0.9", default-features = false, features = ["e2e-encryption", "rustls-tls", "sqlite"] }
 
 # ── DEX / Ethereum Wallet ──────────────────────────────────────
 k256 = { version = "0.13", features = ["ecdsa", "schnorr", "ecdh"] }

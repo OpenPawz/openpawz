@@ -246,12 +246,13 @@ Found during the encryption audit of all 11 channel bridges.
 - **Scope:** ~200 lines of Rust. Key infrastructure (secp256k1, event signing) is already in place.
 - **Fix applied:** Implemented NIP-04 encrypted DMs (kind-4 events) — the widely-supported DM standard compatible with Damus, Amethyst, Primal, and other clients. Added `aes` and `cbc` crates, `ecdh` feature to `k256`. New functions: `compute_shared_secret()` (ECDH x-coordinate via secp256k1), `nip04_encrypt()` (AES-256-CBC + PKCS#7 + base64), `nip04_decrypt()` (reverse). Subscription now includes `kinds: [1, 4]`. Kind-4 events are decrypted before processing; replies are encrypted and published as kind-4. Refactored `build_reply_event()` → extracted `sign_event()` generic helper used by both kind-1 replies and kind-4 DMs. Agent context differentiates public notes vs encrypted DMs. NIP-44 (ChaCha20 + HMAC + NIP-17 gift wrapping) documented as future improvement.
 
-### 49. Implement Matrix E2EE via vodozemac
+### 49. ~~Implement Matrix E2EE via vodozemac~~ ✅
 - **File:** `src-tauri/src/engine/matrix.rs`, `src-tauri/Cargo.toml`
 - **Feature:** Bridge uses raw `reqwest` HTTP — no `matrix-sdk` or `vodozemac`. Cannot decrypt messages in E2EE rooms. Add `matrix-sdk` crate with E2EE support (Olm/Megolm via `vodozemac`). Replaces manual `/sync` polling with SDK's state machine.
 - **Scope:** Major refactor (~500-800 lines). `matrix-sdk` replaces ~300 lines of manual HTTP code but adds device key management, key backup, and session persistence.
+- **Fix applied:** Complete rewrite of matrix.rs using `matrix-sdk 0.9` (with `e2e-encryption`, `rustls-tls`, `sqlite` features). Replaced ~430 lines of raw reqwest HTTP code with SDK-based bridge. Key changes: `Client::builder().sqlite_store()` for Olm/Megolm key persistence at `~/Documents/Paw/matrix-store/`; `restore_session()` with `MatrixSession` (user_id, device_id, access_token) for E2EE session continuity; `add_event_handler()` for `StrippedRoomMemberEvent` (auto-join) and `OriginalSyncRoomMessageEvent` (message handling — automatically decrypted by SDK); `sync_once()` loop with stop signal checking; `room.send(RoomMessageEventContent)` for auto-encrypted replies; `room.is_direct()` for DM detection. New config fields: `device_id` and `user_id` for persistent device identity. Upgraded `rusqlite` from 0.31 → 0.32 for matrix-sdk compatibility. Updated docs to reflect E2EE support.
 
----
+---?
 
 ## Stats
 
