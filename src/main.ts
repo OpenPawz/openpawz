@@ -54,6 +54,7 @@ interface TauriWindow {
 }
 const tauriWindow = window as unknown as TauriWindow;
 const listen = tauriWindow.__TAURI__?.event?.listen;
+let unlistenTaskUpdated: (() => void) | null = null;
 
 // ── Global error handlers ──────────────────────────────────────────────────────
 function crashLog(msg: string) {
@@ -126,9 +127,10 @@ async function connectEngine(): Promise<boolean> {
     refreshModelLabel();
     TasksModule.startCronTimer();
     if (listen) {
+      if (unlistenTaskUpdated) { unlistenTaskUpdated(); unlistenTaskUpdated = null; }
       listen<{ task_id: string; status: string }>('task-updated', (event) => {
         TasksModule.onTaskUpdated(event.payload);
-      });
+      }).then(fn => { unlistenTaskUpdated = fn; });
     }
 
     pawEngine.autoSetup().then(result => {

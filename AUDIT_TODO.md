@@ -58,10 +58,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Bug:** `hexKey.match(/.{1,2}/g)!` crashes if `hexKey` is empty string (`.match()` returns `null`).
 - **Fix:** Removed non-null assertion. Match result is now stored in a variable with an explicit `if (!hexPairs) return false;` guard, making the code defensive against future refactors that might remove the earlier `!hexKey` check.
 
-### 12. Event listener leak on task-updated
+### ~~12. Event listener leak on task-updated~~ ✅ FIXED
 - **File:** `src/main.ts` L128-130
 - **Bug:** `listen('task-updated', ...)` unlisten function never stored or called. Duplicates stack on hot reload.
-- **Fix:** Store the unlisten function and call it on cleanup / before re-registration.
+- **Fix:** Added module-level `unlistenTaskUpdated` variable. Before registering a new listener, any previous one is unlistened. The `listen()` promise resolves the unlisten function and stores it for next cleanup.
 
 ### 13. Global streaming timeout (not per-session)
 - **File:** `src/state/index.ts` L138
