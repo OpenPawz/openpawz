@@ -117,3 +117,63 @@ pub fn is_provider_billing_error(err: &str) -> bool {
             || lower.contains("403") || lower.contains("429")
         ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn split_message_short() {
+        let chunks = split_message("hello", 100);
+        assert_eq!(chunks, vec!["hello"]);
+    }
+
+    #[test]
+    fn split_message_exact_boundary() {
+        let msg = "a".repeat(100);
+        let chunks = split_message(&msg, 100);
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].len(), 100);
+    }
+
+    #[test]
+    fn split_message_over_boundary() {
+        let msg = "word ".repeat(50); // 250 chars
+        let chunks = split_message(msg.trim(), 100);
+        assert!(chunks.len() >= 2);
+        for chunk in &chunks {
+            assert!(chunk.len() <= 100);
+        }
+    }
+
+    #[test]
+    fn split_message_prefers_newline_break() {
+        let msg = format!("{}\n{}", "a".repeat(60), "b".repeat(60));
+        let chunks = split_message(&msg, 80);
+        assert_eq!(chunks[0], "a".repeat(60));
+    }
+
+    #[test]
+    fn split_message_prefers_space_break() {
+        let msg = format!("{} {}", "a".repeat(60), "b".repeat(60));
+        let chunks = split_message(&msg, 80);
+        assert_eq!(chunks[0], "a".repeat(60));
+    }
+
+    #[test]
+    fn is_provider_billing_error_detects_credit() {
+        assert!(is_provider_billing_error("Your credit balance is too low"));
+    }
+
+    #[test]
+    fn is_provider_billing_error_detects_quota() {
+        assert!(is_provider_billing_error("insufficient_quota"));
+        assert!(is_provider_billing_error("Quota exceeded"));
+    }
+
+    #[test]
+    fn is_provider_billing_error_normal_error() {
+        assert!(!is_provider_billing_error("Connection refused"));
+        assert!(!is_provider_billing_error("Internal server error"));
+    }
+}

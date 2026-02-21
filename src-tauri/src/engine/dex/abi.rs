@@ -266,3 +266,82 @@ pub(crate) fn encode_transfer(to: &[u8; 20], amount: &[u8; 32]) -> Vec<u8> {
     data.extend_from_slice(&abi_encode_uint256(amount));
     data
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::engine::dex::primitives::hex_encode;
+
+    #[test]
+    fn function_selector_transfer() {
+        // keccak256("transfer(address,uint256)") first 4 bytes = 0xa9059cbb
+        let sel = function_selector("transfer(address,uint256)");
+        assert_eq!(hex_encode(&sel), "0xa9059cbb");
+    }
+
+    #[test]
+    fn function_selector_balance_of() {
+        // keccak256("balanceOf(address)") first 4 bytes = 0x70a08231
+        let sel = function_selector("balanceOf(address)");
+        assert_eq!(hex_encode(&sel), "0x70a08231");
+    }
+
+    #[test]
+    fn function_selector_approve() {
+        // keccak256("approve(address,uint256)") first 4 bytes = 0x095ea7b3
+        let sel = function_selector("approve(address,uint256)");
+        assert_eq!(hex_encode(&sel), "0x095ea7b3");
+    }
+
+    #[test]
+    fn abi_encode_address_padding() {
+        let addr = [0u8; 20];
+        let encoded = abi_encode_address(&addr);
+        assert_eq!(encoded.len(), 32);
+        assert_eq!(&encoded[..12], &[0u8; 12]); // left-padded
+    }
+
+    #[test]
+    fn abi_encode_uint256_passthrough() {
+        let val = [0xFFu8; 32];
+        let encoded = abi_encode_uint256(&val);
+        assert_eq!(encoded, val.to_vec());
+    }
+
+    #[test]
+    fn encode_balance_of_length() {
+        let addr = [1u8; 20];
+        let data = encode_balance_of(&addr);
+        assert_eq!(data.len(), 4 + 32); // 4-byte selector + 32-byte address
+    }
+
+    #[test]
+    fn encode_approve_length() {
+        let spender = [2u8; 20];
+        let amount = [0u8; 32];
+        let data = encode_approve(&spender, &amount);
+        assert_eq!(data.len(), 4 + 32 + 32); // selector + address + uint256
+    }
+
+    #[test]
+    fn u256_to_quantity_hex_zero() {
+        assert_eq!(u256_to_quantity_hex(&[0u8; 32]), "0x0");
+    }
+
+    #[test]
+    fn u256_to_quantity_hex_one() {
+        let mut val = [0u8; 32];
+        val[31] = 1;
+        assert_eq!(u256_to_quantity_hex(&val), "0x01");
+    }
+
+    #[test]
+    fn build_multihop_path_two_hops() {
+        let token_a = &[1u8; 20];
+        let token_b = &[2u8; 20];
+        let token_c = &[3u8; 20];
+        let path = build_multihop_path(&[token_a, token_b, token_c], &[3000, 500]);
+        // token_a(20) + fee(3) + token_b(20) + fee(3) + token_c(20) = 66 bytes
+        assert_eq!(path.len(), 66);
+    }
+}

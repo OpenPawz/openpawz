@@ -190,3 +190,83 @@ pub(crate) fn hex_decode(hex: &str) -> Result<Vec<u8>, String> {
 pub(crate) fn hex_encode(bytes: &[u8]) -> String {
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Generate a deterministic test keypair
+    fn test_secret_key() -> Vec<u8> {
+        // A valid secp256k1 secret key (32 bytes, non-zero, < curve order)
+        hex_decode("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35").unwrap()
+    }
+
+    #[test]
+    fn derive_pubkey_produces_32_bytes() {
+        let sk = test_secret_key();
+        let pk = derive_pubkey(&sk).unwrap();
+        assert_eq!(pk.len(), 32);
+    }
+
+    #[test]
+    fn derive_pubkey_deterministic() {
+        let sk = test_secret_key();
+        let pk1 = derive_pubkey(&sk).unwrap();
+        let pk2 = derive_pubkey(&sk).unwrap();
+        assert_eq!(pk1, pk2);
+    }
+
+    #[test]
+    fn sign_event_produces_valid_fields() {
+        let sk = test_secret_key();
+        let pk = derive_pubkey(&sk).unwrap();
+        let pk_hex = hex_encode(&pk);
+        let tags = serde_json::json!([]);
+        let event = sign_event(&sk, &pk_hex, 1, &tags, "hello nostr").unwrap();
+        assert!(event["id"].as_str().unwrap().len() == 64);
+        assert!(event["sig"].as_str().unwrap().len() == 128);
+        assert_eq!(event["kind"].as_u64().unwrap(), 1);
+        assert_eq!(event["content"].as_str().unwrap(), "hello nostr");
+    }
+
+    #[test]
+    fn nip04_encrypt_decrypt_roundtrip() {
+        // Generate two keypairs
+        let sk1 = hex_decode("e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35").unwrap();
+        let sk2 = hex_decode("0b1c4c1a5e0c3d5e7f9a1b3c5d7e9f0a2b4c6d8e0f1a3b5c7d9e1f0a2b4c6d8e").unwrap();
+        let pk1 = derive_pubkey(&sk1).unwrap();
+        let pk2 = derive_pubkey(&sk2).unwrap();
+        let pk1_hex = hex_encode(&pk1);
+        let pk2_hex = hex_encode(&pk2);
+
+        let plaintext = "Hello, this is a secret message!";
+        let encrypted = nip04_encrypt(&sk1, &pk2_hex, plaintext).unwrap();
+
+        // Encrypted should contain ?iv= separator
+        assert!(encrypted.contains("?iv="));
+
+        // Decrypt with sk2 + pk1 (ECDH is symmetric)
+        let decrypted = nip04_decrypt(&sk2, &pk1_hex, &encrypted).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn nip04_invalid_format() {
+        let sk = test_secret_key();
+        let result = nip04_decrypt(&sk, &"00".repeat(32), "no-iv-separator");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn hex_encode_decode_roundtrip() {
+        let original = vec![0xde, 0xad, 0xbe, 0xef];
+        let encoded = hex_encode(&original);
+        let decoded = hex_decode(&encoded).unwrap();
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn hex_decode_odd_length_errors() {
+        assert!(hex_decode("abc").is_err());
+    }
+}

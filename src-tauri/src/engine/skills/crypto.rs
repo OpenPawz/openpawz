@@ -46,3 +46,55 @@ pub fn decrypt_credential(encrypted_b64: &str, key: &[u8]) -> Result<String, Str
     let decrypted: Vec<u8> = encrypted.iter().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect();
     String::from_utf8(decrypted).map_err(|e| format!("Failed to decrypt: {}", e))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_key() -> Vec<u8> {
+        vec![0xAB; 32]
+    }
+
+    #[test]
+    fn encrypt_decrypt_roundtrip() {
+        let key = test_key();
+        let plaintext = "sk-live-abc123_secret_token";
+        let encrypted = encrypt_credential(plaintext, &key);
+        let decrypted = decrypt_credential(&encrypted, &key).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_decrypt_empty_string() {
+        let key = test_key();
+        let encrypted = encrypt_credential("", &key);
+        let decrypted = decrypt_credential(&encrypted, &key).unwrap();
+        assert_eq!(decrypted, "");
+    }
+
+    #[test]
+    fn wrong_key_produces_wrong_output() {
+        let key1 = vec![0xAB; 32];
+        let key2 = vec![0xCD; 32];
+        let plaintext = "my-secret-api-key";
+        let encrypted = encrypt_credential(plaintext, &key1);
+        let decrypted = decrypt_credential(&encrypted, &key2).unwrap();
+        assert_ne!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn encrypt_long_text_beyond_key_length() {
+        let key = vec![0x42; 32];
+        let plaintext = "x".repeat(100); // longer than 32-byte key
+        let encrypted = encrypt_credential(&plaintext, &key);
+        let decrypted = decrypt_credential(&encrypted, &key).unwrap();
+        assert_eq!(decrypted, plaintext);
+    }
+
+    #[test]
+    fn invalid_base64_returns_error() {
+        let key = test_key();
+        let result = decrypt_credential("not!valid!base64!!!", &key);
+        assert!(result.is_err());
+    }
+}

@@ -34,3 +34,68 @@ pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
         dot / denom
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cosine_identical_vectors() {
+        let v = vec![1.0f32, 2.0, 3.0];
+        let sim = cosine_similarity(&v, &v);
+        assert!((sim - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cosine_orthogonal_vectors() {
+        let a = vec![1.0f32, 0.0];
+        let b = vec![0.0f32, 1.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!(sim.abs() < 1e-6);
+    }
+
+    #[test]
+    fn cosine_opposite_vectors() {
+        let a = vec![1.0f32, 0.0];
+        let b = vec![-1.0f32, 0.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!((sim - (-1.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn cosine_zero_vector() {
+        let a = vec![0.0f32, 0.0];
+        let b = vec![1.0f32, 2.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn cosine_empty_vectors() {
+        let a: Vec<f32> = vec![];
+        let b: Vec<f32> = vec![];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn cosine_different_lengths() {
+        let a = vec![1.0f32, 2.0];
+        let b = vec![1.0f32, 2.0, 3.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn bytes_f32_roundtrip() {
+        let original = vec![1.0f32, -2.5, 3.14159, 0.0];
+        let bytes = f32_vec_to_bytes(&original);
+        let restored = bytes_to_f32_vec(&bytes);
+        assert_eq!(original, restored);
+    }
+
+    #[test]
+    fn bytes_empty_roundtrip() {
+        let original: Vec<f32> = vec![];
+        let bytes = f32_vec_to_bytes(&original);
+        let restored = bytes_to_f32_vec(&bytes);
+        assert_eq!(original, restored);
+    }
+}

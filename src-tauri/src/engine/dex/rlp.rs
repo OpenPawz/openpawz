@@ -62,3 +62,78 @@ pub(crate) fn u256_to_minimal_be(val: &[u8; 32]) -> Vec<u8> {
         None => vec![], // represents zero
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rlp_single_byte_below_0x80() {
+        assert_eq!(rlp_encode_bytes(&[0x42]), vec![0x42]);
+    }
+
+    #[test]
+    fn rlp_empty_bytes() {
+        assert_eq!(rlp_encode_bytes(&[]), vec![0x80]);
+    }
+
+    #[test]
+    fn rlp_short_string() {
+        // "dog" = [0x64, 0x6f, 0x67] → [0x83, 0x64, 0x6f, 0x67]
+        let result = rlp_encode_bytes(b"dog");
+        assert_eq!(result, vec![0x83, 0x64, 0x6f, 0x67]);
+    }
+
+    #[test]
+    fn rlp_empty_list() {
+        assert_eq!(rlp_encode_list(&[]), vec![0xc0]);
+    }
+
+    #[test]
+    fn rlp_encode_list_of_strings() {
+        // RLP(["cat", "dog"]) — known Ethereum test vector
+        let cat = rlp_encode_bytes(b"cat");
+        let dog = rlp_encode_bytes(b"dog");
+        let result = rlp_encode_list(&[cat, dog]);
+        assert_eq!(result[0], 0xc8); // 0xc0 + 8 bytes payload
+    }
+
+    #[test]
+    fn to_minimal_be_bytes_zero() {
+        assert_eq!(to_minimal_be_bytes(0), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn to_minimal_be_bytes_one() {
+        assert_eq!(to_minimal_be_bytes(1), vec![1]);
+    }
+
+    #[test]
+    fn to_minimal_be_bytes_256() {
+        assert_eq!(to_minimal_be_bytes(256), vec![1, 0]);
+    }
+
+    #[test]
+    fn u64_to_minimal_be_zero() {
+        assert_eq!(u64_to_minimal_be(0), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn u64_to_minimal_be_values() {
+        assert_eq!(u64_to_minimal_be(1), vec![1]);
+        assert_eq!(u64_to_minimal_be(255), vec![255]);
+        assert_eq!(u64_to_minimal_be(256), vec![1, 0]);
+    }
+
+    #[test]
+    fn u256_to_minimal_be_zero() {
+        assert_eq!(u256_to_minimal_be(&[0u8; 32]), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn u256_to_minimal_be_one() {
+        let mut val = [0u8; 32];
+        val[31] = 1;
+        assert_eq!(u256_to_minimal_be(&val), vec![1]);
+    }
+}

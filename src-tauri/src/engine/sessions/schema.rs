@@ -282,3 +282,50 @@ pub(crate) fn run_migrations(conn: &Connection) -> Result<(), String> {
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::Connection;
+
+    fn in_memory_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch("PRAGMA journal_mode = WAL;").unwrap();
+        conn
+    }
+
+    #[test]
+    fn migrations_run_cleanly() {
+        let conn = in_memory_db();
+        let result = run_migrations(&conn);
+        assert!(result.is_ok(), "First migration run failed: {:?}", result);
+    }
+
+    #[test]
+    fn migrations_idempotent() {
+        let conn = in_memory_db();
+        run_migrations(&conn).unwrap();
+        let result = run_migrations(&conn);
+        assert!(result.is_ok(), "Second migration run failed: {:?}", result);
+    }
+
+    #[test]
+    fn core_tables_created() {
+        let conn = in_memory_db();
+        run_migrations(&conn).unwrap();
+
+        let tables: Vec<String> = conn
+            .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        assert!(tables.contains(&"sessions".to_string()));
+        assert!(tables.contains(&"messages".to_string()));
+        assert!(tables.contains(&"memories".to_string()));
+        assert!(tables.contains(&"tasks".to_string()));
+        assert!(tables.contains(&"engine_config".to_string()));
+    }
+}

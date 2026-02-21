@@ -182,3 +182,118 @@ pub(crate) fn raw_to_amount(raw_hex: &str, decimals: u8) -> Result<String, Strin
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hex_encode_empty() {
+        assert_eq!(hex_encode(&[]), "0x");
+    }
+
+    #[test]
+    fn hex_encode_bytes() {
+        assert_eq!(hex_encode(&[0xde, 0xad, 0xbe, 0xef]), "0xdeadbeef");
+    }
+
+    #[test]
+    fn hex_decode_valid() {
+        assert_eq!(hex_decode("0xdeadbeef").unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
+    }
+
+    #[test]
+    fn hex_decode_no_prefix() {
+        assert_eq!(hex_decode("ff00").unwrap(), vec![0xff, 0x00]);
+    }
+
+    #[test]
+    fn hex_decode_odd_length_pads() {
+        // Ethereum RPC returns minimal hex like "0x0" or "0x1a3"
+        assert_eq!(hex_decode("0x0").unwrap(), vec![0x00]);
+        assert_eq!(hex_decode("0x1a3").unwrap(), vec![0x01, 0xa3]);
+    }
+
+    #[test]
+    fn hex_decode_invalid_chars() {
+        assert!(hex_decode("0xGG").is_err());
+    }
+
+    #[test]
+    fn keccak256_known_vector() {
+        // keccak256("") = c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
+        let hash = keccak256(b"");
+        assert_eq!(hex_encode(&hash), "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+    }
+
+    #[test]
+    fn eip55_checksum_known_address() {
+        // Known EIP-55 test vector
+        let addr_bytes = hex_decode("0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed").unwrap();
+        let mut arr = [0u8; 20];
+        arr.copy_from_slice(&addr_bytes);
+        let checksummed = eip55_checksum(&arr);
+        assert_eq!(checksummed, "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed");
+    }
+
+    #[test]
+    fn parse_address_valid() {
+        let addr = parse_address("0x0000000000000000000000000000000000000001").unwrap();
+        assert_eq!(addr[19], 1);
+        assert_eq!(addr[0], 0);
+    }
+
+    #[test]
+    fn parse_address_wrong_length() {
+        assert!(parse_address("0xdead").is_err());
+    }
+
+    #[test]
+    fn parse_u256_decimal_zero() {
+        let result = parse_u256_decimal("0").unwrap();
+        assert_eq!(result, [0u8; 32]);
+    }
+
+    #[test]
+    fn parse_u256_decimal_one() {
+        let result = parse_u256_decimal("1").unwrap();
+        let mut expected = [0u8; 32];
+        expected[31] = 1;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn parse_u256_decimal_256() {
+        let result = parse_u256_decimal("256").unwrap();
+        let mut expected = [0u8; 32];
+        expected[30] = 1;
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn amount_to_raw_integer() {
+        assert_eq!(amount_to_raw("1", 18).unwrap(), "1000000000000000000");
+    }
+
+    #[test]
+    fn amount_to_raw_decimal() {
+        assert_eq!(amount_to_raw("1.5", 18).unwrap(), "1500000000000000000");
+    }
+
+    #[test]
+    fn amount_to_raw_zero() {
+        assert_eq!(amount_to_raw("0", 18).unwrap(), "0");
+    }
+
+    #[test]
+    fn amount_to_raw_too_many_decimals() {
+        assert!(amount_to_raw("1.123456789", 6).is_err());
+    }
+
+    #[test]
+    fn raw_to_amount_one_eth() {
+        // 1 ETH = 0xDE0B6B3A7640000 in raw units (10^18)
+        let result = raw_to_amount("0xDE0B6B3A7640000", 18).unwrap();
+        assert_eq!(result, "1");
+    }
+}

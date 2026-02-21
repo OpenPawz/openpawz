@@ -122,3 +122,67 @@ pub fn remove_user_generic(
     info!("[{}] User {} removed", config_key, user_id);
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_pending() -> Vec<PendingUser> {
+        vec![]
+    }
+
+    #[test]
+    fn check_access_open_allows_anyone() {
+        let mut pending = make_pending();
+        let result = check_access("open", "user123", "bob", "Bob", &[], &mut pending);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_access_allowlist_allowed_user() {
+        let mut pending = make_pending();
+        let allowed = vec!["user123".to_string()];
+        let result = check_access("allowlist", "user123", "bob", "Bob", &allowed, &mut pending);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn check_access_allowlist_denied_user() {
+        let mut pending = make_pending();
+        let allowed = vec!["other_user".to_string()];
+        let result = check_access("allowlist", "user123", "bob", "Bob", &allowed, &mut pending);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("allowlist"));
+    }
+
+    #[test]
+    fn check_access_pairing_creates_pending() {
+        let mut pending = make_pending();
+        let result = check_access("pairing", "user123", "bob", "Bob", &[], &mut pending);
+        assert!(result.is_err());
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].user_id, "user123");
+        assert_eq!(pending[0].username, "bob");
+    }
+
+    #[test]
+    fn check_access_pairing_no_duplicate_pending() {
+        let mut pending = vec![PendingUser {
+            user_id: "user123".to_string(),
+            username: "bob".to_string(),
+            display_name: "Bob".to_string(),
+            requested_at: "2025-01-01T00:00:00Z".to_string(),
+        }];
+        let _ = check_access("pairing", "user123", "bob", "Bob", &[], &mut pending);
+        assert_eq!(pending.len(), 1); // no duplicate added
+    }
+
+    #[test]
+    fn check_access_pairing_already_approved() {
+        let mut pending = make_pending();
+        let allowed = vec!["user123".to_string()];
+        let result = check_access("pairing", "user123", "bob", "Bob", &allowed, &mut pending);
+        assert!(result.is_ok());
+        assert_eq!(pending.len(), 0); // no pending added
+    }
+}
