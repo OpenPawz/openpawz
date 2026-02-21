@@ -32,10 +32,10 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 - **Bug:** `derive_pubkey()` used double SHA-256 hash instead of secp256k1 point multiplication, producing invalid public keys. `build_reply_event()` set signature to 128 zeros instead of computing a BIP-340 Schnorr signature.
 - **Fix applied:** Added `schnorr` feature to existing `k256` crate dependency. Replaced `derive_pubkey()` with proper secp256k1 `SecretKey → PublicKey → x-only` derivation. Replaced zero-signature with real BIP-340 Schnorr signing via `k256::schnorr::SigningKey::sign_raw()` with random auxiliary data. Nostr events are now cryptographically valid and will be accepted by relays.
 
-### 6. Docs claim unimplemented security features (CRITICAL)
+### ~~6. Docs claim unimplemented security features (CRITICAL)~~ ✅ FIXED
 - **File:** `docs/docs/channels/nostr.md` L31, `docs/docs/channels/matrix.md` L35
 - **Bug:** Docs claim "NIP-04 encrypted DMs" and "End-to-end encryption support" — neither is implemented. Misleads users about security posture.
-- **Fix:** Remove both claims. Add "Planned" labels if desired.
+- **Fix applied:** Removed both false claims. Replaced with accurate feature lists and added `:::warning` admonitions with Planned roadmap tables for each.
 
 ---
 
@@ -169,9 +169,9 @@ Codebase: 24,750 lines TS · 30,935 lines Rust · 327 tests passing · ESLint 0 
 
 ## Docs Site Fixes
 
-### 34. Remove false feature claims
-- `docs/docs/channels/nostr.md` L31 — remove "NIP-04 encrypted DMs"
-- `docs/docs/channels/matrix.md` L35 — remove "End-to-end encryption support"
+### ~~34. Remove false feature claims~~ ✅
+- ~~`docs/docs/channels/nostr.md` L31 — remove "NIP-04 encrypted DMs"~~
+- ~~`docs/docs/channels/matrix.md` L35 — remove "End-to-end encryption support"~~
 
 ### 35. ~~Fix incorrect counts~~ ✅
 - ~~Channel count: 10 → 11 (in `getting-started.md`, `architecture.md`, `SECURITY.md`)~~

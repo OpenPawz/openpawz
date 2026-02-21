@@ -28,11 +28,23 @@ Connect to the Nostr decentralized network so users can chat with your agents vi
 
 ## Features
 
-- NIP-04 encrypted DMs
+- Public kind-1 text note replies (NIP-01)
 - Per-user sessions with memory
 - Prompt injection scanning
 - Agent routing via channel routing rules
 - Multi-relay support
+- BIP-340 Schnorr-signed events
+
+:::warning Encrypted DMs not yet supported
+NIP-04 / NIP-44 encrypted DMs are **not implemented**. The bridge only handles kind-1 (public text notes). All messages are visible on public relays. Encrypted DM support is planned — see the roadmap below.
+:::
+
+### Roadmap
+
+| Feature | Status |
+|---------|--------|
+| NIP-04 encrypted DMs | Planned |
+| NIP-44 encrypted DMs (preferred) | Planned |
 
 ## Tips
 
