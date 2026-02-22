@@ -38,7 +38,6 @@ pub(crate) fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::atoms::error::EngineResult;
 
     #[test]
     fn cosine_identical_vectors() {
