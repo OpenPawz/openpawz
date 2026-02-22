@@ -68,6 +68,8 @@ export interface EngineChatRequest {
   /** Per-agent tool filter: only these tools will be available to the AI. */
   tool_filter?: string[];
   attachments?: Array<{ mimeType: string; content: string; name?: string }>;
+  /** Thinking/reasoning level: "none", "low", "medium", "high" */
+  thinking_level?: string;
 }
 
 export interface EngineChatResponse {
@@ -102,10 +104,10 @@ export interface EngineStoredMessage {
 // ── Events ───────────────────────────────────────────────────────────
 
 export interface EngineEvent {
-  kind: 'delta' | 'tool_request' | 'tool_result' | 'complete' | 'error';
+  kind: 'delta' | 'tool_request' | 'tool_result' | 'complete' | 'error' | 'thinking_delta';
   session_id: string;
   run_id: string;
-  // delta
+  // delta + thinking_delta
   text?: string;
   // tool_request
   tool_call?: { id: string; type: string; function: { name: string; arguments: string } };

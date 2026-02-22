@@ -34,6 +34,7 @@ pub async fn run_agent_turn(
     agent_id: &str,
     daily_budget_usd: f64,
     daily_tokens: Option<&DailyTokenTracker>,
+    thinking_level: Option<&str>,
 ) -> EngineResult<String> {
     let mut round = 0;
     let mut final_text = String::new();
@@ -70,7 +71,7 @@ pub async fn run_agent_turn(
         }
 
         // ── 1. Call the AI model ──────────────────────────────────────
-        let chunks = provider.chat_stream(messages, tools, model, temperature).await?;
+        let chunks = provider.chat_stream(messages, tools, model, temperature, thinking_level).await?;
 
         // ── 2. Assemble the response from chunks ──────────────────────
         let mut text_accum = String::new();
@@ -92,6 +93,15 @@ pub async fn run_agent_turn(
                     session_id: session_id.to_string(),
                     run_id: run_id.to_string(),
                     text: dt.clone(),
+                });
+            }
+
+            // Emit thinking/reasoning text to frontend
+            if let Some(tt) = &chunk.thinking_text {
+                let _ = app_handle.emit("engine-event", EngineEvent::ThinkingDelta {
+                    session_id: session_id.to_string(),
+                    run_id: run_id.to_string(),
+                    text: tt.clone(),
                 });
             }
 

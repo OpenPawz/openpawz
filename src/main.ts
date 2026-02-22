@@ -14,6 +14,7 @@ import {
   switchToAgent,
   populateAgentSelect,
   appendStreamingDelta,
+  appendThinkingDelta,
   recordTokenUsage,
   updateContextLimitFromModel,
 } from './engine/organisms/chat_controller';
@@ -24,6 +25,7 @@ import * as ResearchModule from './views/research';
 // ── Wire event_bus callbacks (engine ← view layer) ──
 registerStreamHandlers({
   onDelta: appendStreamingDelta,
+  onThinking: appendThinkingDelta,
   onToken: recordTokenUsage,
   onModel: updateContextLimitFromModel,
 });

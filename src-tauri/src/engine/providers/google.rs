@@ -282,6 +282,7 @@ impl GoogleProvider {
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
+        thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
         let url = format!(
             "{}/models/{}:streamGenerateContent?alt=sse&key={}",
@@ -317,6 +318,21 @@ impl GoogleProvider {
             body["generationConfig"] = json!({"temperature": temp, "maxOutputTokens": 8192});
         } else {
             body["generationConfig"] = json!({"maxOutputTokens": 8192});
+        }
+
+        // Gemini thinking models support thinkingConfig with a budget
+        if let Some(level) = thinking_level {
+            if level != "none" {
+                let budget = match level {
+                    "low" => 4096,
+                    "high" => 32768,
+                    _ => 16384, // medium
+                };
+                body["generationConfig"]["thinkingConfig"] = json!({
+                    "thinkingBudget": budget,
+                });
+                info!("[engine] Google: thinking config enabled (budget={})", budget);
+            }
         }
 
         info!("[engine] Google request model={}", model);
@@ -440,6 +456,7 @@ impl GoogleProvider {
                                                     usage: None,
                                                     model: api_model.clone(),
                                                     thought_parts: vec![],
+                                                    thinking_text: None,
                                                 });
                                             }
                                         }
@@ -451,17 +468,28 @@ impl GoogleProvider {
                                         let mut collected_thoughts: Vec<ThoughtPart> = Vec::new();
                                         for part in parts {
                                             if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
-                                                if let (Some(text), Some(sig)) = (
-                                                    part["text"].as_str(),
-                                                    part.get("thoughtSignature")
+                                                if let Some(text) = part["text"].as_str() {
+                                                    let sig = part.get("thoughtSignature")
                                                         .or_else(|| part.get("thought_signature"))
-                                                        .and_then(|v| v.as_str())
-                                                ) {
-                                                    info!("[engine] Google: captured thought part with signature (len={})", text.len());
-                                                    collected_thoughts.push(ThoughtPart {
-                                                        text: text.to_string(),
-                                                        thought_signature: sig.to_string(),
+                                                        .and_then(|v| v.as_str());
+                                                    // Emit thinking text to the frontend
+                                                    chunks.push(StreamChunk {
+                                                        delta_text: None,
+                                                        tool_calls: vec![],
+                                                        finish_reason: None,
+                                                        usage: None,
+                                                        model: api_model.clone(),
+                                                        thought_parts: vec![],
+                                                        thinking_text: Some(text.to_string()),
                                                     });
+                                                    // Also collect for round-tripping if signature present
+                                                    if let Some(s) = sig {
+                                                        info!("[engine] Google: captured thought part with signature (len={})", text.len());
+                                                        collected_thoughts.push(ThoughtPart {
+                                                            text: text.to_string(),
+                                                            thought_signature: s.to_string(),
+                                                        });
+                                                    }
                                                 }
                                             }
                                         }
@@ -480,6 +508,7 @@ impl GoogleProvider {
                                                     usage: None,
                                                     model: api_model.clone(),
                                                     thought_parts: vec![],
+                                                    thinking_text: None,
                                                 });
                                             }
                                             if let Some(fc) = part.get("functionCall") {
@@ -513,6 +542,7 @@ impl GoogleProvider {
                                                     model: api_model.clone(),
                                                     // Attach thought parts to the first functionCall chunk
                                                     thought_parts: collected_thoughts.clone(),
+                                                    thinking_text: None,
                                                 });
                                                 // Only attach thoughts to first function call chunk
                                                 collected_thoughts.clear();
@@ -539,6 +569,7 @@ impl GoogleProvider {
                                         }),
                                         model: api_model.clone(),
                                         thought_parts: vec![],
+                                        thinking_text: None,
                                     });
                                 }
                             }
@@ -581,7 +612,8 @@ impl AiProvider for GoogleProvider {
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
+        thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
-        self.chat_stream_inner(messages, tools, model, temperature).await
+        self.chat_stream_inner(messages, tools, model, temperature, thinking_level).await
     }
 }

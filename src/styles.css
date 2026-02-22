@@ -1325,6 +1325,45 @@ body {
 
 .message.user .message-time { text-align: right; }
 
+/* ── Thinking/Reasoning Block ── */
+.thinking-block {
+  margin-bottom: 8px;
+  border: 1px solid var(--accent-muted);
+  border-radius: 8px;
+  background: rgba(139, 92, 246, 0.06);
+  overflow: hidden;
+}
+.thinking-block summary {
+  padding: 6px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--purple);
+  cursor: pointer;
+  user-select: none;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.thinking-block summary::-webkit-details-marker { display: none; }
+.thinking-block summary::before {
+  content: '▸ ';
+  transition: transform 0.15s;
+  display: inline-block;
+}
+.thinking-block[open] summary::before {
+  transform: rotate(90deg);
+}
+.thinking-content {
+  padding: 8px 12px 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--accent-muted);
+  max-height: 300px;
+  overflow-y: auto;
+  opacity: 0.85;
+}
+.thinking-content p { margin: 4px 0; }
+
 /* Typing indicator */
 .typing-indicator {
   display: flex;

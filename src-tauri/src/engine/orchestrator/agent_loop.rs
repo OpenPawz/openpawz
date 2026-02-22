@@ -88,7 +88,7 @@ pub(crate) async fn run_orchestrator_loop(
         info!("[orchestrator] {} round {}/{} project={}", label, round, max_rounds, project_id);
 
         // ── Stream from the AI model ───────────────────────────────
-        let chunks = provider.chat_stream(messages, tools, model, None).await?;
+        let chunks = provider.chat_stream(messages, tools, model, None, None).await?;;
 
         let mut text_accum = String::new();
         let mut tool_call_map: std::collections::HashMap<
@@ -105,6 +105,14 @@ pub(crate) async fn run_orchestrator_loop(
                     session_id: session_id.to_string(),
                     run_id: run_id.to_string(),
                     text: dt.clone(),
+                });
+            }
+            // Emit thinking/reasoning text
+            if let Some(tt) = &chunk.thinking_text {
+                let _ = app_handle.emit("engine-event", EngineEvent::ThinkingDelta {
+                    session_id: session_id.to_string(),
+                    run_id: run_id.to_string(),
+                    text: tt.clone(),
                 });
             }
             for tc_delta in &chunk.tool_calls {

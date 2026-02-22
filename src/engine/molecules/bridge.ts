@@ -88,6 +88,7 @@ export async function engineChatSend(
   opts: {
     model?: string;
     temperature?: number;
+    thinkingLevel?: string;
     agentProfile?: {
       id?: string;
       name?: string;
@@ -155,6 +156,7 @@ export async function engineChatSend(
     tools_enabled: true,
     tool_filter: toolFilter,
     agent_id: agentId !== 'default' ? agentId : undefined,
+    thinking_level: opts.thinkingLevel,
     attachments: opts.attachments?.map((a) => ({
       mimeType: a.mimeType,
       content: a.content,
@@ -227,6 +229,14 @@ function translateEngineEvent(event: EngineEvent): Record<string, unknown> | nul
       return {
         stream: 'error',
         data: { message: event.message },
+        runId: event.run_id,
+        sessionKey: event.session_id,
+      };
+
+    case 'thinking_delta':
+      return {
+        stream: 'thinking',
+        data: { delta: event.text },
         runId: event.run_id,
         sessionKey: event.session_id,
       };

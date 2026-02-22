@@ -498,6 +498,47 @@ export function appendStreamingDelta(text: string): void {
   }
 }
 
+/**
+ * Append a thinking/reasoning delta to the streaming message.
+ * Renders inside a collapsible `<details>` block above the main response.
+ */
+export function appendThinkingDelta(text: string): void {
+  const key = appState.currentSessionKey ?? '';
+  const ss = appState.activeStreams.get(key);
+  if (!ss) return;
+  ss.thinkingContent += text;
+
+  // Find or create the thinking container inside the streaming message
+  const streamMsg = document.getElementById('streaming-message');
+  if (!streamMsg) return;
+
+  let thinkingEl = streamMsg.querySelector('.thinking-block') as HTMLElement | null;
+  if (!thinkingEl) {
+    thinkingEl = document.createElement('details');
+    thinkingEl.className = 'thinking-block';
+    thinkingEl.setAttribute('open', '');
+    const summary = document.createElement('summary');
+    summary.textContent = 'Thinking\u2026';
+    thinkingEl.appendChild(summary);
+    const content = document.createElement('div');
+    content.className = 'thinking-content';
+    thinkingEl.appendChild(content);
+    // Insert before the message-content element
+    const contentEl = streamMsg.querySelector('.message-content');
+    if (contentEl) {
+      streamMsg.insertBefore(thinkingEl, contentEl);
+    } else {
+      streamMsg.prepend(thinkingEl);
+    }
+  }
+
+  const contentDiv = thinkingEl.querySelector('.thinking-content') as HTMLElement | null;
+  if (contentDiv) {
+    contentDiv.innerHTML = formatMarkdown(ss.thinkingContent);
+  }
+  scrollToBottom();
+}
+
 export function finalizeStreaming(finalContent: string, toolCalls?: ToolCall[]): void {
   $('streaming-message')?.remove();
 
@@ -506,6 +547,7 @@ export function finalizeStreaming(finalContent: string, toolCalls?: ToolCall[]):
   const ss = appState.activeStreams.get(key);
   const savedRunId = ss?.runId ?? null;
   const streamingAgent = ss?.agentId ?? null;
+  const thinkingContent = ss?.thinkingContent || undefined;
   appState.activeStreams.delete(key);
 
   const abortBtn = $('chat-abort-btn');
@@ -520,7 +562,7 @@ export function finalizeStreaming(finalContent: string, toolCalls?: ToolCall[]):
   }
 
   if (finalContent) {
-    addMessage({ role: 'assistant', content: finalContent, timestamp: new Date(), toolCalls });
+    addMessage({ role: 'assistant', content: finalContent, timestamp: new Date(), toolCalls, thinkingContent });
     autoSpeakIfEnabled(finalContent);
 
     // Fallback token estimation
@@ -691,6 +733,20 @@ function renderSingleMessage(
 ): HTMLElement {
   const div = document.createElement('div');
   div.className = `message ${msg.role}`;
+
+  // Thinking block (collapsed in history)
+  if (msg.thinkingContent) {
+    const thinkingEl = document.createElement('details');
+    thinkingEl.className = 'thinking-block';
+    const summary = document.createElement('summary');
+    summary.textContent = 'Thinking';
+    thinkingEl.appendChild(summary);
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.className = 'thinking-content';
+    thinkingDiv.innerHTML = formatMarkdown(msg.thinkingContent);
+    thinkingEl.appendChild(thinkingDiv);
+    div.appendChild(thinkingEl);
+  }
 
   const contentEl = document.createElement('div');
   contentEl.className = 'message-content';

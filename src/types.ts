@@ -442,6 +442,7 @@ export interface Message {
   timestamp: Date;
   toolCalls?: ToolCall[];
   attachments?: Array<{ name?: string; mimeType: string; data?: string; url?: string }>;
+  thinkingContent?: string;
 }
 
 // ── Paw Frontend Agent Profile ───────────────────────────────────────────
