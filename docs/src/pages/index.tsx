@@ -14,28 +14,32 @@ const pillars = [
   {
     icon: 'bolt',
     title: 'Powerful by design',
-    desc: 'Multi-agent orchestration, 11 channel bridges, research workflows, DeFi trading, browser automation, 6-stage memory — all powered by an async Rust engine. Not a chat wrapper.',
+    desc: '75+ built-in tools, multi-agent squads, event-driven triggers, inter-agent messaging, MCP server support, 11 channel bridges, DeFi trading, browser automation — all powered by an async Rust engine with 600+ tests.',
   },
   {
     icon: 'extension',
     title: 'Extensible by nature',
-    desc: 'Connect any OpenAI-compatible provider. Install community skills from the PawzHub. Every feature is modular — use what you need, skip what you don\'t.',
+    desc: 'Three-tier extensibility: Skills, Integrations, and Extensions. Browse the PawzHub marketplace, connect any MCP server, or build custom sidebar views with persistent storage.',
   },
 ];
 
 const features = [
-  { icon: 'smart_toy', title: 'Unlimited Agents', desc: 'Custom personalities, models, and tool policies per agent. Boss/worker orchestration with live delegation.', link: '/docs/guides/agents' },
-  { icon: 'forum', title: '11 Chat Bridges', desc: 'Telegram, Discord, Slack, Matrix, IRC, Mattermost, Nostr, Twitch, and more — same brain everywhere.', link: '/docs/channels/overview' },
+  { icon: 'smart_toy', title: 'Unlimited Agents', desc: 'Custom personalities, models, and tool policies per agent. Boss/worker orchestration with live task delegation.', link: '/docs/guides/agents' },
+  { icon: 'groups', title: 'Agent Squads', desc: 'Form teams of agents with coordinator roles, squad broadcasts, and inter-agent direct messaging across channels.', link: '/docs/guides/orchestrator' },
+  { icon: 'forum', title: '11 Chat Bridges', desc: 'Telegram, Discord, Slack, Matrix, IRC, Mattermost, Nostr, Twitch, WhatsApp, WebChat, Nextcloud Talk.', link: '/docs/channels/overview' },
+  { icon: 'hub', title: 'MCP Servers', desc: 'Connect to any Model Context Protocol server. Per-agent MCP assignment gives each agent its own extended toolset.', link: '/docs/guides/extensions' },
   { icon: 'psychology', title: 'Hybrid Memory', desc: 'BM25 + vector search, temporal decay, MMR re-ranking, auto-recall. Memory Palace visualization.', link: '/docs/guides/memory' },
+  { icon: 'bolt', title: 'Event Triggers', desc: 'Tasks fire on webhooks or inter-agent messages. Persistent background tasks auto-requeue on completion.', link: '/docs/guides/automations' },
+  { icon: 'storefront', title: 'PawzHub Marketplace', desc: 'Browse and install community skills, integrations, and extensions. Three-tier extensibility with TOML manifests.', link: '/docs/guides/pawzhub' },
   { icon: 'trending_up', title: 'DeFi Trading', desc: 'Uniswap on 7 EVM chains, Jupiter on Solana. Honeypot detection, whale tracking, trading policies.', link: '/docs/guides/trading' },
   { icon: 'web', title: 'Browser Engine', desc: 'Headless Chrome with persistent profiles, screenshot gallery, domain policies, and network filtering.', link: '/docs/guides/browser' },
   { icon: 'science', title: 'Deep Research', desc: 'Quick and deep modes with live source feed, credibility ratings, and auto-synthesized reports.', link: '/docs/guides/research' },
+  { icon: 'webhook', title: 'Webhooks', desc: 'Generic webhook server receives external events and routes payloads to agents. No code required.', link: '/docs/guides/automations' },
+  { icon: 'dashboard_customize', title: 'Dashboard Widgets', desc: 'Skill output widgets display live data on Today view — tables, stats, lists with auto-refresh.', link: '/docs/guides/dashboard' },
   { icon: 'record_voice_over', title: '35+ TTS Voices', desc: 'Google, OpenAI, ElevenLabs. Talk Mode for continuous voice conversations with your agents.', link: '/docs/guides/voice' },
-  { icon: 'task_alt', title: 'Kanban Tasks', desc: 'Drag-and-drop board with agent assignment, cron scheduling, and multi-agent collaboration.', link: '/docs/guides/tasks' },
+  { icon: 'task_alt', title: 'Kanban Tasks', desc: 'Drag-and-drop board with agent assignment, cron scheduling, event triggers, and persistent tasks.', link: '/docs/guides/tasks' },
   { icon: 'mail', title: 'Email Client', desc: 'Full IMAP/SMTP via Himalaya. Per-account permissions with credential audit trail.', link: '/docs/guides/email' },
   { icon: 'shield', title: '7 Security Layers', desc: 'Injection scanning, tool policies, human-in-the-loop, container sandboxing, browser policies.', link: '/docs/reference/security' },
-  { icon: 'edit_document', title: 'Content Studio', desc: 'Document editor with markdown/HTML support, word count, and one-click AI improvement.', link: '/docs/guides/content-studio' },
-  { icon: 'terminal', title: 'Slash Commands', desc: '/model, /think, /agent, /remember, /recall, /web, /img, /exec, /compact, and more.', link: '/docs/guides/slash-commands' },
 ];
 
 const providers = [
@@ -65,9 +69,9 @@ function HeroSection() {
             Pawz are safer<br />than claws.
           </h1>
           <p className="hero-tagline">
-            A native desktop AI platform that connects to any provider, keeps your data on your machine,
-            and puts you in control of every tool call. Go fully offline with Ollama — or connect to
-            OpenAI, Anthropic, Google, and more.
+            A native desktop AI platform with 75+ built-in tools, multi-agent squads, event-driven automation,
+            MCP server support, and 11 channel bridges. Go fully offline with Ollama — or connect to
+            OpenAI, Anthropic, Google, and 7 more providers. Your data never leaves your machine.
           </p>
           <div className="hero-buttons">
             <Link className="hero-btn hero-btn-primary" to="/docs/start/installation">
@@ -173,6 +177,7 @@ function ArchSection() {
             <div className="arch-modules">
               <span>Agents</span><span>Memory</span><span>Security</span>
               <span>Channels</span><span>Trading</span><span>Skills</span>
+              <span>MCP</span><span>Events</span><span>Squads</span>
             </div>
           </div>
           <span className="arch-arrow ms">arrow_forward</span>
@@ -227,7 +232,7 @@ function CTASection() {
 
 export default function Home() {
   return (
-    <Layout description="OpenPawz — a native desktop AI platform. Private, powerful, extensible. Unlimited providers, 11 channel bridges, multi-agent orchestration. Free and open source.">
+    <Layout description="OpenPawz — a native desktop AI platform with 75+ tools, multi-agent squads, MCP servers, event-driven triggers, 11 channel bridges, and DeFi trading. Private, powerful, extensible. Free and open source.">
       <HeroSection />
       <PillarsSection />
       <FeaturesSection />
