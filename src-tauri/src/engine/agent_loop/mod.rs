@@ -413,7 +413,60 @@ pub async fn run_agent_turn(
             });
         }
 
-        // ── 6. Loop: send tool results back to model ──────────────────
+        // ── 6. Mid-loop context truncation ─────────────────────────────
+        // The messages Vec grows each round (assistant + tool results).
+        // Without trimming, later rounds can send 50k+ tokens to the API.
+        // Cap at ~16k tokens (same budget as session load), always
+        // preserving: system prompt (first msg) and last user message.
+        const MID_LOOP_MAX_TOKENS: usize = 16_000;
+        let estimate_msg_tokens = |m: &Message| -> usize {
+            let text_len = match &m.content {
+                MessageContent::Text(t) => t.len(),
+                MessageContent::Blocks(blocks) => blocks.iter().map(|b| match b {
+                    ContentBlock::Text { text } => text.len(),
+                    ContentBlock::ImageUrl { .. } => 1000,
+                    ContentBlock::Document { data, .. } => data.len() / 4,
+                }).sum(),
+            };
+            let tc_len = m.tool_calls.as_ref().map(|tcs| {
+                tcs.iter().map(|tc2| tc2.function.arguments.len() + tc2.function.name.len() + 20).sum::<usize>()
+            }).unwrap_or(0);
+            (text_len + tc_len) / 4 + 4
+        };
+        let mid_total: usize = messages.iter().map(&estimate_msg_tokens).sum();
+        if mid_total > MID_LOOP_MAX_TOKENS && messages.len() > 3 {
+            // Preserve system prompt (index 0)
+            let sys_msg = if !messages.is_empty() && messages[0].role == Role::System {
+                Some(messages.remove(0))
+            } else {
+                None
+            };
+            let sys_tokens = sys_msg.as_ref().map(&estimate_msg_tokens).unwrap_or(0);
+            let msg_tokens: Vec<usize> = messages.iter().map(&estimate_msg_tokens).collect();
+            let mut running = sys_tokens + msg_tokens.iter().sum::<usize>();
+            // Find last user message — never drop past it
+            let last_user_idx = messages.iter().rposition(|m| m.role == Role::User)
+                .unwrap_or(messages.len().saturating_sub(1));
+            let mut keep_from = 0;
+            for (i, &t) in msg_tokens.iter().enumerate() {
+                if running <= MID_LOOP_MAX_TOKENS { break; }
+                if i >= last_user_idx { break; }
+                running -= t;
+                keep_from = i + 1;
+            }
+            if keep_from > 0 {
+                messages = messages.split_off(keep_from);
+                if let Some(sys) = sys_msg {
+                    messages.insert(0, sys);
+                }
+                info!("[engine] Mid-loop truncation: {} → {} est tokens, {} messages kept",
+                    mid_total, running, messages.len());
+            } else if let Some(sys) = sys_msg {
+                messages.insert(0, sys);
+            }
+        }
+
+        // ── 7. Loop: send tool results back to model ──────────────────
         info!("[engine] {} tool calls executed, feeding results back to model", tc_count);
 
         // NOTE: Do NOT emit Complete here — only emit Complete when the model

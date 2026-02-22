@@ -165,9 +165,9 @@ pub fn compose_chat_system_prompt(
     parts.push(format!(
         "## Soul Files\n{}\n\n\
         ## Memory\n\
-        Use `memory_search` to recall past conversations, facts, and context. \
-        Use `memory_store` to save important information for future sessions. \
-        Your memory is NOT pre-loaded — search explicitly when you need historical context.",
+        Relevant memories from past conversations are automatically recalled and shown below \
+        (if any match this context). Use `memory_search` for deeper or more specific recall. \
+        Use `memory_store` to save important information for future sessions.",
         soul_hint,
     ));
 

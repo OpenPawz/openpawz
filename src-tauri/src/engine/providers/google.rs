@@ -314,7 +314,9 @@ impl GoogleProvider {
             body["tools"] = Self::format_tools(tools);
         }
         if let Some(temp) = temperature {
-            body["generationConfig"] = json!({"temperature": temp});
+            body["generationConfig"] = json!({"temperature": temp, "maxOutputTokens": 8192});
+        } else {
+            body["generationConfig"] = json!({"maxOutputTokens": 8192});
         }
 
         info!("[engine] Google request model={}", model);
