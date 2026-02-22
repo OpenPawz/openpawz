@@ -29,6 +29,7 @@ pub mod skills_tools;
 pub mod coinbase;
 pub mod dex;
 pub mod solana;
+pub mod skill_output;
 
 // ── ToolDefinition helpers (keep backward-compatible API for all callers) ───
 
@@ -45,6 +46,7 @@ impl ToolDefinition {
         tools.extend(tasks::definitions());
         tools.extend(agents::definitions());
         tools.extend(skills_tools::definitions());
+        tools.extend(skill_output::definitions());
         tools
     }
 
@@ -107,6 +109,7 @@ pub async fn execute_tool(tool_call: &crate::engine::types::ToolCall, app_handle
         .or(tasks::execute(name, &args, app_handle, agent_id).await)
         .or(agents::execute(name, &args, app_handle, agent_id).await)
         .or(skills_tools::execute(name, &args, app_handle, agent_id).await)
+        .or(skill_output::execute(name, &args, app_handle, agent_id).await)
         .or(email::execute(name, &args, app_handle).await)
         .or(telegram::execute(name, &args, app_handle).await)
         .or(slack::execute(name, &args, app_handle).await)

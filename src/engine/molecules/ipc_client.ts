@@ -56,6 +56,7 @@ import type {
   WebhookConfig,
   McpServerConfig,
   McpServerStatus,
+  SkillOutput,
 } from '../atoms/types';
 
 export class PawEngineClient {
@@ -388,6 +389,12 @@ export class PawEngineClient {
 
   async tomlSkillUninstall(skillId: string): Promise<void> {
     return invoke('engine_toml_skill_uninstall', { skillId });
+  }
+
+  // ── Skill Outputs (Phase F.2 — Dashboard Widgets) ────────────────────
+
+  async listSkillOutputs(skillId?: string, agentId?: string): Promise<SkillOutput[]> {
+    return invoke<SkillOutput[]>('engine_list_skill_outputs', { skillId, agentId });
   }
 
   // ── Trading ──────────────────────────────────────────────────────────

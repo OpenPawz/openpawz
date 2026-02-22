@@ -247,6 +247,21 @@ export interface TomlSkillEntry {
   has_widget: boolean;
 }
 
+// ── Skill Outputs (Phase F.2 — Dashboard Widgets) ────────────────────
+
+/** A persisted skill output row for dashboard widget rendering. */
+export interface SkillOutput {
+  id: string;
+  skill_id: string;
+  agent_id: string;
+  widget_type: 'status' | 'metric' | 'table' | 'log' | 'kv';
+  title: string;
+  /** JSON-encoded structured data. */
+  data: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // ── Community Skills (skills.sh) ─────────────────────────────────────
 
 export interface CommunitySkill {

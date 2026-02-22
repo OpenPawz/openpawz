@@ -1,7 +1,13 @@
 // Today View — Orchestration, state, exports
 
 import type { Task } from './atoms';
-import { initMoleculesState, fetchWeather, fetchUnreadEmails, renderToday } from './molecules';
+import {
+  initMoleculesState,
+  fetchWeather,
+  fetchUnreadEmails,
+  fetchSkillOutputs,
+  renderToday,
+} from './molecules';
 
 // ── State ─────────────────────────────────────────────────────────────
 
@@ -29,7 +35,7 @@ export async function loadToday() {
   loadTasks();
   renderToday();
 
-  await Promise.all([fetchWeather(), fetchUnreadEmails()]);
+  await Promise.all([fetchWeather(), fetchUnreadEmails(), fetchSkillOutputs()]);
 }
 
 export function initToday() {
