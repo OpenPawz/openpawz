@@ -187,12 +187,14 @@ impl GoogleProvider {
         // ── Merge consecutive same-role messages ──────────────────────
         // Gemini requires strictly alternating user/model turns.
         // Consecutive user or model messages cause INVALID_ARGUMENT 400.
+        // Consecutive function responses MUST also be merged — Gemini
+        // requires all functionResponse parts in a single turn immediately
+        // after the model's functionCall turn.
         let mut merged: Vec<Value> = Vec::new();
         for entry in contents {
             let entry_role = entry["role"].as_str().unwrap_or("").to_string();
             let can_merge = !merged.is_empty()
-                && merged.last().and_then(|e| e["role"].as_str()).map(|r| r == entry_role).unwrap_or(false)
-                && entry_role != "function"; // never merge function responses
+                && merged.last().and_then(|e| e["role"].as_str()).map(|r| r == entry_role).unwrap_or(false);
 
             if can_merge {
                 // Merge parts into the previous entry
