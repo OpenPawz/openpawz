@@ -14,7 +14,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "memory_store".into(),
-                description: "Store a fact or piece of information in your long-term memory. These memories persist across conversations and are automatically recalled when relevant. Use this to remember user preferences, important facts, project details, etc.".into(),
+                description: "Store a fact or piece of information in your long-term memory. These memories persist across conversations. Use memory_search to recall them later — they are NOT automatically injected into context. Use this to remember user preferences, important facts, project details, etc.".into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -66,7 +66,7 @@ async fn execute_memory_store(args: &serde_json::Value, app_handle: &tauri::AppH
     let state = app_handle.try_state::<EngineState>().ok_or("Engine state not available")?;
     let emb_client = state.embedding_client();
     let id = memory::store_memory(&state.store, content, category, 5, emb_client.as_ref(), None).await?;
-    Ok(format!("Memory stored (id: {}). I'll recall this automatically when it's relevant.", &id[..8]))
+    Ok(format!("Memory stored (id: {}). Use memory_search to recall it in future sessions.", &id[..8]))
 }
 
 async fn execute_memory_search(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {

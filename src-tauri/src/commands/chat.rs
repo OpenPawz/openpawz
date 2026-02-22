@@ -167,13 +167,44 @@ pub async fn engine_chat_send(
     };
 
     // ── Compose full system prompt (organism) ──────────────────────────────
-    let full_system_prompt = chat_org::compose_chat_system_prompt(
+    let mut full_system_prompt = chat_org::compose_chat_system_prompt(
         base_system_prompt.as_deref(),
         runtime_context,
         core_context.as_deref(),
         todays_memories.as_deref(),
         &skill_instructions,
     );
+
+    // ── Auto-recall: search memories relevant to this message ──────────
+    // Same as channel agents — inject relevant long-term memories into
+    // the system prompt so the agent doesn't "forget" cross-session context.
+    {
+        let (auto_recall_on, recall_limit, recall_threshold) = {
+            let mcfg = state.memory_config.lock();
+            (mcfg.auto_recall, mcfg.recall_limit, mcfg.recall_threshold)
+        };
+        if auto_recall_on {
+            let emb_client = state.embedding_client();
+            match memory::search_memories(
+                &state.store, &request.message, recall_limit, recall_threshold,
+                emb_client.as_ref(), Some(&agent_id_owned),
+            ).await {
+                Ok(mems) if !mems.is_empty() => {
+                    let ctx: Vec<String> = mems.iter()
+                        .map(|m| format!("- [{}] {}", m.category, m.content))
+                        .collect();
+                    let memory_block = format!("## Relevant Memories\n{}", ctx.join("\n"));
+                    if let Some(ref mut p) = full_system_prompt {
+                        p.push_str("\n\n---\n\n");
+                        p.push_str(&memory_block);
+                    }
+                    info!("[engine] Auto-recalled {} memories ({} chars)", mems.len(), memory_block.len());
+                }
+                Ok(_) => {} // No relevant memories found
+                Err(e) => warn!("[engine] Auto-recall search failed: {}", e),
+            }
+        }
+    }
 
     info!(
         "[engine] System prompt: {} chars (core_ctx={}, today_mem={}, skills={})",
@@ -326,6 +357,8 @@ pub async fn engine_chat_send(
                     }
 
                     // Session-end summary (powers "Today's Memory Notes" in future sessions)
+                    // Only store when actual tool work was done — plain chat responses
+                    // are not worth memorizing and cause memory bloat.
                     let had_tool_calls = messages.iter().skip(pre_loop_msg_count).any(|m| {
                         m.role == Role::Tool
                             || m.tool_calls
@@ -333,8 +366,7 @@ pub async fn engine_chat_send(
                                 .map(|tc| !tc.is_empty())
                                 .unwrap_or(false)
                     });
-                    let is_substantial = final_text.len() > 200 || had_tool_calls;
-                    if is_substantial && !final_text.is_empty() {
+                    if had_tool_calls && !final_text.is_empty() {
                         let summary = if final_text.len() > 300 {
                             format!("{}…", &final_text[..300])
                         } else {
@@ -364,6 +396,20 @@ pub async fn engine_chat_send(
                                 session_summary.len()
                             ),
                             Err(e) => warn!("[engine] Session summary store failed: {}", e),
+                        }
+                    }
+
+                    // ── Auto-compact: if the session is getting large, compact it ──
+                    // This was designed but never wired in — sessions grew unbounded.
+                    if let Ok(compact_db) = crate::engine::sessions::SessionStore::open() {
+                        let compact_store = std::sync::Arc::new(compact_db);
+                        let compact_provider = AnyProvider::from_config(&provider_config);
+                        if let Some(result) = crate::engine::compaction::auto_compact_if_needed(
+                            &compact_store, &compact_provider, &model, &session_id_clone,
+                        ).await {
+                            info!("[engine] Auto-compaction complete: {} → {} messages (tokens: {} → {})",
+                                result.messages_before, result.messages_after,
+                                result.tokens_before, result.tokens_after);
                         }
                     }
                 }

@@ -321,7 +321,7 @@ pub async fn backfill_embeddings(
 /// Auto-capture: extract memorable facts from an assistant response.
 /// Uses a simple heuristic approach — no LLM call needed.
 /// Returns content strings suitable for memory storage.
-pub fn extract_memorable_facts(user_message: &str, _assistant_response: &str) -> Vec<(String, String)> {
+pub fn extract_memorable_facts(user_message: &str, assistant_response: &str) -> Vec<(String, String)> {
     let mut facts: Vec<(String, String)> = Vec::new();
     let user_lower = user_message.to_lowercase();
 
@@ -359,6 +359,29 @@ pub fn extract_memorable_facts(user_message: &str, _assistant_response: &str) ->
         if user_lower.contains(pattern) {
             facts.push((user_message.to_string(), "instruction".into()));
             break;
+        }
+    }
+
+    // Extract facts from assistant response — capture key findings,
+    // decisions, and discoveries the agent made during tool use.
+    if assistant_response.len() > 100 {
+        let resp_lower = assistant_response.to_lowercase();
+        let assistant_fact_patterns = [
+            "i found that ", "i discovered ", "the issue is ", "the problem is ",
+            "the solution is ", "i've set up ", "i configured ", "i created ",
+            "the root cause ", "i installed ", "i fixed ",
+        ];
+        for pattern in &assistant_fact_patterns {
+            if resp_lower.contains(pattern) {
+                // Store a condensed version (first 300 chars) to avoid bloat
+                let condensed = if assistant_response.len() > 300 {
+                    format!("Agent finding: {}…", &assistant_response[..300])
+                } else {
+                    format!("Agent finding: {}", assistant_response)
+                };
+                facts.push((condensed, "context".into()));
+                break;
+            }
         }
     }
 

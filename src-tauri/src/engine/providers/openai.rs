@@ -213,6 +213,7 @@ impl AiProvider for OpenAiProvider {
             "messages": Self::format_messages(messages),
             "stream": true,
             "stream_options": {"include_usage": true},
+            "max_completion_tokens": 8192,
         });
 
         if !tools.is_empty() {
