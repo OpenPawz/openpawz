@@ -57,6 +57,7 @@ const sidebars: SidebarsConfig = {
         'channels/nostr',
         'channels/twitch',
         'channels/webchat',
+        'channels/whatsapp',
       ],
     },
     {
@@ -82,6 +83,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'reference/architecture',
         'reference/security',
+        'reference/quality',
         'reference/troubleshooting',
       ],
     },

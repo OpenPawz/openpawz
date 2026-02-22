@@ -5,7 +5,7 @@ title: Architecture
 
 # Architecture
 
-Pawz is a Tauri v2 desktop application with a Rust backend and TypeScript frontend.
+OpenPawz is a Tauri v2 desktop application with a Rust backend and TypeScript frontend.
 
 ## System overview
 
