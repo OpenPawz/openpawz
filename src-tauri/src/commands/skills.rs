@@ -1,5 +1,6 @@
 // commands/skills.rs — Thin wrappers for skill vault commands.
 // Credential encryption lives in engine/skills.rs.
+// TOML manifest commands (Phase F.1) are at the bottom.
 
 use crate::commands::state::EngineState;
 use crate::engine::skills;
@@ -154,4 +155,32 @@ pub fn engine_community_skill_set_agents(
 ) -> Result<(), String> {
     info!("[engine] Community skill {} → agent_ids={:?}", skill_id, agent_ids);
     state.store.set_community_skill_agents(&skill_id, &agent_ids).map_err(|e| e.to_string())
+}
+
+// ── TOML Manifest Skills (Phase F.1) ───────────────────────────────────
+
+/// Scan `~/.paw/skills/*/pawz-skill.toml` and return all valid entries.
+#[tauri::command]
+pub fn engine_toml_skills_scan() -> Result<Vec<skills::TomlSkillEntry>, String> {
+    Ok(skills::scan_toml_skills())
+}
+
+/// Install a TOML skill by writing a manifest to `~/.paw/skills/{id}/pawz-skill.toml`.
+#[tauri::command]
+pub fn engine_toml_skill_install(
+    skill_id: String,
+    toml_content: String,
+) -> Result<String, String> {
+    info!("[engine] Installing TOML skill '{}'", skill_id);
+    let path = skills::install_toml_skill(&skill_id, &toml_content)?;
+    Ok(path.to_string_lossy().to_string())
+}
+
+/// Uninstall a TOML skill by removing its directory.
+#[tauri::command]
+pub fn engine_toml_skill_uninstall(
+    skill_id: String,
+) -> Result<(), String> {
+    info!("[engine] Uninstalling TOML skill '{}'", skill_id);
+    skills::uninstall_toml_skill(&skill_id)
 }

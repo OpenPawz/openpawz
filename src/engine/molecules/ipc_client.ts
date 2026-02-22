@@ -20,6 +20,7 @@ import type {
   EngineSkillStatus,
   CommunitySkill,
   DiscoveredSkill,
+  TomlSkillEntry,
   TradeRecord,
   TradingSummary,
   TradingPolicy,
@@ -373,6 +374,20 @@ export class PawEngineClient {
 
   async communitySkillSetAgents(skillId: string, agentIds: string[]): Promise<void> {
     return invoke('engine_community_skill_set_agents', { skillId, agentIds });
+  }
+
+  // ── TOML Manifest Skills (Phase F.1) ─────────────────────────────────
+
+  async tomlSkillsScan(): Promise<TomlSkillEntry[]> {
+    return invoke<TomlSkillEntry[]>('engine_toml_skills_scan');
+  }
+
+  async tomlSkillInstall(skillId: string, tomlContent: string): Promise<string> {
+    return invoke<string>('engine_toml_skill_install', { skillId, tomlContent });
+  }
+
+  async tomlSkillUninstall(skillId: string): Promise<void> {
+    return invoke('engine_toml_skill_uninstall', { skillId });
   }
 
   // ── Trading ──────────────────────────────────────────────────────────

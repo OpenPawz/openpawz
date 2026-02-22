@@ -150,6 +150,29 @@ function renderSkillCard(s: EngineSkillStatus): string {
   if (hasTools) badges.push(`<span class="skill-badge">${msIcon('build')} Tools</span>`);
   if (hasCreds) badges.push(`<span class="skill-badge">${msIcon('vpn_key')} Vault</span>`);
 
+  const isToml = s.source === 'toml';
+  if (isToml) {
+    badges.push(
+      `<span class="skill-badge" style="border-color:#8b5cf6;color:#8b5cf6">${msIcon('package_2')} Community</span>`,
+    );
+    if (s.version)
+      badges.push(
+        `<span class="skill-badge" style="border-color:var(--text-muted);color:var(--text-muted)">v${escHtml(s.version)}</span>`,
+      );
+    if (s.has_mcp)
+      badges.push(
+        `<span class="skill-badge" style="border-color:#ef4444;color:#ef4444">${msIcon('hub')} MCP</span>`,
+      );
+    if (s.has_widget)
+      badges.push(
+        `<span class="skill-badge" style="border-color:#eab308;color:#eab308">${msIcon('dashboard')} Widget</span>`,
+      );
+  }
+
+  const uninstallBtn = isToml
+    ? `<button class="btn btn-ghost btn-sm skill-toml-uninstall-btn" data-skill="${escHtml(s.id)}" title="Uninstall this TOML skill" style="color:#ef4444">${msIcon('delete')} Uninstall</button>`
+    : '';
+
   return `
   <div class="skill-vault-card${s.enabled ? ' skill-enabled' : ''}" data-skill-id="${escHtml(s.id)}">
     <div class="skill-card-header">
@@ -157,6 +180,7 @@ function renderSkillCard(s: EngineSkillStatus): string {
         <span class="skill-card-icon">${skillIcon(s.icon)}</span>
         <div>
           <strong class="skill-card-name">${escHtml(s.name)}</strong>
+          ${isToml && s.author ? `<span style="color:var(--text-muted);font-size:11px;margin-left:6px">by ${escHtml(s.author)}</span>` : ''}
           <span class="skill-status ${statusClass}">${msIcon(statusIcon)} ${statusText}</span>
         </div>
       </div>
@@ -166,6 +190,7 @@ function renderSkillCard(s: EngineSkillStatus): string {
           Enable
         </label>
         ${hasCreds ? `<button class="btn btn-ghost btn-sm skill-revoke-btn" data-skill="${escHtml(s.id)}" title="Revoke all credentials">Revoke</button>` : ''}
+        ${uninstallBtn}
       </div>
     </div>
     <p class="skill-card-desc">${escHtml(s.description)}</p>
@@ -424,6 +449,29 @@ export function bindSkillEvents(): void {
       try {
         await pawEngine.skillSetInstructions(skillId, '');
         showToast(`Instructions reset for ${skillId}`, 'success');
+        await reload();
+      } catch (err) {
+        showToast(`Failed: ${err}`, 'error');
+      }
+    });
+  });
+
+  // Uninstall TOML skill
+  document.querySelectorAll('.skill-toml-uninstall-btn').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const btn = el as HTMLButtonElement;
+      const skillId = btn.dataset.skill!;
+
+      if (
+        !(await confirmModal(
+          `Uninstall "${skillId}"? This removes the skill files from ~/.paw/skills/.`,
+        ))
+      )
+        return;
+
+      try {
+        await pawEngine.tomlSkillUninstall(skillId);
+        showToast(`${skillId} uninstalled`, 'success');
         await reload();
       } catch (err) {
         showToast(`Failed: ${err}`, 'error');

@@ -222,6 +222,29 @@ export interface EngineSkillStatus {
   default_instructions: string;
   /** Custom user-edited instructions (empty = using defaults) */
   custom_instructions: string;
+  /** Where this skill was loaded from (builtin or toml) */
+  source?: SkillSource;
+  /** Manifest version (TOML skills only) */
+  version?: string;
+  /** Manifest author (TOML skills only) */
+  author?: string;
+  /** Whether the skill bundles an MCP server */
+  has_mcp?: boolean;
+  /** Whether the skill declares a dashboard widget */
+  has_widget?: boolean;
+}
+
+export type SkillSource = 'builtin' | 'toml';
+
+// ── TOML Manifest Skills (Phase F.1) ─────────────────────────────────
+
+export interface TomlSkillEntry {
+  definition: EngineSkillStatus;
+  source_dir: string;
+  version: string;
+  author: string;
+  has_mcp: boolean;
+  has_widget: boolean;
 }
 
 // ── Community Skills (skills.sh) ─────────────────────────────────────
