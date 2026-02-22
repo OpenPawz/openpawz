@@ -3,8 +3,8 @@ import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
 const config: Config = {
-  title: 'Pawz',
-  tagline: 'The most secure, capable, and extensible AI agent platform for the desktop.',
+  title: 'OpenPawz',
+  tagline: 'Your AI, your rules. A native desktop AI platform — private, powerful, extensible.',
   favicon: 'img/pawz-favicon.png',
 
   url: 'https://elisplash.github.io',
@@ -44,9 +44,9 @@ const config: Config = {
 
   themeConfig: {
     navbar: {
-      title: 'Pawz',
+      title: 'OpenPawz',
       logo: {
-        alt: 'Pawz Logo',
+        alt: 'OpenPawz Logo',
         src: 'img/pawz-logo.png',
         width: 32,
         height: 32,
@@ -85,7 +85,7 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Eli Bury. MIT License.`,
+      copyright: `Copyright © ${new Date().getFullYear()} OpenPawz Contributors. MIT License.`,
     },
     prism: {
       theme: prismThemes.github,

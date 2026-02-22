@@ -5,7 +5,7 @@ title: Security
 
 # Security
 
-Pawz is designed with defense-in-depth: multiple layers protect against prompt injection, data exfiltration, and unauthorized actions.
+OpenPawz is designed with defense-in-depth: multiple layers protect against prompt injection, data exfiltration, and unauthorized actions.
 
 ## Human-in-the-Loop (HIL)
 
