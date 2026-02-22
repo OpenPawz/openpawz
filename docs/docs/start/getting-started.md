@@ -14,7 +14,7 @@ Pawz is a **native desktop AI agent platform** built on [Tauri v2](https://v2.ta
 ┌──────────────────────┐          ┌──────────────────────────────┐
 │  Pawz Desktop UI     │          │  Rust Backend Engine         │
 │  (TypeScript)        │◄── IPC ──►  Agent loop + tool executor  │
-│                      │          │  10 channel bridges          │
+│                      │          │  11 channel bridges          │
 │  20+ views           │          │  10 AI providers             │
 │  Material Symbols    │          │  SQLite + OS keychain        │
 └──────────────────────┘          └──────────────────────────────┘
@@ -27,11 +27,13 @@ Everything runs locally on your machine through Tauri IPC — no open ports, no 
 - **Chat with AI agents** — each with their own personality, model, and tools
 - **Connect to 11 chat platforms** — Telegram, Discord, Slack, Matrix, IRC, WhatsApp, and more
 - **Use 10+ AI providers** — Ollama (local), OpenAI, Anthropic, Google, DeepSeek, and more
-- **Build with 40+ skills** — email, GitHub, trading, TTS, image generation, smart home
-- **Orchestrate multi-agent projects** — boss/worker pattern with task delegation
-- **Manage tasks** — Kanban board with agent assignment and cron scheduling
+- **Build with 75+ tools** — email, GitHub, trading, TTS, browser automation, inter-agent comms
+- **Orchestrate multi-agent projects** — boss/worker pattern with task delegation and agent squads
+- **Manage tasks** — Kanban board with agent assignment, cron scheduling, and event-driven triggers
 - **Research** — dedicated workflow with findings and synthesis reports
 - **Remember everything** — semantic long-term memory with auto-recall
+- **Extend with MCP** — connect to any Model Context Protocol server for additional tools
+- **PawzHub marketplace** — browse and install community skills and integrations
 - **Stay secure** — command risk classification, approval modals, container sandboxing
 
 ## Quick links

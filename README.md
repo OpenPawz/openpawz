@@ -21,7 +21,7 @@ OpenPawz is a native Tauri v2 application with a pure Rust backend engine. It ru
 
 - **Private** — No cloud, no telemetry, no open ports. Credentials encrypted with AES-256-GCM in your OS keychain.
 - **Powerful** — Multi-agent orchestration, 11 channel bridges, hybrid memory, DeFi trading, browser automation, research workflows.
-- **Extensible** — Unlimited providers, community skills via PawzHub, 15 slash commands, modular architecture.
+- **Extensible** — Unlimited providers, community skills via PawzHub, MCP server support, 75+ built-in tools, modular architecture.
 - **Tiny** — ~5 MB native binary. Not a 200 MB Electron wrapper.
 
 ---
@@ -53,6 +53,8 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture.
 ### Multi-Agent System
 - Unlimited agents with custom personalities, models, and tool policies
 - Boss/worker orchestration — agents delegate tasks and spawn sub-agents at runtime
+- Inter-agent communication — direct messages, broadcast channels, and agent squads
+- Agent squads — team formation with coordinator roles for collaborative tasks
 - Per-agent chat sessions with persistent history and mini-chat popups
 - Agent dock with avatars (50 custom Pawz Boi sprites)
 
@@ -83,14 +85,26 @@ Each bridge includes user approval flows, per-agent routing, and uniform start/s
 - Memory Palace visualization UI
 
 ### Built-in Tools & Skills
-- 40+ skills with encrypted credential injection
-- Community skills from the [skills.sh](https://skills.sh) ecosystem
-- Kanban task board with agent assignment and cron scheduling
+- 75+ built-in tools across 21 modules with encrypted credential injection
+- Community skills from the [skills.sh](https://skills.sh) ecosystem and PawzHub marketplace
+- Three-tier extensibility: Skills (SKILL.md) → Integrations (pawz-skill.toml) → Extensions (custom views + storage)
+- Kanban task board with agent assignment, cron scheduling, and event-driven triggers
+- Inter-agent communication — direct messaging and broadcast channels
+- Agent squads — team formation with coordinator roles and squad broadcasts
+- Persistent background tasks with automatic re-queuing
 - Research workflow with findings and synthesis
 - Full email client (IMAP/SMTP via Himalaya)
 - Browser automation with managed profiles
 - DeFi trading on ETH (7 EVM chains) + Solana (Jupiter, PumpPortal)
-- 20 slash commands with autocomplete
+- Dashboard widgets with skill output persistence
+- 15 slash commands with autocomplete
+
+### Webhooks & MCP
+- Generic webhook server — receive external events and route to agents
+- MCP (Model Context Protocol) client — connect to any MCP server for additional tools
+- Per-agent MCP server assignment
+- Event-driven task triggers — tasks fire on webhooks or inter-agent messages
+- Auto-approve mode for fully autonomous agent operation
 
 ### Voice
 - Google TTS (Chirp 3 HD, Neural2, Journey)
@@ -166,6 +180,7 @@ npm run tauri build
 | [SECURITY.md](SECURITY.md) | Complete security architecture — 7 layers, threat model, credential handling |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, code style, testing, PR guidelines |
 | [ENTERPRISE_PLAN.md](ENTERPRISE_PLAN.md) | Enterprise hardening audit — all phases with test counts |
+| [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md) | Agent autonomy roadmap — auto-approve, webhooks, MCP, PawzHub |
 | [Docs Site](https://elisplash.github.io/paw/) | Full documentation with guides, channel setup, and API reference |
 
 ---
@@ -177,7 +192,7 @@ npm run tauri build
 | Framework | [Tauri v2](https://v2.tauri.app/) |
 | Backend | Rust (async, Tokio) |
 | Frontend | TypeScript (vanilla DOM) |
-| Database | SQLite (19 tables, AES-256-GCM encrypted fields) |
+| Database | SQLite (21 tables, AES-256-GCM encrypted fields) |
 | Bundler | Vite |
 | Testing | vitest (TS) + cargo test (Rust) |
 | CI | GitHub Actions (3 parallel jobs) |
