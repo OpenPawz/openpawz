@@ -127,6 +127,8 @@ pub fn run() {
             commands::skills::engine_toml_skills_scan,
             commands::skills::engine_toml_skill_install,
             commands::skills::engine_toml_skill_uninstall,
+            // ── Skill Outputs (Phase F.2) ──
+            commands::skills::engine_list_skill_outputs,
             // ── Trading ──
             commands::trade::engine_trading_history,
             commands::trade::engine_trading_summary,

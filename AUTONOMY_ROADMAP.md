@@ -294,24 +294,33 @@ available tools at runtime. No Rust code changes needed to add new capabilities.
 - `src-tauri/src/engine/skills/mod.rs` — merge TOML skills with builtins
 - `src-tauri/src/engine/skills/prompt.rs` — include TOML skills in prompt building
 
-### F.2 — Dashboard Widgets
+### F.2 — Dashboard Widgets ✅
 
-**What exists:** Nothing — the `[widget]` section in TOML manifests is documented but not rendered.
+**What exists:** Fully implemented — agents persist widget data via the `skill_output` tool, and the Today dashboard renders them.
 
-**What to build:**
-- [ ] `skill_output` tool — agent persists structured JSON to `skill_outputs` table
-- [ ] Widget renderer — 5 types: status, metric, table, log, kv (as documented in pawzhub.md)
-- [ ] Today/Dashboard view shows widget cards from enabled skills
+**What was built:**
+- [x] `skill_output` tool — agent persists structured JSON to `skill_outputs` table
+- [x] Widget renderer — 5 types: status, metric, table, log, kv (as documented in pawzhub.md)
+- [x] Today/Dashboard view shows widget cards from enabled skills
 - [ ] Auto-refresh: `refresh` interval from manifest triggers periodic agent re-run
-- [ ] Widget field types: text, number, badge, datetime, percentage, currency
+- [x] Widget field types: text, number, badge, datetime, percentage, currency
 
-**Files to create:**
-- `src-tauri/src/engine/tools/skill_output.rs` — the `skill_output` tool function
-- `src/components/molecules/skill-widget.ts` — widget card renderer
+**Files created:**
+- `src-tauri/src/engine/tools/skill_output.rs` — the `skill_output` tool function (2 tools, 2 tests)
+- `src-tauri/src/engine/sessions/skill_outputs.rs` — CRUD for `skill_outputs` table (7 tests)
+- `src/components/molecules/skill-widget.ts` — widget card renderer (5 types × 6 field types)
 
-**Files to modify:**
-- `src/views/today.ts` — render skill widgets on dashboard
-- `src-tauri/src/engine/tools/mod.rs` — register `skill_output` tool
+**Files modified:**
+- `src-tauri/src/engine/sessions/schema.rs` — `skill_outputs` table migration
+- `src-tauri/src/engine/sessions/mod.rs` — registered `skill_outputs` module
+- `src-tauri/src/engine/tools/mod.rs` — registered `skill_output` tool
+- `src-tauri/src/commands/skills.rs` — `engine_list_skill_outputs` Tauri command
+- `src-tauri/src/lib.rs` — registered command
+- `src/views/today/molecules.ts` — fetch + render skill widgets
+- `src/views/today/index.ts` — added `fetchSkillOutputs` to load pipeline
+- `src/engine/atoms/types.ts` — `SkillOutput` type
+- `src/engine/molecules/ipc_client.ts` — `listSkillOutputs` IPC method
+- `src/styles.css` — widget card CSS (status, metric, table, log, kv)
 
 ### F.3 — MCP Server Sharing *(requires Phase E)*
 

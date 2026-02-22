@@ -6,6 +6,8 @@ import { switchView } from '../router';
 import { $, escHtml } from '../../components/helpers';
 import { showToast } from '../../components/toast';
 import { type Task, getWeatherIcon, getGreeting, getPawzMessage, isToday } from './atoms';
+import { renderSkillWidgets } from '../../components/molecules/skill-widget';
+import type { SkillOutput } from '../../engine/atoms/types';
 
 // ── Tauri bridge (no pawEngine equivalent for these commands) ──────────
 interface TauriWindow {
@@ -204,6 +206,26 @@ export async function fetchUnreadEmails() {
 
 // ── Dashboard Render ──────────────────────────────────────────────────
 
+/** Cached skill outputs for rendering during synchronous renderToday(). */
+let _skillOutputs: SkillOutput[] = [];
+
+/** Fetch skill outputs from backend and re-render if any found. */
+export async function fetchSkillOutputs() {
+  try {
+    const outputs = await pawEngine.listSkillOutputs();
+    _skillOutputs = outputs ?? [];
+
+    // Inject widget HTML into the today-main column
+    const widgetContainer = document.getElementById('today-skill-widgets');
+    if (widgetContainer) {
+      widgetContainer.innerHTML = renderSkillWidgets(_skillOutputs);
+    }
+  } catch (e) {
+    console.warn('[today] Skill outputs fetch failed:', e);
+    _skillOutputs = [];
+  }
+}
+
 export function renderToday() {
   const container = $('today-content');
   if (!container) return;
@@ -305,6 +327,11 @@ export function renderToday() {
           <div class="today-card-body" id="today-emails">
             <span class="today-loading">Loading...</span>
           </div>
+        </div>
+        
+        <!-- Skill Widgets (Phase F.2) -->
+        <div id="today-skill-widgets">
+          ${renderSkillWidgets(_skillOutputs)}
         </div>
       </div>
       

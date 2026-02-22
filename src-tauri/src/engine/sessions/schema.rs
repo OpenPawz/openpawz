@@ -220,6 +220,21 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
         CREATE INDEX IF NOT EXISTS idx_positions_mint ON positions(mint);
     ").ok();
 
+    // ── Phase F.2: Skill Outputs (Dashboard Widgets) ────────────────
+    conn.execute_batch("
+        CREATE TABLE IF NOT EXISTS skill_outputs (
+            id TEXT PRIMARY KEY,
+            skill_id TEXT NOT NULL,
+            agent_id TEXT NOT NULL DEFAULT 'default',
+            widget_type TEXT NOT NULL,
+            title TEXT NOT NULL,
+            data TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_skill_outputs_skill ON skill_outputs(skill_id);
+    ").ok();
+
     // ── Phase 2: Memory Intelligence migrations ──────────────────────
     // Add agent_id column to memories (for per-agent memory scope)
     conn.execute("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''", []).ok();

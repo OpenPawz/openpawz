@@ -184,3 +184,21 @@ pub fn engine_toml_skill_uninstall(
     info!("[engine] Uninstalling TOML skill '{}'", skill_id);
     skills::uninstall_toml_skill(&skill_id)
 }
+
+// ── Skill Outputs (Phase F.2 — Dashboard Widgets) ──────────────────
+
+/// List all skill outputs for dashboard widget rendering.
+#[tauri::command]
+pub fn engine_list_skill_outputs(
+    state: State<'_, EngineState>,
+    skill_id: Option<String>,
+    agent_id: Option<String>,
+) -> Result<Vec<crate::engine::sessions::SkillOutput>, String> {
+    state
+        .store
+        .list_skill_outputs(
+            skill_id.as_deref(),
+            agent_id.as_deref(),
+        )
+        .map_err(|e| e.to_string())
+}
