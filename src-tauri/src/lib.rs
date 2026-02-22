@@ -123,6 +123,10 @@ pub fn run() {
             commands::skills::engine_community_skill_remove,
             commands::skills::engine_community_skill_set_enabled,
             commands::skills::engine_community_skill_set_agents,
+            // ── TOML Manifest Skills (Phase F.1) ──
+            commands::skills::engine_toml_skills_scan,
+            commands::skills::engine_toml_skill_install,
+            commands::skills::engine_toml_skill_uninstall,
             // ── Trading ──
             commands::trade::engine_trading_history,
             commands::trade::engine_trading_summary,

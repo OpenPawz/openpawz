@@ -1,8 +1,10 @@
 // Pawz Agent Engine — Skill Prompt Injection
 // Assembles skill instructions to inject into agent system prompts.
+// Includes built-in skills, TOML manifest skills, and community skills.
 
 use crate::engine::sessions::SessionStore;
 use super::builtins::builtin_skills;
+use super::toml_loader::scan_toml_skills;
 use super::types::CredentialField;
 use super::status::get_skill_credentials;
 use super::community::get_community_skill_instructions;
@@ -17,6 +19,7 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
     let definitions = builtin_skills();
     let mut sections: Vec<String> = Vec::new();
 
+    // ── Built-in skills ────────────────────────────────────────────────
     for def in &definitions {
         if !store.is_skill_enabled(&def.id)? { continue; }
 
@@ -30,6 +33,36 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
         // UNLESS the skill has built-in tool_executor auth (credentials stay server-side)
         let hidden_credential_skills = ["coinbase", "dex"];
         let instructions = if !def.required_credentials.is_empty() && !hidden_credential_skills.contains(&def.id.as_str()) {
+            inject_credentials_into_instructions(store, &def.id, &def.required_credentials, &base_instructions)
+        } else {
+            base_instructions
+        };
+
+        sections.push(format!(
+            "## {} Skill ({})\n{}",
+            def.name, def.id, instructions
+        ));
+    }
+
+    // ── TOML manifest skills from ~/.paw/skills/ ───────────────────────
+    let builtin_ids: std::collections::HashSet<&str> = definitions.iter().map(|d| d.id.as_str()).collect();
+    let toml_skills = scan_toml_skills();
+
+    for entry in &toml_skills {
+        let def = &entry.definition;
+        // Skip collisions with built-ins
+        if builtin_ids.contains(def.id.as_str()) { continue; }
+        if !store.is_skill_enabled(&def.id).unwrap_or(false) { continue; }
+
+        let base_instructions = store.get_skill_custom_instructions(&def.id)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| def.agent_instructions.clone());
+
+        if base_instructions.is_empty() { continue; }
+
+        // TOML skills always get credential injection (no hidden-credential exceptions)
+        let instructions = if !def.required_credentials.is_empty() {
             inject_credentials_into_instructions(store, &def.id, &def.required_credentials, &base_instructions)
         } else {
             base_instructions

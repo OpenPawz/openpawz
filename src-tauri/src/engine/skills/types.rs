@@ -85,6 +85,16 @@ pub struct SkillRecord {
     pub updated_at: String,
 }
 
+/// Where a skill originated from — used by frontend for UI differentiation.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum SkillSource {
+    /// Compiled into the Rust binary.
+    Builtin,
+    /// Loaded from `~/.paw/skills/*/pawz-skill.toml`.
+    Toml,
+}
+
 /// Skill status for the frontend — combines definition + stored state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkillStatus {
@@ -111,4 +121,23 @@ pub struct SkillStatus {
     pub default_instructions: String,
     /// Custom user-edited instructions (if any). Empty string = using defaults.
     pub custom_instructions: String,
+    /// Where this skill was loaded from (builtin or TOML manifest).
+    #[serde(default = "default_source")]
+    pub source: SkillSource,
+    /// Manifest version (TOML skills only, empty for builtins).
+    #[serde(default)]
+    pub version: String,
+    /// Manifest author (TOML skills only, empty for builtins).
+    #[serde(default)]
+    pub author: String,
+    /// Whether the skill bundles an MCP server (TOML skills only).
+    #[serde(default)]
+    pub has_mcp: bool,
+    /// Whether the skill declares a dashboard widget (TOML skills only).
+    #[serde(default)]
+    pub has_widget: bool,
+}
+
+fn default_source() -> SkillSource {
+    SkillSource::Builtin
 }

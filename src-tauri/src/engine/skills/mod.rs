@@ -9,6 +9,7 @@
 //   status     — get_all_skill_status, get_skill_credentials
 //   prompt     — get_enabled_skill_instructions, inject_credentials_into_instructions
 //   community  — SKILL.md parser, GitHub fetcher, skills.sh search, DB CRUD
+//   toml_loader — pawz-skill.toml manifest parser, directory scanner (Phase F.1)
 
 pub(crate) mod types;
 mod builtins;
@@ -17,10 +18,11 @@ pub(crate) mod crypto;
 mod status;
 mod prompt;
 pub mod community;
+pub mod toml_loader;
 
 // ── Re-exports (keep crate::engine::skills::* API stable) ────────────────────
 
-pub use types::{SkillCategory, SkillDefinition, SkillTier, CredentialField, SkillRecord, SkillStatus};
+pub use types::{SkillCategory, SkillDefinition, SkillTier, SkillSource, CredentialField, SkillRecord, SkillStatus};
 pub use builtins::builtin_skills;
 pub use crypto::{decrypt_credential, encrypt_credential, get_vault_key, is_legacy_encrypted};
 pub use status::{get_all_skill_status, get_skill_credentials};
@@ -30,6 +32,10 @@ pub use community::{
     fetch_repo_skills, install_community_skill,
     search_community_skills, get_community_skill_instructions,
     parse_skill_md,
+};
+pub use toml_loader::{
+    scan_toml_skills, install_toml_skill, uninstall_toml_skill,
+    TomlSkillEntry, SkillManifest,
 };
 
 // SkillTier is now defined in types.rs and re-exported above.
