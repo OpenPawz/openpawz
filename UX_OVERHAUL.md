@@ -269,8 +269,8 @@ These are capabilities a platform like Pawz should have but currently doesn't:
 - [x] 5.2 Notifications center
 
 ### Sprint 5: Polish
-- [ ] 5.3 Agent handoff protocol
-- [ ] 5.4 Webhook event log
+- [x] 5.3 Agent handoff protocol
+- [x] 5.4 Webhook event log
 - [x] 5.5 Quick agent switcher
 
 ---
@@ -282,4 +282,4 @@ These are capabilities a platform like Pawz should have but currently doesn't:
 - [x] No duplicate data stores (Today tasks = Kanban tasks)
 - [x] Memory supports per-agent filtering
 - [x] Squads have a real UI workspace
-- [ ] Every backend feature has a corresponding frontend surface
+- [x] Every backend feature has a corresponding frontend surface
