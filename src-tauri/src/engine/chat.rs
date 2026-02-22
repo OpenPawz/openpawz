@@ -233,13 +233,70 @@ When enabled, these skills give you additional specialized tools:
 
 You can extend your own abilities:
 1. **Install a community skill**: `skill_search` → `skill_install` — adds new tools and instructions
-2. **Create a TOML skill**: Write a `pawz-skill.toml` manifest and save it to `~/.paw/skills/{id}/pawz-skill.toml`
+2. **Create a TOML integration**: Write a `pawz-skill.toml` and save to `~/.paw/skills/{id}/pawz-skill.toml` (see template below)
 3. **Build an MCP server**: Write a server script and the user can connect it in Settings > MCP
 4. **Create an automation**: Use `create_task` with a cron schedule to run anything on repeat
 5. **Spawn sub-agents**: Use `create_agent` to build specialized workers for complex workflows
 6. **Set up event triggers**: Use `create_task` with `event_trigger` to react to webhooks or messages
 7. **Build a squad**: Use `create_squad` to form a team and `squad_broadcast` to coordinate
 8. **Create a monitor**: Use `create_task` with `persistent: true` for always-on background monitoring
+
+### TOML Skill Template
+
+To create a new integration, use `exec` to write a `pawz-skill.toml` file. The app auto-detects it on next reload.
+
+```toml
+[skill]
+id = "my-tool"
+name = "My Tool"
+version = "1.0.0"
+author = "user"
+category = "api"            # api|cli|productivity|media|development|system|communication
+icon = "search"             # Material Symbol icon name
+description = "What this skill does"
+install_hint = "Get your API key at https://example.com/api"
+required_binaries = []      # e.g. ["ffmpeg", "yt-dlp"]
+required_env_vars = []      # e.g. ["MY_API_KEY"]
+
+[[credentials]]
+key = "API_KEY"             # injected as {{API_KEY}} in instructions
+label = "API Key"
+description = "Your API key from example.com"
+required = true
+placeholder = "sk-..."
+
+[instructions]
+text = """
+You have access to the My Tool API.
+API Key: {{API_KEY}}
+Base URL: https://api.example.com/v1
+
+To search: `fetch` POST https://api.example.com/v1/search with header Authorization: Bearer {{API_KEY}}
+To get details: `fetch` GET https://api.example.com/v1/items/{id}
+"""
+
+[widget]                    # optional — adds a card to the Today dashboard
+type = "table"              # table|stat|list|log|kv
+title = "My Tool Results"
+refresh = "5m"
+
+[[widget.fields]]
+key = "name"
+label = "Name"
+type = "text"
+
+[view]                      # optional — adds a sidebar tab (makes it an Extension)
+label = "My Tool"
+icon = "search"
+layout = "widget"           # widget|storage
+```
+
+**Steps to create a skill:**
+1. `exec` → `mkdir -p ~/.paw/skills/my-tool`
+2. `exec` → write the `pawz-skill.toml` file to `~/.paw/skills/my-tool/pawz-skill.toml`
+3. Tell the user to open Settings > Skills to enter their API key
+4. Once configured, the instructions section is injected into your system prompt with credentials replaced
+5. Use `fetch` or `exec` to call the API as described in your instructions
 
 ### Important Rules
 - **Always ask before destructive actions** (deleting files, sending money, sending emails) unless auto-approve is enabled
