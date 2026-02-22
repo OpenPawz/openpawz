@@ -8,18 +8,25 @@ import { CATEGORY_META, msIcon, skillIcon } from './atoms';
 // ── State ref (set by index.ts) ────────────────────────────────────────────
 
 let _currentFilter = 'all';
+let _searchQuery = '';
 let _reloadFn: (() => Promise<void>) | null = null;
 
 export function setMoleculesState(opts: {
   currentFilter: string;
+  searchQuery: string;
   reloadFn: () => Promise<void>;
 }): void {
   _currentFilter = opts.currentFilter;
+  _searchQuery = opts.searchQuery;
   _reloadFn = opts.reloadFn;
 }
 
 export function getCurrentFilter(): string {
   return _currentFilter;
+}
+
+export function getSearchQuery(): string {
+  return _searchQuery;
 }
 
 // ── Main page renderer ─────────────────────────────────────────────────────
@@ -38,6 +45,15 @@ export function renderSkillsPage(skills: EngineSkillStatus[]): string {
       <span class="skills-summary-sep">·</span>
       ${msIcon('bolt')} ${enabledCount} enabled
     </span>
+  </div>`;
+
+  // Search bar
+  const searchBar = `<div class="skills-search-bar">
+    <span class="skills-search-icon">${msIcon('search')}</span>
+    <input type="text" class="form-input skills-search-input" id="skills-search-input"
+      placeholder="Search skills by name, description, or tool..."
+      value="${escHtml(_searchQuery)}" />
+    ${_searchQuery ? `<button class="skills-search-clear" id="skills-search-clear" title="Clear search">${msIcon('close')}</button>` : ''}
   </div>`;
 
   // Category filter tabs
@@ -60,15 +76,29 @@ export function renderSkillsPage(skills: EngineSkillStatus[]): string {
       .join('')}
   </div>`;
 
+  // Apply search filter first
+  const searched = _searchQuery
+    ? skills.filter((s) => {
+        const q = _searchQuery.toLowerCase();
+        return (
+          s.name.toLowerCase().includes(q) ||
+          s.id.toLowerCase().includes(q) ||
+          s.description.toLowerCase().includes(q) ||
+          s.category.toLowerCase().includes(q) ||
+          s.tool_names.some((t) => t.toLowerCase().includes(q))
+        );
+      })
+    : skills;
+
   // Render filtered skills
   const filtered =
     _currentFilter === 'all'
-      ? skills
+      ? searched
       : _currentFilter === 'enabled'
-        ? skills.filter((s) => s.enabled)
+        ? searched.filter((s) => s.enabled)
         : _currentFilter.startsWith('tier:')
-          ? skills.filter((s) => s.tier === _currentFilter.slice(5))
-          : skills.filter((s) => s.category === _currentFilter);
+          ? searched.filter((s) => s.tier === _currentFilter.slice(5))
+          : searched.filter((s) => s.category === _currentFilter);
 
   // Group by category
   const grouped: Record<string, EngineSkillStatus[]> = {};
@@ -95,7 +125,12 @@ export function renderSkillsPage(skills: EngineSkillStatus[]): string {
     })
     .join('');
 
-  return summary + tabs + sections;
+  const noResults =
+    filtered.length === 0 && _searchQuery
+      ? `<p style="color:var(--text-muted);padding:24px 0;text-align:center">${msIcon('search_off')} No skills match "${escHtml(_searchQuery)}"</p>`
+      : '';
+
+  return summary + searchBar + tabs + (noResults || sections);
 }
 
 // ── Tier badge ─────────────────────────────────────────────────────────────
@@ -332,6 +367,38 @@ export function bindFilterEvents(
       if (_reloadFn) _reloadFn();
     });
   });
+}
+
+// ── Search event binding ───────────────────────────────────────────────────
+
+export function bindSearchEvents(setSearch: (q: string) => void): void {
+  const input = document.getElementById('skills-search-input') as HTMLInputElement | null;
+  const clearBtn = document.getElementById('skills-search-clear');
+
+  if (input) {
+    let debounce: ReturnType<typeof setTimeout>;
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      debounce = setTimeout(() => {
+        _searchQuery = input.value.trim();
+        setSearch(_searchQuery);
+        if (_reloadFn) _reloadFn();
+      }, 200);
+    });
+    // Restore cursor position after reload
+    requestAnimationFrame(() => {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      _searchQuery = '';
+      setSearch('');
+      if (_reloadFn) _reloadFn();
+    });
+  }
 }
 
 // ── Skill event binding ────────────────────────────────────────────────────
