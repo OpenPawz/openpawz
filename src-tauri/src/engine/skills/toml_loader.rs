@@ -127,7 +127,8 @@ pub fn parse_category(s: &str) -> SkillCategory {
 /// Determine the tier from a manifest:
 /// - Has credentials → Integration
 /// - Otherwise → Skill (prompt-only)
-/// (Extension tier requires [view] or [storage] — not yet implemented)
+///
+/// Extension tier requires `[view]` or `[storage]` — not yet implemented.
 fn infer_tier(manifest: &SkillManifest) -> SkillTier {
     if manifest.credentials.is_empty() {
         SkillTier::Skill
