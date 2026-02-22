@@ -114,7 +114,9 @@ export async function openChannelSetup(channelType: string) {
       rawCfg = await getChannelConfig(channelType);
     }
     if (rawCfg?.allow_dangerous_tools) existingValues['allowDangerousTools'] = 'true';
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   let html = def.descriptionHtml
     ? `<div class="channel-setup-desc">${def.descriptionHtml}</div>`
@@ -253,7 +255,8 @@ export async function saveChannelSetup() {
         pending_users: existing?.pending_users ?? [],
         agent_id: agentId || undefined,
         // Phase C: dangerous tools policy
-        allow_dangerous_tools: ($('ch-field-allowDangerousTools') as HTMLInputElement)?.checked ?? false,
+        allow_dangerous_tools:
+          ($('ch-field-allowDangerousTools') as HTMLInputElement)?.checked ?? false,
       };
 
       await pawEngine.telegramSetConfig(config as never);
@@ -344,7 +347,8 @@ export async function saveChannelSetup() {
       };
       if (values['agentId']) finalConfig.agent_id = values['agentId'] as string;
       // Phase C: dangerous tools policy
-      finalConfig.allow_dangerous_tools = ($('ch-field-allowDangerousTools') as HTMLInputElement)?.checked ?? false;
+      finalConfig.allow_dangerous_tools =
+        ($('ch-field-allowDangerousTools') as HTMLInputElement)?.checked ?? false;
 
       await setChannelConfig(channelType, finalConfig);
       showToast(`${_chDef.name} configured!`, 'success');

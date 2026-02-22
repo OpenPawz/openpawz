@@ -179,7 +179,7 @@ export function editMode(mode?: AgentMode) {
   const autoApproveCheckbox = $('mode-form-autoapprove') as HTMLInputElement;
   const autoApproveWarning = $('mode-form-autoapprove-warning');
   if (autoApproveCheckbox) {
-    autoApproveCheckbox.checked = !!(mode?.auto_approve_all);
+    autoApproveCheckbox.checked = !!mode?.auto_approve_all;
     if (autoApproveWarning) {
       autoApproveWarning.style.display = autoApproveCheckbox.checked ? '' : 'none';
     }
