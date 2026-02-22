@@ -477,6 +477,15 @@ pub async fn run_agent_turn(
                 running -= t;
                 keep_from = i + 1;
             }
+            // Ensure we don't split a tool-call/tool-result pair:
+            // If keep_from lands on a Tool message, advance past all
+            // consecutive Tool messages so we don't orphan them.
+            while keep_from < messages.len() && messages[keep_from].role == Role::Tool {
+                if keep_from < msg_tokens.len() {
+                    running -= msg_tokens[keep_from];
+                }
+                keep_from += 1;
+            }
             if keep_from > 0 {
                 *messages = messages.split_off(keep_from);
                 if let Some(sys) = sys_msg {
