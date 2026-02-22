@@ -562,7 +562,13 @@ export function finalizeStreaming(finalContent: string, toolCalls?: ToolCall[]):
   }
 
   if (finalContent) {
-    addMessage({ role: 'assistant', content: finalContent, timestamp: new Date(), toolCalls, thinkingContent });
+    addMessage({
+      role: 'assistant',
+      content: finalContent,
+      timestamp: new Date(),
+      toolCalls,
+      thinkingContent,
+    });
     autoSpeakIfEnabled(finalContent);
 
     // Fallback token estimation
