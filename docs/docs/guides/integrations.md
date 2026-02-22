@@ -6,11 +6,7 @@ description: Connect your agents to third-party APIs and CLI tools with encrypte
 
 # Integrations
 
-:::caution 🚧 Planned Features
-The TOML manifest format (`pawz-skill.toml`), PawzHub publishing, dashboard widgets, the in-app creation wizard, and CI validation described on this page are **planned but not yet implemented**. The 40 built-in integrations are compiled into the Rust binary and work today. Community integrations via TOML manifests are coming in a future release.
-:::
-
-Integrations are the second tier of the Pawz extensibility system. They connect your agents to third-party APIs and CLI tools with full credential management, binary detection, and optional dashboard widgets.
+Integrations are the second tier of the Pawz extensibility system. They connect your agents to third-party APIs and CLI tools with full credential management, binary detection, and optional dashboard widgets. The 40 built-in integrations are compiled into the Rust binary. Community integrations can be installed via TOML manifests from PawzHub or manually from `~/.paw/skills/`.
 
 ```
 ┌────────────────────────────────────────────────────┐

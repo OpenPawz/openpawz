@@ -70,3 +70,30 @@ Your currently active agent's avatar is displayed prominently on the dashboard. 
 :::tip
 Customize your agent's avatar and color in the **Agents** view to make the dashboard feel personal.
 :::
+
+## Skill output widgets
+
+Community integrations and extensions can display live data on the dashboard using **skill output widgets**. When an agent uses the `skill_output` tool, the data is persisted in SQL and rendered as a widget card on the Today page.
+
+### How it works
+
+1. A community skill defines a `[widget]` section in its `pawz-skill.toml` manifest
+2. The agent calls `skill_output` with structured JSON data (e.g., a table of CRM deals, stock prices, or system metrics)
+3. The data is stored in the `skill_outputs` table
+4. The dashboard renders the widget with the declared field definitions — supporting text, number, currency, badge, and date column types
+
+### Widget types
+
+| Type | Description |
+|------|-------------|
+| `table` | Tabular data with sortable columns |
+| `stat` | Single metric with label and value |
+| `list` | Ordered or unordered item list |
+
+### Refresh
+
+Widgets can declare a refresh interval (e.g., `refresh = "5m"`) to automatically re-render with the latest data. The agent's cron task can be configured to periodically update the skill output.
+
+:::tip
+Combine skill output widgets with **event-driven triggers** to update dashboard data in real-time when webhooks arrive or agents communicate.
+:::

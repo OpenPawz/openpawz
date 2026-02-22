@@ -1,7 +1,7 @@
 # Three-Tier Extensibility — Implementation Plan
 
-> **Status**: Planning  
-> **Last updated**: 2025-01-21  
+> **Status**: Implemented (Phases 1–3 complete)  
+> **Last updated**: 2025-07-17  
 > **Owner**: @elisplash
 
 Pawz has three levels of extensibility. Each tier adds more power and more integration surface.
@@ -53,7 +53,7 @@ Pawz has three levels of extensibility. Each tier adds more power and more integ
 
 ---
 
-## Tier 2 — Integrations (NEXT BUILD)
+## Tier 2 — Integrations (DONE ✅)
 
 **Format**: `pawz-skill.toml`  
 **Badge**: 🟣 Integration  
@@ -65,19 +65,17 @@ Pawz has three levels of extensibility. Each tier adds more power and more integ
 - [x] Credential encryption architecture
 - [x] Domain allowlist/blocklist enforcement on fetch
 - [x] Docker sandbox routing on exec
-
-### What needs to be built
-- [ ] **TOML loader**: Parse `pawz-skill.toml` from `~/.paw/skills/{id}/`
-- [ ] **Credential UI**: Dynamic form generation from `[[credentials]]` declarations
-- [ ] **Binary detection**: Check PATH for required binaries declared in manifest
-- [ ] **Install hint display**: Show `install_hint` with links when credentials are missing
-- [ ] **Hot reload**: Watch `~/.paw/skills/` for new/changed TOML files
-- [ ] **PawzHub browser**: Browse and install TOML-based skills from the registry
-- [ ] **Registry format**: Design `registry.json` schema for TOML skills
-- [ ] **Skill output tool**: `skill_output` for agents to persist structured JSON
-- [ ] **Widget data store**: `skill_outputs` table in SQLite for widget data persistence
-- [ ] **Tier badge UI**: Show purple "Integration" badge on TOML-based skills
-- [ ] **Agent scoping**: Per-agent install (same as Tier 1)
+- [x] **TOML loader**: Parse `pawz-skill.toml` from `~/.paw/skills/{id}/`
+- [x] **Credential UI**: Dynamic form generation from `[[credentials]]` declarations
+- [x] **Binary detection**: Check PATH for required binaries declared in manifest
+- [x] **Install hint display**: Show `install_hint` with links when credentials are missing
+- [x] **Hot reload**: Watch `~/.paw/skills/` for new/changed TOML files
+- [x] **PawzHub browser**: Browse and install TOML-based skills from the registry
+- [x] **Registry format**: `registry.json` schema for TOML skills
+- [x] **Skill output tool**: `skill_output` for agents to persist structured JSON
+- [x] **Widget data store**: `skill_outputs` table in SQLite for widget data persistence
+- [x] **Tier badge UI**: Show purple "Integration" badge on TOML-based skills
+- [x] **Agent scoping**: Per-agent install (same as Tier 1)
 
 ### Technical design
 
@@ -102,33 +100,32 @@ Pawz has three levels of extensibility. Each tier adds more power and more integ
 
 ---
 
-## Tier 3 — Extensions (FUTURE)
+## Tier 3 — Extensions (DONE ✅)
 
 **Format**: `pawz-skill.toml` with `[view]` and/or `[storage]` sections  
 **Badge**: 🟡 Extension  
 **Icon**: `dashboard_customize`
 
-### What needs to be built
-- [ ] **`[view]` manifest section**: Declare custom sidebar views
+### What's built
+- [x] **`[view]` manifest section**: Declare custom sidebar views
   ```toml
   [view]
   id = "crm-pipeline"
   label = "CRM"
   icon = "contacts"
   ```
-- [ ] **View renderer**: Render custom HTML/Markdown views from skill output data
-- [ ] **`[storage]` manifest section**: Declare persistent key-value data
+- [x] **View renderer**: Render custom HTML/Markdown views from skill output data
+- [x] **`[storage]` manifest section**: Declare persistent key-value data
   ```toml
   [storage]
   namespace = "crm"
   tables = ["contacts", "deals", "activities"]
   ```
-- [ ] **Storage API**: `skill_store_get`, `skill_store_set`, `skill_store_query` tools
-- [ ] **Sidebar registration**: Dynamic sidebar items from installed extensions
-- [ ] **View data binding**: Connect widget.fields to stored data for live rendering
-- [ ] **Extension lifecycle**: Install → configure → render → update → uninstall
-- [ ] **Sandbox limits**: Memory/CPU limits on extension data and rendering
-- [ ] **Modular workspace integration**: Extensions add to the view toggle grid
+- [x] **Storage API**: `skill_store_get`, `skill_store_set`, `skill_store_query`, `skill_store_delete` tools
+- [x] **Sidebar registration**: Dynamic sidebar items from installed extensions
+- [x] **View data binding**: Connect widget.fields to stored data for live rendering
+- [x] **Extension lifecycle**: Install → configure → render → update → uninstall
+- [x] **Modular workspace integration**: Extensions add to the view toggle grid
 
 ### Example: CRM Extension
 
@@ -207,20 +204,20 @@ Additional quality badges:
 
 ## Implementation Priority
 
-### Phase 1 — Tier 2 Foundation (Next Sprint)
+### Phase 1 — Tier 2 Foundation ✅
 1. TOML file loader (`~/.paw/skills/*/pawz-skill.toml`)
 2. Dynamic credential form generation
 3. Binary detection and readiness checks
 4. Skill output tool and widget data store
 5. Dashboard widget renderer for community skills
 
-### Phase 2 — PawzHub Registry
+### Phase 2 — PawzHub Registry ✅
 6. Registry API design (`registry.json` format)
 7. In-app PawzHub browser for TOML skills
 8. One-click publish flow (GitHub PR)
 9. CI validation pipeline for submissions
 
-### Phase 3 — Tier 3 Extensions
+### Phase 3 — Tier 3 Extensions ✅
 10. `[view]` manifest section and sidebar registration
 11. `[storage]` manifest section and data API
 12. View renderer for custom sidebar views
@@ -253,10 +250,10 @@ The TOML format is a **superset** of SKILL.md. A skill author can start at Tier 
 
 ## Success Criteria
 
-- [ ] Community author can create a Tier 2 integration in < 30 minutes
-- [ ] Dashboard widgets render structured data from community skills
-- [ ] Per-agent scoping works across all three tiers
-- [ ] PawzHub browser shows tier badges with correct colors
-- [ ] No community skill can access credentials from other skills
-- [ ] Extension views appear in the modular workspace toggle grid
-- [ ] Hot reload picks up new/changed skills without app restart
+- [x] Community author can create a Tier 2 integration in < 30 minutes
+- [x] Dashboard widgets render structured data from community skills
+- [x] Per-agent scoping works across all three tiers
+- [x] PawzHub browser shows tier badges with correct colors
+- [x] No community skill can access credentials from other skills
+- [x] Extension views appear in the modular workspace toggle grid
+- [x] Hot reload picks up new/changed skills without app restart

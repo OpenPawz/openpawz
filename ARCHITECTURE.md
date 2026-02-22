@@ -1,7 +1,7 @@
 # Architecture
 
 > Pawz is a Tauri v2 native desktop app — Rust backend, TypeScript frontend, IPC bridge.  
-> ~78k LOC total (33k Rust + 32k TypeScript + 11k CSS) · 530 tests · 3-job CI · 0 clippy warnings
+> ~86k LOC total (39k Rust + 35k TypeScript + 12k CSS) · 602 tests · 3-job CI · 0 clippy warnings
 
 ---
 
@@ -17,7 +17,7 @@
 │  │  • 7 feature modules (atomic design pattern)          │  │
 │  │  • Material Symbols icon library                      │  │
 │  └──────────────────┬────────────────────────────────────┘  │
-│                     │ Tauri IPC (134 structured commands)    │
+│                     │ Tauri IPC (158 structured commands)    │
 │  ┌──────────────────▼────────────────────────────────────┐  │
 │  │  Rust Backend Engine                                  │  │
 │  │  • Agent loop with SSE streaming                      │  │
@@ -84,9 +84,10 @@ src-tauri/                    # Rust backend
 │   └── engine/               # Core engine modules
 │       ├── mod.rs            # Module exports
 │       ├── commands.rs       # 134 Tauri IPC commands
-│       ├── tools/            # Tool executor — 17 focused modules
+│       ├── tools/            # Tool executor — 21 focused modules
 │       │   ├── mod.rs        # Definitions, routing, HIL approval
 │       │   ├── agents.rs     # Agent management tools
+│       │   ├── agent_comms.rs # Inter-agent messaging tools
 │       │   ├── coinbase.rs   # Coinbase trading
 │       │   ├── dex.rs        # DEX trading tools
 │       │   ├── email.rs      # Email tools
@@ -96,10 +97,13 @@ src-tauri/                    # Rust backend
 │       │   ├── github.rs     # GitHub tools
 │       │   ├── integrations.rs # Skill integration tools
 │       │   ├── memory.rs     # Memory tools
+│       │   ├── skill_output.rs # Skill output/widget tools
+│       │   ├── skill_storage.rs # Persistent key-value storage tools
 │       │   ├── skills_tools.rs # Community skill tools
 │       │   ├── slack.rs      # Slack tools
 │       │   ├── solana.rs     # Solana tools
 │       │   ├── soul.rs       # Soul/personality tools
+│       │   ├── squads.rs     # Agent squad management tools
 │       │   ├── tasks.rs      # Task management
 │       │   ├── telegram.rs   # Telegram tools
 │       │   └── web.rs        # Browser automation tools
@@ -108,7 +112,7 @@ src-tauri/                    # Rust backend
 │       │   ├── anthropic.rs  # Anthropic Messages API
 │       │   ├── google.rs     # Google Gemini API
 │       │   └── openai.rs     # OpenAI Chat Completions API
-│       ├── sessions/         # Session management — 12 modules
+│       ├── sessions/         # Session management — 16 modules
 │       │   ├── mod.rs        # Session orchestration
 │       │   ├── sessions.rs   # CRUD, listing, compaction triggers
 │       │   ├── messages.rs   # Message persistence
@@ -120,7 +124,9 @@ src-tauri/                    # Rust backend
 │       │   ├── projects.rs   # Project management
 │       │   ├── positions.rs  # Trading positions
 │       │   ├── trades.rs     # Trade history
-│       │   └── agent_files.rs # Per-agent file tracking
+│       │   ├── agent_files.rs # Per-agent file tracking
+│       │   ├── agent_messages.rs # Inter-agent message persistence
+│       │   └── squads.rs     # Agent squad persistence
 │       ├── skills/           # Skill vault — 40 built-in skills
 │       │   ├── mod.rs        # Skill loading, prompt injection
 │       │   ├── builtins.rs   # 40 built-in skill definitions
@@ -129,9 +135,10 @@ src-tauri/                    # Rust backend
 │       │   ├── prompt.rs     # Prompt construction
 │       │   ├── status.rs     # Readiness checks
 │       │   ├── types.rs      # Skill types
-│       │   └── community/    # Community skills (skills.sh)
+│       │   └── community/    # Community skills (skills.sh + PawzHub)
 │       │       ├── mod.rs, github.rs, parser.rs
 │       │       ├── search.rs, store.rs, types.rs
+│       │       └── pawzhub.rs    # PawzHub marketplace browser
 │       ├── dex/              # Ethereum DEX trading — 15 modules
 │       │   ├── mod.rs        # DEX orchestration
 │       │   ├── swap.rs       # Uniswap V2/V3 swaps
@@ -210,7 +217,29 @@ src-tauri/                    # Rust backend
 │       ├── mattermost.rs     # Mattermost bridge
 │       ├── nextcloud.rs      # Nextcloud Talk bridge
 │       ├── twitch.rs         # Twitch bridge
-│       └── web.rs            # Browser automation (headless Chrome)
+│       ├── web.rs            # Browser automation (headless Chrome)
+│       ├── events.rs         # Event-driven task trigger dispatcher
+│       ├── mcp/              # MCP (Model Context Protocol) client — 5 modules
+│       │   ├── mod.rs        # MCP session lifecycle
+│       │   ├── client.rs     # JSON-RPC transport
+│       │   ├── types.rs      # MCP protocol types
+│       │   ├── tools.rs      # Tool schema conversion
+│       │   └── registry.rs   # Per-agent MCP server registry
+│       ├── toml/             # TOML skill manifest loader — 4 modules
+│       │   ├── mod.rs        # Public API
+│       │   ├── parser.rs     # TOML parsing and validation
+│       │   ├── loader.rs     # Filesystem scanning and hot-reload
+│       │   └── types.rs      # TOML manifest types
+│   ├── commands/             # Split Tauri command files
+│   │   ├── mod.rs            # Command module declarations
+│   │   ├── task.rs           # Task/cron command handlers
+│   │   ├── webhook.rs        # Generic webhook server commands
+│   │   ├── mcp.rs            # MCP client commands
+│   │   ├── skill_wizard.rs   # Skill creation wizard
+│   │   └── skills.rs         # Skill management commands
+│   └── atoms/                # Shared types and error handling
+│       ├── types.rs          # All shared data types
+│       └── error.rs          # Typed EngineError enum
 ├── Cargo.toml                # Rust dependencies
 ├── tauri.conf.json           # Tauri config (CSP, bundle, permissions)
 └── capabilities/
@@ -233,7 +262,7 @@ The core conversation loop:
 
 ### Tools (`tools/`)
 
-Tool execution is split across 17 focused modules, each owning a single domain. The `mod.rs` barrel file provides:
+Tool execution is split across 21 focused modules, each owning a single domain. The `mod.rs` barrel file provides:
 - `definitions()` — collects all tool schemas from every module
 - `execute_tool()` — routes tool calls to the correct module
 - Human-in-the-loop (HIL) approval flow via oneshot channels
@@ -246,9 +275,9 @@ Tool flow:
 5. `engine_approve_tool` resolves the pending approval
 6. Execute or deny the tool
 
-Tool modules: `agents`, `coinbase`, `dex`, `email`, `exec`, `fetch`, `filesystem`, `github`, `integrations`, `memory`, `skills_tools`, `slack`, `solana`, `soul`, `tasks`, `telegram`, `web`.
+Tool modules: `agents`, `agent_comms`, `coinbase`, `dex`, `email`, `exec`, `fetch`, `filesystem`, `github`, `integrations`, `memory`, `skill_output`, `skill_storage`, `skills_tools`, `slack`, `solana`, `soul`, `squads`, `tasks`, `telegram`, `web`.
 
-Tool categories: `exec`, `web_search`, `web_fetch`, `file_read`, `file_write`, `memory`, `agent`, `trading`.
+Tool categories: `exec`, `web_search`, `web_fetch`, `file_read`, `file_write`, `memory`, `agent`, `agent_comms`, `squads`, `trading`.
 
 ### AI Providers (`providers/`)
 
@@ -286,10 +315,10 @@ Pawz has a three-tier extensibility system:
 | Tier | Format | Capabilities |
 |------|--------|-------------|
 | **Skill** (Tier 1) | `SKILL.md` | Prompt-only — Markdown instructions injected into agent context |
-| **Integration** (Tier 2) | Built-in Rust | Credentials + binary detection + agent tools (40 built-in) |
-| **Extension** (Tier 3) | `pawz-skill.toml` | Custom sidebar views + persistent storage (planned) |
+| **Integration** (Tier 2) | `pawz-skill.toml` | Credentials + binary detection + agent tools + dashboard widgets |
+| **Extension** (Tier 3) | `pawz-skill.toml` | Custom sidebar views + persistent key-value storage |
 
-Built-in integrations are compiled into the Rust binary. Community skills use the [skills.sh](https://skills.sh) ecosystem. The TOML manifest system for Tier 2/3 community integrations and extensions is planned but not yet implemented.
+Built-in integrations are compiled into the Rust binary. Community skills use the [skills.sh](https://skills.sh) ecosystem. The TOML manifest system for Tier 2/3 community integrations and extensions is implemented — TOML loader, PawzHub registry browser, dashboard widgets, skill output persistence, and extension storage are all functional.
 
 ### Community Skills (`skills/community/`)
 
@@ -349,9 +378,14 @@ SQLite via Tauri's SQL plugin. Tables:
 | `memories` | Semantic memories (BM25 + vector) |
 | `trade_history` | DEX/Solana trade log |
 | `positions` | Open trading positions |
-| `tasks` | Kanban tasks |
+| `tasks` | Kanban tasks (with event triggers + persistent mode) |
 | `task_activity` | Task activity log |
 | `community_skills` | Installed community skills |
+| `skill_outputs` | Dashboard widget data from skill output tool |
+| `skill_storage` | Persistent key-value storage for extensions |
+| `agent_messages` | Inter-agent direct messages and broadcasts |
+| `squads` | Agent squad definitions |
+| `squad_members` | Squad membership (agent + role) |
 
 Credential fields encrypted with AES-256-GCM. Encryption key stored in OS keychain (macOS Keychain / Linux libsecret / Windows Credential Manager). 12-byte random nonce per field. Auto-migration from legacy XOR format.
 
@@ -361,12 +395,12 @@ Credential fields encrypted with AES-256-GCM. Encryption key stored in OS keycha
 
 | Metric | Value |
 |--------|-------|
-| Rust tests | 164 (124 unit + 40 integration) |
-| TypeScript tests | 366 (24 test files) |
+| Rust tests | 242 (202 unit + 40 integration) |
+| TypeScript tests | 360 (24 test files) |
 | CI jobs | 3 parallel (Rust + TS + Security Audit) |
 | Clippy warnings | 0 (enforced via `-D warnings`) |
 | Known CVEs | 0 (`cargo audit` + `npm audit`) |
 | Error handling | 12-variant typed `EngineError` (thiserror 2) |
 | Credential encryption | AES-256-GCM |
-| IPC commands | 134 |
-| SQLite tables | 19 |
+| IPC commands | 158 |
+| SQLite tables | 21 |

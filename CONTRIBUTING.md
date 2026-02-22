@@ -26,10 +26,10 @@ This starts the Tauri dev server with hot-reload for the frontend and live-rebui
 ### Verifying Changes
 
 ```bash
-# Run all TypeScript tests (366 tests)
+# Run all TypeScript tests (360 tests)
 npx vitest run
 
-# Run all Rust tests (164 tests)
+# Run all Rust tests (242 tests)
 cd src-tauri && cargo test
 
 # TypeScript type-check + lint
@@ -141,8 +141,8 @@ Every push and PR triggers 3 parallel CI jobs:
 
 | Job | What it checks | Timeout |
 |-----|---------------|--------|
-| **TypeScript** | `tsc --noEmit` → `eslint` → `vitest run` (366 tests) → `prettier --check` | 10 min |
-| **Rust** | `cargo check` → `cargo test` (164 tests) → `cargo clippy -- -D warnings` | 30 min |
+| **TypeScript** | `tsc --noEmit` → `eslint` → `vitest run` (360 tests) → `prettier --check` | 10 min |
+| **Rust** | `cargo check` → `cargo test` (242 tests) → `cargo clippy -- -D warnings` | 30 min |
 | **Security Audit** | `cargo audit` → `npm audit --audit-level=high` | 10 min |
 
 All 3 jobs must pass. Zero clippy warnings enforced. Zero known vulnerabilities enforced.
