@@ -6,6 +6,7 @@ import { $ } from '../../components/helpers';
 import {
   renderSkillsPage,
   bindFilterEvents,
+  bindSearchEvents,
   bindSkillEvents,
   setMoleculesState,
 } from './molecules';
@@ -27,9 +28,14 @@ export { POPULAR_REPOS, POPULAR_TAGS } from './atoms';
 // ── Module state ───────────────────────────────────────────────────────────
 
 let _currentFilter = 'all';
+let _searchQuery = '';
 
 function setFilter(f: string): void {
   _currentFilter = f;
+}
+
+function setSearch(q: string): void {
+  _searchQuery = q;
 }
 
 // ── Main loader ────────────────────────────────────────────────────────────
@@ -45,7 +51,11 @@ export async function loadSkillsSettings(): Promise<void> {
   }
 
   // Wire reload callbacks
-  setMoleculesState({ currentFilter: _currentFilter, reloadFn: loadSkillsSettings });
+  setMoleculesState({
+    currentFilter: _currentFilter,
+    searchQuery: _searchQuery,
+    reloadFn: loadSkillsSettings,
+  });
   setCommunityReload(loadSkillsSettings);
   setWizardReload(loadSkillsSettings);
 
@@ -62,7 +72,11 @@ export async function loadSkillsSettings(): Promise<void> {
     const extTabs = buildExtensionTabs(tomlSkills);
 
     // Update molecules state with current filter
-    setMoleculesState({ currentFilter: _currentFilter, reloadFn: loadSkillsSettings });
+    setMoleculesState({
+      currentFilter: _currentFilter,
+      searchQuery: _searchQuery,
+      reloadFn: loadSkillsSettings,
+    });
 
     // Render extension section (if any extensions have views)
     const extensionSection =
@@ -87,6 +101,7 @@ export async function loadSkillsSettings(): Promise<void> {
         extensionSection +
         renderSkillsPage(skills);
     bindFilterEvents(skills, setFilter);
+    bindSearchEvents(setSearch);
     bindSkillEvents();
     bindCommunityEvents();
     bindPawzHubEvents();

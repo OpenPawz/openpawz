@@ -5810,6 +5810,52 @@ select.form-input {
   opacity: 0.4;
 }
 
+.skills-search-bar {
+  position: relative;
+  margin-bottom: 14px;
+}
+.skills-search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-muted);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+}
+.skills-search-icon .ms {
+  font-size: 18px;
+}
+.skills-search-input {
+  width: 100%;
+  padding-left: 38px !important;
+  padding-right: 36px !important;
+  height: 38px;
+  font-size: 13px;
+}
+.skills-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+.skills-search-clear:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+.skills-search-clear .ms {
+  font-size: 16px;
+}
+
 .skills-filter-tabs {
   display: flex;
   gap: 6px;
