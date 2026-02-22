@@ -6,7 +6,6 @@
 use super::client::McpClient;
 use super::types::*;
 use crate::atoms::types::{FunctionDefinition, ToolDefinition};
-use log::info;
 use std::collections::HashMap;
 
 /// The MCP server registry. Thread-safe via Arc<tokio::sync::Mutex<McpRegistry>>
@@ -139,7 +138,7 @@ fn mcp_tool_to_paw_def(server_id: &str, tool: &McpToolDef) -> ToolDefinition {
         .as_deref()
         .unwrap_or("(no description)")
         .to_string()
-        + &server_tag;
+        + server_tag.as_str();
 
     ToolDefinition {
         tool_type: "function".into(),
