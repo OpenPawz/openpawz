@@ -96,6 +96,7 @@ impl Default for DiscordConfig {
             pending_users: vec![],
             agent_id: None,
             respond_to_mentions: true,
+            allow_dangerous_tools: false,
         }
     }
 }

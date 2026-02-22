@@ -339,7 +339,8 @@ function saveAgentEdits(
   agent.skills = selectedTools;
   agent.boundaries = boundaries.filter((b) => b.trim());
   agent.systemPrompt = systemPrompt;
-  agent.autoApproveAll = (modal.querySelector('#agent-edit-autoapprove') as HTMLInputElement)?.checked ?? false;
+  agent.autoApproveAll =
+    (modal.querySelector('#agent-edit-autoapprove') as HTMLInputElement)?.checked ?? false;
 
   setAgentPolicy(agent.id, newPolicy);
   cbs.onUpdated();

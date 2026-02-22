@@ -290,9 +290,7 @@ const MIGRATIONS: Migration[] = [
   {
     version: 3,
     description: 'Add auto_approve_all to agent_modes for Phase A autonomy',
-    statements: [
-      `ALTER TABLE agent_modes ADD COLUMN auto_approve_all INTEGER DEFAULT 0`,
-    ],
+    statements: [`ALTER TABLE agent_modes ADD COLUMN auto_approve_all INTEGER DEFAULT 0`],
   },
 ];
 

@@ -86,6 +86,7 @@ impl Default for MatrixConfig {
             respond_in_rooms: false,
             device_id: None,
             user_id: None,
+            allow_dangerous_tools: false,
         }
     }
 }
