@@ -237,6 +237,7 @@ pub async fn engine_chat_send(
         let cfg = state.config.lock();
         (cfg.max_tool_rounds, request.temperature)
     };
+    let thinking_level = request.thinking_level.clone();
     let tool_timeout = {
         let cfg = state.config.lock();
         cfg.tool_timeout_secs
@@ -294,6 +295,7 @@ pub async fn engine_chat_send(
             &agent_id_for_spawn,
             daily_budget,
             Some(&daily_tokens),
+            thinking_level.as_deref(),
         )
         .await
         {

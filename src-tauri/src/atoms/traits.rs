@@ -85,6 +85,7 @@ pub trait AiProvider: Send + Sync {
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
+        thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError>;
 
     /// Optional: generate embeddings for the memory system.

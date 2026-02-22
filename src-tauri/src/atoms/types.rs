@@ -171,6 +171,13 @@ pub enum EngineEvent {
         #[serde(skip_serializing_if = "Option::is_none")]
         model: Option<String>,
     },
+    /// A thinking/reasoning delta from extended-thinking models
+    #[serde(rename = "thinking_delta")]
+    ThinkingDelta {
+        session_id: String,
+        run_id: String,
+        text: String,
+    },
     /// An error occurred during the run
     #[serde(rename = "error")]
     Error {
@@ -221,6 +228,9 @@ pub struct ChatRequest {
     pub tool_filter: Option<Vec<String>>,
     #[serde(default)]
     pub attachments: Vec<ChatAttachment>,
+    /// Thinking/reasoning level: "none", "low", "medium", "high"
+    #[serde(default)]
+    pub thinking_level: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -251,6 +261,8 @@ pub struct StreamChunk {
     pub model: Option<String>,
     /// Gemini thought parts that arrived alongside function calls (must be echoed back)
     pub thought_parts: Vec<ThoughtPart>,
+    /// Thinking/reasoning text delta from extended thinking / reasoning models
+    pub thinking_text: Option<String>,
 }
 
 #[derive(Debug, Clone)]

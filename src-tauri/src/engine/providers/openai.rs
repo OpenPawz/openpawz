@@ -127,6 +127,12 @@ impl OpenAiProvider {
 
         let delta_text = delta["content"].as_str().map(|s| s.to_string());
 
+        // OpenAI reasoning models (o1, o3, o4-mini) emit reasoning in a separate field
+        let thinking_text = delta.get("reasoning_content")
+            .or_else(|| delta.get("reasoning"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
         let mut tool_calls = Vec::new();
         if let Some(tcs) = delta["tool_calls"].as_array() {
             for tc in tcs {
@@ -170,6 +176,7 @@ impl OpenAiProvider {
             usage,
             model,
             thought_parts: vec![],
+            thinking_text,
         })
     }
 }
@@ -195,6 +202,7 @@ impl AiProvider for OpenAiProvider {
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
+        thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
         let url = if self.is_azure {
             // Azure AI Services: append api-version query param
@@ -221,6 +229,16 @@ impl AiProvider for OpenAiProvider {
         }
         if let Some(temp) = temperature {
             body["temperature"] = json!(temp);
+        }
+
+        // OpenAI reasoning models (o1, o3, o4-mini) support reasoning_effort
+        if let Some(level) = thinking_level {
+            let effort = match level {
+                "low" => "low",
+                "high" => "high",
+                _ => "medium",
+            };
+            body["reasoning_effort"] = json!(effort);
         }
 
         info!("[engine] OpenAI request to {} model={}", url, model);

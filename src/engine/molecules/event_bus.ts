@@ -13,6 +13,7 @@ import { appState, type StreamState } from '../../state/index';
 
 export interface StreamHandlers {
   onDelta: (text: string) => void;
+  onThinking: (text: string) => void;
   onToken: (usage: Record<string, unknown> | undefined) => void;
   onModel: (model: string) => void;
 }
@@ -107,6 +108,9 @@ function handleAgentEvent(payload: unknown): void {
     if (stream === 'assistant' && data) {
       const delta = data.delta as string | undefined;
       if (delta) _streamHandlers?.onDelta(delta);
+    } else if (stream === 'thinking' && data) {
+      const delta = data.delta as string | undefined;
+      if (delta) _streamHandlers?.onThinking(delta);
     } else if (stream === 'lifecycle' && data) {
       const phase = data.phase as string | undefined;
       if (phase === 'start') {

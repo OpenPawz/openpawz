@@ -20,6 +20,7 @@ export interface MessageWithAttachments {
   timestamp: Date;
   toolCalls?: ToolCall[];
   attachments?: ChatAttachmentLocal[];
+  thinkingContent?: string;
 }
 
 // ── Token metering constants ───────────────────────────────────────────────
@@ -106,6 +107,7 @@ export function applyModelPricingOverrides(rows: ModelPricingRow[]): void {
 // ── Per-session stream state ───────────────────────────────────────────────
 export interface StreamState {
   content: string;
+  thinkingContent: string;
   el: HTMLElement | null;
   runId: string | null;
   resolve: ((text: string) => void) | null;
@@ -120,6 +122,7 @@ export interface StreamState {
 export function createStreamState(agentId?: string | null): StreamState {
   return {
     content: '',
+    thinkingContent: '',
     el: null,
     runId: null,
     resolve: null,

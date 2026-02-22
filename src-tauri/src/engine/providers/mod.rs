@@ -53,9 +53,10 @@ impl AnyProvider {
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
+        thinking_level: Option<&str>,
     ) -> EngineResult<Vec<StreamChunk>> {
         self.0
-            .chat_stream(messages, tools, model, temperature)
+            .chat_stream(messages, tools, model, temperature, thinking_level)
             .await
             .map_err(|e| crate::atoms::error::EngineError::Other(e.to_string()))
     }

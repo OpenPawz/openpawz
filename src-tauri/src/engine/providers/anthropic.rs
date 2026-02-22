@@ -233,6 +233,19 @@ impl AnthropicProvider {
                             usage: None,
                             model: None,
                             thought_parts: vec![],
+                            thinking_text: None,
+                        })
+                    }
+                    "thinking_delta" => {
+                        // Anthropic extended thinking: stream the reasoning text
+                        Some(StreamChunk {
+                            delta_text: None,
+                            tool_calls: vec![],
+                            finish_reason: None,
+                            usage: None,
+                            model: None,
+                            thought_parts: vec![],
+                            thinking_text: delta["thinking"].as_str().map(|s| s.to_string()),
                         })
                     }
                     "input_json_delta" => {
@@ -250,6 +263,7 @@ impl AnthropicProvider {
                             usage: None,
                             model: None,
                             thought_parts: vec![],
+                            thinking_text: None,
                         })
                     }
                     _ => None,
@@ -273,6 +287,7 @@ impl AnthropicProvider {
                         usage: None,
                         model: None,
                         thought_parts: vec![],
+                        thinking_text: None,
                     })
                 } else {
                     None
@@ -301,6 +316,7 @@ impl AnthropicProvider {
                     usage,
                     model: None,
                     thought_parts: vec![],
+                    thinking_text: None,
                 })
             }
             "message_start" => {
@@ -334,6 +350,7 @@ impl AnthropicProvider {
                     usage,
                     model,
                     thought_parts: vec![],
+                    thinking_text: None,
                 })
             }
             "message_stop" => {
@@ -344,6 +361,7 @@ impl AnthropicProvider {
                     usage: None,
                     model: None,
                     thought_parts: vec![],
+                    thinking_text: None,
                 })
             }
             _ => None,
@@ -357,6 +375,7 @@ impl AnthropicProvider {
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
+        thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
         let url = if self.is_azure {
             let base = self.base_url.trim_end_matches('/');
@@ -419,6 +438,25 @@ impl AnthropicProvider {
             body["temperature"] = json!(temp);
         }
 
+        // Anthropic extended thinking — requires setting a budget and increasing max_tokens
+        if let Some(level) = thinking_level {
+            if level != "none" {
+                let budget = match level {
+                    "low" => 4096,
+                    "high" => 32768,
+                    _ => 16384, // medium
+                };
+                body["thinking"] = json!({
+                    "type": "enabled",
+                    "budget_tokens": budget,
+                });
+                // Extended thinking requires higher max_tokens to include both
+                // thinking + response tokens. Override the model-aware max_tokens.
+                body["max_tokens"] = json!(budget + max_tokens as i64);
+                info!("[engine] Anthropic: extended thinking enabled (budget={})", budget);
+            }
+        }
+
         info!("[engine] Anthropic request to {} model={}", url, model);
 
         // Circuit breaker: reject immediately if too many recent failures
@@ -439,7 +477,7 @@ impl AnthropicProvider {
                 .post(&url)
                 .header("anthropic-version", "2023-06-01")
                 .header("Content-Type", "application/json")
-                .header("anthropic-beta", "prompt-caching-2024-07-31");
+                .header("anthropic-beta", "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14");
             if self.is_azure {
                 req = req.header("api-key", &self.api_key);
             } else {
@@ -544,7 +582,8 @@ impl AiProvider for AnthropicProvider {
         tools: &[ToolDefinition],
         model: &str,
         temperature: Option<f64>,
+        thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
-        self.chat_stream_inner(messages, tools, model, temperature).await
+        self.chat_stream_inner(messages, tools, model, temperature, thinking_level).await
     }
 }
