@@ -320,9 +320,8 @@ impl GoogleProvider {
             body["generationConfig"] = json!({"maxOutputTokens": 8192});
         }
 
-        // Gemini thinking models require thinkingConfig to expose thought parts.
-        // Auto-enable for 2.5 models (they think by default but don't surface it
-        // without the config). Users can override with /think low|medium|high.
+        // Gemini thinking models require explicit config to expose thought parts.
+        // Auto-enable for 2.5 models; users can override with /think low|medium|high.
         let is_thinking_model = model.contains("2.5") || model.contains("thinking");
         let effective_thinking = match thinking_level {
             Some("none") => None,
@@ -336,7 +335,9 @@ impl GoogleProvider {
         };
 
         if let Some(budget) = effective_thinking {
-            body["thinkingConfig"] = json!({
+            // thinkingConfig goes inside generationConfig for the Gemini API
+            body["generationConfig"]["responseModalities"] = json!(["TEXT"]);
+            body["generationConfig"]["thinkingConfig"] = json!({
                 "thinkingBudget": budget,
             });
             info!("[engine] Google: thinking config enabled (budget={})", budget);
