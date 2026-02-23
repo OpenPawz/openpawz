@@ -1,97 +1,168 @@
 ---
-title: "What is Pawz?"
+title: "OpenPawz"
 icon: "house"
 description: "Your AI, your rules. A native desktop AI agent platform — private, powerful, extensible."
-sidebarTitle: "Introduction"
+sidebarTitle: "Home"
 ---
 
 <img
-  src="/images/pawz-logo.png"
+  src="/images/pawz-logo-text.svg"
   alt="OpenPawz"
-  width="120"
-  style={{ borderRadius: '24px', marginBottom: '8px' }}
+  width="320"
+  style={{ marginBottom: '4px' }}
 />
 
-# Your AI, your rules.
+> "Your AI, your rules." — The whole point.
 
-Pawz is a **native desktop AI agent platform** built on [Tauri v2](https://v2.tauri.app/). Create autonomous AI agents, connect them to chat platforms, and let them work — all running locally on your machine.
-
-<Note>
-Everything runs through Tauri IPC — **no open ports, no cloud dependency, no Node.js backend**. Your data stays on your machine.
-</Note>
-
----
-
-## Get started
+A native desktop AI agent platform built on [Tauri v2](https://v2.tauri.app/). Create autonomous agents, connect them to chat platforms, run tools — all locally on your machine. No cloud, no open ports, no Node.js backend.
 
 <Columns cols={3}>
-  <Card title="Install Pawz" icon="download" href="/start/installation">
-    Prerequisites and build instructions for macOS, Linux, and Windows.
+  <Card title="Get Started" icon="rocket" href="/start/installation">
+    Install OpenPawz and create your first agent in minutes.
   </Card>
-  <Card title="First Agent" icon="robot" href="/start/first-agent">
-    Create your first AI agent in under 2 minutes.
+  <Card title="Create an Agent" icon="bot" href="/start/first-agent">
+    Configure personality, provider, and tools for your first agent.
   </Card>
-  <Card title="Add a Provider" icon="plug" href="/start/first-provider">
-    Connect to OpenAI, Ollama, Anthropic, or 7 other providers.
+  <Card title="Connect a Provider" icon="cpu" href="/start/first-provider">
+    Add OpenAI, Ollama, Anthropic, or 7 other AI providers.
   </Card>
 </Columns>
 
 ---
 
-## What you can build
+## What is OpenPawz?
+
+OpenPawz is a self-hosted, native desktop app that gives you a personal AI agent platform — without giving up control of your data or relying on hosted services.
+
+<AccordionGroup>
+  <Accordion title="Who is it for?">
+    Developers and power users who want AI agents they can message from anywhere — Telegram, Discord, Slack, WhatsApp — while keeping full control.
+  </Accordion>
+  <Accordion title="What makes it different?">
+    - **Self-hosted**: runs on your hardware, your rules
+    - **Multi-channel**: one app serves 11 chat platforms simultaneously
+    - **Agent-native**: built for AI agents with tool use, sessions, memory, and orchestration
+    - **Open source**: MIT licensed, community-driven
+  </Accordion>
+  <Accordion title="What do you need?">
+    Rust toolchain, a supported OS (macOS / Linux / Windows), an API key or local model, and 5 minutes.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## How it works
+
+```mermaid
+graph LR
+    A["Chat Apps\n(Telegram, Discord, Slack...)"] --> B["OpenPawz\n(Tauri Desktop App)"]
+    B --> C["AI Providers\n(Ollama, OpenAI, Anthropic...)"]
+    B --> D["75+ Built-in Tools"]
+    B --> E["MCP Extensions"]
+    B --> F["SQLite + Keychain\n(Local Storage)"]
+```
+
+The desktop app is the single source of truth for agents, sessions, routing, and channel connections. Everything communicates through **Tauri IPC** — no open ports, no HTTP servers.
+
+---
+
+## Key capabilities
 
 <Columns cols={2}>
-  <Card title="75+ Built-in Tools" icon="wand-magic-sparkles" href="/guides/skills">
+  <Card title="Multi-channel gateway" icon="radio">
+    Telegram, Discord, Slack, Matrix, IRC, WhatsApp, Twitch, and 4 more with a single app.
+  </Card>
+  <Card title="Multi-agent orchestration" icon="network">
+    Boss/worker pattern with task delegation, agent squads, and workspace isolation.
+  </Card>
+  <Card title="75+ built-in tools" icon="wrench">
     Email, GitHub, trading, TTS, browser automation, inter-agent comms, and more.
   </Card>
-  <Card title="11 Chat Channels" icon="comments" href="/channels/overview">
-    Telegram, Discord, Slack, Matrix, IRC, WhatsApp, Twitch, and more.
+  <Card title="Semantic memory" icon="brain">
+    Long-term memory with vector search and auto-recall — your agents never forget.
   </Card>
-  <Card title="Multi-Agent Orchestration" icon="sitemap" href="/guides/orchestrator">
-    Boss/worker pattern with task delegation and agent squads.
+  <Card title="MCP extensions" icon="puzzle">
+    Connect to any Model Context Protocol server for unlimited additional tools.
   </Card>
-  <Card title="Semantic Memory" icon="brain" href="/guides/memory">
-    Long-term memory with auto-recall — your agents never forget.
-  </Card>
-  <Card title="Task Management" icon="list-check" href="/guides/tasks">
+  <Card title="Task management" icon="list-checks">
     Kanban board with agent assignment, cron scheduling, and event triggers.
-  </Card>
-  <Card title="MCP Extensions" icon="puzzle-piece" href="/guides/extensions">
-    Connect to any Model Context Protocol server for additional tools.
   </Card>
 </Columns>
 
 ---
 
-## Architecture
+## Quick start
 
-<Columns cols={2}>
-  <Card title="Frontend — TypeScript" icon="monitor">
-    - **20+ views** — chat, agents, tasks, orchestrator, settings, and more
-    - **Material Symbols** icon system
-    - **Vanilla TS** — no framework, fast and lightweight
-    - **Tauri IPC** — all data stays local via `invoke()` calls
+<Steps>
+  <Step title="Clone and install">
+    ```bash
+    git clone https://github.com/elisplash/paw.git
+    cd paw
+    npm install
+    ```
+  </Step>
+  <Step title="Build the Tauri app">
+    ```bash
+    npm run tauri dev
+    ```
+    The app launches with the built-in UI. No separate backend needed.
+  </Step>
+  <Step title="Add a provider">
+    Open **Settings → Models** and add an API key for OpenAI, Anthropic, or point to a local Ollama instance.
+  </Step>
+  <Step title="Create your first agent">
+    Go to **Agents → New Agent**, pick a model, and start chatting. Your agent is ready.
+  </Step>
+</Steps>
+
+Need the full install guide? See [Installation](/start/installation).
+
+---
+
+## Start here
+
+<Columns cols={3}>
+  <Card title="Installation" icon="download" href="/start/installation">
+    Prerequisites and build instructions for macOS, Linux, and Windows.
   </Card>
-  <Card title="Backend — Rust" icon="server">
-    - **Agent loop** with tool executor and streaming
-    - **11 channel bridges** — Telegram, Discord, Slack, Matrix, IRC...
-    - **10 AI providers** — Ollama, OpenAI, Anthropic, Google...
-    - **SQLite + OS keychain** — encrypted local storage
+  <Card title="First Agent" icon="bot" href="/start/first-agent">
+    Step-by-step guide to creating and configuring an agent.
+  </Card>
+  <Card title="First Provider" icon="cpu" href="/start/first-provider">
+    Connect to any of 10 supported AI providers.
+  </Card>
+  <Card title="Channels" icon="radio" href="/channels/overview">
+    Connect Telegram, Discord, Slack, and 8 more.
+  </Card>
+  <Card title="Skills & Tools" icon="wrench" href="/guides/skills">
+    Browse the 75+ built-in tools available to agents.
+  </Card>
+  <Card title="Architecture" icon="blocks" href="/reference/architecture">
+    Understand how the Tauri + Rust + TypeScript stack fits together.
   </Card>
 </Columns>
 
-<Note>
-Everything communicates through **Tauri IPC** — no open ports, no HTTP servers, no cloud dependency. Your data never leaves your machine.
-</Note>
+---
+
+## Learn more
 
 <Columns cols={3}>
-  <Card title="Guides" icon="book-open" href="/guides/agents">
-    Deep dives into every feature.
+  <Card title="Agents" icon="bot" href="/guides/agents">
+    Agent configuration, policies, and lifecycle.
+  </Card>
+  <Card title="Memory" icon="brain" href="/guides/memory">
+    Semantic memory, auto-recall, and the Memory Palace.
+  </Card>
+  <Card title="Orchestrator" icon="network" href="/guides/orchestrator">
+    Multi-agent workflows and task delegation.
+  </Card>
+  <Card title="Browser" icon="globe" href="/guides/browser">
+    Headless browser automation and research.
   </Card>
   <Card title="Security" icon="shield" href="/reference/security">
-    Command risk classification, sandboxing, and more.
+    Command risk classification, sandboxing, and agent policies.
   </Card>
-  <Card title="Architecture" icon="building" href="/reference/architecture">
-    Full technical reference.
+  <Card title="Troubleshooting" icon="circle-help" href="/reference/troubleshooting">
+    Common issues and diagnostic steps.
   </Card>
 </Columns>

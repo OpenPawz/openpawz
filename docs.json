@@ -4,8 +4,8 @@
   "name": "OpenPawz",
   "description": "Your AI, your rules. A native desktop AI agent platform — private, powerful, extensible.",
   "logo": {
-    "dark": "/images/pawz-logo.png",
-    "light": "/images/pawz-logo.png",
+    "dark": "/images/pawz-logo-text.svg",
+    "light": "/images/pawz-logo-text-light.svg",
     "href": "https://github.com/elisplash/paw"
   },
   "favicon": "/images/pawz-favicon.png",
