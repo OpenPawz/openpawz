@@ -299,6 +299,8 @@ layout = "widget"           # widget|storage
 5. Use `fetch` or `exec` to call the API as described in your instructions
 
 ### Important Rules
+- **Prefer action over clarification** — When the user gives short directives like "yes", "do it", "both", "go ahead", or "try again", act immediately using your tools instead of asking follow-up questions. Infer intent from conversation context.
+- **Never ask the same question twice** — If you already asked a clarifying question and the user responded, proceed with your best interpretation of their answer.
 - **Always ask before destructive actions** (deleting files, sending money, sending emails) unless auto-approve is enabled
 - Financial tools (`coinbase_trade`, `dex_swap`, `sol_swap`, `dex_transfer`) always require explicit user approval
 - You have sandboxed access — you cannot escape your workspace unless granted shell access
@@ -375,12 +377,14 @@ pub fn compose_chat_system_prompt(
 /// Detect stuck response loops and inject a system nudge to break the cycle.
 ///
 /// Checks:
-/// 1. **Repetition**: Jaccard word-similarity > 55% between last two assistant
+/// 1. **Repetition**: Jaccard word-similarity > 40% between last two assistant
 ///    messages — the model is repeating itself with minor rewording.
-/// 2. **Topic-ignoring**: The last user message shares < 25% keywords with the
+/// 2. **Question loop**: Both last assistant messages end in `?` — the model
+///    keeps asking clarifying questions instead of acting.
+/// 3. **Topic-ignoring**: The last user message shares < 25% keywords with the
 ///    model's response — the model is ignoring what the user asked about.
 ///
-/// In both cases, a system-role redirect is injected telling the model to
+/// In all cases, a system-role redirect is injected telling the model to
 /// stop repeating itself and respond to the user's actual request.
 pub fn detect_response_loop(messages: &mut Vec<Message>) {
     let assistant_msgs: Vec<&str> = messages
@@ -408,8 +412,8 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
         0.0
     };
 
-    // ── Check 1: assistant repeating itself (> 55% overlap) ────────────
-    if similarity > 0.55 {
+    // ── Check 1: assistant repeating itself (> 40% overlap) ────────────
+    if similarity > 0.40 {
         warn!(
             "[engine] Response loop detected (similarity={:.0}%) — injecting redirect",
             similarity * 100.0
@@ -418,7 +422,20 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
         return;
     }
 
-    // ── Check 2: assistant ignoring the user's topic ───────────────────
+    // ── Check 2: question loop — both responses are questions ──────────
+    // When the model asks "Should I do X?" twice in a row, it's stuck
+    // asking for confirmation instead of acting.
+    let a_is_question = a.trim_end().ends_with('?');
+    let b_is_question = b.trim_end().ends_with('?');
+    if a_is_question && b_is_question {
+        warn!(
+            "[engine] Question loop detected — assistant asked two consecutive questions"
+        );
+        inject_loop_break(messages);
+        return;
+    }
+
+    // ── Check 3: assistant ignoring the user's topic ───────────────────
     // Find last user message and check if assistant response addresses it.
     let last_user = messages
         .iter()
@@ -450,13 +467,27 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
             .filter(|w| w.len() > 2 && !stop_words.contains(w))
             .collect();
 
-        if user_keywords.len() >= 3 && !asst_keywords.is_empty() {
+        // Check for short affirmative/directive user messages — "both", "yes",
+        // "do it", "go ahead". If the user gives a brief directive and the
+        // model responds with another question, that's a loop.
+        let short_directive = user_text.split_whitespace().count() <= 4;
+        if short_directive && a_is_question && similarity > 0.20 {
+            warn!(
+                "[engine] Short-directive loop: user said '{}' but model asked another question \
+                (similarity={:.0}%) — injecting redirect",
+                user_text, similarity * 100.0
+            );
+            inject_loop_break(messages);
+            return;
+        }
+
+        if user_keywords.len() >= 1 && !asst_keywords.is_empty() {
             let topic_overlap = user_keywords.intersection(&asst_keywords).count();
             let topic_ratio = topic_overlap as f64 / user_keywords.len() as f64;
 
             // Also check: are the two assistant messages MORE similar to each
             // other than the assistant is to the user? That's a strong loop signal.
-            if topic_ratio < 0.15 && similarity > 0.40 {
+            if topic_ratio < 0.15 && similarity > 0.30 {
                 warn!(
                     "[engine] Topic-ignoring loop: user keywords overlap={:.0}%, \
                     inter-response similarity={:.0}% — injecting redirect",
@@ -481,15 +512,15 @@ fn inject_loop_break(messages: &mut Vec<Message>) {
     let redirect = if last_user_text.is_empty() {
         "IMPORTANT: You are stuck in a response loop — repeating the same topic despite the \
         user's request. Read the user's MOST RECENT message carefully and respond ONLY to \
-        what they actually asked. Do NOT continue the previous topic unless they asked for it."
+        what they actually asked. Do NOT ask another question. Take action with your tools NOW."
             .to_string()
     } else {
         format!(
-            "CRITICAL: You are repeating yourself and ignoring the user. STOP. \
+            "CRITICAL: You are stuck asking clarifying questions instead of acting. STOP asking. \
             The user's actual request is: \"{}\"\n\n\
-            Respond ONLY to this request. Do NOT mention your previous topic. \
-            If they asked you to use tools (e.g. squad_broadcast, create_task), use them now. \
-            If you don't have enough context, use memory_search or agent_read_messages.",
+            Take action NOW. Use your tools to do what the user asked. \
+            If they said 'yes', 'both', 'do it', 'go ahead', or similar — that means proceed with ALL \
+            the options you mentioned. Do NOT ask another question. Call the relevant tools immediately.",
             &last_user_text[..last_user_text.len().min(300)]
         )
     };
