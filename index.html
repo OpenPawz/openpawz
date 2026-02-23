@@ -2656,7 +2656,7 @@
     </div>
 
     <!-- Generic Confirm Modal (replaces window.confirm which doesn't work in Tauri webview) -->
-    <div class="modal-overlay" id="confirm-modal" style="display: none">
+    <div class="modal-overlay" id="confirm-modal" style="display: none; z-index: 10000">
       <div class="modal-card" style="width: 420px">
         <div class="modal-header">
           <h2 class="modal-title" id="confirm-modal-title">Confirm</h2>
@@ -2673,7 +2673,7 @@
     </div>
 
     <!-- Generic Prompt Modal (replaces window.prompt which doesn't work in Tauri webview) -->
-    <div class="modal-overlay" id="prompt-modal" style="display: none">
+    <div class="modal-overlay" id="prompt-modal" style="display: none; z-index: 10000">
       <div class="modal-card" style="width: 420px">
         <div class="modal-header">
           <h2 class="modal-title" id="prompt-modal-title">Input</h2>
