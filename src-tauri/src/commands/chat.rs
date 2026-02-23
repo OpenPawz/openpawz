@@ -458,8 +458,22 @@ pub async fn engine_chat_send(
                         }
                     }
 
+                    // ── Auto-prune: cap stored messages per session ──
+                    {
+                        use crate::atoms::constants::CHAT_SESSION_MAX_MESSAGES;
+                        match engine_state.store.prune_session_messages(
+                            &session_id_clone, CHAT_SESSION_MAX_MESSAGES
+                        ) {
+                            Ok(pruned) if pruned > 0 => {
+                                info!("[engine] Pruned {} old messages from session {} (cap={})",
+                                    pruned, session_id_clone, CHAT_SESSION_MAX_MESSAGES);
+                            }
+                            Err(e) => warn!("[engine] Session prune failed: {}", e),
+                            _ => {}
+                        }
+                    }
+
                     // ── Auto-compact: if the session is getting large, compact it ──
-                    // This was designed but never wired in — sessions grew unbounded.
                     if let Ok(compact_db) = crate::engine::sessions::SessionStore::open() {
                         let compact_store = std::sync::Arc::new(compact_db);
                         let compact_provider = AnyProvider::from_config(&provider_config);

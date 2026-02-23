@@ -11,6 +11,61 @@ pub mod engine;
 // ── Paw Command Modules (Systems layer) ───────────────────────────────
 pub mod commands;
 
+use tauri::Manager;
+
+/// One-time startup DB housekeeping: purge empty sessions, prune oversized ones.
+fn startup_housekeeping(state: &commands::state::EngineState) {
+    use atoms::constants::{
+        STARTUP_EMPTY_SESSION_MAX_AGE_SECS,
+        STARTUP_STALE_SESSION_MAX_AGE_DAYS,
+        CHAT_SESSION_MAX_MESSAGES,
+    };
+
+    log::info!("[startup] Running DB housekeeping…");
+
+    // 1. Delete empty sessions older than 1 hour
+    match state.store.cleanup_empty_sessions(STARTUP_EMPTY_SESSION_MAX_AGE_SECS, None) {
+        Ok(n) if n > 0 => log::info!("[startup] Purged {} empty sessions", n),
+        Err(e) => log::warn!("[startup] Empty session cleanup failed: {}", e),
+        _ => {}
+    }
+
+    // 2. Prune large sessions: any session with > MAX messages gets trimmed
+    match state.store.list_sessions_filtered(500, None) {
+        Ok(sessions) => {
+            let stale_cutoff = chrono::Utc::now()
+                - chrono::Duration::days(STARTUP_STALE_SESSION_MAX_AGE_DAYS);
+            let stale_cutoff_str = stale_cutoff.to_rfc3339();
+
+            for s in &sessions {
+                // Only prune sessions that are stale OR over the message cap
+                let is_stale = s.updated_at.as_str() < stale_cutoff_str.as_str();
+                let is_large = s.message_count > CHAT_SESSION_MAX_MESSAGES;
+
+                if is_stale || is_large {
+                    let keep = if is_stale {
+                        // Stale sessions: keep fewer messages (just enough to resume)
+                        (CHAT_SESSION_MAX_MESSAGES / 2).max(20)
+                    } else {
+                        CHAT_SESSION_MAX_MESSAGES
+                    };
+                    match state.store.prune_session_messages(&s.id, keep) {
+                        Ok(n) if n > 0 => log::info!(
+                            "[startup] Pruned {} messages from session '{}' (kept {}, stale={})",
+                            n, s.id, keep, is_stale
+                        ),
+                        Err(e) => log::warn!("[startup] Prune failed for session {}: {}", s.id, e),
+                        _ => {}
+                    }
+                }
+            }
+        }
+        Err(e) => log::warn!("[startup] Session listing for pruning failed: {}", e),
+    }
+
+    log::info!("[startup] DB housekeeping complete");
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let engine_state = commands::state::EngineState::new()
@@ -34,6 +89,16 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
+            // ── Startup DB housekeeping (runs once, non-blocking) ─────────
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    if let Some(state) = app_handle.try_state::<commands::state::EngineState>() {
+                        startup_housekeeping(&state);
+                    }
+                });
+            }
+
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
