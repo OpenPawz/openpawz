@@ -245,6 +245,10 @@ export const appState = {
   lastRecordedTotal: 0,
   activeModelKey: 'default',
 
+  // Context breakdown tracking
+  sessionToolResultTokens: 0,
+  sessionToolCallCount: 0,
+
   // TTS
   ttsAudio: null as HTMLAudioElement | null,
   ttsActiveBtn: null as HTMLButtonElement | null,

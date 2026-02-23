@@ -173,7 +173,11 @@ function handleAgentEvent(payload: unknown): void {
       const phase = data.phase as string | undefined;
       if (phase === 'start' && tool) {
         console.debug(`[event_bus] Tool: ${tool}`);
+        appState.sessionToolCallCount++;
         if (stream_s?.el) _streamHandlers?.onDelta(`\n\n▶ ${tool}...`);
+      } else if (phase === 'end' && data.output) {
+        const outputLen = String(data.output).length;
+        appState.sessionToolResultTokens += Math.ceil(outputLen / 4) + 4;
       }
     } else if (stream === 'error' && data) {
       const error = (data.message ?? data.error ?? '') as string;
