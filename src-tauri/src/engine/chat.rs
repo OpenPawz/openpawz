@@ -469,7 +469,7 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
             return;
         }
 
-        if user_keywords.len() >= 1 && !asst_keywords.is_empty() {
+        if !user_keywords.is_empty() && !asst_keywords.is_empty() {
             let topic_overlap = user_keywords.intersection(&asst_keywords).count();
             let topic_ratio = topic_overlap as f64 / user_keywords.len() as f64;
 

@@ -149,6 +149,12 @@ pub fn domain_summaries() -> Vec<(&'static str, &'static str, &'static str)> {
     ]
 }
 
+impl Default for ToolIndex {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ToolIndex {
     /// Create a new empty tool index.
     pub fn new() -> Self {
