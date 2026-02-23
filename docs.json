@@ -4,8 +4,8 @@
   "name": "OpenPawz",
   "description": "Your AI, your rules. A native desktop AI agent platform — private, powerful, extensible.",
   "logo": {
-    "dark": "/images/pawz-logo-text.svg",
-    "light": "/images/pawz-logo-text-light.svg",
+    "dark": "/images/pawz-logo-text-dark.png",
+    "light": "/images/pawz-logo-text-light.png",
     "href": "https://github.com/elisplash/paw"
   },
   "favicon": "/images/pawz-favicon.png",
@@ -30,8 +30,8 @@
         "href": "https://github.com/elisplash/paw"
       },
       {
-        "label": "Discussions",
-        "href": "https://github.com/elisplash/paw/discussions"
+        "label": "Releases",
+        "href": "https://github.com/elisplash/paw/releases"
       }
     ],
     "primary": {
@@ -45,104 +45,140 @@
     "dismissible": true
   },
   "navigation": {
-    "global": {
-      "anchors": [
-        {
-          "anchor": "GitHub",
-          "icon": "github",
-          "href": "https://github.com/elisplash/paw"
-        },
-        {
-          "anchor": "Community",
-          "icon": "message-circle",
-          "href": "https://github.com/elisplash/paw/discussions"
-        }
-      ]
-    },
-    "groups": [
+    "tabs": [
       {
-        "group": "Getting Started",
+        "tab": "Get Started",
         "icon": "rocket",
-        "pages": [
-          "start/getting-started",
-          "start/installation",
-          "start/first-agent",
-          "start/first-provider"
+        "groups": [
+          {
+            "group": "Home",
+            "pages": [
+              "start/getting-started"
+            ]
+          },
+          {
+            "group": "First Steps",
+            "pages": [
+              "start/installation",
+              "start/first-agent",
+              "start/first-provider"
+            ]
+          }
         ]
       },
       {
-        "group": "Guides",
+        "tab": "Guides",
         "icon": "book-open",
-        "pages": [
-          "guides/agents",
-          "guides/memory",
-          "guides/tasks",
-          "guides/skills",
-          "guides/integrations",
-          "guides/extensions",
-          "guides/voice",
-          "guides/research",
-          "guides/orchestrator",
-          "guides/email",
-          "guides/trading",
-          "guides/slash-commands",
-          "guides/automations",
-          "guides/browser",
-          "guides/tailscale",
-          "guides/sessions",
-          "guides/foundry",
-          "guides/dashboard",
-          "guides/projects",
-          "guides/content-studio",
-          "guides/container-sandbox",
-          "guides/modular-workspace",
-          "guides/pawzhub",
-          "guides/pricing"
+        "groups": [
+          {
+            "group": "Core",
+            "pages": [
+              "guides/agents",
+              "guides/memory",
+              "guides/tasks",
+              "guides/skills"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "guides/integrations",
+              "guides/extensions",
+              "guides/voice",
+              "guides/email"
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "guides/orchestrator",
+              "guides/research",
+              "guides/trading",
+              "guides/automations",
+              "guides/slash-commands"
+            ]
+          },
+          {
+            "group": "Tools",
+            "pages": [
+              "guides/browser",
+              "guides/container-sandbox",
+              "guides/tailscale",
+              "guides/sessions"
+            ]
+          },
+          {
+            "group": "Platform",
+            "pages": [
+              "guides/dashboard",
+              "guides/foundry",
+              "guides/projects",
+              "guides/content-studio",
+              "guides/modular-workspace",
+              "guides/pawzhub",
+              "guides/pricing"
+            ]
+          }
         ]
       },
       {
-        "group": "Channels",
-        "icon": "radio",
-        "pages": [
-          "channels/overview",
-          "channels/telegram",
-          "channels/discord",
-          "channels/slack",
-          "channels/matrix",
-          "channels/irc",
-          "channels/mattermost",
-          "channels/nextcloud",
-          "channels/nostr",
-          "channels/twitch",
-          "channels/webchat",
-          "channels/whatsapp"
+        "tab": "Channels",
+        "icon": "message-square",
+        "groups": [
+          {
+            "group": "Channels",
+            "pages": [
+              "channels/overview",
+              "channels/telegram",
+              "channels/discord",
+              "channels/slack",
+              "channels/matrix",
+              "channels/irc",
+              "channels/mattermost",
+              "channels/nextcloud",
+              "channels/nostr",
+              "channels/twitch",
+              "channels/webchat",
+              "channels/whatsapp"
+            ]
+          }
         ]
       },
       {
-        "group": "Providers",
-        "icon": "cpu",
-        "pages": [
-          "providers/overview",
-          "providers/ollama",
-          "providers/openai",
-          "providers/anthropic",
-          "providers/google",
-          "providers/openrouter",
-          "providers/deepseek",
-          "providers/grok",
-          "providers/mistral",
-          "providers/moonshot",
-          "providers/custom"
+        "tab": "Providers",
+        "icon": "server",
+        "groups": [
+          {
+            "group": "AI Providers",
+            "pages": [
+              "providers/overview",
+              "providers/ollama",
+              "providers/openai",
+              "providers/anthropic",
+              "providers/google",
+              "providers/openrouter",
+              "providers/deepseek",
+              "providers/grok",
+              "providers/mistral",
+              "providers/moonshot",
+              "providers/custom"
+            ]
+          }
         ]
       },
       {
-        "group": "Reference",
-        "icon": "file-code",
-        "pages": [
-          "reference/architecture",
-          "reference/security",
-          "reference/quality",
-          "reference/troubleshooting"
+        "tab": "Reference",
+        "icon": "file-text",
+        "groups": [
+          {
+            "group": "Reference",
+            "pages": [
+              "reference/architecture",
+              "reference/security",
+              "reference/quality",
+              "reference/troubleshooting"
+            ]
+          }
         ]
       }
     ]

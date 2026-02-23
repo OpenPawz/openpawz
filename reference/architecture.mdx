@@ -1,6 +1,6 @@
 ---
 title: "Architecture"
-icon: "building"
+icon: "landmark"
 description: "OpenPawz is a Tauri v2 desktop application with a Rust backend and TypeScript frontend."
 ---
 
@@ -19,7 +19,7 @@ OpenPawz is a Tauri v2 desktop application with a Rust backend and TypeScript fr
     </Columns>
     <p style={{ textAlign: 'center', margin: '4px 0', opacity: 0.5 }}>↕ IPC (invoke / events)</p>
     <Columns cols={1}>
-      <Card title="Rust Engine" icon="cpu" horizontal>
+      <Card title="Rust Engine" icon="server" horizontal>
         Agent Loop · Providers · Channels · Memory · Skills · Orchestrator · Sandbox
       </Card>
     </Columns>
@@ -43,7 +43,7 @@ Pawz has a three-tier extensibility architecture. Each tier adds more power over
   </Card>
 </Columns>
 <Columns cols={1}>
-  <Card title="Tier 2 — Integrations" icon="puzzle" color="#A855F7">
+  <Card title="Tier 2 — Integrations" icon="square-terminal" color="#A855F7">
     Credential vault · API access · CLI binaries · Widgets<br />
     `pawz-skill.toml` + `[[credentials]]` + `[instructions]`
   </Card>
