@@ -49,22 +49,6 @@ function generateSessionLabel(message: string): string {
   return label || 'New chat';
 }
 
-/** Relative time string (e.g. "2h ago", "3d ago"). */
-function relativeTime(date: Date | number): string {
-  const now = Date.now();
-  const ms = typeof date === 'number' ? date : date.getTime();
-  const diff = now - ms;
-  const secs = Math.floor(diff / 1000);
-  if (secs < 60) return 'just now';
-  const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(ms).toLocaleDateString();
-}
-
 // ── Utility helpers ──────────────────────────────────────────────────────
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -193,14 +177,58 @@ export function renderSessionSelect(): void {
     chatSessionSelect.appendChild(opt);
     return;
   }
-  for (const s of agentSessions) {
+
+  // Sort newest first and limit
+  const MAX_SESSIONS = 25;
+  const sorted = [...agentSessions].sort(
+    (a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0),
+  );
+  const limited = sorted.slice(0, MAX_SESSIONS);
+
+  // Group by time bucket
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const yesterdayStart = new Date(todayStart); yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+  const weekStart = new Date(todayStart); weekStart.setDate(weekStart.getDate() - 7);
+
+  const groups: { label: string; sessions: typeof limited }[] = [
+    { label: 'Today', sessions: [] },
+    { label: 'Yesterday', sessions: [] },
+    { label: 'This Week', sessions: [] },
+    { label: 'Older', sessions: [] },
+  ];
+
+  for (const s of limited) {
+    const t = s.updatedAt ?? 0;
+    if (t >= todayStart.getTime()) groups[0].sessions.push(s);
+    else if (t >= yesterdayStart.getTime()) groups[1].sessions.push(s);
+    else if (t >= weekStart.getTime()) groups[2].sessions.push(s);
+    else groups[3].sessions.push(s);
+  }
+
+  for (const g of groups) {
+    if (!g.sessions.length) continue;
+    const optgroup = document.createElement('optgroup');
+    optgroup.label = g.label;
+    for (const s of g.sessions) {
+      const opt = document.createElement('option');
+      opt.value = s.key;
+      const raw = s.label ?? s.displayName ?? 'Untitled chat';
+      // Truncate long labels for the dropdown
+      const label = raw.length > 40 ? `${raw.slice(0, 37)}…` : raw;
+      opt.textContent = label;
+      opt.title = raw; // full label on hover
+      if (s.key === appState.currentSessionKey) opt.selected = true;
+      optgroup.appendChild(opt);
+    }
+    chatSessionSelect.appendChild(optgroup);
+  }
+
+  // If there are more sessions than shown, add a hint
+  if (sorted.length > MAX_SESSIONS) {
     const opt = document.createElement('option');
-    opt.value = s.key;
-    // Show label + relative time, or clean fallback for unlabeled sessions
-    const label = s.label ?? s.displayName ?? 'Untitled chat';
-    const timeStr = s.updatedAt ? ` (${relativeTime(s.updatedAt)})` : '';
-    opt.textContent = label + timeStr;
-    if (s.key === appState.currentSessionKey) opt.selected = true;
+    opt.value = '';
+    opt.disabled = true;
+    opt.textContent = `… ${sorted.length - MAX_SESSIONS} older sessions`;
     chatSessionSelect.appendChild(opt);
   }
 }

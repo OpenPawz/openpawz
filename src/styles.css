@@ -908,11 +908,13 @@ body {
 }
 
 .chat-header {
-  padding: 12px 20px;
+  padding: 10px 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
   background: var(--bg-secondary);
 }
 
@@ -920,6 +922,27 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+
+.chat-header-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.chat-header-right .btn-ghost {
+  flex-shrink: 0;
+}
+
+/* Prominent new-chat button — never hidden */
+#new-chat-btn {
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  margin-left: 2px;
+  padding-left: 8px;
 }
 
 .chat-avatar {
@@ -2138,12 +2161,27 @@ body {
   padding: 4px 8px;
   font-size: 12px;
   font-family: var(--font-sans);
-  max-width: 200px;
+  min-width: 100px;
+  max-width: 220px;
   cursor: pointer;
+  text-overflow: ellipsis;
 }
 .chat-session-select:focus {
   outline: none;
   border-color: var(--accent);
+}
+.chat-session-select optgroup {
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-style: normal;
+}
+.chat-session-select option {
+  font-weight: 400;
+  color: var(--text-primary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* View header with refresh/action buttons */
@@ -2184,6 +2222,41 @@ body {
 
 button:focus:not(:focus-visible) {
   outline: none;
+}
+
+/* ─── Chat Header Responsive ─── */
+@media (max-width: 900px) {
+  /* Hide less-critical session buttons at medium widths */
+  #session-compact-btn,
+  #session-clear-btn {
+    display: none;
+  }
+
+  .chat-header-left .token-meter {
+    display: none;
+  }
+
+  .chat-session-select {
+    max-width: 160px;
+  }
+}
+
+@media (max-width: 600px) {
+  /* At narrow widths, collapse to most essential controls */
+  #session-rename-btn,
+  #session-delete-btn,
+  #session-compact-btn,
+  #session-clear-btn {
+    display: none;
+  }
+
+  .chat-session-select {
+    max-width: 120px;
+  }
+
+  .chat-header {
+    padding: 8px 10px;
+  }
 }
 
 /* ─── Responsive ─── */
