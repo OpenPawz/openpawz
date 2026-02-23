@@ -382,3 +382,10 @@ pub fn engine_google_oauth_disconnect(
     crate::engine::tools::google_oauth::disconnect(&app_handle)
         .map_err(|e| e.to_string())
 }
+
+/// Whether the build ships with bundled Google OAuth credentials.
+/// When true, users don't need to create their own Cloud Console project.
+#[tauri::command]
+pub fn engine_google_oauth_has_bundled() -> bool {
+    crate::engine::tools::google_oauth::has_bundled_credentials()
+}

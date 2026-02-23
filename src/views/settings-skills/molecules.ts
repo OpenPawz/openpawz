@@ -11,6 +11,10 @@ let _currentFilter = 'all';
 let _searchQuery = '';
 let _reloadFn: (() => Promise<void>) | null = null;
 
+// Whether the build ships with bundled Google OAuth credentials (queried once).
+let _googleBundled = false;
+pawEngine.googleOAuthHasBundled().then((v) => { _googleBundled = v; }).catch(() => {});
+
 export function setMoleculesState(opts: {
   currentFilter: string;
   searchQuery: string;
@@ -280,7 +284,7 @@ function renderGoogleOAuthSection(skill: EngineSkillStatus): string {
   const hasServiceAccount = skill.configured_credentials.includes('SERVICE_ACCOUNT_JSON');
   const hasClientId = skill.configured_credentials.includes('GOOGLE_CLIENT_ID');
   const hasClientSecret = skill.configured_credentials.includes('GOOGLE_CLIENT_SECRET');
-  const oauthReady = hasClientId && hasClientSecret;
+  const oauthReady = _googleBundled || (hasClientId && hasClientSecret);
 
   // --- Connected via OAuth2 ---
   if (hasRefreshToken) {
@@ -315,7 +319,33 @@ function renderGoogleOAuthSection(skill: EngineSkillStatus): string {
     </div>`;
   }
 
-  // --- Not connected: show setup options ---
+  // --- Not connected ---
+  // If bundled credentials exist, just show the one-click connect button
+  if (_googleBundled) {
+    return `<div class="skill-cred-section">
+      <div class="skill-section-title">${msIcon('cloud')} Connect Google Account</div>
+      <button class="btn btn-primary skill-google-connect" id="google-connect-btn"
+        style="margin-top: 0.5rem; width: 100%;">
+        ${msIcon('login')} Connect with Google
+      </button>
+      <p class="skill-google-hint" style="margin-top: 0.5rem;">
+        Click above to sign in with your Google account. Pawz will get access to Gmail, Calendar, Drive, Sheets, and Docs.
+      </p>
+
+      <details class="skill-advanced-toggle" style="margin-top: 1rem;">
+        <summary class="skill-advanced-summary">${msIcon('business')} Enterprise — Service Account (Advanced)</summary>
+        <p class="skill-google-hint" style="margin: 0.5rem 0;">
+          For Google Workspace domains only. Requires a service account with domain-wide delegation.
+        </p>
+        ${renderSingleCredRow(skill, 'SERVICE_ACCOUNT_JSON', 'Service Account JSON',
+          'Full JSON key file contents', hasServiceAccount, '{"type":"service_account",...}')}
+        ${renderSingleCredRow(skill, 'DELEGATE_EMAIL', 'Delegated User Email',
+          'Workspace user to impersonate', skill.configured_credentials.includes('DELEGATE_EMAIL'), 'pawz@yourdomain.com')}
+      </details>
+    </div>`;
+  }
+
+  // --- No bundled creds: user needs to provide their own OAuth Client ID ---
   const clientIdRow = renderSingleCredRow(skill, 'GOOGLE_CLIENT_ID', 'OAuth Client ID',
     'From Google Cloud Console → Credentials → OAuth 2.0 Client ID', hasClientId, 'your-client-id.apps.googleusercontent.com');
   const clientSecretRow = renderSingleCredRow(skill, 'GOOGLE_CLIENT_SECRET', 'OAuth Client Secret',

@@ -142,6 +142,7 @@ pub fn run() {
             commands::skills::engine_google_oauth_connect,
             commands::skills::engine_google_oauth_status,
             commands::skills::engine_google_oauth_disconnect,
+            commands::skills::engine_google_oauth_has_bundled,
             // ── Trading ──
             commands::trade::engine_trading_history,
             commands::trade::engine_trading_summary,

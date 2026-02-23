@@ -303,14 +303,26 @@ async fn get_access_token_oauth2(creds: &HashMap<String, String>) -> EngineResul
         }
     }
 
-    // Need to refresh
-    let client_id = creds.get("GOOGLE_CLIENT_ID")
-        .ok_or("Missing GOOGLE_CLIENT_ID")?;
-    let client_secret = creds.get("GOOGLE_CLIENT_SECRET")
-        .ok_or("Missing GOOGLE_CLIENT_SECRET")?;
+    // Need to refresh — try bundled creds first, then user-provided from creds map
+    let (client_id, client_secret) = {
+        if let (Some(id), Some(secret)) = (
+            option_env!("PAW_GOOGLE_CLIENT_ID"),
+            option_env!("PAW_GOOGLE_CLIENT_SECRET"),
+        ) {
+            if !id.is_empty() && !secret.is_empty() {
+                (id.to_string(), secret.to_string())
+            } else {
+                (creds.get("GOOGLE_CLIENT_ID").ok_or("Missing GOOGLE_CLIENT_ID")?.clone(),
+                 creds.get("GOOGLE_CLIENT_SECRET").ok_or("Missing GOOGLE_CLIENT_SECRET")?.clone())
+            }
+        } else {
+            (creds.get("GOOGLE_CLIENT_ID").ok_or("Missing GOOGLE_CLIENT_ID")?.clone(),
+             creds.get("GOOGLE_CLIENT_SECRET").ok_or("Missing GOOGLE_CLIENT_SECRET")?.clone())
+        }
+    };
 
     let (access_token, expires_at) = super::google_oauth::refresh_access_token(
-        refresh_token, client_id, client_secret,
+        refresh_token, &client_id, &client_secret,
     ).await?;
 
     info!("[google] Access token refreshed via OAuth2");

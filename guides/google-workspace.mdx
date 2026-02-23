@@ -1,6 +1,6 @@
 ---
 title: "Google Workspace"
-description: "Connect Pawz to Gmail, Calendar, Drive, Sheets, and Docs with one click — sign in with Google and you're done."
+description: "Connect Pawz to Gmail, Calendar, Drive, Sheets, and Docs — just click Connect with Google."
 ---
 
 # Google Workspace
@@ -33,88 +33,23 @@ Once connected, Pawz gets 10 Google tools:
 
 ---
 
-## Quick Setup (OAuth — Recommended)
+## Setup
 
-This works with any Google account — personal `@gmail.com` or Google Workspace.
+1. Go to **Skills** → **Google Workspace** → **Enable** it
+2. Click **Connect with Google**
+3. Your browser opens — sign in with your Google account and click **Allow**
+4. The browser says "Pawz Connected!" — you can close it
+5. Back in Pawz, you should see **"Connected as you@gmail.com"**
 
-<Callout type="info">
-**Time needed:** About 5 minutes. You'll create an OAuth Client ID in Google Cloud Console, then click "Connect with Google" in Pawz.
-</Callout>
-
-### Step 1: Create a Google Cloud Project
-
-1. Open **[console.cloud.google.com/projectcreate](https://console.cloud.google.com/projectcreate)**
-2. **Project name**: Type `Pawz`
-3. Click **Create**
-4. Wait a few seconds — click **SELECT PROJECT** in the notification that appears
-
-### Step 2: Enable the APIs
-
-Click each link and hit the blue **Enable** button:
-
-1. **[Gmail API](https://console.cloud.google.com/apis/library/gmail.googleapis.com)**
-2. **[Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com)**
-3. **[Drive API](https://console.cloud.google.com/apis/library/drive.googleapis.com)**
-4. **[Sheets API](https://console.cloud.google.com/apis/library/sheets.googleapis.com)**
-5. **[Docs API](https://console.cloud.google.com/apis/library/docs.googleapis.com)**
-
-If any say "API Enabled" already, skip it.
-
-### Step 3: Set Up the OAuth Consent Screen
-
-1. Open **[console.cloud.google.com/apis/credentials/consent](https://console.cloud.google.com/apis/credentials/consent)**
-2. Choose **External** (or **Internal** if you're on Google Workspace and only want org users)
-3. Click **Create**
-4. Fill in:
-   - **App name**: `Pawz`
-   - **User support email**: Select your email
-   - **Developer contact email**: Enter your email
-5. Click **Save and Continue**
-6. On the **Scopes** page — click **Add or Remove Scopes**, then add these URLs (paste each one):
-   - `https://www.googleapis.com/auth/gmail.modify`
-   - `https://www.googleapis.com/auth/gmail.send`
-   - `https://www.googleapis.com/auth/calendar`
-   - `https://www.googleapis.com/auth/drive`
-   - `https://www.googleapis.com/auth/spreadsheets`
-   - `https://www.googleapis.com/auth/documents`
-   - `https://www.googleapis.com/auth/userinfo.email`
-7. Click **Update** → **Save and Continue**
-8. On the **Test users** page — click **Add Users**, type your Gmail/Workspace email, click **Add** → **Save and Continue**
-
-<Callout type="warn">
-While your app is in "Testing" mode, only the test users you add can sign in. This is fine for personal use. If you need more users, you can submit the app for verification later.
-</Callout>
-
-### Step 4: Create an OAuth Client ID
-
-1. Open **[console.cloud.google.com/apis/credentials/oauthclient](https://console.cloud.google.com/apis/credentials/oauthclient)**
-2. **Application type**: Select **Desktop app**
-3. **Name**: `Pawz Desktop`
-4. Click **Create**
-5. You'll see a popup with your **Client ID** and **Client Secret** — **copy both** (click the copy icons)
-
-<Callout type="info">
-You can always find these again at [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) → click on "Pawz Desktop".
-</Callout>
-
-### Step 5: Connect in Pawz
-
-1. Open **Pawz** on your desktop
-2. Go to **Skills** → find **Google Workspace** → **Enable** it → click **Configure**
-3. Paste your **Client ID** and **Client Secret** into the fields
-4. Click **Set** for each one
-5. Click **Connect with Google**
-6. Your browser opens → sign in with Google → click **Allow**
-7. The browser says "Pawz Connected!" — you can close it
-8. Back in Pawz, you'll see **"Connected as you@gmail.com"**
-
-### Done!
-
-Try it out:
+That's it. Try telling Pawz:
 - *"Check my inbox"*
 - *"What's on my calendar this week?"*
 - *"Send an email to hello@example.com saying hi"*
 - *"What files are in my Google Drive?"*
+
+<Callout type="info">
+You'll see a "This app isn't verified" warning from Google during sign-in. This is normal — click **Advanced** → **Go to Pawz (unsafe)** to continue.
+</Callout>
 
 ---
 
@@ -132,69 +67,70 @@ When asking Pawz to find specific emails, he uses Gmail's search syntax under th
 
 ---
 
+## Disconnecting
+
+Go to **Skills** → **Google Workspace** → **Disconnect**. You can also revoke Pawz's access from [myaccount.google.com/permissions](https://myaccount.google.com/permissions).
+
+---
+
 ## Security
 
 - Your refresh token is **encrypted** in Pawz's credential vault (AES-256-GCM) — not stored in plain text
 - Access tokens live in memory only, never written to disk, and expire after 1 hour
-- To disconnect: go to Skills → Google Workspace → **Disconnect**, or revoke at [myaccount.google.com/permissions](https://myaccount.google.com/permissions)
+- Pawz only requests the permissions it needs (Gmail, Calendar, Drive, Sheets, Docs)
+
+---
+
+## Self-Hosted Builds
+
+If you're building Pawz from source, the bundled Google OAuth credentials aren't included. You have two options:
+
+### Option A: Set Build-Time Credentials
+
+Set these environment variables before building:
+
+```bash
+export PAW_GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com"
+export PAW_GOOGLE_CLIENT_SECRET="GOCSPX-your-secret"
+cargo tauri build
+```
+
+To get these values, create an OAuth 2.0 Client ID in [Google Cloud Console](https://console.cloud.google.com/apis/credentials/oauthclient) → choose **Desktop app**. You'll also need to [enable the APIs](https://console.cloud.google.com/apis/library) (Gmail, Calendar, Drive, Sheets, Docs) and [set up an OAuth consent screen](https://console.cloud.google.com/apis/credentials/consent).
+
+### Option B: Paste Credentials in the UI
+
+Without build-time credentials, Pawz will show Client ID and Client Secret fields in the Google Workspace skill settings. Paste your own OAuth credentials there, then click **Connect with Google**.
 
 ---
 
 ## Enterprise Setup (Service Account)
 
 <Callout type="warn">
-This is the advanced option for **Google Workspace admins** who want server-to-server auth with domain-wide delegation. Most users should use the OAuth flow above.
+This is for **Google Workspace admins** who want server-to-server auth with domain-wide delegation. Most users should use the OAuth flow above.
 </Callout>
 
-If you need Pawz to act as a dedicated robot user (e.g. `pawz@yourdomain.com`) without interactive login — use a service account.
+If you need Pawz to act as a dedicated robot user (e.g. `pawz@yourdomain.com`) without interactive login — use a service account:
 
-### Create the Service Account
-
-1. Complete Steps 1–2 above (project + APIs)
-2. Open **[console.cloud.google.com/iam-admin/serviceaccounts/create](https://console.cloud.google.com/iam-admin/serviceaccounts/create)**
-3. **Name**: `pawz-agent` → Click **Create and Continue** → **Skip** both grant steps → **Done**
-4. Click on `pawz-agent` → **Keys** tab → **Add Key** → **Create new key** → **JSON** → **Create**
-5. A `.json` file downloads — keep it safe
-
-### Enable Domain-Wide Delegation
-
-1. On the service accounts page, copy the **OAuth 2 Client ID** (long number) for `pawz-agent`
-2. Open **[admin.google.com/ac/owl/domainwidedelegation](https://admin.google.com/ac/owl/domainwidedelegation)** (requires Workspace admin)
-3. Click **Add new**:
-   - **Client ID**: Paste the number
-   - **Scopes**: `https://www.googleapis.com/auth/gmail.modify,https://www.googleapis.com/auth/gmail.send,https://www.googleapis.com/auth/calendar,https://www.googleapis.com/auth/drive,https://www.googleapis.com/auth/spreadsheets,https://www.googleapis.com/auth/documents`
-4. Click **Authorize**
-
-### (Optional) Create Pawz's Email
-
-1. Open **[admin.google.com/ac/users](https://admin.google.com/ac/users)** → **Add new user**
-2. Create `pawz@yourdomain.com`
-
-### Connect in Pawz
-
-1. Go to **Skills** → **Google Workspace** → **Configure**
-2. Open the **Enterprise — Service Account** section at the bottom
-3. Paste the full JSON key file contents and the delegated email
-4. Click **Set** for each field
+1. [Create a Google Cloud project](https://console.cloud.google.com/projectcreate) and [enable the APIs](https://console.cloud.google.com/apis/library)
+2. [Create a service account](https://console.cloud.google.com/iam-admin/serviceaccounts/create) → download the JSON key
+3. [Set up domain-wide delegation](https://admin.google.com/ac/owl/domainwidedelegation) with the service account's Client ID and the required scopes
+4. In Pawz: Skills → Google Workspace → open the **Enterprise — Service Account** section → paste the JSON key and delegated email
 
 ---
 
 ## Troubleshooting
 
 **"Connect with Google" opens browser but nothing happens**
-Make sure you added your email as a test user in the OAuth consent screen (Step 3.8).
+The consent flow has a 2-minute timeout. Make sure you complete sign-in and click Allow within that time. If it times out, just click Connect again.
 
 **"Google OAuth failed: Token exchange failed"**
-The Client ID or Secret may be wrong. Go to [console.cloud.google.com/apis/credentials](https://console.cloud.google.com/apis/credentials) → click on your OAuth client → copy the values again.
+For self-hosted builds: double-check your Client ID and Secret. For official builds: try disconnecting and reconnecting.
 
 **"Google API error (403): Insufficient Permission"**
-One or more APIs aren't enabled. Go back to Step 2 and verify all 5 say "API Enabled".
-
-**"Google API error (403)" on Gmail specifically**
-Gmail requires the `gmail.modify` and `gmail.send` scopes. Make sure they're listed in your consent screen scopes (Step 3.6).
+One or more Google APIs may not be enabled for the project backing the OAuth credentials.
 
 **"Access denied" or "This app isn't verified" warning**
-This is normal for apps in Testing mode. Click **Advanced** → **Go to Pawz (unsafe)** to proceed. Only test users you added will see this.
+Click **Advanced** → **Go to Pawz (unsafe)** to proceed. This is normal.
 
 **Calendar times are wrong**
-Tell Pawz to use natural language like "tomorrow at 2pm" — he'll format it correctly as RFC3339.
+Tell Pawz to use natural language like "tomorrow at 2pm" — he'll format it correctly.
