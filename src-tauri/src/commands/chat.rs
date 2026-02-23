@@ -178,6 +178,15 @@ pub async fn engine_chat_send(
         &skill_instructions,
     );
 
+    // ── Agent roster: inject known agents so delegation works ───────────
+    if let Some(roster) = chat_org::build_agent_roster(&state.store, &agent_id_owned) {
+        if let Some(ref mut p) = full_system_prompt {
+            p.push_str("\n\n---\n\n");
+            p.push_str(&roster);
+        }
+        info!("[engine] Agent roster injected ({} chars)", roster.len());
+    }
+
     // ── Auto-recall: search memories relevant to this message ──────────
     // Same as channel agents — inject relevant long-term memories into
     // the system prompt so the agent doesn't "forget" cross-session context.
