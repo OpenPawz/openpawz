@@ -314,6 +314,8 @@ export function resetTokenMeter(): void {
   appState.sessionCost = 0;
   appState.lastRecordedTotal = 0;
   appState.compactionDismissed = false;
+  appState.sessionToolResultTokens = 0;
+  appState.sessionToolCallCount = 0;
   updateTokenMeter();
   ($('session-budget-alert') as HTMLElement | null)?.style !== undefined &&
     (($('session-budget-alert') as HTMLElement).style.display = 'none');
@@ -357,9 +359,10 @@ export function updateTokenMeter(): void {
       : `${appState.modelContextLimit}`;
   const cost = appState.sessionCost > 0 ? ` · $${appState.sessionCost.toFixed(4)}` : '';
   label.textContent = `${used} / ${lim} tokens${cost}`;
-  meter.title = `Session tokens: ${appState.sessionTokensUsed.toLocaleString()} / ${appState.modelContextLimit.toLocaleString()} (In: ${appState.sessionInputTokens.toLocaleString()} / Out: ${appState.sessionOutputTokens.toLocaleString()}) — Est. cost: $${appState.sessionCost.toFixed(4)}`;
+  meter.title = 'Click for context breakdown';
 
   updateCompactionWarning(pct);
+  updateContextBreakdownPopover();
 }
 
 function updateCompactionWarning(pct: number): void {
@@ -376,6 +379,134 @@ function updateCompactionWarning(pct: number): void {
     }
   } else {
     warning.style.display = 'none';
+  }
+}
+
+// ── Context breakdown popover ────────────────────────────────────────────
+interface ContextBreakdown {
+  total: number;
+  limit: number;
+  pct: number;
+  system: number;
+  systemPct: number;
+  messages: number;
+  messagesPct: number;
+  toolResults: number;
+  toolResultsPct: number;
+  output: number;
+  outputPct: number;
+}
+
+function estimateContextBreakdown(): ContextBreakdown {
+  const total = appState.sessionTokensUsed;
+  const limit = appState.modelContextLimit;
+  const pct = limit > 0 ? Math.min((total / limit) * 100, 100) : 0;
+
+  // Estimate message tokens from visible chat messages
+  let msgTokens = 0;
+  for (const m of appState.messages) {
+    const contentLen = m.content?.length ?? 0;
+    msgTokens += Math.ceil(contentLen / 4) + 4;
+  }
+
+  const toolResultTokens = appState.sessionToolResultTokens;
+  const output = appState.sessionOutputTokens;
+
+  // System = input − messages − tool results (what the model sees beyond conversation)
+  const inputTokens = appState.sessionInputTokens;
+  const system = Math.max(0, inputTokens - msgTokens - toolResultTokens);
+
+  const safeDivisor = total > 0 ? total : 1;
+
+  return {
+    total,
+    limit,
+    pct,
+    system,
+    systemPct: (system / safeDivisor) * 100,
+    messages: msgTokens,
+    messagesPct: (msgTokens / safeDivisor) * 100,
+    toolResults: toolResultTokens,
+    toolResultsPct: (toolResultTokens / safeDivisor) * 100,
+    output,
+    outputPct: (output / safeDivisor) * 100,
+  };
+}
+
+function fmtK(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${n}`;
+}
+
+export function updateContextBreakdownPopover(): void {
+  const panel = $('context-breakdown-panel');
+  if (!panel || panel.style.display === 'none') return;
+
+  const b = estimateContextBreakdown();
+  const fill = panel.querySelector('.ctx-breakdown-fill') as HTMLElement | null;
+  const summary = panel.querySelector('.ctx-breakdown-summary') as HTMLElement | null;
+  const rows = panel.querySelector('.ctx-breakdown-rows') as HTMLElement | null;
+  const warn = panel.querySelector('.ctx-breakdown-warn') as HTMLElement | null;
+
+  if (fill) {
+    fill.style.width = `${b.pct}%`;
+    fill.className =
+      b.pct >= 80
+        ? 'ctx-breakdown-fill danger'
+        : b.pct >= 60
+          ? 'ctx-breakdown-fill warning'
+          : 'ctx-breakdown-fill';
+  }
+  if (summary) {
+    summary.textContent = `${fmtK(b.total)} / ${fmtK(b.limit)} tokens \u2022 ${b.pct.toFixed(0)}%`;
+  }
+  if (rows) {
+    rows.innerHTML =
+      `<div class="ctx-row"><span class="ctx-row-header">System</span></div>` +
+      `<div class="ctx-row"><span class="ctx-row-label">System Prompt</span><span class="ctx-row-value">${b.systemPct.toFixed(1)}%</span></div>` +
+      `<div class="ctx-row"><span class="ctx-row-header">Conversation</span></div>` +
+      `<div class="ctx-row"><span class="ctx-row-label">Messages</span><span class="ctx-row-value">${b.messagesPct.toFixed(1)}%</span></div>` +
+      `<div class="ctx-row"><span class="ctx-row-label">Tool Results</span><span class="ctx-row-value">${b.toolResultsPct.toFixed(1)}%</span></div>` +
+      `<div class="ctx-row"><span class="ctx-row-label">Output</span><span class="ctx-row-value">${b.outputPct.toFixed(1)}%</span></div>`;
+  }
+  if (warn) {
+    warn.style.display = b.pct >= 60 ? '' : 'none';
+    warn.textContent =
+      b.pct >= 90
+        ? 'Context nearly full — quality will degrade.'
+        : b.pct >= 60
+          ? 'Quality may decline as limit nears.'
+          : '';
+  }
+}
+
+function toggleContextBreakdown(): void {
+  const panel = $('context-breakdown-panel');
+  if (!panel) return;
+  const visible = panel.style.display !== 'none';
+  if (visible) {
+    panel.style.display = 'none';
+  } else {
+    panel.style.display = '';
+    updateContextBreakdownPopover();
+  }
+}
+
+function initContextBreakdownClick(): void {
+  const meter = $('token-meter');
+  if (!meter) return;
+  meter.style.cursor = 'pointer';
+  meter.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleContextBreakdown();
+  });
+  // Dismiss on click outside
+  document.addEventListener('click', () => {
+    const panel = $('context-breakdown-panel');
+    if (panel) panel.style.display = 'none';
+  });
+  const panel = $('context-breakdown-panel');
+  if (panel) {
+    panel.addEventListener('click', (e) => e.stopPropagation());
   }
 }
 
@@ -1432,6 +1563,9 @@ export function initChatListeners(): void {
 
   // Talk Mode button in chat input
   $('chat-talk-btn')?.addEventListener('click', () => toggleChatTalkMode());
+
+  // Context breakdown popover on token meter click
+  initContextBreakdownClick();
 }
 
 // ═══ Chat Talk Mode ═════════════════════════════════════════════════════

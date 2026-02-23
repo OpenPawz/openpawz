@@ -1013,6 +1013,7 @@ body {
   gap: 8px;
   margin-left: 16px;
   min-width: 140px;
+  position: relative;
 }
 
 .token-meter-bar {
@@ -1046,6 +1047,94 @@ body {
   font-size: 11px;
   color: var(--text-muted);
   white-space: nowrap;
+}
+
+/* ── Context Breakdown Popover ──────────────────────────────────────────── */
+
+.ctx-breakdown-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 200;
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  padding: 16px;
+  font-size: 13px;
+  animation: slideDown 150ms steps(4);
+}
+
+.ctx-breakdown-header {
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  font-size: 14px;
+}
+
+.ctx-breakdown-summary {
+  color: var(--accent);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.ctx-breakdown-bar {
+  height: 6px;
+  background: var(--border);
+  overflow: hidden;
+  margin-bottom: 14px;
+}
+
+.ctx-breakdown-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.3s steps(8), background-color 0.3s steps(4);
+  width: 0%;
+}
+
+.ctx-breakdown-fill.warning { background: var(--warning); }
+.ctx-breakdown-fill.danger { background: var(--error); }
+
+.ctx-breakdown-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ctx-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 0;
+}
+
+.ctx-row-header {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding-top: 6px;
+}
+
+.ctx-row-label {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding-left: 8px;
+}
+
+.ctx-row-value {
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ctx-breakdown-warn {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
 }
 
 /* ── Compaction Warning Banner ──────────────────────────────────────────── */
