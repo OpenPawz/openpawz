@@ -256,6 +256,46 @@ type = "text"
     )
 }
 
+/// Build a lightweight agent roster showing known agents and their specialties.
+/// Injected into the system prompt so the agent can delegate tasks to the right agent
+/// without needing to call `agent_list` first.
+pub fn build_agent_roster(store: &SessionStore, current_agent_id: &str) -> Option<String> {
+    let agents = store.list_all_agents().ok()?;
+    if agents.is_empty() {
+        return None;
+    }
+
+    let mut lines: Vec<String> = Vec::new();
+    for (_project_id, agent) in &agents {
+        if agent.agent_id == current_agent_id { continue; } // don't list yourself
+        if agent.agent_id == "default" { continue; } // skip the default agent entry
+
+        let model_info = agent.model.as_deref().unwrap_or("default");
+        lines.push(format!(
+            "- **{}** (id: `{}`) — {} / {} (model: {})",
+            agent.agent_id, agent.agent_id, agent.role, agent.specialty, model_info
+        ));
+    }
+
+    if lines.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "## Your Agent Team\n\
+        You have {} other agent(s) available. When the user mentions an agent by name \
+        or asks you to delegate/assign work, use `request_tools` to load `agent_send_message`, \
+        then send the task to the appropriate agent.\n\n\
+        {}\n\n\
+        **Delegation rules:**\n\
+        - If the user says \"get [agent] to do X\" or \"ask [agent] about X\", delegate immediately — do NOT do X yourself.\n\
+        - Match agent names loosely (e.g., \"Crypto Cat\" matches agent id containing \"crypto-cat\").\n\
+        - After delegating, tell the user you've sent the task to that agent.",
+        lines.len(),
+        lines.join("\n")
+    ))
+}
+
 // ── System prompt composer ─────────────────────────────────────────────────────
 
 /// Compose the full multi-section system prompt.

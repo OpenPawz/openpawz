@@ -90,26 +90,139 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
         result.push_str(&community_instructions);
     }
 
-    // Guard: cap total skill instructions to ~3000 tokens (~12K chars).
-    // Beyond this, skills eat too much context window and degrade conversation
-    // quality — the agent loses track of recent messages and gets stuck in loops.
-    // At 12K chars the system prompt stays under ~8K tokens, leaving room for
-    // ~8K tokens of actual conversation history (enough for ~10 exchanges).
-    const MAX_SKILL_CHARS: usize = 12_000;
+    // Guard: cap total skill instructions.
+    // When instructions are too large, intelligently compress them instead of
+    // blind truncation that chops off entire skills silently.
+    //
+    // Strategy:
+    //   1. If under budget → return as-is
+    //   2. If over budget → compress each section in priority order:
+    //      a) Skills matching agent's enabled skills with credentials → keep full
+    //      b) Skills with credentials → keep full
+    //      c) Other skills → compress to name + first ~300 chars
+    //      d) If still over → keep only top sections that fit
+    const MAX_SKILL_CHARS: usize = 16_000;
     if result.len() > MAX_SKILL_CHARS {
         log::warn!(
-            "[skills] Skill instructions too large ({} chars, ~{} tokens). Truncating to {} chars. \
-            Consider reducing the number of enabled skills for this agent.",
+            "[skills] Skill instructions large ({} chars, ~{} tokens). Compressing to fit {} char budget.",
             result.len(), result.len() / 4, MAX_SKILL_CHARS
         );
-        // Truncate at a line boundary to avoid breaking mid-instruction
-        let truncated = &result[..MAX_SKILL_CHARS];
-        let last_newline = truncated.rfind('\n').unwrap_or(MAX_SKILL_CHARS);
-        result = result[..last_newline].to_string();
-        result.push_str("\n\n⚠️ Some skill instructions were truncated because too many skills are enabled. Consider disabling unused skills.");
+        result = compress_skill_sections(&sections, &community_instructions, MAX_SKILL_CHARS);
     }
 
     Ok(result)
+}
+
+/// Compress skill instruction sections to fit a character budget.
+/// Priority: sections with credential markers ("API Key", "Bearer", "token")
+/// are kept full; others get truncated to a compact reference format.
+fn compress_skill_sections(sections: &[String], community: &str, budget: usize) -> String {
+    // Header overhead
+    let header = "\n\n# Enabled Skills\nYou have the following skills available. Use exec, fetch, read_file, write_file, and other built-in tools to leverage them.\n\n";
+    let community_len = if community.is_empty() { 0 } else { community.len() + 2 };
+    let footer = "\n\n⚠️ Some skill instructions were compressed to save context. Use `soul_read` on the skill's documentation or `request_tools` to discover full tool schemas.\n";
+    let overhead = header.len() + community_len + footer.len();
+    let section_budget = budget.saturating_sub(overhead);
+
+    // Classify: sections with credentials are "priority" (they have actual API keys/URLs)
+    let has_credentials = |s: &str| -> bool {
+        let sl = s.to_lowercase();
+        sl.contains("api key") || sl.contains("api_key") || sl.contains("bearer ")
+            || sl.contains("token:") || sl.contains("credentials available")
+            || sl.contains("base url:") || sl.contains("endpoint:")
+    };
+
+    let mut priority_sections: Vec<(usize, &String)> = Vec::new();
+    let mut normal_sections: Vec<(usize, &String)> = Vec::new();
+
+    for (i, section) in sections.iter().enumerate() {
+        if has_credentials(section) {
+            priority_sections.push((i, section));
+        } else {
+            normal_sections.push((i, section));
+        }
+    }
+
+    let mut used = 0usize;
+    let mut output_parts: Vec<(usize, String)> = Vec::new();
+
+    // Phase 1: Add priority sections in full
+    for (idx, section) in &priority_sections {
+        if used + section.len() < section_budget {
+            output_parts.push((*idx, (*section).clone()));
+            used += section.len() + 2; // +2 for \n\n joiner
+        } else {
+            // Even priority skill gets compressed if it would bust the budget
+            let compressed = compress_one_section(section, 600);
+            if used + compressed.len() < section_budget {
+                output_parts.push((*idx, compressed.clone()));
+                used += compressed.len() + 2;
+            }
+        }
+    }
+
+    // Phase 2: Add normal sections (compressed to 300 chars if needed)
+    for (idx, section) in &normal_sections {
+        if used + section.len() < section_budget {
+            // Fits in full
+            output_parts.push((*idx, (*section).clone()));
+            used += section.len() + 2;
+        } else if used + 350 < section_budget {
+            // Compress to compact reference
+            let compressed = compress_one_section(section, 300);
+            output_parts.push((*idx, compressed.clone()));
+            used += compressed.len() + 2;
+        }
+        // else: skip entirely — budget exhausted
+    }
+
+    // Sort by original index so ordering is preserved
+    output_parts.sort_by_key(|(idx, _)| *idx);
+
+    let joined: String = output_parts.into_iter()
+        .map(|(_, s)| s)
+        .collect::<Vec<_>>()
+        .join("\n\n");
+
+    let mut result = String::with_capacity(budget);
+    result.push_str(header);
+    result.push_str(&joined);
+    result.push_str(footer);
+    if !community.is_empty() {
+        result.push_str(community);
+    }
+
+    log::info!(
+        "[skills] Compressed skill instructions: {} chars ({} sections kept, {} priority)",
+        result.len(),
+        sections.len(),
+        priority_sections.len()
+    );
+
+    result
+}
+
+/// Compress a single skill section to at most `max_chars`.
+/// Keeps the header line and truncates the body at a line boundary.
+fn compress_one_section(section: &str, max_chars: usize) -> String {
+    if section.len() <= max_chars {
+        return section.to_string();
+    }
+    // Keep the "## Name Skill (id)" header line
+    let first_line_end = section.find('\n').unwrap_or(section.len());
+    let header = &section[..first_line_end];
+
+    let body_budget = max_chars.saturating_sub(header.len() + 30); // room for truncation note
+    let body = &section[first_line_end..];
+    let truncated_body = if body.len() > body_budget {
+        let slice = &body[..body_budget];
+        let last_nl = slice.rfind('\n').unwrap_or(body_budget);
+        &body[..last_nl]
+    } else {
+        body
+    };
+
+    format!("{}{}\n[... truncated — use `request_tools` for full tool details]", header, truncated_body)
 }
 
 /// Inject decrypted credential values into instruction text.

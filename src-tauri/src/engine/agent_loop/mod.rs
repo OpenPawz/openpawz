@@ -42,6 +42,12 @@ pub async fn run_agent_turn(
     let mut last_input_tokens: u64 = 0;   // Only the LAST round's input (= actual context size)
     let mut total_output_tokens: u64 = 0;  // Sum of all rounds' output tokens
 
+    // Circuit breaker: track consecutive failures per tool name.
+    // After 2 consecutive failures of the same tool, inject a system nudge
+    // telling the model to stop retrying and use a different approach.
+    let mut tool_fail_counter: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    const MAX_CONSECUTIVE_TOOL_FAILS: u32 = 2;
+
     loop {
         round += 1;
         if round > max_rounds {
@@ -452,11 +458,40 @@ pub async fn run_agent_turn(
             // Add tool result to message history
             messages.push(Message {
                 role: Role::Tool,
-                content: MessageContent::Text(result.output),
+                content: MessageContent::Text(result.output.clone()),
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
                 name: Some(tc.function.name.clone()),
             });
+
+            // ── Circuit breaker: track consecutive failures per tool ──
+            if !result.success {
+                let count = tool_fail_counter.entry(tc.function.name.clone()).or_insert(0);
+                *count += 1;
+                if *count >= MAX_CONSECUTIVE_TOOL_FAILS {
+                    warn!(
+                        "[engine] Circuit breaker: tool '{}' failed {} consecutive times. Injecting stop-retry nudge.",
+                        tc.function.name, count
+                    );
+                    messages.push(Message {
+                        role: Role::System,
+                        content: MessageContent::Text(format!(
+                            "[SYSTEM] The tool '{}' has failed {} times consecutively with the same error. \
+                            Do NOT call this tool again. Instead: explain the error to the user, \
+                            suggest alternatives, or try a completely different approach. \
+                            If you were asked to delegate to another agent, use `request_tools` to load \
+                            `agent_send_message` and delegate the task instead.",
+                            tc.function.name, count
+                        )),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    });
+                }
+            } else {
+                // Reset counter on success
+                tool_fail_counter.remove(&tc.function.name);
+            }
         }
 
         // ── 6. Tool RAG: refresh tools if request_tools was called ─────
