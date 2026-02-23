@@ -1,0 +1,136 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "OpenPawz",
+  "logo": {
+    "dark": "/images/pawz-logo.png",
+    "light": "/images/pawz-logo.png"
+  },
+  "favicon": "/images/pawz-favicon.png",
+  "colors": {
+    "primary": "#cc00cc",
+    "light": "#ff00ff",
+    "dark": "#880088",
+    "anchors": {
+      "from": "#ff00ff",
+      "to": "#00ccff"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "GitHub",
+      "url": "https://github.com/elisplash/paw"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Download",
+    "url": "https://github.com/elisplash/paw/releases"
+  },
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/elisplash/paw"
+    },
+    {
+      "name": "Community",
+      "icon": "comments",
+      "url": "https://github.com/elisplash/paw/discussions"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "start/getting-started",
+        "start/installation",
+        "start/first-agent",
+        "start/first-provider"
+      ]
+    },
+    {
+      "group": "Guides",
+      "pages": [
+        "guides/agents",
+        "guides/memory",
+        "guides/tasks",
+        "guides/skills",
+        "guides/integrations",
+        "guides/extensions",
+        "guides/voice",
+        "guides/research",
+        "guides/orchestrator",
+        "guides/email",
+        "guides/trading",
+        "guides/slash-commands",
+        "guides/automations",
+        "guides/browser",
+        "guides/tailscale",
+        "guides/sessions",
+        "guides/foundry",
+        "guides/dashboard",
+        "guides/projects",
+        "guides/content-studio",
+        "guides/container-sandbox",
+        "guides/modular-workspace",
+        "guides/pawzhub",
+        "guides/pricing"
+      ]
+    },
+    {
+      "group": "Channels",
+      "pages": [
+        "channels/overview",
+        "channels/telegram",
+        "channels/discord",
+        "channels/slack",
+        "channels/matrix",
+        "channels/irc",
+        "channels/mattermost",
+        "channels/nextcloud",
+        "channels/nostr",
+        "channels/twitch",
+        "channels/webchat",
+        "channels/whatsapp"
+      ]
+    },
+    {
+      "group": "Providers",
+      "pages": [
+        "providers/overview",
+        "providers/ollama",
+        "providers/openai",
+        "providers/anthropic",
+        "providers/google",
+        "providers/openrouter",
+        "providers/deepseek",
+        "providers/grok",
+        "providers/mistral",
+        "providers/moonshot",
+        "providers/custom"
+      ]
+    },
+    {
+      "group": "Reference",
+      "pages": [
+        "reference/architecture",
+        "reference/security",
+        "reference/quality",
+        "reference/troubleshooting"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/elisplash/paw"
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true,
+    "raiseIssue": true
+  },
+  "search": {
+    "prompt": "Search OpenPawz docs..."
+  },
+  "modeToggle": {
+    "default": "dark"
+  }
+}
