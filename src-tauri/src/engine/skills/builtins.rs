@@ -576,22 +576,10 @@ First run requires Spotify OAuth login."#.into(),
             icon: "📧".into(),
             category: SkillCategory::Api,
             tier: SkillTier::Skill,
-            required_credentials: vec![
-                CredentialField {
-                    key: "GOOGLE_CLIENT_ID".into(),
-                    label: "OAuth Client ID".into(),
-                    description: "OAuth 2.0 Client ID from Google Cloud Console (Desktop app type)".into(),
-                    required: true,
-                    placeholder: "your-id.apps.googleusercontent.com".into(),
-                },
-                CredentialField {
-                    key: "GOOGLE_CLIENT_SECRET".into(),
-                    label: "OAuth Client Secret".into(),
-                    description: "Client secret from the same OAuth credential".into(),
-                    required: true,
-                    placeholder: "GOCSPX-...".into(),
-                },
-            ],
+            // Credentials are optional: official builds ship with bundled OAuth client ID.
+            // Self-builders can paste their own Client ID/Secret in the UI.
+            // The frontend handles the UI dynamically (see renderGoogleOAuthSection).
+            required_credentials: vec![],
             tool_names: vec![
                 "google_gmail_list".into(),
                 "google_gmail_read".into(),

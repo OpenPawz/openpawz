@@ -39,6 +39,31 @@ const TOKEN_ENDPOINT: &str = "https://oauth2.googleapis.com/token";
 const AUTH_ENDPOINT: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 const USERINFO_ENDPOINT: &str = "https://www.googleapis.com/oauth2/v3/userinfo";
 
+/// Bundled OAuth client ID/secret — compiled in from env vars at build time.
+/// When set, users just click "Connect with Google" without any Cloud Console setup.
+/// Set PAW_GOOGLE_CLIENT_ID and PAW_GOOGLE_CLIENT_SECRET when building official releases.
+const BUNDLED_CLIENT_ID: Option<&str> = option_env!("PAW_GOOGLE_CLIENT_ID");
+const BUNDLED_CLIENT_SECRET: Option<&str> = option_env!("PAW_GOOGLE_CLIENT_SECRET");
+
+/// Returns true if the binary ships with built-in Google OAuth credentials.
+pub fn has_bundled_credentials() -> bool {
+    BUNDLED_CLIENT_ID.is_some() && BUNDLED_CLIENT_SECRET.is_some()
+}
+
+/// Get client ID: bundled first, then user-provided from vault.
+pub fn get_client_credentials(state: &EngineState, vault_key: &[u8]) -> Option<(String, String)> {
+    // Try bundled first
+    if let (Some(id), Some(secret)) = (BUNDLED_CLIENT_ID, BUNDLED_CLIENT_SECRET) {
+        if !id.is_empty() && !secret.is_empty() {
+            return Some((id.to_string(), secret.to_string()));
+        }
+    }
+    // Fall back to user-provided
+    let id = get_decrypted_cred(state, vault_key, "GOOGLE_CLIENT_ID")?;
+    let secret = get_decrypted_cred(state, vault_key, "GOOGLE_CLIENT_SECRET")?;
+    Some((id, secret))
+}
+
 /// HTML that gets shown in the browser after successful auth.
 const SUCCESS_HTML: &str = r#"<!DOCTYPE html>
 <html>
@@ -88,13 +113,11 @@ pub async fn run_oauth_flow(app_handle: &tauri::AppHandle) -> EngineResult<Strin
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
-    // Get client ID/secret from credentials (user pastes these from Google Cloud Console)
+    // Get client ID/secret — bundled (official builds) or user-provided
     let vault_key = skills::get_vault_key().map_err(|e| format!("Vault key error: {}", e))?;
 
-    let client_id = get_decrypted_cred(&state, &vault_key, "GOOGLE_CLIENT_ID")
-        .ok_or("Missing GOOGLE_CLIENT_ID. Paste your OAuth Client ID in the Google Workspace skill settings.")?;
-    let client_secret = get_decrypted_cred(&state, &vault_key, "GOOGLE_CLIENT_SECRET")
-        .ok_or("Missing GOOGLE_CLIENT_SECRET. Paste your OAuth Client Secret in the Google Workspace skill settings.")?;
+    let (client_id, client_secret) = get_client_credentials(&state, &vault_key)
+        .ok_or("No Google OAuth credentials. Set PAW_GOOGLE_CLIENT_ID at build time, or paste your own Client ID in skill settings.")?;
 
     // 1. Spin up ephemeral localhost listener
     let listener = TcpListener::bind("127.0.0.1:0").await

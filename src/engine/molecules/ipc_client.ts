@@ -363,6 +363,10 @@ export class PawEngineClient {
     return invoke('engine_google_oauth_disconnect');
   }
 
+  async googleOAuthHasBundled(): Promise<boolean> {
+    return invoke<boolean>('engine_google_oauth_has_bundled');
+  }
+
   async skillGetInstructions(skillId: string): Promise<string | null> {
     return invoke<string | null>('engine_skill_get_instructions', { skillId });
   }
