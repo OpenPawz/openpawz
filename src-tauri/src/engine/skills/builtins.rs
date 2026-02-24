@@ -106,21 +106,116 @@ Available gh commands: issue (list/create/view/close), pr (list/create/view/merg
         SkillDefinition {
             id: "discord".into(),
             name: "Discord".into(),
-            description: "Send messages and manage Discord servers via bot token".into(),
+            description: "Full Discord server management — channels, roles, categories, messages, members, permissions, and more".into(),
             icon: "🎮".into(),
             category: SkillCategory::Vault,
             tier: SkillTier::Integration,
             required_credentials: vec![
                 CredentialField { key: "DISCORD_BOT_TOKEN".into(), label: "Bot Token".into(), description: "Discord bot token".into(), required: true, placeholder: "MTIz...".into() },
                 CredentialField { key: "DISCORD_DEFAULT_CHANNEL".into(), label: "Default Channel ID".into(), description: "Default channel to post to".into(), required: false, placeholder: "1234567890".into() },
+                CredentialField { key: "DISCORD_SERVER_ID".into(), label: "Server (Guild) ID".into(), description: "Right-click server → Copy Server ID (enable Developer Mode in Discord settings)".into(), required: false, placeholder: "1234567890".into() },
             ],
             tool_names: vec![],
-            required_binaries: vec![], required_env_vars: vec![], install_hint: String::new(),
-            agent_instructions: r#"You have Discord bot access. Use the fetch tool to interact with the Discord API:
-- POST https://discord.com/api/v10/channels/{channel_id}/messages with {"content":"message"}
-- GET https://discord.com/api/v10/channels/{channel_id}/messages?limit=10
-- Headers: Authorization: Bot {token}, Content-Type: application/json
-Use exec to read the DISCORD_BOT_TOKEN and DISCORD_DEFAULT_CHANNEL from environment if needed."#.into(),
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Bot must be invited with Administrator permission (permission value 8) for full server management.".into(),
+            agent_instructions: r#"You have full Discord bot access via the Discord REST API v10. Use the fetch tool for all calls.
+Base URL: https://discord.com/api/v10
+Headers for every request: Authorization: Bot {DISCORD_BOT_TOKEN}, Content-Type: application/json
+Use exec to read DISCORD_BOT_TOKEN, DISCORD_DEFAULT_CHANNEL, and DISCORD_SERVER_ID from env.
+
+── GUILD (SERVER) INFO ──
+GET /guilds/{guild_id}                                  Get server info
+PATCH /guilds/{guild_id}  {"name":"...","icon":"..."}   Update server settings
+
+── CHANNELS ──
+GET /guilds/{guild_id}/channels                         List all channels
+POST /guilds/{guild_id}/channels  {                     Create channel
+  "name": "channel-name",
+  "type": 0,             // 0=text, 2=voice, 4=category, 5=announcement, 13=stage, 15=forum
+  "parent_id": "cat_id", // put inside a category
+  "topic": "description",
+  "position": 0
+}
+PATCH /channels/{channel_id}  {"name":"...","topic":"...","parent_id":"..."}   Edit channel
+DELETE /channels/{channel_id}                            Delete channel
+PATCH /guilds/{guild_id}/channels  [{"id":"...","position":0},...]  Reorder channels
+
+── CATEGORIES ──
+Categories are just channels with type=4. Create channels inside them with parent_id.
+POST /guilds/{guild_id}/channels  {"name":"General","type":4}   Create category
+
+── CHANNEL PERMISSIONS ──
+PUT /channels/{channel_id}/permissions/{overwrite_id}  {
+  "type": 0,     // 0=role, 1=member
+  "allow": "0",  // permission bitfield to allow (as string)
+  "deny": "0"    // permission bitfield to deny (as string)
+}
+DELETE /channels/{channel_id}/permissions/{overwrite_id}   Remove permission overwrite
+
+Common permission bits (use as decimal strings):
+  VIEW_CHANNEL=1024, SEND_MESSAGES=2048, MANAGE_MESSAGES=8192,
+  CONNECT=1048576, SPEAK=2097152, MANAGE_CHANNELS=16,
+  MANAGE_ROLES=268435456, ADMINISTRATOR=8
+
+── ROLES ──
+GET /guilds/{guild_id}/roles                            List roles
+POST /guilds/{guild_id}/roles  {                        Create role
+  "name": "Moderator",
+  "color": 3447003,      // decimal color (0x3498DB)
+  "permissions": "0",    // permission bitfield as string
+  "hoist": true,         // show separately in member list
+  "mentionable": true
+}
+PATCH /guilds/{guild_id}/roles/{role_id}  {"name":"...","color":...}  Edit role
+DELETE /guilds/{guild_id}/roles/{role_id}               Delete role
+PATCH /guilds/{guild_id}/roles  [{"id":"...","position":1},...]  Reorder roles
+
+── MEMBER MANAGEMENT ──
+GET /guilds/{guild_id}/members?limit=100                List members
+GET /guilds/{guild_id}/members/{user_id}                Get specific member
+PUT /guilds/{guild_id}/members/{user_id}/roles/{role_id}    Assign role to member
+DELETE /guilds/{guild_id}/members/{user_id}/roles/{role_id} Remove role from member
+PATCH /guilds/{guild_id}/members/{user_id}  {"nick":"...","roles":["id",...]}  Update member
+
+── MESSAGES ──
+POST /channels/{channel_id}/messages  {"content":"text"}                  Send message
+POST /channels/{channel_id}/messages  {"content":"","embeds":[{           Send embed
+  "title":"...", "description":"...", "color":3447003,
+  "fields":[{"name":"...","value":"...","inline":true}]
+}]}
+GET /channels/{channel_id}/messages?limit=50            Get recent messages
+GET /channels/{channel_id}/messages/{message_id}        Get specific message
+PATCH /channels/{channel_id}/messages/{message_id}  {"content":"edited"}  Edit message
+DELETE /channels/{channel_id}/messages/{message_id}     Delete message
+POST /channels/{channel_id}/messages/bulk-delete  {"messages":["id1","id2"]}  Bulk delete (2-100, <14 days old)
+
+── THREADS ──
+POST /channels/{channel_id}/threads  {"name":"...","type":11}  Create thread (11=public, 12=private)
+PUT /channels/{thread_id}/thread-members/@me            Join thread
+GET /channels/{thread_id}/thread-members                List thread members
+
+── EMOJI & REACTIONS ──
+PUT /channels/{channel_id}/messages/{msg_id}/reactions/{emoji}/@me   Add reaction (emoji = URL-encoded, e.g. %F0%9F%91%8D or name:id for custom)
+GET /guilds/{guild_id}/emojis                           List server emojis
+
+── INVITES ──
+POST /channels/{channel_id}/invites  {"max_age":86400,"max_uses":0}   Create invite
+GET /guilds/{guild_id}/invites                          List server invites
+
+── SERVER TEMPLATES ──
+When building out a full server, work top-down:
+1. Create categories (type=4) first, note their IDs
+2. Create channels with parent_id referencing category IDs
+3. Create roles
+4. Set channel permission overwrites for those roles
+5. Reorder channels/roles to desired positions
+
+TIPS:
+- Always URL-encode emoji in reaction endpoints
+- Snowflake IDs are strings — always quote them in JSON
+- Rate limits: respect 429 responses (Retry-After header)
+- Max 500 channels per guild, 250 roles
+- For bulk operations, add small delays between requests to avoid rate limits
+- Use embeds for rich formatting (up to 10 embeds per message, 6000 chars total)"#.into(),
         },
         SkillDefinition {
             id: "coinbase".into(),
