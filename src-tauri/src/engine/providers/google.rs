@@ -355,10 +355,14 @@ impl GoogleProvider {
         // their built-in thinking budget — which can consume the entire response
         // on invisible internal reasoning, producing 0 visible output tokens.
         //
-        // Fix: always send thinkingConfig for thinking-capable models.
-        // - No thinking requested → thinkingBudget: 0 (disable, produce text/tools only)
-        // - Thinking requested → appropriate budget
+        // IMPORTANT: Gemini 3.x models REQUIRE thinking — thinkingBudget:0 returns
+        // 400 "This model only works in thinking mode". For these, use a minimum
+        // budget (1024) instead of 0.
+        // Gemini 2.5.x models support thinkingBudget:0 to fully disable thinking.
         let is_thinking_model = model.starts_with("gemini-2.5") || model.starts_with("gemini-3");
+        let thinking_required = model.starts_with("gemini-3"); // 3.x: thinking mandatory
+        let min_budget: u32 = if thinking_required { 1024 } else { 0 };
+
         if is_thinking_model {
             if let Some(level) = thinking_level {
                 if level != "none" {
@@ -373,19 +377,28 @@ impl GoogleProvider {
                     });
                     info!("[engine] Google: thinking enabled (budget={}) for model={}", budget, model);
                 } else {
-                    // Explicit "none" — disable thinking
+                    // Explicit "none" — disable or use minimum
                     body["generationConfig"]["thinkingConfig"] = json!({
-                        "thinkingBudget": 0,
+                        "thinkingBudget": min_budget,
                     });
-                    info!("[engine] Google: thinking explicitly disabled for model={}", model);
+                    if thinking_required {
+                        info!("[engine] Google: thinking-required model, using min budget={} for model={}", min_budget, model);
+                    } else {
+                        info!("[engine] Google: thinking explicitly disabled for model={}", model);
+                    }
                 }
             } else {
-                // No thinking_level specified — disable thinking to prevent
-                // the model from defaulting to invisible reasoning mode.
+                // No thinking_level specified — use minimum budget.
+                // For gemini-2.5: budget=0 disables thinking entirely.
+                // For gemini-3.x: budget=1024 (minimum, thinking is mandatory).
                 body["generationConfig"]["thinkingConfig"] = json!({
-                    "thinkingBudget": 0,
+                    "thinkingBudget": min_budget,
                 });
-                info!("[engine] Google: thinking auto-disabled (no thinking_level) for model={}", model);
+                if thinking_required {
+                    info!("[engine] Google: thinking-required model, using min budget={} for model={}", min_budget, model);
+                } else {
+                    info!("[engine] Google: thinking auto-disabled (no thinking_level) for model={}", model);
+                }
             }
         } else if let Some(level) = thinking_level {
             // Non-thinking model but user requested thinking — only add if supported
