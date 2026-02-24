@@ -1337,7 +1337,12 @@ export async function sendMessage(): Promise<void> {
     if (chatModelVal && chatModelVal !== 'default') chatOpts.model = chatModelVal;
     const slashOverrides = getSlashOverrides();
     if (slashOverrides.model) chatOpts.model = slashOverrides.model;
-    if (slashOverrides.thinkingLevel) chatOpts.thinkingLevel = slashOverrides.thinkingLevel;
+    // Thinking level priority: slash command > agent profile > unset (backend default)
+    if (slashOverrides.thinkingLevel) {
+      chatOpts.thinkingLevel = slashOverrides.thinkingLevel;
+    } else if (currentAgent?.thinking_level) {
+      chatOpts.thinkingLevel = currentAgent.thinking_level;
+    }
     if (slashOverrides.temperature !== undefined) chatOpts.temperature = slashOverrides.temperature;
 
     const result = await engineChatSend(

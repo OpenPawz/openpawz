@@ -388,14 +388,16 @@ impl GoogleProvider {
                     }
                 }
             } else {
-                // No thinking_level specified — use minimum budget.
-                // For gemini-2.5: budget=0 disables thinking entirely.
-                // For gemini-3.x: budget=1024 (minimum, thinking is mandatory).
+                // No thinking_level specified — default to "normal" budget.
+                // The agent foundry defaults to 'normal' thinking. When the frontend
+                // doesn't pass a thinking_level (which is the common case), use a
+                // sensible default instead of the minimum/off.
+                let default_budget: u32 = if thinking_required { 8192 } else { 0 };
                 body["generationConfig"]["thinkingConfig"] = json!({
-                    "thinkingBudget": min_budget,
+                    "thinkingBudget": default_budget,
                 });
                 if thinking_required {
-                    info!("[engine] Google: thinking-required model, using min budget={} for model={}", min_budget, model);
+                    info!("[engine] Google: thinking-required model, default budget={} for model={}", default_budget, model);
                 } else {
                     info!("[engine] Google: thinking auto-disabled (no thinking_level) for model={}", model);
                 }
@@ -494,11 +496,11 @@ impl GoogleProvider {
                     buffer = buffer[line_end + 1..].to_string();
 
                     if let Some(data) = line.strip_prefix("data: ") {
-                        // Log raw SSE data for debugging empty responses
+                        // Log raw SSE data for debugging (debug level to avoid noise)
                         if data.len() < 2000 {
-                            warn!("[engine] Google SSE: {}", data);
+                            log::debug!("[engine] Google SSE: {}", data);
                         } else {
-                            warn!("[engine] Google SSE: {}... ({}b)", &data[..500], data.len());
+                            log::debug!("[engine] Google SSE: {}... ({}b)", &data[..500], data.len());
                         }
                         if let Ok(v) = serde_json::from_str::<Value>(data) {
                             // Extract actual model version from Google's response

@@ -23,6 +23,8 @@ export interface Agent {
   projectId?: string; // If backend-created, which project
   /** Phase A: auto-approve all tool calls (no HIL popups) */
   autoApproveAll?: boolean;
+  /** Thinking level for reasoning models: 'none' | 'low' | 'normal' | 'high' */
+  thinking_level?: string;
 }
 
 // Tool groups for the per-agent tool assignment UI

@@ -467,4 +467,6 @@ export interface Agent {
   lastUsed?: string;
   /** Phase A: auto-approve all tool calls (no HIL popups) */
   autoApproveAll?: boolean;
+  /** Thinking level for reasoning models: 'none' | 'low' | 'normal' | 'high' */
+  thinking_level?: string;
 }
