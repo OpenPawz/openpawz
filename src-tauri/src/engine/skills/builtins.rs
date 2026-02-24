@@ -216,7 +216,7 @@ Notion uses rich text blocks. Page content is a list of block objects (paragraph
         SkillDefinition {
             id: "trello".into(),
             name: "Trello".into(),
-            description: "Manage Trello boards, lists, and cards".into(),
+            description: "Manage Trello boards, lists, cards, checklists, and labels".into(),
             icon: "📋".into(),
             category: SkillCategory::Api,
             tier: SkillTier::Integration,
@@ -224,59 +224,45 @@ Notion uses rich text blocks. Page content is a list of block objects (paragraph
                 CredentialField { key: "TRELLO_API_KEY".into(), label: "API Key".into(), description: "Trello API key from trello.com/app-key".into(), required: true, placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx".into() },
                 CredentialField { key: "TRELLO_TOKEN".into(), label: "Token".into(), description: "Trello authorization token".into(), required: true, placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx".into() },
             ],
-            tool_names: vec![],
+            tool_names: vec![
+                // boards
+                "trello_list_boards".into(), "trello_create_board".into(),
+                "trello_get_board".into(), "trello_update_board".into(), "trello_delete_board".into(),
+                // lists
+                "trello_get_lists".into(), "trello_create_list".into(),
+                "trello_update_list".into(), "trello_archive_list".into(),
+                // cards
+                "trello_get_cards".into(), "trello_get_card".into(), "trello_create_card".into(),
+                "trello_update_card".into(), "trello_move_card".into(), "trello_delete_card".into(),
+                "trello_add_comment".into(), "trello_add_label".into(), "trello_remove_label".into(),
+                "trello_add_attachment".into(),
+                // checklists
+                "trello_create_checklist".into(), "trello_add_checklist_item".into(),
+                "trello_toggle_checklist_item".into(), "trello_delete_checklist".into(),
+                // labels
+                "trello_get_board_labels".into(), "trello_create_label".into(), "trello_delete_label".into(),
+                // search & members
+                "trello_search".into(), "trello_get_board_members".into(),
+            ],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API key at trello.com/app-key, then authorize for a token".into(),
-            agent_instructions: r#"You have Trello API access. Use the fetch tool with https://api.trello.com/1/ endpoints.
+            agent_instructions: r#"You have full Trello access with 28 built-in tools:
 
-Auth: append ?key=TRELLO_API_KEY&token=TRELLO_TOKEN to ALL request URLs.
-For POST/PUT: pass params as JSON body with headers: {"Content-Type": "application/json"}.
-Always include key + token in the query string, even for POST/PUT.
+**Boards**: trello_list_boards, trello_create_board, trello_get_board, trello_update_board, trello_delete_board
+**Lists**: trello_get_lists, trello_create_list, trello_update_list, trello_archive_list
+**Cards**: trello_get_cards, trello_get_card, trello_create_card, trello_update_card, trello_move_card, trello_delete_card, trello_add_comment, trello_add_label, trello_remove_label, trello_add_attachment
+**Checklists**: trello_create_checklist, trello_add_checklist_item, trello_toggle_checklist_item, trello_delete_checklist
+**Labels**: trello_get_board_labels, trello_create_label, trello_delete_label
+**Search**: trello_search, trello_get_board_members
 
-BOARDS:
-- GET /members/me/boards — list all boards (fields: name,id,url,shortUrl,closed)
-- POST /boards — create board (body: name, desc, defaultLists=true/false, idOrganization)
-- GET /boards/{id} — get board details
-- PUT /boards/{id} — update board (name, desc, closed=true to archive)
-- DELETE /boards/{id} — permanently delete board
+TOOL SELECTION RULES:
+- LIST boards → trello_list_boards (always start here to discover board IDs)
+- CREATE board → trello_create_board, then trello_create_list for each list
+- ADD cards → trello_create_card (requires list_id — get via trello_get_lists first)
+- MOVE cards between lists → trello_move_card
+- ADD checklists → trello_create_checklist on a card, then trello_add_checklist_item
+- FIND anything → trello_search
 
-LISTS:
-- GET /boards/{id}/lists — get all lists on a board
-- POST /lists — create list (body: name, idBoard, pos=top/bottom/number)
-- PUT /lists/{id} — update list (name, closed=true to archive, pos)
-- PUT /lists/{id}/closed — archive/unarchive (body: value=true/false)
-
-CARDS:
-- GET /lists/{id}/cards — get cards in a list
-- GET /cards/{id} — get card details (add ?fields=all for everything)
-- POST /cards — create card (body: idList, name, desc, due, pos, idLabels, idMembers)
-- PUT /cards/{id} — update card (name, desc, due, dueComplete, closed, idList to move)
-- DELETE /cards/{id} — delete card
-- POST /cards/{id}/actions/comments — add comment (body: text)
-- POST /cards/{id}/idLabels — add label (body: value=labelId)
-- DELETE /cards/{id}/idLabels/{labelId} — remove label
-- POST /cards/{id}/attachments — add attachment (body: url, name)
-
-LABELS:
-- GET /boards/{id}/labels — list labels on board
-- POST /labels — create label (body: name, color, idBoard). Colors: green,yellow,orange,red,purple,blue,sky,lime,pink,black,null
-- PUT /labels/{id} — update label
-- DELETE /labels/{id} — delete label
-
-CHECKLISTS:
-- POST /checklists — create checklist (body: idCard, name)
-- POST /checklists/{id}/checkItems — add item (body: name, checked=true/false)
-- PUT /cards/{cardId}/checkItem/{itemId} — toggle item (body: state=complete/incomplete)
-- DELETE /checklists/{id} — delete checklist
-
-MEMBERS:
-- GET /boards/{id}/members — list board members
-- PUT /boards/{id}/members/{memberId} — add member (body: type=normal/admin/observer)
-- DELETE /boards/{id}/members/{memberId} — remove member
-
-SEARCH:
-- GET /search — search across boards (query, idBoards, modelTypes=cards/boards/organizations)
-
-When creating a full board workflow, always: 1) create the board, 2) create lists on it, 3) create cards in the lists."#.into(),
+Credentials are handled automatically. Do NOT use fetch/exec/curl to call the Trello API — use your built-in tools."#.into(),
         },
 
         // ───── PRODUCTIVITY SKILLS ─────
