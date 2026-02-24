@@ -55,3 +55,6 @@ agent_sprites.png
 *.csv
 *.nohup
 nohup.out
+
+# Rust build artifacts (cargo target dirs)
+**/target/
