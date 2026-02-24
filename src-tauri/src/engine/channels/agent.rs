@@ -6,7 +6,6 @@
 use crate::engine::types::*;
 use crate::engine::providers::AnyProvider;
 use crate::engine::agent_loop;
-use crate::engine::skills;
 use crate::engine::memory;
 use crate::engine::injection;
 use crate::engine::chat as chat_org;
@@ -148,11 +147,13 @@ pub async fn run_channel_agent(
         None
     };
 
-    // Build full system prompt — LIGHTWEIGHT version for channel bridges.
-    // Channel bridges need: channel context (Discord/Telegram API ref) + core identity
-    // + minimal runtime info. We deliberately SKIP the heavy platform awareness,
-    // coding guidelines, and 91K skill instructions that bloat the context and
-    // confuse the model when doing simple tasks like creating Discord channels.
+    // Build full system prompt — MINIMAL version for channel bridges.
+    //
+    // KEY INSIGHT: The channel agent only has ~4 tools (fetch, memory_store,
+    // memory_search, self_info). The system prompt should ONLY describe those.
+    // The base system prompt describes 41+ tools (exec, write_file, web_browse...)
+    // that aren't even available to the channel agent — including it confuses the
+    // model and wastes ~2K tokens on irrelevant instructions.
     let full_system_prompt = {
         let mut parts: Vec<String> = Vec::new();
 
@@ -165,10 +166,10 @@ pub async fn run_channel_agent(
             parts.push(cc.to_string());
         }
 
-        // 3. Base system prompt (user-configured personality/instructions)
-        if let Some(sp) = &system_prompt {
-            parts.push(sp.to_string());
-        }
+        // 3. Skip the base system prompt — it describes exec, write_file, web_browse,
+        // create_agent, etc. which are NOT available to channel bridges. Including it
+        // confuses the model into trying tools that don't exist or generating empty
+        // responses because it can't reconcile the instructions with the actual tool set.
 
         // 4. Lightweight runtime context
         let provider_name = format!("{:?}", provider_config.kind);
@@ -180,15 +181,15 @@ pub async fn run_channel_agent(
             &model, &provider_name, &session_id, agent_id, &user_tz,
         ));
 
-        // 5. Channel-bridge conversation discipline (replaces heavy platform awareness)
+        // 5. Channel-bridge conversation discipline
         parts.push(
             "## Conversation Discipline\n\
-            - **Act immediately.** When the user says \"yes\", \"go ahead\", \"do it\", execute the action using your tools. Never ask for confirmation you already have.\n\
-            - **One tool call at a time.** Make one fetch call, read the result, then make the next call. Don't try to plan everything in text first.\n\
-            - **Never ask for information you already have.** Your server ID, credentials, and API reference are in your instructions above. Use them.\n\
-            - **If a call fails, try again with different parameters.** Don't give up or ask the user to do it manually.\n\
-            - **Keep responses short.** You're chatting in Discord — brief updates between actions, not essays.\n\
-            - **For multi-step tasks:** Execute each step, confirm it worked, then proceed to the next. Don't list all steps and ask for permission — just do them.".to_string()
+            - **Act immediately.** When the user asks you to do something, start doing it with your tools right now. Don't ask for confirmation.\n\
+            - **One tool call at a time.** Make one fetch call, read the result, then make the next.\n\
+            - **You only have these tools: fetch, memory_store, memory_search, self_info.** Use `fetch` for ALL API calls.\n\
+            - **Never ask for information you already have.** Your server ID and API reference are above.\n\
+            - **If a call fails, try again.** Don't give up or ask the user to do it manually.\n\
+            - **Keep responses short.** Brief updates between actions, not essays.".to_string()
         );
 
         // 6. Agent-specific context
@@ -201,14 +202,9 @@ pub async fn run_channel_agent(
             parts.push(mc.to_string());
         }
 
-        // NOTE: We intentionally skip:
-        // - skill_instructions (91K → 16K compressed; Discord API ref is in channel_context)
-        // - build_platform_awareness() (~3.5K chars of Tool RAG / TOML template)
-        // - build_coding_guidelines() (~5K chars of Rust/TS standards)
-        // These are critical for the UI chat but counterproductive for channel bridges
-        // where the agent needs to focus on one channel-specific task.
-
-        Some(parts.join("\n\n---\n\n"))
+        let prompt = parts.join("\n\n---\n\n");
+        info!("[{}] System prompt: {} chars for agent '{}'", channel_prefix, prompt.len(), agent_id);
+        Some(prompt)
     };
 
     // Load conversation history.
@@ -226,20 +222,26 @@ pub async fn run_channel_agent(
         Some(agent_id),
     )?;
 
-    // Build tools — read-only tools are auto-approved by agent_loop;
-    // side-effect tools (exec, write_file, etc.) will be denied for remote channels.
-    let mut tools = {
-        let mut t = ToolDefinition::builtins();
-        let enabled_ids: Vec<String> = skills::builtin_skills().iter()
-            .filter(|s| engine_state.store.is_skill_enabled(&s.id).unwrap_or(false))
-            .map(|s| s.id.clone())
+    // Build tools — CHANNEL WHITELIST.
+    //
+    // The full builtins() returns 41 tools + up to 48 skill tools = 89 tool
+    // definitions. Each definition includes name + description + full JSON schema,
+    // easily consuming 15-20K tokens. For a channel bridge that only needs `fetch`
+    // to call Discord/Telegram APIs, this is catastrophic — the model drowns in
+    // irrelevant tool definitions and returns empty responses.
+    //
+    // Channel bridges get ONLY the tools they can actually use:
+    //   - fetch: HTTP calls to platform APIs (Discord, Telegram, etc.)
+    //   - memory_store / memory_search: remember things across conversations
+    //   - self_info: introspect own config when asked
+    let mut tools: Vec<ToolDefinition> = {
+        let all_builtins = ToolDefinition::builtins();
+        let whitelist = ["fetch", "memory_store", "memory_search", "self_info"];
+        let filtered: Vec<ToolDefinition> = all_builtins.into_iter()
+            .filter(|t| whitelist.contains(&t.function.name.as_str()))
             .collect();
-        if !enabled_ids.is_empty() {
-            t.extend(ToolDefinition::skill_tools(&enabled_ids));
-        }
-        // Add tools from connected MCP servers
-        t.extend(ToolDefinition::mcp_tools(app_handle));
-        t
+        info!("[{}] Channel tool whitelist: {} tools (from {} builtins)", channel_prefix, filtered.len(), whitelist.len());
+        filtered
     };
 
     let provider = AnyProvider::from_config(&provider_config);
