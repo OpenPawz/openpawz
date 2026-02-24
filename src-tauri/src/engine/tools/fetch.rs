@@ -66,6 +66,42 @@ async fn execute_fetch(args: &serde_json::Value, app_handle: &tauri::AppHandle) 
         }
     }
 
+    // ── Auto-inject credentials for known API domains ─────────────────
+    // If the agent calls a Discord API URL without an Authorization header,
+    // automatically inject the bot token from the skill vault. This prevents
+    // 401 errors when the LLM forgets to include the header (which happens
+    // frequently after context truncation).
+    let mut injected_headers: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
+    let has_auth_header = args["headers"]
+        .as_object()
+        .map(|h| h.keys().any(|k| k.eq_ignore_ascii_case("authorization")))
+        .unwrap_or(false);
+
+    if !has_auth_header && url.contains("discord.com/api") {
+        if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
+            if let Ok(creds) = crate::engine::skills::get_skill_credentials(&state.store, "discord") {
+                if let Some(token) = creds.get("DISCORD_BOT_TOKEN") {
+                    if !token.is_empty() {
+                        info!("[fetch] Auto-injecting Discord bot Authorization header");
+                        injected_headers.insert("Authorization".into(), format!("Bot {}", token));
+                    }
+                }
+            }
+        }
+    }
+
+    // Auto-inject Content-Type for Discord API mutations when body is present
+    if url.contains("discord.com/api") && args["body"].is_string() {
+        let has_ct = args["headers"]
+            .as_object()
+            .map(|h| h.keys().any(|k| k.eq_ignore_ascii_case("content-type")))
+            .unwrap_or(false);
+        if !has_ct {
+            injected_headers.insert("Content-Type".into(), "application/json".into());
+        }
+    }
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()?;
@@ -86,6 +122,10 @@ async fn execute_fetch(args: &serde_json::Value, app_handle: &tauri::AppHandle) 
             "HEAD"   => client.head(url),
             _        => client.get(url),
         };
+        // Apply auto-injected credential headers first (so explicit headers override)
+        for (key, value) in &injected_headers {
+            req = req.header(key.as_str(), value.as_str());
+        }
         if let Some(headers) = args["headers"].as_object() {
             for (key, value) in headers {
                 if let Some(v) = value.as_str() {
