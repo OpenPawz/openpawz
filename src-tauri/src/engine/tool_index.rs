@@ -100,7 +100,7 @@ fn tool_domain(name: &str) -> &'static str {
         // Discord (channels, messages, roles, members, server)
         n if n.starts_with("discord_") => "discord",
 
-        // Trello (boards, lists, cards, checklists, labels, search)
+        // Trello (boards, lists, cards, labels, checklists, members)
         n if n.starts_with("trello_") => "trello",
 
         // GitHub
@@ -153,7 +153,7 @@ pub fn domain_summaries() -> Vec<(&'static str, &'static str, &'static str)> {
         ("google",        "mail",         "Google Workspace — Gmail, Calendar, Drive, Sheets, Docs"),
         ("messaging",     "forum",        "Slack and Telegram messaging"),
         ("discord",       "forum",        "Discord server management — list, create, and organize channels; send messages"),
-        ("trello",        "view_kanban",  "Trello project management — boards, lists, cards, checklists, labels, search"),
+        ("trello",        "view_kanban",  "Trello project management — boards, lists, cards, labels, checklists"),
         ("github",        "code",         "GitHub API calls (issues, PRs, repos)"),
         ("integrations",  "api",          "REST APIs, webhooks, image generation"),
         ("coinbase",      "trending_up",  "Coinbase exchange — prices, balances, trades, transfers"),

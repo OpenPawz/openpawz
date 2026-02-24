@@ -1,21 +1,23 @@
 // Paw Agent Engine — Trello Tools (Atomic Module)
 //
-// Full Trello board, list, card, and checklist management via the REST API.
+// Full Trello project management via the REST API.
 // Each sub-module handles one domain:
 //
 //   boards     — list, create, get, update, delete
-//   lists      — get lists on board, create, update, archive
-//   cards      — CRUD, move, comments, labels, attachments
+//   lists      — get lists, create, update, archive
+//   cards      — CRUD, move, comments, attachments
+//   labels     — list, create, update, delete, assign/remove
 //   checklists — create, add items, toggle, delete
-//   search     — search across boards, list members
+//   members    — list board members, search
 //
-// Shared helpers (credential resolution, API client, rate-limit retry) live here.
+// Shared helpers (credential resolution, API client) live here.
 
 pub mod boards;
 pub mod lists;
 pub mod cards;
+pub mod labels;
 pub mod checklists;
-pub mod search;
+pub mod members;
 
 use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
@@ -35,8 +37,9 @@ pub fn definitions() -> Vec<ToolDefinition> {
     defs.extend(boards::definitions());
     defs.extend(lists::definitions());
     defs.extend(cards::definitions());
+    defs.extend(labels::definitions());
     defs.extend(checklists::definitions());
-    defs.extend(search::definitions());
+    defs.extend(members::definitions());
     defs
 }
 
@@ -50,13 +53,14 @@ pub async fn execute(
         .or(boards::execute(name, args, app_handle).await)
         .or(lists::execute(name, args, app_handle).await)
         .or(cards::execute(name, args, app_handle).await)
+        .or(labels::execute(name, args, app_handle).await)
         .or(checklists::execute(name, args, app_handle).await)
-        .or(search::execute(name, args, app_handle).await)
+        .or(members::execute(name, args, app_handle).await)
 }
 
 // ── Shared helpers ─────────────────────────────────────────────────────
 
-/// Resolve the Trello API key from the skill vault.
+/// Resolve Trello API key from the skill vault.
 pub(crate) fn get_api_key(app_handle: &tauri::AppHandle) -> EngineResult<String> {
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
@@ -71,7 +75,7 @@ pub(crate) fn get_api_key(app_handle: &tauri::AppHandle) -> EngineResult<String>
     Ok(key)
 }
 
-/// Resolve the Trello token from the skill vault.
+/// Resolve Trello token from the skill vault.
 pub(crate) fn get_token(app_handle: &tauri::AppHandle) -> EngineResult<String> {
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
@@ -86,27 +90,33 @@ pub(crate) fn get_token(app_handle: &tauri::AppHandle) -> EngineResult<String> {
     Ok(token)
 }
 
-/// Build authentication query string: key=...&token=...
-pub(crate) fn auth_query(app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let key = get_api_key(app_handle)?;
-    let token = get_token(app_handle)?;
-    Ok(format!("key={}&token={}", key, token))
+/// Get both key and token at once.
+pub(crate) fn get_credentials(app_handle: &tauri::AppHandle) -> EngineResult<(String, String)> {
+    Ok((get_api_key(app_handle)?, get_token(app_handle)?))
 }
 
-/// Build a reqwest client for Trello API calls.
+/// Build a URL with auth query params appended.
+pub(crate) fn auth_url(path: &str, key: &str, token: &str) -> String {
+    let sep = if path.contains('?') { '&' } else { '?' };
+    format!("{}{}{sep}key={}&token={}", TRELLO_API, path, key, token)
+}
+
+/// Build reqwest client.
 pub(crate) fn client() -> reqwest::Client {
-    reqwest::Client::new()
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
 }
 
-/// Make a Trello API request with automatic rate-limit retry (once).
-/// Auth is passed via query string (Trello convention).
+/// Make a Trello API request with rate-limit handling.
 pub(crate) async fn trello_request(
-    client: &reqwest::Client,
     method: reqwest::Method,
     url: &str,
     body: Option<&Value>,
 ) -> EngineResult<Value> {
-    let mut req = client.request(method.clone(), url)
+    let http = client();
+    let mut req = http.request(method.clone(), url)
         .header("Content-Type", "application/json");
     if let Some(b) = body {
         req = req.json(b);
@@ -118,10 +128,10 @@ pub(crate) async fn trello_request(
 
     if status.as_u16() == 429 {
         // Rate limited — wait and retry once
-        warn!("[trello] Rate limited, waiting 1.5s");
-        tokio::time::sleep(Duration::from_secs_f64(1.5)).await;
+        warn!("[trello] Rate limited, waiting 1s and retrying");
+        tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut req2 = client.request(method, url)
+        let mut req2 = http.request(method, url)
             .header("Content-Type", "application/json");
         if let Some(b) = body {
             req2 = req2.json(b);
@@ -146,11 +156,4 @@ pub(crate) async fn trello_request(
 
     serde_json::from_str(&text)
         .or_else(|_| Ok(Value::String(text)))
-}
-
-/// Build a full Trello API URL with auth query string.
-pub(crate) fn api_url(path: &str, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let auth = auth_query(app_handle)?;
-    let sep = if path.contains('?') { "&" } else { "?" };
-    Ok(format!("{}{}{}{}", TRELLO_API, path, sep, auth))
 }

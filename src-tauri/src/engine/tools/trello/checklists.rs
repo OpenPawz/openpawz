@@ -1,11 +1,11 @@
 // trello/checklists.rs — Checklist management
 //
 // Tools: trello_create_checklist, trello_add_checklist_item, trello_toggle_checklist_item,
-//        trello_delete_checklist, trello_get_board_labels, trello_create_label, trello_delete_label
+//        trello_delete_checklist
 
 use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
-use super::{api_url, client, trello_request};
+use super::{get_credentials, auth_url, trello_request};
 use log::info;
 use serde_json::{json, Value};
 
@@ -19,7 +19,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
                 parameters: json!({
                     "type": "object",
                     "properties": {
-                        "card_id": { "type": "string", "description": "Card ID to add checklist to" },
+                        "card_id": { "type": "string", "description": "Card ID to add the checklist to" },
                         "name": { "type": "string", "description": "Checklist name" }
                     },
                     "required": ["card_id", "name"]
@@ -30,15 +30,16 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_add_checklist_item".into(),
-                description: "Add an item to a Trello checklist.".into(),
+                description: "Add an item to a Trello checklist. Can add multiple items at once.".into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "checklist_id": { "type": "string", "description": "Checklist ID" },
-                        "name": { "type": "string", "description": "Item name/text" },
-                        "checked": { "type": "boolean", "description": "Start as checked (default false)" }
+                        "name": { "type": "string", "description": "Item name (single item)" },
+                        "names": { "type": "array", "items": { "type": "string" }, "description": "Multiple item names (batch add). Provide EITHER 'name' or 'names'." },
+                        "checked": { "type": "boolean", "description": "Start as checked. Default: false" }
                     },
-                    "required": ["checklist_id", "name"]
+                    "required": ["checklist_id"]
                 }),
             },
         },
@@ -46,15 +47,15 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_toggle_checklist_item".into(),
-                description: "Mark a checklist item as complete or incomplete.".into(),
+                description: "Toggle a checklist item between complete and incomplete.".into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "card_id": { "type": "string", "description": "Card ID that contains the checklist" },
                         "item_id": { "type": "string", "description": "Checklist item ID" },
-                        "complete": { "type": "boolean", "description": "true=complete, false=incomplete" }
+                        "state": { "type": "string", "description": "complete or incomplete", "enum": ["complete", "incomplete"] }
                     },
-                    "required": ["card_id", "item_id", "complete"]
+                    "required": ["card_id", "item_id", "state"]
                 }),
             },
         },
@@ -62,58 +63,13 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_delete_checklist".into(),
-                description: "Delete a checklist from a Trello card.".into(),
+                description: "Delete a checklist from a card.".into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "checklist_id": { "type": "string", "description": "Checklist ID to delete" }
                     },
                     "required": ["checklist_id"]
-                }),
-            },
-        },
-        // ── Labels (board-level, used across cards) ────────────────────
-        ToolDefinition {
-            tool_type: "function".into(),
-            function: FunctionDefinition {
-                name: "trello_get_board_labels".into(),
-                description: "Get all labels on a Trello board. Returns label names, colors, and IDs.".into(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "board_id": { "type": "string", "description": "Board ID" }
-                    },
-                    "required": ["board_id"]
-                }),
-            },
-        },
-        ToolDefinition {
-            tool_type: "function".into(),
-            function: FunctionDefinition {
-                name: "trello_create_label".into(),
-                description: "Create a new label on a Trello board. Colors: green, yellow, orange, red, purple, blue, sky, lime, pink, black, or null for no color.".into(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "board_id": { "type": "string", "description": "Board ID" },
-                        "name": { "type": "string", "description": "Label name" },
-                        "color": { "type": "string", "description": "Color: green,yellow,orange,red,purple,blue,sky,lime,pink,black,null" }
-                    },
-                    "required": ["board_id", "name"]
-                }),
-            },
-        },
-        ToolDefinition {
-            tool_type: "function".into(),
-            function: FunctionDefinition {
-                name: "trello_delete_label".into(),
-                description: "Delete a label from a Trello board.".into(),
-                parameters: json!({
-                    "type": "object",
-                    "properties": {
-                        "label_id": { "type": "string", "description": "Label ID to delete" }
-                    },
-                    "required": ["label_id"]
                 }),
             },
         },
@@ -126,127 +82,86 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "trello_create_checklist"      => Some(exec_create_checklist(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_create_checklist"      => Some(exec_create(args, app_handle).await.map_err(|e| e.to_string())),
         "trello_add_checklist_item"    => Some(exec_add_item(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_toggle_checklist_item" => Some(exec_toggle_item(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_delete_checklist"      => Some(exec_delete_checklist(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_get_board_labels"      => Some(exec_get_labels(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_create_label"          => Some(exec_create_label(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_delete_label"          => Some(exec_delete_label(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_toggle_checklist_item" => Some(exec_toggle(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_delete_checklist"      => Some(exec_delete(args, app_handle).await.map_err(|e| e.to_string())),
         _ => None,
     }
 }
 
 // ── create checklist ───────────────────────────────────────────────────
 
-async fn exec_create_checklist(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+async fn exec_create(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let card_id = args["card_id"].as_str().ok_or("Missing 'card_id'")?;
     let name = args["name"].as_str().ok_or("Missing 'name'")?;
-    let url = api_url("/checklists", app_handle)?;
-    let http = client();
-    let body = json!({ "idCard": card_id, "name": name });
 
-    let data = trello_request(&http, reqwest::Method::POST, &url, Some(&body)).await?;
-    let id = data["id"].as_str().unwrap_or("?");
-    info!("[trello] Created checklist '{}' on card {} id={}", name, card_id, id);
-    Ok(format!("Created checklist **{}** — id: `{}`", name, id))
+    let body = json!({ "idCard": card_id, "name": name });
+    let url = auth_url("/checklists", &key, &token);
+    let data = trello_request(reqwest::Method::POST, &url, Some(&body)).await?;
+
+    let cl_id = data["id"].as_str().unwrap_or("?");
+    info!("[trello] Created checklist: {} on card {}", name, card_id);
+
+    Ok(format!("Created checklist **{}** — `{}`", name, cl_id))
 }
 
-// ── add checklist item ─────────────────────────────────────────────────
+// ── add checklist item(s) ──────────────────────────────────────────────
 
 async fn exec_add_item(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let checklist_id = args["checklist_id"].as_str().ok_or("Missing 'checklist_id'")?;
-    let name = args["name"].as_str().ok_or("Missing 'name'")?;
-    let url = api_url(&format!("/checklists/{}/checkItems", checklist_id), app_handle)?;
-    let http = client();
+    let checked = if args["checked"].as_bool().unwrap_or(false) { "true" } else { "false" };
 
-    let mut body = json!({ "name": name });
-    if let Some(checked) = args["checked"].as_bool() {
-        body["checked"] = json!(checked);
+    // Support both single 'name' and batch 'names'
+    let names: Vec<String> = if let Some(arr) = args["names"].as_array() {
+        arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+    } else if let Some(name) = args["name"].as_str() {
+        vec![name.to_string()]
+    } else {
+        return Err("Provide 'name' (string) or 'names' (array) for checklist items.".into());
+    };
+
+    if names.is_empty() {
+        return Err("No item names provided.".into());
     }
 
-    let data = trello_request(&http, reqwest::Method::POST, &url, Some(&body)).await?;
-    let id = data["id"].as_str().unwrap_or("?");
-    info!("[trello] Added item '{}' to checklist {}", name, checklist_id);
-    Ok(format!("Added item **{}** — id: `{}`", name, id))
+    let mut added = 0;
+    for name in &names {
+        let body = json!({ "name": name, "checked": checked });
+        let url = auth_url(&format!("/checklists/{}/checkItems", checklist_id), &key, &token);
+        trello_request(reqwest::Method::POST, &url, Some(&body)).await?;
+        added += 1;
+    }
+
+    info!("[trello] Added {} items to checklist {}", added, checklist_id);
+    Ok(format!("Added {} item(s) to checklist `{}`.", added, checklist_id))
 }
 
 // ── toggle checklist item ──────────────────────────────────────────────
 
-async fn exec_toggle_item(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+async fn exec_toggle(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let card_id = args["card_id"].as_str().ok_or("Missing 'card_id'")?;
     let item_id = args["item_id"].as_str().ok_or("Missing 'item_id'")?;
-    let complete = args["complete"].as_bool().ok_or("Missing 'complete'")?;
-    let state = if complete { "complete" } else { "incomplete" };
-    let url = api_url(&format!("/cards/{}/checkItem/{}", card_id, item_id), app_handle)?;
-    let http = client();
-    let body = json!({ "state": state });
+    let state = args["state"].as_str().ok_or("Missing 'state' (complete or incomplete)")?;
 
-    trello_request(&http, reqwest::Method::PUT, &url, Some(&body)).await?;
-    info!("[trello] Toggled item {} to {} on card {}", item_id, state, card_id);
-    Ok(format!("Marked checklist item `{}` as {}", item_id, state))
+    let body = json!({ "state": state });
+    let url = auth_url(&format!("/cards/{}/checkItem/{}", card_id, item_id), &key, &token);
+    trello_request(reqwest::Method::PUT, &url, Some(&body)).await?;
+
+    Ok(format!("Checklist item `{}` marked as {}.", item_id, state))
 }
 
 // ── delete checklist ───────────────────────────────────────────────────
 
-async fn exec_delete_checklist(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+async fn exec_delete(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let checklist_id = args["checklist_id"].as_str().ok_or("Missing 'checklist_id'")?;
-    let url = api_url(&format!("/checklists/{}", checklist_id), app_handle)?;
-    let http = client();
-    trello_request(&http, reqwest::Method::DELETE, &url, None).await?;
-    info!("[trello] Deleted checklist id={}", checklist_id);
-    Ok(format!("Deleted checklist `{}`", checklist_id))
-}
 
-// ── get board labels ───────────────────────────────────────────────────
+    let url = auth_url(&format!("/checklists/{}", checklist_id), &key, &token);
+    trello_request(reqwest::Method::DELETE, &url, None).await?;
 
-async fn exec_get_labels(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let board_id = args["board_id"].as_str().ok_or("Missing 'board_id'")?;
-    let url = api_url(&format!("/boards/{}/labels", board_id), app_handle)?;
-    let http = client();
-    let data = trello_request(&http, reqwest::Method::GET, &url, None).await?;
-    let labels: Vec<Value> = serde_json::from_value(data).unwrap_or_default();
-
-    if labels.is_empty() {
-        return Ok("No labels on this board.".into());
-    }
-
-    let mut lines = vec![format!("**Labels on board {}** ({} found)\n", board_id, labels.len())];
-    for l in &labels {
-        let name = l["name"].as_str().unwrap_or("(unnamed)");
-        let color = l["color"].as_str().unwrap_or("none");
-        let id = l["id"].as_str().unwrap_or("?");
-        lines.push(format!("• {} ({}) — id: `{}`", name, color, id));
-    }
-    Ok(lines.join("\n"))
-}
-
-// ── create label ───────────────────────────────────────────────────────
-
-async fn exec_create_label(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let board_id = args["board_id"].as_str().ok_or("Missing 'board_id'")?;
-    let name = args["name"].as_str().ok_or("Missing 'name'")?;
-    let url = api_url("/labels", app_handle)?;
-    let http = client();
-
-    let mut body = json!({ "name": name, "idBoard": board_id });
-    if let Some(color) = args["color"].as_str() {
-        body["color"] = json!(color);
-    }
-
-    let data = trello_request(&http, reqwest::Method::POST, &url, Some(&body)).await?;
-    let id = data["id"].as_str().unwrap_or("?");
-    info!("[trello] Created label '{}' on board {} id={}", name, board_id, id);
-    Ok(format!("Created label **{}** — id: `{}`", name, id))
-}
-
-// ── delete label ───────────────────────────────────────────────────────
-
-async fn exec_delete_label(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let label_id = args["label_id"].as_str().ok_or("Missing 'label_id'")?;
-    let url = api_url(&format!("/labels/{}", label_id), app_handle)?;
-    let http = client();
-    trello_request(&http, reqwest::Method::DELETE, &url, None).await?;
-    info!("[trello] Deleted label id={}", label_id);
-    Ok(format!("Deleted label `{}`", label_id))
+    Ok(format!("Checklist `{}` deleted.", checklist_id))
 }

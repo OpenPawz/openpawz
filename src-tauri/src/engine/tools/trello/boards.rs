@@ -4,7 +4,7 @@
 
 use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
-use super::{api_url, client, trello_request};
+use super::{get_credentials, auth_url, trello_request};
 use log::info;
 use serde_json::{json, Value};
 
@@ -14,11 +14,11 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_list_boards".into(),
-                description: "List all Trello boards for the authenticated user. Returns board names, IDs, and URLs.".into(),
+                description: "List all Trello boards for the authenticated user. Returns board names, IDs, URLs, and status.".into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
-                        "filter": { "type": "string", "description": "Filter: open (default), closed, all" }
+                        "filter": { "type": "string", "description": "Filter: open (default), closed, all", "enum": ["open", "closed", "all"] }
                     }
                 }),
             },
@@ -27,14 +27,14 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_create_board".into(),
-                description: "Create a new Trello board. Returns the new board ID and URL.".into(),
+                description: "Create a new Trello board. Returns the new board's ID and URL.".into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
                         "name": { "type": "string", "description": "Board name" },
                         "desc": { "type": "string", "description": "Board description" },
-                        "default_lists": { "type": "boolean", "description": "Create default lists (To Do, Doing, Done). Default true." },
-                        "organization_id": { "type": "string", "description": "Workspace/organization ID to create the board in" }
+                        "default_lists": { "type": "boolean", "description": "Create default lists (To Do, Doing, Done). Default: false" },
+                        "organization_id": { "type": "string", "description": "Workspace/organization ID (optional)" }
                     },
                     "required": ["name"]
                 }),
@@ -44,7 +44,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_get_board".into(),
-                description: "Get details of a specific Trello board by ID, including name, description, URL, and preferences.".into(),
+                description: "Get detailed info about a specific Trello board including lists and label counts.".into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -63,7 +63,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     "type": "object",
                     "properties": {
                         "board_id": { "type": "string", "description": "Board ID" },
-                        "name": { "type": "string", "description": "New board name" },
+                        "name": { "type": "string", "description": "New name" },
                         "desc": { "type": "string", "description": "New description" },
                         "closed": { "type": "boolean", "description": "true to archive, false to unarchive" }
                     },
@@ -106,101 +106,138 @@ pub async fn execute(
 // ── list boards ────────────────────────────────────────────────────────
 
 async fn exec_list(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let filter = args["filter"].as_str().unwrap_or("open");
-    let url = api_url(&format!("/members/me/boards?filter={}&fields=name,id,url,shortUrl,closed,desc", filter), app_handle)?;
-    let http = client();
-    let data = trello_request(&http, reqwest::Method::GET, &url, None).await?;
+
+    let url = auth_url(
+        &format!("/members/me/boards?filter={}&fields=name,id,url,shortUrl,closed,desc,dateLastActivity", filter),
+        &key, &token,
+    );
+    let data = trello_request(reqwest::Method::GET, &url, None).await?;
     let boards: Vec<Value> = serde_json::from_value(data).unwrap_or_default();
 
     if boards.is_empty() {
         return Ok("No boards found.".into());
     }
 
-    let mut lines = vec![format!("**Trello Boards** ({} found)\n", boards.len())];
+    let mut lines = vec![format!("**Your Trello Boards** ({} found)\n", boards.len())];
     for b in &boards {
         let name = b["name"].as_str().unwrap_or("?");
         let id = b["id"].as_str().unwrap_or("?");
         let url = b["shortUrl"].as_str().or(b["url"].as_str()).unwrap_or("");
-        let closed = if b["closed"].as_bool().unwrap_or(false) { " [archived]" } else { "" };
-        lines.push(format!("• **{}**{} — id: `{}` — {}", name, closed, id, url));
+        let status = if b["closed"].as_bool().unwrap_or(false) { " [archived]" } else { "" };
+        lines.push(format!("• **{}**{} — ID: `{}` — {}", name, status, id, url));
     }
+
     Ok(lines.join("\n"))
 }
 
 // ── create board ───────────────────────────────────────────────────────
 
 async fn exec_create(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let name = args["name"].as_str().ok_or("Missing 'name'")?;
-    let url = api_url("/boards", app_handle)?;
-    let http = client();
 
-    let mut body = json!({ "name": name });
+    let mut body = json!({
+        "name": name,
+        "defaultLists": args["default_lists"].as_bool().unwrap_or(false),
+    });
     if let Some(desc) = args["desc"].as_str() {
         body["desc"] = json!(desc);
-    }
-    if let Some(dl) = args["default_lists"].as_bool() {
-        body["defaultLists"] = json!(dl);
     }
     if let Some(org) = args["organization_id"].as_str() {
         body["idOrganization"] = json!(org);
     }
 
-    let data = trello_request(&http, reqwest::Method::POST, &url, Some(&body)).await?;
-    let id = data["id"].as_str().unwrap_or("?");
-    let board_url = data["url"].as_str().unwrap_or("");
-    info!("[trello] Created board '{}' id={}", name, id);
-    Ok(format!("Created board **{}** — id: `{}` — {}", name, id, board_url))
+    let url = auth_url("/boards", &key, &token);
+    let data = trello_request(reqwest::Method::POST, &url, Some(&body)).await?;
+
+    let board_id = data["id"].as_str().unwrap_or("?");
+    let board_url = data["shortUrl"].as_str().or(data["url"].as_str()).unwrap_or("?");
+    info!("[trello] Created board: {} ({})", name, board_id);
+
+    Ok(format!("Created board **{}**\nID: `{}`\nURL: {}", name, board_id, board_url))
 }
 
-// ── get board ──────────────────────────────────────────────────────────
+// ── get board details ──────────────────────────────────────────────────
 
 async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let board_id = args["board_id"].as_str().ok_or("Missing 'board_id'")?;
-    let url = api_url(&format!("/boards/{}?fields=all", board_id), app_handle)?;
-    let http = client();
-    let data = trello_request(&http, reqwest::Method::GET, &url, None).await?;
+
+    let url = auth_url(
+        &format!("/boards/{}?fields=name,desc,url,shortUrl,closed,dateLastActivity,idOrganization&lists=open&labels=all", board_id),
+        &key, &token,
+    );
+    let data = trello_request(reqwest::Method::GET, &url, None).await?;
 
     let name = data["name"].as_str().unwrap_or("?");
     let desc = data["desc"].as_str().unwrap_or("");
-    let board_url = data["url"].as_str().unwrap_or("");
-    let closed = data["closed"].as_bool().unwrap_or(false);
+    let board_url = data["shortUrl"].as_str().or(data["url"].as_str()).unwrap_or("?");
 
-    Ok(format!(
-        "**{}**{}\n{}\nID: `{}`\nURL: {}\nMembers: {}",
-        name,
-        if closed { " [archived]" } else { "" },
-        if desc.is_empty() { "(no description)" } else { desc },
-        board_id,
-        board_url,
-        data["memberships"].as_array().map(|a| a.len()).unwrap_or(0)
-    ))
+    let mut lines = vec![
+        format!("**Board: {}**", name),
+        format!("ID: `{}`", board_id),
+        format!("URL: {}", board_url),
+    ];
+    if !desc.is_empty() {
+        lines.push(format!("Description: {}", desc));
+    }
+
+    if let Some(lists) = data["lists"].as_array() {
+        lines.push(format!("\n**Lists** ({})", lists.len()));
+        for l in lists {
+            let ln = l["name"].as_str().unwrap_or("?");
+            let lid = l["id"].as_str().unwrap_or("?");
+            lines.push(format!("  • {} — `{}`", ln, lid));
+        }
+    }
+
+    if let Some(labels) = data["labels"].as_array() {
+        let active: Vec<&Value> = labels.iter().filter(|l| l["name"].as_str().map(|n| !n.is_empty()).unwrap_or(false)).collect();
+        if !active.is_empty() {
+            lines.push(format!("\n**Labels** ({})", active.len()));
+            for l in &active {
+                let ln = l["name"].as_str().unwrap_or("?");
+                let color = l["color"].as_str().unwrap_or("none");
+                lines.push(format!("  • {} ({}) — `{}`", ln, color, l["id"].as_str().unwrap_or("?")));
+            }
+        }
+    }
+
+    Ok(lines.join("\n"))
 }
 
 // ── update board ───────────────────────────────────────────────────────
 
 async fn exec_update(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let board_id = args["board_id"].as_str().ok_or("Missing 'board_id'")?;
-    let url = api_url(&format!("/boards/{}", board_id), app_handle)?;
-    let http = client();
 
     let mut body = json!({});
     if let Some(name) = args["name"].as_str() { body["name"] = json!(name); }
     if let Some(desc) = args["desc"].as_str() { body["desc"] = json!(desc); }
     if let Some(closed) = args["closed"].as_bool() { body["closed"] = json!(closed); }
 
-    let data = trello_request(&http, reqwest::Method::PUT, &url, Some(&body)).await?;
-    let name = data["name"].as_str().unwrap_or("?");
-    info!("[trello] Updated board '{}' id={}", name, board_id);
-    Ok(format!("Updated board **{}** (id: `{}`)", name, board_id))
+    let url = auth_url(&format!("/boards/{}", board_id), &key, &token);
+    trello_request(reqwest::Method::PUT, &url, Some(&body)).await?;
+
+    let action = if args["closed"].as_bool() == Some(true) { "archived" }
+        else if args["closed"].as_bool() == Some(false) { "unarchived" }
+        else { "updated" };
+
+    Ok(format!("Board `{}` {}.", board_id, action))
 }
 
 // ── delete board ───────────────────────────────────────────────────────
 
 async fn exec_delete(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let (key, token) = get_credentials(app_handle)?;
     let board_id = args["board_id"].as_str().ok_or("Missing 'board_id'")?;
-    let url = api_url(&format!("/boards/{}", board_id), app_handle)?;
-    let http = client();
-    trello_request(&http, reqwest::Method::DELETE, &url, None).await?;
-    info!("[trello] Deleted board id={}", board_id);
-    Ok(format!("Deleted board `{}`", board_id))
+
+    let url = auth_url(&format!("/boards/{}", board_id), &key, &token);
+    trello_request(reqwest::Method::DELETE, &url, None).await?;
+
+    info!("[trello] Deleted board: {}", board_id);
+    Ok(format!("Board `{}` permanently deleted.", board_id))
 }

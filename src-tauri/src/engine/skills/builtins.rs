@@ -216,7 +216,7 @@ Notion uses rich text blocks. Page content is a list of block objects (paragraph
         SkillDefinition {
             id: "trello".into(),
             name: "Trello".into(),
-            description: "Manage Trello boards, lists, cards, checklists, and labels".into(),
+            description: "Manage Trello boards, lists, cards, labels, and checklists".into(),
             icon: "📋".into(),
             category: SkillCategory::Api,
             tier: SkillTier::Integration,
@@ -232,37 +232,36 @@ Notion uses rich text blocks. Page content is a list of block objects (paragraph
                 "trello_get_lists".into(), "trello_create_list".into(),
                 "trello_update_list".into(), "trello_archive_list".into(),
                 // cards
-                "trello_get_cards".into(), "trello_get_card".into(), "trello_create_card".into(),
-                "trello_update_card".into(), "trello_move_card".into(), "trello_delete_card".into(),
-                "trello_add_comment".into(), "trello_add_label".into(), "trello_remove_label".into(),
-                "trello_add_attachment".into(),
+                "trello_get_cards".into(), "trello_create_card".into(), "trello_get_card".into(),
+                "trello_update_card".into(), "trello_delete_card".into(), "trello_move_card".into(),
+                "trello_add_comment".into(), "trello_search".into(),
+                // labels
+                "trello_get_labels".into(), "trello_create_label".into(), "trello_update_label".into(),
+                "trello_delete_label".into(), "trello_add_label".into(), "trello_remove_label".into(),
                 // checklists
                 "trello_create_checklist".into(), "trello_add_checklist_item".into(),
                 "trello_toggle_checklist_item".into(), "trello_delete_checklist".into(),
-                // labels
-                "trello_get_board_labels".into(), "trello_create_label".into(), "trello_delete_label".into(),
-                // search & members
-                "trello_search".into(), "trello_get_board_members".into(),
+                // members
+                "trello_get_members".into(),
             ],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API key at trello.com/app-key, then authorize for a token".into(),
-            agent_instructions: r#"You have full Trello access with 28 built-in tools:
+            agent_instructions: r#"You have full Trello access with 28 built-in tools. Auth is handled automatically — never put credentials in URLs or scripts.
 
 **Boards**: trello_list_boards, trello_create_board, trello_get_board, trello_update_board, trello_delete_board
 **Lists**: trello_get_lists, trello_create_list, trello_update_list, trello_archive_list
-**Cards**: trello_get_cards, trello_get_card, trello_create_card, trello_update_card, trello_move_card, trello_delete_card, trello_add_comment, trello_add_label, trello_remove_label, trello_add_attachment
-**Checklists**: trello_create_checklist, trello_add_checklist_item, trello_toggle_checklist_item, trello_delete_checklist
-**Labels**: trello_get_board_labels, trello_create_label, trello_delete_label
-**Search**: trello_search, trello_get_board_members
+**Cards**: trello_get_cards, trello_create_card, trello_get_card, trello_update_card, trello_delete_card, trello_move_card, trello_add_comment, trello_search
+**Labels**: trello_get_labels, trello_create_label, trello_update_label, trello_delete_label, trello_add_label, trello_remove_label
+**Checklists**: trello_create_checklist, trello_add_checklist_item (supports batch via 'names' array), trello_toggle_checklist_item, trello_delete_checklist
+**Members**: trello_get_members
 
 TOOL SELECTION RULES:
-- LIST boards → trello_list_boards (always start here to discover board IDs)
-- CREATE board → trello_create_board, then trello_create_list for each list
-- ADD cards → trello_create_card (requires list_id — get via trello_get_lists first)
-- MOVE cards between lists → trello_move_card
-- ADD checklists → trello_create_checklist on a card, then trello_add_checklist_item
-- FIND anything → trello_search
-
-Credentials are handled automatically. Do NOT use fetch/exec/curl to call the Trello API — use your built-in tools."#.into(),
+- LIST boards → trello_list_boards
+- CREATE board → trello_create_board, then trello_create_list for each list, then trello_create_card for cards
+- VIEW a board's structure → trello_get_board (returns lists + labels)
+- MOVE card between lists → trello_move_card
+- ADD multiple checklist items at once → trello_add_checklist_item with 'names' array
+- SEARCH across boards → trello_search
+Do NOT use fetch/exec/curl for Trello — use your built-in tools."#.into(),
         },
 
         // ───── PRODUCTIVITY SKILLS ─────
