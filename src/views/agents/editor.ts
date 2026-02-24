@@ -36,19 +36,19 @@ function buildEditorHtml(agent: Agent, availableModels: { id: string; name: stri
           <button class="agent-tab" data-tab="skills">Tools</button>
           <button class="agent-tab" data-tab="advanced">Advanced</button>
         </div>
-        
+
         <!-- Basics Tab -->
         <div class="agent-tab-content active" id="tab-basics">
           <div class="form-group">
             <label class="form-label">Name</label>
             <input type="text" class="form-input" id="agent-edit-name" value="${escAttr(agent.name)}">
           </div>
-          
+
           <div class="form-group">
             <label class="form-label">Bio</label>
             <input type="text" class="form-input" id="agent-edit-bio" value="${escAttr(agent.bio)}" placeholder="What is this agent for?">
           </div>
-          
+
           <div class="form-group">
             <label class="form-label">Model</label>
             <select class="form-input" id="agent-edit-model">
@@ -56,7 +56,7 @@ function buildEditorHtml(agent: Agent, availableModels: { id: string; name: stri
             </select>
             <div class="form-hint">Which AI model this agent uses</div>
           </div>
-          
+
           <div class="form-group">
             <label class="form-label">Avatar</label>
             <div class="agent-avatar-picker">
@@ -67,7 +67,7 @@ function buildEditorHtml(agent: Agent, availableModels: { id: string; name: stri
             </div>
           </div>
         </div>
-        
+
         <!-- Personality Tab -->
         <div class="agent-tab-content" id="tab-personality">
           <div class="agent-personality-grid">
@@ -97,7 +97,7 @@ function buildEditorHtml(agent: Agent, availableModels: { id: string; name: stri
             </div>
           </div>
         </div>
-        
+
         <!-- Tools Tab -->
         <div class="agent-tab-content" id="tab-skills">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
@@ -153,7 +153,7 @@ function buildEditorHtml(agent: Agent, availableModels: { id: string; name: stri
             </div>
           </div>
         </div>
-        
+
         <!-- Advanced Tab -->
         <div class="agent-tab-content" id="tab-advanced">
           <!-- Phase A: Auto-Approve All Tools -->
@@ -173,7 +173,7 @@ function buildEditorHtml(agent: Agent, availableModels: { id: string; name: stri
             <textarea class="form-input agent-system-prompt" id="agent-edit-prompt" placeholder="Add custom instructions for this agent...">${escHtml(agent.systemPrompt || '')}</textarea>
             <div class="form-hint">These instructions are added to every conversation with this agent</div>
           </div>
-          
+
           <div class="form-group">
             <label class="form-label">Boundaries & Rules</label>
             <div class="agent-boundaries" id="agent-boundaries">
@@ -190,7 +190,7 @@ function buildEditorHtml(agent: Agent, availableModels: { id: string; name: stri
             </div>
             <button class="btn btn-ghost btn-sm" id="agent-add-boundary">+ Add rule</button>
           </div>
-          
+
           ${
             agent.id !== 'default'
               ? `

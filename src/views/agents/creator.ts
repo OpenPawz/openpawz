@@ -55,17 +55,17 @@ export function openAgentCreator(cbs: EditorCallbacks) {
             </div>
           </div>
         </div>
-        
+
         <div class="form-group">
           <label class="form-label">Name</label>
           <input type="text" class="form-input" id="agent-create-name" placeholder="Give your agent a name">
         </div>
-        
+
         <div class="form-group">
           <label class="form-label">Bio</label>
           <input type="text" class="form-input" id="agent-create-bio" placeholder="What is this agent for?">
         </div>
-        
+
         <div class="form-group">
           <label class="form-label">Avatar</label>
           <div class="agent-avatar-picker" id="agent-avatar-picker">

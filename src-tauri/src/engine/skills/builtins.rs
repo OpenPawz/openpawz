@@ -362,7 +362,7 @@ grizzly edit <id> --body <md>, grizzly trash <id>, grizzly tags. Bear uses #tags
             agent_instructions: r#"You can control tmux sessions to run long-lived or interactive processes.
 Key patterns:
 - tmux new-session -d -s <name> '<command>' — start detached session
-- tmux send-keys -t <name> '<keys>' Enter — type into session  
+- tmux send-keys -t <name> '<keys>' Enter — type into session
 - tmux capture-pane -t <name> -p — read current screen output
 - tmux kill-session -t <name> — stop session
 - tmux list-sessions — see running sessions
@@ -728,7 +728,7 @@ Requires Accessibility permission in System Preferences > Privacy."#.into(),
             agent_instructions: r#"You can perform security audits and health checks on the host system.
 Use exec to run these checks:
 - System info: uname -a, sw_vers (macOS), hostnamectl (Linux)
-- Open ports: lsof -i -P -n | grep LISTEN, netstat -tlnp  
+- Open ports: lsof -i -P -n | grep LISTEN, netstat -tlnp
 - Firewall: sudo pfctl -sr (macOS), sudo ufw status (Linux)
 - SSH config: cat /etc/ssh/sshd_config, ssh-keygen -l -f ~/.ssh/authorized_keys
 - Disk encryption: fdesetup status (macOS), blkid (Linux)

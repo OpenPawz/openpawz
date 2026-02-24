@@ -261,7 +261,7 @@ export function renderToday() {
       <div class="today-greeting">${greeting}${userName ? `, ${escHtml(userName)}` : ''}</div>
       <div class="today-date">${dateStr}</div>
     </div>
-    
+
     <div class="today-grid">
       <div class="today-main">
         <!-- Agent Summary -->
@@ -277,7 +277,7 @@ export function renderToday() {
             ${getPawzMessage(pendingTasks.length, completedToday.length)}
           </div>
         </div>
-        
+
         <!-- Weather -->
         <div class="today-card">
           <div class="today-card-header">
@@ -288,7 +288,7 @@ export function renderToday() {
             <span class="today-loading">Loading...</span>
           </div>
         </div>
-        
+
         <!-- Tasks -->
         <div class="today-card today-card-tasks">
           <div class="today-card-header">
@@ -326,7 +326,7 @@ export function renderToday() {
             }
           </div>
         </div>
-        
+
         <!-- Unread Emails -->
         <div class="today-card">
           <div class="today-card-header">
@@ -337,13 +337,13 @@ export function renderToday() {
             <span class="today-loading">Loading...</span>
           </div>
         </div>
-        
+
         <!-- Skill Widgets (Phase F.2) -->
         <div id="today-skill-widgets">
           ${renderSkillWidgets(_skillOutputs)}
         </div>
       </div>
-      
+
       <div class="today-sidebar">
         <!-- Quick Actions -->
         <div class="today-card">
@@ -363,7 +363,7 @@ export function renderToday() {
             </button>
           </div>
         </div>
-        
+
         <!-- Activity Feed -->
         <div class="today-card">
           <div class="today-card-header">

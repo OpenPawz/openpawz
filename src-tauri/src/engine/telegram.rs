@@ -379,7 +379,7 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                         let username = user.username.clone().unwrap_or_else(|| user.first_name.clone());
                         let chat_id = msg.chat.id;
 
-                        debug!("[telegram] Message from {} ({}): {}", username, user_id, 
+                        debug!("[telegram] Message from {} ({}): {}", username, user_id,
                             if text.len() > 50 { format!("{}...", crate::engine::types::truncate_utf8(&text, 50)) } else { text.clone() });
 
                         // ── Access control ─────────────────────────────

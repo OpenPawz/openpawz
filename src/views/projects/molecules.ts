@@ -194,7 +194,7 @@ export function renderProjectsSidebar(): void {
         _selectedFile &&
         _projects.some((proj) => proj.path === p.path && _selectedFile!.path.startsWith(proj.path));
       return `
-    <div class="projects-folder-item${isActive ? ' active' : ''}" 
+    <div class="projects-folder-item${isActive ? ' active' : ''}"
          data-path="${escAttr(p.path)}" title="${escAttr(p.path)}">
       <div class="projects-folder-row">
         <span class="ms ms-sm">folder</span>

@@ -23,7 +23,7 @@ use log::{info, warn};
 ///
 /// Instead of dumping all 75+ tools, sends only:
 ///   1. Core tools (memory, soul, files, request_tools) — always available
-///   2. Previously loaded tools (from request_tools calls this turn) 
+///   2. Previously loaded tools (from request_tools calls this turn)
 ///   3. MCP tools (always included — they're dynamically registered)
 ///
 /// The agent discovers additional tools by calling `request_tools`.

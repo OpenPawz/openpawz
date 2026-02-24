@@ -69,7 +69,7 @@ pub async fn execute_dex_quote(
                 );
                 let multi_calldata = encode_quote_exact_input(&path, &amount_u256);
                 eth_call(rpc_url, UNISWAP_QUOTER_V2, &multi_calldata).await
-                    
+
             }
             Err(e) => Err(e),
         }

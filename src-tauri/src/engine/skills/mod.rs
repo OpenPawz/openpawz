@@ -1,6 +1,6 @@
 // Pawz Agent Engine — Skills Module
 // Modular replacement for the monolithic skills.rs.
-// 
+//
 // Module layout:
 //   types      — all skill types (SkillCategory, SkillDefinition, SkillStatus, …)
 //   builtins   — the 40+ built-in skill definitions
