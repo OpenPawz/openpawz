@@ -178,11 +178,15 @@ pub type RequestQueue = Arc<Mutex<HashMap<String, Vec<QueuedRequest>>>>;
 /// When a steering request is queued, yield is requested on the active run.
 pub type YieldSignals = Arc<Mutex<HashMap<String, YieldSignal>>>;
 
-/// Map retired / renamed model IDs to their current replacements.
-/// This lets old task configs and agent overrides stored in the DB keep working.
+/// Map retired / renamed / shorthand model IDs to their current API names.
+/// This lets old task configs, agent overrides, and user-entered short names keep working.
 pub fn normalize_model_name(model: &str) -> &str {
     match model {
-        // Anthropic retired 3.5 model IDs — remap to cheapest available
+        // ── Google shorthand aliases ────────────────────────────────────
+        "gemini-3.1" | "gemini-3.1-pro" => "gemini-3.1-pro-preview",
+        "gemini-3" | "gemini-3-pro" => "gemini-3-pro-preview",
+        "gemini-3-flash" => "gemini-3-flash-preview",
+        // ── Anthropic retired 3.5 model IDs — remap to cheapest available
         // Haiku 3.5 ($0.80/$4) retired → Haiku 3 ($0.25/$1.25) is cheapest
         "claude-3-5-haiku-20241022" => "claude-3-haiku-20240307",
         // Sonnet 3.5 retired → Sonnet 4.6 (same price tier $3/$15)
