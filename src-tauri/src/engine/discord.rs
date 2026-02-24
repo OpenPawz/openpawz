@@ -239,8 +239,14 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
     info!("[discord] Connected to gateway, heartbeat_interval={}ms", heartbeat_interval);
 
     // Send Identify (op 2)
-    // Request MESSAGE_CONTENT (1<<15) + GUILDS (1<<0) + GUILD_MESSAGES (1<<9) + DIRECT_MESSAGES (1<<12)
-    let intents = (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15);
+    // Intents: GUILDS (1<<0) + GUILD_MESSAGES (1<<9) + DIRECT_MESSAGES (1<<12)
+    //
+    // NOTE: MESSAGE_CONTENT (1<<15) is a **privileged intent** that requires
+    // manual opt-in at discord.com/developers → Bot → Privileged Gateway Intents.
+    // We deliberately omit it: DMs always include content, and guild messages
+    // where the bot is @mentioned also include content. Only un-mentioned guild
+    // messages need the privileged intent, which we don't process anyway.
+    let intents = (1 << 0) | (1 << 9) | (1 << 12);
     let identify = json!({
         "op": 2,
         "d": {
@@ -302,9 +308,38 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
 
         let text = match msg {
             WsMessage::Text(t) => t,
-            WsMessage::Close(_) => {
-                info!("[discord] Gateway closed");
-                break;
+            WsMessage::Close(frame) => {
+                let (code, reason) = frame
+                    .map(|f| (f.code.into(), f.reason.to_string()))
+                    .unwrap_or((0u16, String::new()));
+                // Discord close codes: https://discord.com/developers/docs/topics/opcodes-and-status-codes
+                match code {
+                    4004 => {
+                        error!("[discord] Authentication failed (4004) — invalid bot token");
+                        return Err(EngineError::Channel {
+                            channel: "discord".into(),
+                            message: "Invalid bot token. Check your token at discord.com/developers.".into(),
+                        });
+                    }
+                    4014 => {
+                        error!("[discord] Disallowed intents (4014) — enable Privileged Gateway Intents at discord.com/developers → Bot");
+                        return Err(EngineError::Channel {
+                            channel: "discord".into(),
+                            message: "Disallowed intents. Enable 'Message Content Intent' in Discord Developer Portal → Bot → Privileged Gateway Intents.".into(),
+                        });
+                    }
+                    1000 | 0 => {
+                        info!("[discord] Gateway closed normally (code={})", code);
+                        break;
+                    }
+                    _ => {
+                        warn!("[discord] Gateway closed: code={} reason={}", code, reason);
+                        return Err(EngineError::Channel {
+                            channel: "discord".into(),
+                            message: format!("Gateway closed: code={} {}", code, reason),
+                        });
+                    }
+                }
             }
             _ => continue,
         };
@@ -445,8 +480,12 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
             }
             // Invalid Session
             9 => {
-                warn!("[discord] Invalid session");
-                break;
+                let resumable = payload.d.as_ref().and_then(|d| d.as_bool()).unwrap_or(false);
+                warn!("[discord] Invalid session (resumable={})", resumable);
+                return Err(EngineError::Channel {
+                    channel: "discord".into(),
+                    message: "Invalid session — Discord rejected the connection".into(),
+                });
             }
             _ => {}
         }
