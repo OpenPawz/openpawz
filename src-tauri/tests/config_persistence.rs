@@ -1,15 +1,6 @@
 // Integration test: Config persistence (set → get → overwrite → get)
 
-use paw_temp_lib::engine::sessions::SessionStore;
-use parking_lot::Mutex;
-use rusqlite::Connection;
-
-fn test_store() -> SessionStore {
-    let conn = Connection::open_in_memory().expect("Failed to open in-memory DB");
-    conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
-    paw_temp_lib::engine::sessions::schema_for_testing(&conn);
-    SessionStore { conn: Mutex::new(conn) }
-}
+use super::test_store;
 
 #[test]
 fn get_config_returns_none_for_missing_key() {

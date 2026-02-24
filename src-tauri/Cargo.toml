@@ -10,6 +10,8 @@ homepage = "https://openpawz.com"
 readme = "../README.md"
 keywords = ["ai", "agent", "tauri", "multi-agent", "llm"]
 categories = ["command-line-utilities", "gui"]
+autobenches = false
+autotests = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -93,4 +95,9 @@ bs58 = "0.5"
 # ── Mutex safety (no poisoning, faster, const-constructible) ─
 parking_lot = "0.12"
 rustls-pemfile = "2"
+
+# ── Tests: single binary to avoid OOM on codespace ──────────
+[[test]]
+name = "integration"
+path = "tests/integration.rs"
 

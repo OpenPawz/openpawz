@@ -1,0 +1,23 @@
+// Single integration test binary — consolidates all test files to avoid
+// linking 4 separate 700MB binaries (OOM on codespace).
+//
+// Run with: cargo test --test integration
+//
+// Each module retains its original tests unchanged.
+
+use paw_temp_lib::engine::sessions::SessionStore;
+use parking_lot::Mutex;
+use rusqlite::Connection;
+
+/// Shared test helper: in-memory SessionStore.
+pub fn test_store() -> SessionStore {
+    let conn = Connection::open_in_memory().expect("Failed to open in-memory DB");
+    conn.execute_batch("PRAGMA journal_mode=WAL;").ok();
+    paw_temp_lib::engine::sessions::schema_for_testing(&conn);
+    SessionStore { conn: Mutex::new(conn) }
+}
+
+mod config_persistence;
+mod session_lifecycle;
+mod memory_roundtrip;
+mod tool_classification;
