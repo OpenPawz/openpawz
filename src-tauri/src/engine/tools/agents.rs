@@ -93,6 +93,35 @@ pub fn definitions() -> Vec<ToolDefinition> {
                 }),
             },
         },
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "manage_session".into(),
+                description: "List, clear, or delete chat sessions. Use this to manage channel bridge sessions \
+                    (Discord, Telegram, etc.) or any other session. Actions: 'list' shows sessions with message counts, \
+                    'clear' wipes messages but keeps the session, 'delete' removes session entirely. \
+                    Channel sessions have IDs like 'eng-discord-default-<user_id>'.".into(),
+                parameters: serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["list", "clear", "delete"],
+                            "description": "What to do: 'list' = show sessions, 'clear' = wipe messages (keep session), 'delete' = remove session + messages"
+                        },
+                        "session_id": {
+                            "type": "string",
+                            "description": "Session ID to clear/delete. Required for 'clear' and 'delete'. Supports prefix matching — e.g. 'eng-discord' matches all Discord sessions."
+                        },
+                        "filter": {
+                            "type": "string",
+                            "description": "Optional filter for 'list' — show only sessions whose ID contains this string (e.g. 'discord', 'telegram')"
+                        }
+                    },
+                    "required": ["action"]
+                }),
+            },
+        },
     ]
 }
 
@@ -109,6 +138,7 @@ pub async fn execute(
         "agent_list"         => execute_agent_list(app_handle).await.map_err(|e| e.to_string()),
         "agent_skills"       => execute_agent_skills(args, app_handle).await.map_err(|e| e.to_string()),
         "agent_skill_assign" => execute_agent_skill_assign(args, app_handle).await.map_err(|e| e.to_string()),
+        "manage_session"     => execute_manage_session(args, app_handle).await.map_err(|e| e.to_string()),
         _ => return None,
     })
 }
@@ -427,5 +457,112 @@ async fn execute_agent_skill_assign(
             Ok(format!("Removed skill '{}' from agent '{}'.", skill.name, agent_id))
         }
         _ => Err(format!("Invalid action '{}'. Must be 'add' or 'remove'.", action).into()),
+    }
+}
+
+// ── manage_session ─────────────────────────────────────────────────────
+
+async fn execute_manage_session(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
+    let action = args["action"].as_str()
+        .ok_or("Missing 'action' parameter (must be 'list', 'clear', or 'delete')")?;
+
+    let state = app_handle.try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
+
+    match action {
+        "list" => {
+            let filter = args["filter"].as_str().unwrap_or("");
+            let sessions = state.store.list_sessions(200)?;
+            let filtered: Vec<_> = if filter.is_empty() {
+                sessions
+            } else {
+                sessions.into_iter()
+                    .filter(|s| s.id.contains(filter))
+                    .collect()
+            };
+
+            if filtered.is_empty() {
+                return Ok(format!("No sessions found{}.",
+                    if filter.is_empty() { String::new() } else { format!(" matching '{}'", filter) }
+                ));
+            }
+
+            let mut lines = vec![format!("**Sessions** ({}{})\n", filtered.len(),
+                if filter.is_empty() { String::new() } else { format!(", filter: '{}'", filter) }
+            )];
+
+            for s in &filtered {
+                let msg_count = state.store.get_messages(&s.id, 1000)
+                    .map(|msgs| msgs.len())
+                    .unwrap_or(0);
+                let label = s.label.as_deref().unwrap_or("");
+                let agent = s.agent_id.as_deref().unwrap_or("?");
+                let prefix = if s.id.starts_with("eng-discord") { "🎮" }
+                    else if s.id.starts_with("eng-telegram") { "📱" }
+                    else if s.id.starts_with("eng-slack") { "💬" }
+                    else if s.id.starts_with("eng-task") { "📋" }
+                    else { "💭" };
+                lines.push(format!("{} `{}` — {} msgs, agent={}{}", prefix, s.id, msg_count, agent,
+                    if label.is_empty() { String::new() } else { format!(", label=\"{}\"", label) }
+                ));
+            }
+            Ok(lines.join("\n"))
+        }
+        "clear" => {
+            let session_id = args["session_id"].as_str()
+                .ok_or("'session_id' is required for 'clear' action")?;
+
+            // Support prefix matching for bulk clear
+            if session_id.contains('*') || !state.store.get_session(session_id)?.is_some() {
+                // Try prefix match
+                let prefix = session_id.trim_end_matches('*');
+                let sessions = state.store.list_sessions(500)?;
+                let matching: Vec<_> = sessions.iter()
+                    .filter(|s| s.id.starts_with(prefix))
+                    .collect();
+                if matching.is_empty() {
+                    return Err(format!("No sessions found matching '{}'", session_id).into());
+                }
+                let mut cleared = 0;
+                for s in &matching {
+                    state.store.clear_messages(&s.id)?;
+                    cleared += 1;
+                }
+                Ok(format!("Cleared messages from {} session(s) matching '{}'.", cleared, prefix))
+            } else {
+                state.store.clear_messages(session_id)?;
+                info!("[manage_session] Cleared messages from session: {}", session_id);
+                Ok(format!("Cleared all messages from session '{}'. The session will start fresh on next message.", session_id))
+            }
+        }
+        "delete" => {
+            let session_id = args["session_id"].as_str()
+                .ok_or("'session_id' is required for 'delete' action")?;
+
+            if session_id.contains('*') || !state.store.get_session(session_id)?.is_some() {
+                let prefix = session_id.trim_end_matches('*');
+                let sessions = state.store.list_sessions(500)?;
+                let matching: Vec<_> = sessions.iter()
+                    .filter(|s| s.id.starts_with(prefix))
+                    .collect();
+                if matching.is_empty() {
+                    return Err(format!("No sessions found matching '{}'", session_id).into());
+                }
+                let mut deleted = 0;
+                for s in &matching {
+                    state.store.delete_session(&s.id)?;
+                    deleted += 1;
+                }
+                Ok(format!("Deleted {} session(s) matching '{}'.", deleted, prefix))
+            } else {
+                state.store.delete_session(session_id)?;
+                info!("[manage_session] Deleted session: {}", session_id);
+                Ok(format!("Deleted session '{}' and all its messages.", session_id))
+            }
+        }
+        _ => Err(format!("Invalid action '{}'. Must be 'list', 'clear', or 'delete'.", action).into()),
     }
 }

@@ -71,7 +71,8 @@ fn tool_domain(name: &str) -> &'static str {
         "self_info" | "update_profile" => "identity",
 
         // Agent Management
-        "create_agent" | "agent_list" | "agent_skills" | "agent_skill_assign" => "agents",
+        "create_agent" | "agent_list" | "agent_skills" | "agent_skill_assign"
+        | "manage_session" => "agents",
 
         // Inter-Agent Communication
         "agent_send_message" | "agent_read_messages" => "communication",

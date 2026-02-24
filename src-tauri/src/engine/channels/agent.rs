@@ -84,27 +84,30 @@ pub async fn run_channel_agent(
     } else {
         // Check if the previous conversation is poisoned by:
         // 1. Failed tool-call loops (all tool calls, no useful text)
-        // 2. Accumulated "I wasn't able to generate a response" errors
-        // 3. System nudge messages from failed retries
+        // 2. Accumulated error patterns from empty responses / fallbacks
+        // 3. Malformed tool calls or model confusion
         // In any of these cases, clear the session to start fresh.
         let recent = engine_state.store.load_conversation(
             &session_id, None, Some(2_000), Some(agent_id),
         ).unwrap_or_default();
 
-        let should_clear = if recent.len() > 6 {
+        let should_clear = if recent.len() >= 4 {
             let last_msgs: Vec<&Message> = recent.iter().rev().take(6).collect();
-            // Detect tool-call spam
+            // Detect tool-call spam: all recent messages are tool/system with no user-visible text
             let all_tool_spam = last_msgs.iter().all(|m| {
                 m.role == Role::Tool || m.role == Role::System ||
                 (m.role == Role::Assistant && m.tool_calls.is_some())
             });
-            // Detect error message accumulation
+            // Detect error / empty-response accumulation across recent history
             let error_count = last_msgs.iter().filter(|m| {
-                m.role == Role::Assistant && (
-                    m.content.as_text().contains("wasn't able to generate") ||
-                    m.content.as_text().contains("empty response") ||
-                    m.content.as_text().contains("[MALFORMED_TOOL_CALL]")
-                )
+                if m.role != Role::Assistant { return false; }
+                let text = m.content.as_text_ref();
+                text.contains("wasn't able to generate") ||
+                text.contains("empty response") ||
+                text.contains("[MALFORMED_TOOL_CALL]") ||
+                text.contains("start a new session") ||
+                text.contains("content filter was triggered") ||
+                (text.len() < 30 && text.trim().is_empty())
             }).count();
             all_tool_spam || error_count >= 2
         } else {
