@@ -426,7 +426,11 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                             if let Ok(discord_msg) = serde_json::from_value::<DiscordMessage>(d) {
                                 // Skip bot messages (including own)
                                 if discord_msg.author.bot.unwrap_or(false) { continue; }
-                                if discord_msg.content.is_empty() { continue; }
+                                if discord_msg.content.is_empty() {
+                                    info!("[discord] Ignoring empty content from {} (guild={:?}) — may need MESSAGE_CONTENT intent",
+                                        discord_msg.author.username, discord_msg.guild_id);
+                                    continue;
+                                }
 
                                 let is_dm = discord_msg.guild_id.is_none();
                                 let is_mention = discord_msg.mentions.as_ref()
@@ -453,9 +457,10 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                                 let display_name = discord_msg.author.global_name.clone().unwrap_or(username.clone());
                                 let channel_id = discord_msg.channel_id.clone();
 
-                                debug!("[discord] Message from {} ({}): {}",
+                                info!("[discord] Message from {} ({}) in {}: {}",
                                     username, user_id,
-                                    if content.len() > 50 { format!("{}...", &content[..50]) } else { content.clone() });
+                                    if is_dm { "DM".to_string() } else { format!("guild channel {}", channel_id) },
+                                    if content.len() > 80 { format!("{}...", &content[..content.floor_char_boundary(80)]) } else { content.clone() });
 
                                 // Access control (DMs only — mentions in servers bypass for now)
                                 if is_dm {
