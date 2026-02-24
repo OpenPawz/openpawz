@@ -403,7 +403,15 @@ pub fn compose_chat_system_prompt(
         parts.push(sp.to_string());
     }
     parts.push(build_platform_awareness());
-    parts.push(build_coding_guidelines().to_string());
+    // Coding guidelines are heavy (~5K chars). Only inject when coding skills
+    // are enabled or the user explicitly has exec/write_file in their tool set,
+    // to keep the system prompt lean for everyday tasks (email, chat, search).
+    if skill_instructions.contains("development")
+        || skill_instructions.contains("## Code")
+        || skill_instructions.is_empty() // fresh agent with no skills — include as tutorial
+    {
+        parts.push(build_coding_guidelines().to_string());
+    }
     parts.push(runtime_context);
 
     let soul_hint = if core_context.is_some() {

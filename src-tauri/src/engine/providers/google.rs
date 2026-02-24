@@ -363,9 +363,9 @@ impl GoogleProvider {
             if let Some(level) = thinking_level {
                 if level != "none" {
                     let budget = match level {
-                        "low" => 4096,
+                        "low" => 2048,
                         "high" => 32768,
-                        _ => 16384,
+                        _ => 8192, // "normal" — enough to reason, not enough to burn
                     };
                     body["generationConfig"]["responseModalities"] = json!(["TEXT"]);
                     body["generationConfig"]["thinkingConfig"] = json!({
@@ -391,9 +391,9 @@ impl GoogleProvider {
             // Non-thinking model but user requested thinking — only add if supported
             if level != "none" {
                 let budget = match level {
-                    "low" => 4096,
+                    "low" => 2048,
                     "high" => 32768,
-                    _ => 16384,
+                    _ => 8192,
                 };
                 body["generationConfig"]["responseModalities"] = json!(["TEXT"]);
                 body["generationConfig"]["thinkingConfig"] = json!({
