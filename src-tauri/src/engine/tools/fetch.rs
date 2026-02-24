@@ -23,7 +23,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
                         "description": "HTTP method (default: GET)"
                     },
                     "headers": { "type": "object", "description": "HTTP headers as key-value pairs" },
-                    "body": { "type": "string", "description": "Request body (for POST/PUT/PATCH)" }
+                    "body": { "description": "Request body for POST/PUT/PATCH. Pass a JSON object directly (preferred) or a JSON string." }
                 },
                 "required": ["url"]
             }),
@@ -133,8 +133,14 @@ async fn execute_fetch(args: &serde_json::Value, app_handle: &tauri::AppHandle) 
                 }
             }
         }
-        if let Some(body) = args["body"].as_str() {
-            req = req.body(body.to_string());
+        // Accept body as either a JSON string or a JSON object/array.
+        // When the model passes an object (e.g. {"name":"foo","type":0}),
+        // we serialize it to a JSON string. This avoids the double-escaping
+        // problem that causes MALFORMED_FUNCTION_CALL errors in Gemini.
+        if let Some(body_str) = args["body"].as_str() {
+            req = req.body(body_str.to_string());
+        } else if args["body"].is_object() || args["body"].is_array() {
+            req = req.body(serde_json::to_string(&args["body"]).unwrap_or_default());
         }
 
         match req.send().await {

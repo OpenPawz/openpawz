@@ -244,6 +244,34 @@ pub async fn run_agent_turn(
         if !has_tool_calls || tool_call_map.is_empty() {
             final_text = text_accum.clone();
 
+            // ── Handle MALFORMED_FUNCTION_CALL from Gemini ──────────────
+            // Gemini sometimes fails to produce valid JSON for tool calls,
+            // especially with nested JSON-in-string (fetch body). Detect this
+            // and retry with a nudge telling the model to simplify.
+            let is_malformed = final_text.contains("[MALFORMED_TOOL_CALL]");
+            if is_malformed && round <= 2 && round < max_rounds {
+                warn!("[engine] MALFORMED_FUNCTION_CALL detected at round {} — retrying with simplified instructions", round);
+                messages.push(Message {
+                    role: Role::Assistant,
+                    content: MessageContent::Text(final_text.clone()),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+                messages.push(Message {
+                    role: Role::User,
+                    content: MessageContent::Text(
+                        "Your tool call was malformed. When using fetch with a JSON body, pass `body` as a JSON object, NOT a string. \
+                        Example: {\"url\":\"...\",\"method\":\"POST\",\"body\":{\"name\":\"test\",\"type\":0}} \
+                        Try again now — one API call at a time.".to_string()
+                    ),
+                    tool_calls: None,
+                    tool_call_id: None,
+                    name: None,
+                });
+                continue; // retry the loop
+            }
+
             // Handle completely empty responses: the model returned nothing.
             // Auto-retry ONCE by injecting a nudge so the model tries again.
             // Use System role to avoid consecutive user messages (Gemini rejects those).

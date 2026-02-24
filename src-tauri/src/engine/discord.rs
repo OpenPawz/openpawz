@@ -601,22 +601,23 @@ Max message length is 2000 characters.
 You have FULL Discord bot access via the Discord REST API v10.
 Use the `fetch` tool for ALL Discord API operations — it is already available in your tools.
 
-╔══════════════════════════════════════════════════════════════════╗
-║  IMPORTANT: Authorization and Content-Type headers are AUTO-    ║
-║  INJECTED for discord.com/api URLs. Do NOT set them manually.  ║
-║  Use `fetch` directly. Do NOT use request_tools, skill_install,║
-║  skill_search, or community skills for Discord actions.        ║
-╚══════════════════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════════════════╗
+║  IMPORTANT: Authorization and Content-Type headers are AUTO-INJECTED   ║
+║  for discord.com/api URLs. Do NOT set headers manually.                ║
+║  IMPORTANT: Pass `body` as a JSON OBJECT, not a string.               ║
+║  Use `fetch` directly. Do NOT use request_tools or skill_install.      ║
+║  Make ONE fetch call at a time. Wait for the result before the next.   ║
+╚══════════════════════════════════════════════════════════════════════════╝
 
 YOUR SERVER:
   Server (Guild) ID: {server_id}
   Current Channel ID: {current_channel_id}
 
-EXAMPLE — Create a text channel:
+EXAMPLE — Create a text channel (body is a JSON object, NOT a string):
   fetch({{
     "url": "https://discord.com/api/v10/guilds/{server_id}/channels",
     "method": "POST",
-    "body": "{{\"name\":\"general-chat\",\"type\":0}}"
+    "body": {{"name": "general-chat", "type": 0}}
   }})
 
 EXAMPLE — List all channels:
@@ -626,14 +627,15 @@ EXAMPLE — List all channels:
   }})
 
 EXAMPLE — Create a category then a channel inside it:
-  Step 1: fetch({{"url":"https://discord.com/api/v10/guilds/{server_id}/channels","method":"POST","body":"{{\"name\":\"Community\",\"type\":4}}"}})
-  Step 2: Use the returned category ID as parent_id:
-  fetch({{"url":"https://discord.com/api/v10/guilds/{server_id}/channels","method":"POST","body":"{{\"name\":\"introductions\",\"type\":0,\"parent_id\":\"CATEGORY_ID\"}}"}})
+  Step 1 — Create category (type 4):
+  fetch({{"url":"https://discord.com/api/v10/guilds/{server_id}/channels","method":"POST","body":{{"name":"Community","type":4}}}})
+  Step 2 — Read the "id" from the response, then create a child channel:
+  fetch({{"url":"https://discord.com/api/v10/guilds/{server_id}/channels","method":"POST","body":{{"name":"introductions","type":0,"parent_id":"THE_CATEGORY_ID"}}}})
 
 Discord REST API v10 — Base URL: https://discord.com/api/v10
 
 CHANNELS: GET /guilds/{{guild_id}}/channels (list) | POST /guilds/{{guild_id}}/channels (create) | PATCH /channels/{{id}} (edit) | DELETE /channels/{{id}}
-  Create: {{"name":"name","type":0,"parent_id":"category_id","topic":"desc"}} — type: 0=text, 2=voice, 4=category, 5=announcement, 13=stage, 15=forum
+  Create body: {{"name":"name","type":0,"parent_id":"category_id","topic":"desc"}} — type: 0=text, 2=voice, 4=category, 5=announcement, 13=stage, 15=forum
 CATEGORIES: type=4 channels. Set parent_id on child channels to sort them under that category.
 ROLES: GET /guilds/{{guild_id}}/roles | POST /guilds/{{guild_id}}/roles {{"name":"Mod","color":3447003,"permissions":"0","hoist":true}} | PATCH/DELETE /guilds/{{guild_id}}/roles/{{id}}
 PERMISSIONS: PUT /channels/{{id}}/permissions/{{overwrite_id}} {{"type":0,"allow":"1024","deny":"0"}} — type: 0=role, 1=member

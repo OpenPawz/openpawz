@@ -478,6 +478,11 @@ impl GoogleProvider {
                                                     "MAX_TOKENS" => "I ran out of output tokens. Try shortening the conversation or compacting the session.".to_string(),
                                                     "BLOCKLIST" | "PROHIBITED_CONTENT" | "SPII" =>
                                                         format!("Response blocked ({reason}). Try rephrasing your request."),
+                                                    "MALFORMED_FUNCTION_CALL" => {
+                                                        warn!("[engine] Google: MALFORMED_FUNCTION_CALL — model produced invalid tool call JSON");
+                                                        "[MALFORMED_TOOL_CALL] The model tried to call a tool but produced invalid JSON. \
+                                                        Simplify the call — pass body as a JSON object, not an escaped string.".to_string()
+                                                    }
                                                     other => format!(
                                                         "The model returned an empty response (reason: {other}). Please retry or rephrase."
                                                     ),
