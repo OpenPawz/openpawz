@@ -12,7 +12,7 @@
 //   - All communication goes through Discord's TLS gateway + REST API
 
 use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{debug, info, warn, error};
+use log::{info, warn, error};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -283,14 +283,16 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
     info!("[discord] Connected to gateway, heartbeat_interval={}ms", heartbeat_interval);
 
     // Send Identify (op 2)
-    // Intents: GUILDS (1<<0) + GUILD_MESSAGES (1<<9) + DIRECT_MESSAGES (1<<12)
+    // Intents: GUILDS (1<<0) + GUILD_MESSAGES (1<<9) + DIRECT_MESSAGES (1<<12) + MESSAGE_CONTENT (1<<15)
     //
-    // NOTE: MESSAGE_CONTENT (1<<15) is a **privileged intent** that requires
-    // manual opt-in at discord.com/developers → Bot → Privileged Gateway Intents.
-    // We deliberately omit it: DMs always include content, and guild messages
-    // where the bot is @mentioned also include content. Only un-mentioned guild
-    // messages need the privileged intent, which we don't process anyway.
-    let intents = (1 << 0) | (1 << 9) | (1 << 12);
+    // MESSAGE_CONTENT (1<<15) is a privileged intent.  The user must enable it
+    // at discord.com/developers → Bot → Privileged Gateway Intents → Message Content Intent.
+    // Without it, guild messages (even @mentions) arrive with empty content.
+    // DMs always include content regardless.
+    //
+    // If the user hasn't enabled the intent, Discord closes with 4014 and
+    // the bridge logs an actionable error message pointing them to the portal.
+    let intents = (1 << 0) | (1 << 9) | (1 << 12) | (1 << 15);
     let identify = json!({
         "op": 2,
         "d": {
@@ -486,34 +488,49 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
 
                                 MESSAGE_COUNT.fetch_add(1, Ordering::Relaxed);
 
-                                // Send typing indicator
-                                let _ = send_typing(&http_client, &token, &channel_id).await;
+                                // Spawn agent response in a separate task so we
+                                // don't block the gateway event loop (heartbeats
+                                // must keep flowing while the LLM is thinking).
+                                let ah = app_handle.clone();
+                                let http = http_client.clone();
+                                let tok = token.clone();
+                                let cid = channel_id.clone();
+                                let uid = user_id.clone();
+                                let cfg_agent = current_config.agent_id.clone();
+                                let cfg_dangerous = current_config.allow_dangerous_tools;
 
-                                // Route to agent
-                                let agent_id = current_config.agent_id.as_deref().unwrap_or("default");
-                                let ctx = "You are chatting via Discord. Keep responses concise. \
-                                           Use Discord markdown (bold, italic, code blocks, spoilers). \
-                                           Max message length is 2000 characters.";
+                                tauri::async_runtime::spawn(async move {
+                                    // Send typing indicator
+                                    let _ = send_typing(&http, &tok, &cid).await;
 
-                                let response = channels::run_channel_agent(
-                                    &app_handle, "discord", ctx, &content, &user_id, agent_id,
-                                    current_config.allow_dangerous_tools,
-                                ).await;
+                                    let agent_id = cfg_agent.as_deref().unwrap_or("default");
+                                    let ctx = "You are chatting via Discord. Keep responses concise. \
+                                               Use Discord markdown (bold, italic, code blocks, spoilers). \
+                                               Max message length is 2000 characters.";
 
-                                match response {
-                                    Ok(reply) if !reply.is_empty() => {
-                                        // Discord has a 2000 char limit
-                                        for chunk in channels::split_message(&reply, 1950) {
-                                            let _ = send_message(&http_client, &token, &channel_id, &chunk).await;
+                                    info!("[discord] Routing message from {} to agent '{}'", uid, agent_id);
+                                    let response = channels::run_channel_agent(
+                                        &ah, "discord", ctx, &content, &uid, agent_id,
+                                        cfg_dangerous,
+                                    ).await;
+
+                                    match response {
+                                        Ok(ref reply) if !reply.is_empty() => {
+                                            info!("[discord] Sending reply to {} ({} chars)", uid, reply.len());
+                                            for chunk in channels::split_message(reply, 1950) {
+                                                let _ = send_message(&http, &tok, &cid, &chunk).await;
+                                            }
+                                        }
+                                        Ok(_) => {
+                                            warn!("[discord] Agent returned empty reply for {}", uid);
+                                        }
+                                        Err(e) => {
+                                            error!("[discord] Agent error for {}: {}", uid, e);
+                                            let _ = send_message(&http, &tok, &cid,
+                                                &format!("⚠️ Error: {}", e)).await;
                                         }
                                     }
-                                    Err(e) => {
-                                        error!("[discord] Agent error for {}: {}", user_id, e);
-                                        let _ = send_message(&http_client, &token, &channel_id,
-                                            &format!("⚠️ Error: {}", e)).await;
-                                    }
-                                    _ => {}
-                                }
+                                });
                             }
                         }
                     }
