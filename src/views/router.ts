@@ -65,15 +65,9 @@ const viewMap: Record<string, string> = {
   squads: 'squads-view',
 };
 
-/** Read configured state from localStorage without holding a shared pointer. */
+/** Check whether the app has been initialised (engine mode active). */
 function isConfigured(): boolean {
-  try {
-    const saved = localStorage.getItem('claw-config');
-    if (saved) return (JSON.parse(saved) as { configured?: boolean }).configured === true;
-  } catch {
-    /* */
-  }
-  return false;
+  return localStorage.getItem('paw-runtime-mode') === 'engine';
 }
 
 export function switchView(viewName: string) {
