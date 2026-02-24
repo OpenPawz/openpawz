@@ -394,8 +394,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initWebhookLog();
 
     console.debug('[main] Pawz engine mode — starting...');
-    switchView('today');
     await connectEngine();
+    switchView('today');
 
     autoStartConfiguredChannels().catch((e) =>
       console.warn('[main] Auto-start channels error:', e),

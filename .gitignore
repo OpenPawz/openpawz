@@ -35,3 +35,6 @@ resources/node/*.tar.gz
 .env
 .env.local
 src-tauri/.env
+
+# Private planning docs
+LAUNCH_PLAN.md

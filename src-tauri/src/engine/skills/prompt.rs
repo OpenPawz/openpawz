@@ -74,8 +74,17 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
         ));
     }
 
-    // Also include enabled community skills scoped to this agent
+    // Also include enabled community skills scoped to this agent.
+    // Community skills are treated as additional sections so they participate
+    // in the same compression/budget logic as built-in + TOML skills.
     let community_instructions = get_community_skill_instructions(store, agent_id).unwrap_or_default();
+    if !community_instructions.is_empty() {
+        // Parse community instructions into individual sections so they can
+        // be individually compressed just like built-in skills.
+        for section in parse_community_sections(&community_instructions) {
+            sections.push(section);
+        }
+    }
 
     let mut result = String::new();
 
@@ -84,10 +93,6 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
             "\n\n# Enabled Skills\nYou have the following skills available. Use exec, fetch, read_file, write_file, and other built-in tools to leverage them.\n\n{}\n",
             sections.join("\n\n")
         ));
-    }
-
-    if !community_instructions.is_empty() {
-        result.push_str(&community_instructions);
     }
 
     // Guard: cap total skill instructions.
@@ -107,10 +112,46 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
             "[skills] Skill instructions large ({} chars, ~{} tokens). Compressing to fit {} char budget.",
             result.len(), result.len() / 4, MAX_SKILL_CHARS
         );
-        result = compress_skill_sections(&sections, &community_instructions, MAX_SKILL_CHARS);
+        // Community sections are already merged into `sections`, pass empty community
+        result = compress_skill_sections(&sections, "", MAX_SKILL_CHARS);
     }
 
     Ok(result)
+}
+
+/// Parse community instruction blob into individual sections.
+/// The blob format is a header followed by `## Name (community)\n...` sections.
+fn parse_community_sections(raw: &str) -> Vec<String> {
+    let mut sections = Vec::new();
+    let mut current = String::new();
+    for line in raw.lines() {
+        if line.starts_with("## ") && !current.is_empty() {
+            let trimmed = current.trim().to_string();
+            // Skip the header paragraph ("# Community Skills\nYou have...")
+            if !trimmed.starts_with("# Community Skills") && !trimmed.is_empty() {
+                sections.push(trimmed);
+            }
+            current = line.to_string();
+            current.push('\n');
+        } else if line.starts_with("# Community Skills") {
+            // Flush any accumulated content and skip this header
+            if !current.trim().is_empty() {
+                let trimmed = current.trim().to_string();
+                if !trimmed.starts_with("# Community Skills") {
+                    sections.push(trimmed);
+                }
+            }
+            current = String::new();
+        } else {
+            current.push_str(line);
+            current.push('\n');
+        }
+    }
+    let trimmed = current.trim().to_string();
+    if !trimmed.is_empty() && !trimmed.starts_with("# Community Skills") {
+        sections.push(trimmed);
+    }
+    sections
 }
 
 /// Compress skill instruction sections to fit a character budget.
@@ -119,10 +160,11 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
 fn compress_skill_sections(sections: &[String], community: &str, budget: usize) -> String {
     // Header overhead
     let header = "\n\n# Enabled Skills\nYou have the following skills available. Use exec, fetch, read_file, write_file, and other built-in tools to leverage them.\n\n";
-    let community_len = if community.is_empty() { 0 } else { community.len() + 2 };
     let footer = "\n\n⚠️ Some skill instructions were compressed to save context. Use `soul_read` on the skill's documentation or `request_tools` to discover full tool schemas.\n";
-    let overhead = header.len() + community_len + footer.len();
-    let section_budget = budget.saturating_sub(overhead);
+    let overhead = header.len() + footer.len();
+    // If community text is passed, it must fit inside the budget too
+    let community_reserve = if community.is_empty() { 0 } else { community.len().min(2000) + 2 };
+    let section_budget = budget.saturating_sub(overhead + community_reserve);
 
     // Classify: sections with credentials are "priority" (they have actual API keys/URLs)
     let has_credentials = |s: &str| -> bool {
@@ -188,8 +230,13 @@ fn compress_skill_sections(sections: &[String], community: &str, budget: usize) 
     result.push_str(header);
     result.push_str(&joined);
     result.push_str(footer);
+    // Community text (if any) is truncated to stay within budget
     if !community.is_empty() {
-        result.push_str(community);
+        let remaining = budget.saturating_sub(result.len());
+        if remaining > 100 {
+            let truncated = &community[..community.len().min(remaining)];
+            result.push_str(truncated);
+        }
     }
 
     log::info!(

@@ -282,7 +282,8 @@ async fn tts_elevenlabs(api_key: &str, text: &str, config: &TtsConfig) -> Result
     ))
 }
 
-/// Transcribe audio (base64-encoded) to text using OpenAI Whisper API.
+/// Transcribe audio (base64-encoded) to text.
+/// Tries OpenAI Whisper first, falls back to Google Cloud Speech-to-Text.
 /// Used by Talk Mode for speech-to-text.
 #[tauri::command]
 pub async fn engine_tts_transcribe(
@@ -294,23 +295,37 @@ pub async fn engine_tts_transcribe(
         return Err("No audio data provided".into());
     }
 
-    // Find OpenAI provider for Whisper API
-    let (api_key, base_url) = {
+    // Collect available provider credentials
+    let (openai_info, google_key) = {
         let config = state.config.lock();
-        config.providers.iter()
+        let openai = config.providers.iter()
             .find(|p| p.kind == ProviderKind::OpenAI)
-            .map(|p| (p.api_key.clone(), p.base_url.clone().unwrap_or_else(|| "https://api.openai.com/v1".into())))
-            .ok_or("No OpenAI provider configured — Talk Mode requires OpenAI Whisper")?
+            .map(|p| (p.api_key.clone(), p.base_url.clone().unwrap_or_else(|| "https://api.openai.com/v1".into())));
+        let google = config.providers.iter()
+            .find(|p| p.kind == ProviderKind::Google)
+            .map(|p| p.api_key.clone());
+        (openai, google)
     };
 
-    // Decode base64 audio
+    // Prefer OpenAI Whisper, fall back to Google Cloud STT
+    if let Some((api_key, base_url)) = openai_info {
+        return stt_openai_whisper(&api_key, &base_url, &audio_base64, &mime_type).await;
+    }
+    if let Some(api_key) = google_key {
+        return stt_google_cloud(&api_key, &audio_base64, &mime_type).await;
+    }
+
+    Err("No speech-to-text provider available. Add an OpenAI or Google provider in Settings → Models.".into())
+}
+
+/// OpenAI Whisper STT
+async fn stt_openai_whisper(api_key: &str, base_url: &str, audio_base64: &str, mime_type: &str) -> Result<String, String> {
     let audio_bytes = base64::Engine::decode(
         &base64::engine::general_purpose::STANDARD,
-        &audio_base64,
+        audio_base64,
     ).map_err(|e| format!("Audio decode error: {}", e))?;
 
-    // Determine file extension from mime type
-    let ext = match mime_type.as_str() {
+    let ext = match mime_type {
         "audio/webm" | "audio/webm;codecs=opus" => "webm",
         "audio/ogg" | "audio/ogg;codecs=opus" => "ogg",
         "audio/mp4" => "mp4",
@@ -319,10 +334,9 @@ pub async fn engine_tts_transcribe(
         _ => "webm",
     };
 
-    // Build multipart form
     let file_part = reqwest::multipart::Part::bytes(audio_bytes)
         .file_name(format!("audio.{}", ext))
-        .mime_str(&mime_type)
+        .mime_str(mime_type)
         .map_err(|e| format!("MIME error: {}", e))?;
 
     let form = reqwest::multipart::Form::new()
@@ -351,6 +365,67 @@ pub async fn engine_tts_transcribe(
     result["text"].as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "Whisper API: no text in response".into())
+}
+
+/// Google Cloud Speech-to-Text v1 (short audio, synchronous recognize)
+async fn stt_google_cloud(api_key: &str, audio_base64: &str, mime_type: &str) -> Result<String, String> {
+    let encoding = match mime_type {
+        "audio/webm" | "audio/webm;codecs=opus" => "WEBM_OPUS",
+        "audio/ogg" | "audio/ogg;codecs=opus" => "OGG_OPUS",
+        "audio/wav" | "audio/wave" => "LINEAR16",
+        "audio/mp3" | "audio/mpeg" => "MP3",
+        _ => "WEBM_OPUS",
+    };
+
+    let body = serde_json::json!({
+        "config": {
+            "encoding": encoding,
+            "sampleRateHertz": 48000,
+            "languageCode": "en-US",
+            "model": "latest_long",
+            "enableAutomaticPunctuation": true,
+        },
+        "audio": {
+            "content": audio_base64,
+        }
+    });
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!(
+            "https://speech.googleapis.com/v1/speech:recognize?key={}",
+            api_key
+        ))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("Google STT request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let err_body = resp.text().await.unwrap_or_default();
+        return Err(format!("Google STT error ({}): {}", status, err_body));
+    }
+
+    let result: serde_json::Value = resp.json().await
+        .map_err(|e| format!("Google STT JSON parse error: {}", e))?;
+
+    // Concatenate all result alternatives
+    let transcript = result["results"].as_array()
+        .map(|results| {
+            results.iter()
+                .filter_map(|r| r["alternatives"][0]["transcript"].as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .unwrap_or_default();
+
+    if transcript.is_empty() {
+        Ok(String::new()) // No speech detected — caller handles this
+    } else {
+        info!("[tts] Google STT transcribed: {} chars", transcript.len());
+        Ok(transcript)
+    }
 }
 fn strip_markdown(text: &str) -> String {
     let mut out = text.to_string();
