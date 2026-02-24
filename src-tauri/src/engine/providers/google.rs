@@ -284,7 +284,7 @@ impl GoogleProvider {
             // If sanitization reduced parameters to an empty object (e.g. no-param
             // tools like soul_list), omit the field entirely so Google doesn't
             // reject it for missing `type: OBJECT`.
-            let is_empty = sanitized.as_object().map_or(false, |m| m.is_empty());
+            let is_empty = sanitized.as_object().is_some_and(|m| m.is_empty());
             if is_empty {
                 json!({
                     "name": t.function.name,
