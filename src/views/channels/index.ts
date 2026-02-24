@@ -185,15 +185,25 @@ export async function autoStartConfiguredChannels(): Promise<void> {
   for (const ch of channels) {
     try {
       const cfg = await getChannelConfig(ch);
+      // Explicit channel config — start if enabled
       if (cfg && (cfg as Record<string, unknown>).enabled) {
         const status = await getChannelStatus(ch);
         if (status && !status.running) {
           await startChannel(ch);
           console.debug(`[channels] Auto-started ${ch} bridge`);
         }
+        continue;
       }
-    } catch (e) {
-      console.warn(`[channels] ${ch} auto-start skipped:`, e);
+      // No explicit config — still try to start.  The backend checks
+      // skill credentials as a fallback (e.g. Discord skill token).
+      // If no token exists at all, start() returns an error we catch.
+      const status = await getChannelStatus(ch);
+      if (status && !status.running) {
+        await startChannel(ch);
+        console.debug(`[channels] Auto-started ${ch} bridge (skill fallback)`);
+      }
+    } catch {
+      // Expected for channels with no config or credentials at all
     }
   }
 }

@@ -124,9 +124,33 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
         return Err("Discord bridge is already running".into());
     }
 
-    let config: DiscordConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)?;
+    let mut config: DiscordConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)
+        .unwrap_or_default();
+
+    // ── Skill-credential fallback ──────────────────────────────────────
+    // If the bridge config has no token, try the built-in Discord skill's
+    // credential vault.  This lets users configure Discord in ONE place
+    // (Settings → Skills → Discord) and have the real-time bridge Just Work.
     if config.bot_token.is_empty() {
-        return Err("No bot token configured. Get one from discord.com/developers.".into());
+        if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
+            if let Ok(creds) = crate::engine::skills::get_skill_credentials(&state.store, "discord") {
+                if let Some(token) = creds.get("DISCORD_BOT_TOKEN") {
+                    if !token.is_empty() {
+                        info!("[discord] No bridge config — importing token from Discord skill credentials");
+                        config.bot_token = token.clone();
+                        config.enabled = true;
+                        // Persist to bridge config so future starts don't need this fallback
+                        if let Err(e) = channels::save_channel_config(&app_handle, CONFIG_KEY, &config) {
+                            warn!("[discord] Failed to persist synced config: {}", e);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if config.bot_token.is_empty() {
+        return Err("No bot token configured. Add it in Settings → Skills → Discord, or in Channels → Discord.".into());
     }
     if !config.enabled {
         return Err("Discord bridge is disabled.".into());
