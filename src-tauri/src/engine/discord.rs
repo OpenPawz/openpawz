@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
 use futures::{SinkExt, StreamExt};
 use crate::atoms::error::{EngineResult, EngineError};
