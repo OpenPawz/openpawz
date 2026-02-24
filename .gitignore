@@ -39,3 +39,19 @@ src-tauri/.env
 # Private planning docs
 LAUNCH_PLAN.md
 launch-content/
+
+# Docusaurus build cache
+docs/.docusaurus/
+
+# Agent workspace artifacts (written by Pawz during sessions)
+src-tauri/trading_journal.md
+src-tauri/market_data_log.csv
+src-tauri/web_access_research.md
+src-tauri/~/
+slice.mjs
+agent_sprites.png
+
+# Misc data files
+*.csv
+*.nohup
+nohup.out
