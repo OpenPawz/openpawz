@@ -227,15 +227,56 @@ Notion uses rich text blocks. Page content is a list of block objects (paragraph
             tool_names: vec![],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API key at trello.com/app-key, then authorize for a token".into(),
             agent_instructions: r#"You have Trello API access. Use the fetch tool with https://api.trello.com/1/ endpoints.
-Authentication: append ?key={api_key}&token={token} to all URLs.
-Key endpoints:
-- GET /members/me/boards — list boards
-- GET /boards/{id}/lists — get lists on a board
-- GET /lists/{id}/cards — get cards in a list  
-- POST /cards — create card (idList, name, desc, due, pos)
-- PUT /cards/{id} — update card
+
+Auth: append ?key=TRELLO_API_KEY&token=TRELLO_TOKEN to ALL request URLs.
+For POST/PUT: pass params as JSON body with headers: {"Content-Type": "application/json"}.
+Always include key + token in the query string, even for POST/PUT.
+
+BOARDS:
+- GET /members/me/boards — list all boards (fields: name,id,url,shortUrl,closed)
+- POST /boards — create board (body: name, desc, defaultLists=true/false, idOrganization)
+- GET /boards/{id} — get board details
+- PUT /boards/{id} — update board (name, desc, closed=true to archive)
+- DELETE /boards/{id} — permanently delete board
+
+LISTS:
+- GET /boards/{id}/lists — get all lists on a board
+- POST /lists — create list (body: name, idBoard, pos=top/bottom/number)
+- PUT /lists/{id} — update list (name, closed=true to archive, pos)
+- PUT /lists/{id}/closed — archive/unarchive (body: value=true/false)
+
+CARDS:
+- GET /lists/{id}/cards — get cards in a list
+- GET /cards/{id} — get card details (add ?fields=all for everything)
+- POST /cards — create card (body: idList, name, desc, due, pos, idLabels, idMembers)
+- PUT /cards/{id} — update card (name, desc, due, dueComplete, closed, idList to move)
 - DELETE /cards/{id} — delete card
-- POST /cards/{id}/actions/comments — add comment"#.into(),
+- POST /cards/{id}/actions/comments — add comment (body: text)
+- POST /cards/{id}/idLabels — add label (body: value=labelId)
+- DELETE /cards/{id}/idLabels/{labelId} — remove label
+- POST /cards/{id}/attachments — add attachment (body: url, name)
+
+LABELS:
+- GET /boards/{id}/labels — list labels on board
+- POST /labels — create label (body: name, color, idBoard). Colors: green,yellow,orange,red,purple,blue,sky,lime,pink,black,null
+- PUT /labels/{id} — update label
+- DELETE /labels/{id} — delete label
+
+CHECKLISTS:
+- POST /checklists — create checklist (body: idCard, name)
+- POST /checklists/{id}/checkItems — add item (body: name, checked=true/false)
+- PUT /cards/{cardId}/checkItem/{itemId} — toggle item (body: state=complete/incomplete)
+- DELETE /checklists/{id} — delete checklist
+
+MEMBERS:
+- GET /boards/{id}/members — list board members
+- PUT /boards/{id}/members/{memberId} — add member (body: type=normal/admin/observer)
+- DELETE /boards/{id}/members/{memberId} — remove member
+
+SEARCH:
+- GET /search — search across boards (query, idBoards, modelTypes=cards/boards/organizations)
+
+When creating a full board workflow, always: 1) create the board, 2) create lists on it, 3) create cards in the lists."#.into(),
         },
 
         // ───── PRODUCTIVITY SKILLS ─────
