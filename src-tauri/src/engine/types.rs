@@ -208,10 +208,12 @@ impl ModelRouting {
                 if !m.is_empty() { return m.clone(); }
             }
         }
-        // 3. Role-based (boss vs worker)
+        // 3. Role-based: only "boss" and "worker" have dedicated model fields.
+        //    Everything else (including "channel") falls through to the default model.
         match role {
             "boss" => self.boss_model.as_deref().unwrap_or(fallback).to_string(),
-            _ => self.worker_model.as_deref().unwrap_or(fallback).to_string(),
+            "worker" => self.worker_model.as_deref().unwrap_or(fallback).to_string(),
+            _ => fallback.to_string(),
         }
     }
 
