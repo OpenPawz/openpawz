@@ -1,0 +1,44 @@
+# Flatpak manifest for OpenPawz
+# Submit this to https://github.com/flathub/flathub as a PR
+# after a stable release is available.
+
+app-id: com.openpawz.OpenPawz
+runtime: org.gnome.Platform
+runtime-version: '46'
+sdk: org.gnome.Sdk
+command: openpawz
+
+finish-args:
+  # Windowing
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # Network (for AI provider APIs, channel bridges, Ollama)
+  - --share=network
+  # Home directory access (for project file browsing)
+  - --filesystem=home:ro
+  # OpenPawz data directory
+  - --filesystem=~/.paw:create
+  # D-Bus for OS keychain access
+  - --talk-name=org.freedesktop.secrets
+  # GPU acceleration (for WebKit rendering)
+  - --device=dri
+
+modules:
+  - name: openpawz
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 openpawz /app/bin/openpawz
+      - install -Dm644 openpawz.desktop /app/share/applications/com.openpawz.OpenPawz.desktop
+      - install -Dm644 openpawz.png /app/share/icons/hicolor/128x128/apps/com.openpawz.OpenPawz.png
+      - install -Dm644 openpawz.metainfo.xml /app/share/metainfo/com.openpawz.OpenPawz.metainfo.xml
+    sources:
+      - type: archive
+        url: https://github.com/OpenPawz/openpawz/releases/download/v0.1.0/openpawz_0.1.0_amd64.tar.gz
+        sha256: PLACEHOLDER_SHA256
+      - type: file
+        path: openpawz.desktop
+      - type: file
+        path: openpawz.png
+      - type: file
+        path: openpawz.metainfo.xml

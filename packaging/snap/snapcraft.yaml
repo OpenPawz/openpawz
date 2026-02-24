@@ -1,0 +1,51 @@
+name: openpawz
+version: '0.1.0'
+summary: Multi-agent AI desktop app — fully local, open source
+description: |
+  OpenPawz is a fully local, multi-agent AI desktop app built with Tauri and Rust.
+
+  Features:
+  - 10 AI providers (OpenAI, Anthropic, Google Gemini, Ollama, DeepSeek, xAI, Mistral, Moonshot, OpenRouter, custom)
+  - 11 channel bridges (Telegram, Discord, IRC, Slack, Matrix, Mattermost, Nextcloud Talk, Nostr, Twitch, WebChat, WhatsApp)
+  - Hybrid memory with BM25 + vector search and Ollama embeddings
+  - 7 security layers including prompt injection scanning, container sandboxing, and encrypted credential vault
+  - Multi-agent orchestration with boss/worker delegation and agent squads
+  - 35+ built-in skills including web browsing, Google Workspace, and trading
+
+grade: devel
+confinement: strict
+base: core22
+license: MIT
+
+architectures:
+  - build-on: [amd64]
+    build-for: [amd64]
+
+apps:
+  openpawz:
+    command: openpawz
+    desktop: usr/share/applications/openpawz.desktop
+    extensions: [gnome]
+    plugs:
+      - home
+      - network
+      - network-bind
+      - desktop
+      - desktop-legacy
+      - wayland
+      - x11
+      - unity7
+      - opengl
+      - browser-support
+      - password-manager-service
+
+parts:
+  openpawz:
+    plugin: dump
+    source: https://github.com/OpenPawz/openpawz/releases/download/v0.1.0/openpawz_0.1.0_amd64.deb
+    source-type: deb
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libgtk-3-0
+      - libssl3
+      - libsoup-3.0-0

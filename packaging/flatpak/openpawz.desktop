@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Open Pawz Desktop
+Comment=Multi-agent AI desktop app — fully local, open source
+Exec=openpawz
+Icon=com.openpawz.OpenPawz
+Terminal=false
+Type=Application
+Categories=Utility;Development;ArtificialIntelligence;
+Keywords=ai;agent;chat;llm;multi-agent;
+StartupWMClass=openpawz

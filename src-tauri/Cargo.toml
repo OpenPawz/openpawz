@@ -1,9 +1,15 @@
 [package]
 name = "openpawz"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "Multi-agent AI desktop app — 10 providers, 11 channels, hybrid memory, 7 security layers. Fully local, open source."
+authors = ["Eli Bury <eli@openpawz.com>"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/OpenPawz/openpawz"
+homepage = "https://openpawz.com"
+readme = "../README.md"
+keywords = ["ai", "agent", "tauri", "multi-agent", "llm"]
+categories = ["command-line-utilities", "gui"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

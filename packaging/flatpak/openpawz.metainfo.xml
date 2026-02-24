@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.openpawz.OpenPawz</id>
+  <name>Open Pawz Desktop</name>
+  <summary>Multi-agent AI desktop app — fully local, open source</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <developer id="com.openpawz">
+    <name>OpenPawz</name>
+  </developer>
+  <description>
+    <p>
+      OpenPawz is a fully local, multi-agent AI desktop app built with Tauri and Rust.
+      It supports 10 AI providers, 11 channel bridges, hybrid memory with BM25 + vector search,
+      and 7 security layers including prompt injection scanning, container sandboxing,
+      and an encrypted credential vault.
+    </p>
+    <p>
+      Run multiple AI agents with custom personalities, models, and tool policies.
+      Agents communicate across Telegram, Discord, IRC, Slack, Matrix, and more —
+      all from a single desktop application with no cloud dependency.
+    </p>
+  </description>
+  <url type="homepage">https://github.com/OpenPawz/openpawz</url>
+  <url type="bugtracker">https://github.com/OpenPawz/openpawz/issues</url>
+  <url type="vcs-browser">https://github.com/OpenPawz/openpawz</url>
+  <launchable type="desktop-id">com.openpawz.OpenPawz.desktop</launchable>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-02-24">
+      <description>
+        <p>First public pre-release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

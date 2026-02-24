@@ -1,0 +1,67 @@
+# Maintainer: OpenPawz <eli@openpawz.com>
+# AUR package for OpenPawz (binary release)
+# https://github.com/OpenPawz/openpawz
+
+pkgname=openpawz-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Multi-agent AI desktop app — 10 providers, 11 channels, hybrid memory, 7 security layers"
+arch=('x86_64')
+url="https://github.com/OpenPawz/openpawz"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'openssl' 'libsoup3')
+optdepends=(
+  'ollama: local AI model inference'
+  'docker: container sandboxing for agent tools'
+)
+provides=('openpawz')
+conflicts=('openpawz')
+source=("https://github.com/OpenPawz/openpawz/releases/download/v${pkgver}/openpawz_${pkgver}_amd64.AppImage")
+sha256sums=('PLACEHOLDER_SHA256')
+options=('!strip')
+
+package() {
+  install -Dm755 "${srcdir}/openpawz_${pkgver}_amd64.AppImage" "${pkgdir}/opt/openpawz/openpawz"
+
+  # Desktop entry
+  install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/openpawz.desktop" <<EOF
+[Desktop Entry]
+Name=Open Pawz Desktop
+Comment=Multi-agent AI desktop app
+Exec=/opt/openpawz/openpawz
+Icon=openpawz
+Terminal=false
+Type=Application
+Categories=Utility;Development;
+Keywords=ai;agent;chat;llm;
+EOF
+
+  # Symlink to PATH
+  install -dm755 "${pkgdir}/usr/bin"
+  ln -s /opt/openpawz/openpawz "${pkgdir}/usr/bin/openpawz"
+
+  # License
+  install -Dm644 /dev/stdin "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE" <<EOF
+MIT License
+
+Copyright (c) 2026 Eli Bury
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+EOF
+}
