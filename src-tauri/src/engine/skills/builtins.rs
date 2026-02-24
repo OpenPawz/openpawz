@@ -115,15 +115,17 @@ Available gh commands: issue (list/create/view/close), pr (list/create/view/merg
                 CredentialField { key: "DISCORD_DEFAULT_CHANNEL".into(), label: "Default Channel ID".into(), description: "Default channel to post to".into(), required: false, placeholder: "1234567890".into() },
                 CredentialField { key: "DISCORD_SERVER_ID".into(), label: "Server (Guild) ID".into(), description: "Right-click server → Copy Server ID (enable Developer Mode in Discord settings)".into(), required: false, placeholder: "1234567890".into() },
             ],
-            tool_names: vec![],
+            tool_names: vec!["discord_setup_channels".into(), "discord_list_channels".into(), "discord_send_message".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Bot must be invited with Administrator permission (permission value 8) for full server management.".into(),
-            agent_instructions: r#"You have Discord bot access. The Discord bridge injects the full API reference into your context when chatting via Discord.
-For UI chat: use the fetch tool for Discord REST API v10 calls.
-Base URL: https://discord.com/api/v10
-Headers: Authorization: Bot <DISCORD_BOT_TOKEN>, Content-Type: application/json
-Key endpoints: GET/POST /guilds/{guild_id}/channels, POST /guilds/{guild_id}/roles, POST /channels/{id}/messages
-Channel types: 0=text, 2=voice, 4=category, 5=announcement, 13=stage, 15=forum
-Do NOT install community skills for Discord — use fetch directly."#.into(),
+            agent_instructions: r#"You have Discord bot access with these built-in tools:
+- **discord_list_channels**: List all channels/categories in a server (use FIRST to see current state)
+- **discord_setup_channels**: Bulk-create categories and channels in one call
+- **discord_send_message**: Send a message to any channel (supports embeds)
+
+If no server_id is provided, the DISCORD_SERVER_ID from your credentials is used automatically.
+For any other Discord API calls (roles, permissions, members, etc.), use the **fetch** tool — it auto-injects the bot Authorization header for discord.com/api URLs.
+Base URL: https://discord.com/api/v10 | Channel types: 0=text, 2=voice, 4=category, 5=announcement, 13=stage, 15=forum
+Do NOT install community skills for Discord and do NOT run exec/curl to call the Discord API — use your built-in tools."#.into(),
         },
         SkillDefinition {
             id: "coinbase".into(),

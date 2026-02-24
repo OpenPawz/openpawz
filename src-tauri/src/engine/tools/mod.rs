@@ -92,6 +92,7 @@ impl ToolDefinition {
                 "dex"              => tools.extend(dex::definitions()),
                 "solana_dex"       => tools.extend(solana::definitions()),
                 "google_workspace" => tools.extend(google::definitions()),
+                "discord"          => tools.extend(discord_setup::definitions()),
                 _ => {}
             }
         }

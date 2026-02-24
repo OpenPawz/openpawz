@@ -1,9 +1,13 @@
-// Paw Agent Engine — discord_setup_channels tool
+// Paw Agent Engine — Discord management tools
 //
-// Creates Discord categories and channels directly via the REST API.
-// This bypasses the model having to make 20+ sequential fetch calls —
-// the agent calls this tool ONCE with the full channel structure, and
-// Rust handles all the API calls server-side in a loop.
+// Provides direct Discord server management via the REST API:
+//   - discord_setup_channels:  Bulk create categories + channels in one call
+//   - discord_list_channels:   List all channels/categories in a server
+//   - discord_send_message:    Send a message to a specific channel
+//
+// All tools auto-resolve the bot token from the skill vault — the agent
+// never needs to handle raw tokens. For any other Discord API call, the
+// agent can use `fetch` which also auto-injects the bot Authorization header.
 
 use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
@@ -16,62 +20,130 @@ use std::time::Duration;
 const DISCORD_API: &str = "https://discord.com/api/v10";
 
 pub fn definitions() -> Vec<ToolDefinition> {
-    vec![ToolDefinition {
-        tool_type: "function".into(),
-        function: FunctionDefinition {
-            name: "discord_setup_channels".into(),
-            description: "Create multiple Discord categories and channels in one call. \
-                Pass an array of categories, each with a name and list of channels. \
-                Channels default to text (type 0). Set type to 2 for voice channels. \
-                The tool handles all API calls and returns a summary of what was created.".into(),
-            parameters: json!({
-                "type": "object",
-                "properties": {
-                    "server_id": {
-                        "type": "string",
-                        "description": "The Discord server (guild) ID"
-                    },
-                    "categories": {
-                        "type": "array",
-                        "description": "Array of categories to create, each with channels",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "name": {
-                                    "type": "string",
-                                    "description": "Category name (e.g. 'Welcome & Info')"
+    vec![
+        // ── discord_setup_channels ─────────────────────────────────────
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "discord_setup_channels".into(),
+                description: "Create multiple Discord categories and channels in one call. \
+                    Pass an array of categories, each with a name and list of channels. \
+                    Channels default to text (type 0). Set type to 2 for voice channels. \
+                    The tool handles all API calls and returns a summary of what was created.".into(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "server_id": {
+                            "type": "string",
+                            "description": "The Discord server (guild) ID. Get from discord_list_channels or skill credentials."
+                        },
+                        "categories": {
+                            "type": "array",
+                            "description": "Array of categories to create, each with channels",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "Category name (e.g. 'Welcome & Info')"
+                                    },
+                                    "channels": {
+                                        "type": "array",
+                                        "description": "Channels to create inside this category",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "name": {
+                                                    "type": "string",
+                                                    "description": "Channel name (e.g. 'general-chat')"
+                                                },
+                                                "type": {
+                                                    "type": "integer",
+                                                    "description": "Channel type: 0=text (default), 2=voice"
+                                                },
+                                                "topic": {
+                                                    "type": "string",
+                                                    "description": "Channel topic/description"
+                                                }
+                                            },
+                                            "required": ["name"]
+                                        }
+                                    }
                                 },
-                                "channels": {
+                                "required": ["name", "channels"]
+                            }
+                        }
+                    },
+                    "required": ["server_id", "categories"]
+                }),
+            },
+        },
+        // ── discord_list_channels ──────────────────────────────────────
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "discord_list_channels".into(),
+                description: "List all channels and categories in a Discord server. \
+                    Returns channel names, IDs, types, and parent categories. \
+                    Use this FIRST to see the current server structure before making changes. \
+                    If no server_id is provided, uses the DISCORD_SERVER_ID from skill credentials.".into(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "server_id": {
+                            "type": "string",
+                            "description": "The Discord server (guild) ID. Optional if DISCORD_SERVER_ID is set in credentials."
+                        }
+                    }
+                }),
+            },
+        },
+        // ── discord_send_message ───────────────────────────────────────
+        ToolDefinition {
+            tool_type: "function".into(),
+            function: FunctionDefinition {
+                name: "discord_send_message".into(),
+                description: "Send a message to a Discord channel. \
+                    Supports plain text and basic Discord markdown (bold, italic, code blocks, embeds). \
+                    If no channel_id is provided, uses the DISCORD_DEFAULT_CHANNEL from skill credentials.".into(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "channel_id": {
+                            "type": "string",
+                            "description": "The target channel ID. Optional if DISCORD_DEFAULT_CHANNEL is set."
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "The message text to send (max 2000 chars). Supports Discord markdown."
+                        },
+                        "embed": {
+                            "type": "object",
+                            "description": "Optional rich embed object with title, description, color, fields, etc.",
+                            "properties": {
+                                "title": { "type": "string" },
+                                "description": { "type": "string" },
+                                "color": { "type": "integer", "description": "Decimal color value (e.g. 5814783 for blue)" },
+                                "fields": {
                                     "type": "array",
-                                    "description": "Channels to create inside this category",
                                     "items": {
                                         "type": "object",
                                         "properties": {
-                                            "name": {
-                                                "type": "string",
-                                                "description": "Channel name (e.g. 'general-chat')"
-                                            },
-                                            "type": {
-                                                "type": "integer",
-                                                "description": "Channel type: 0=text (default), 2=voice"
-                                            },
-                                            "topic": {
-                                                "type": "string",
-                                                "description": "Channel topic/description"
-                                            }
+                                            "name": { "type": "string" },
+                                            "value": { "type": "string" },
+                                            "inline": { "type": "boolean" }
                                         },
-                                        "required": ["name"]
+                                        "required": ["name", "value"]
                                     }
                                 }
-                            },
-                            "required": ["name", "channels"]
+                            }
                         }
-                    }
-                },
-                "required": ["server_id", "categories"]
-            }),
+                    },
+                    "required": ["content"]
+                }),
+            },
         },
-    }]
+    ]
 }
 
 pub async fn execute(
@@ -81,30 +153,51 @@ pub async fn execute(
 ) -> Option<Result<String, String>> {
     match name {
         "discord_setup_channels" => Some(execute_setup(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_list_channels"  => Some(execute_list(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_send_message"   => Some(execute_send(args, app_handle).await.map_err(|e| e.to_string())),
         _ => None,
     }
 }
 
-async fn execute_setup(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let server_id = args["server_id"].as_str()
-        .ok_or("discord_setup_channels: missing 'server_id'")?;
-    let categories = args["categories"].as_array()
-        .ok_or("discord_setup_channels: missing 'categories' array")?;
-
-    // Get bot token from skill vault
-    let token = {
-        let state = app_handle.try_state::<EngineState>()
-            .ok_or("Engine state not available")?;
-        let creds = crate::engine::skills::get_skill_credentials(&state.store, "discord")
-            .map_err(|e| format!("Failed to get Discord credentials: {}", e))?;
-        creds.get("DISCORD_BOT_TOKEN")
-            .cloned()
-            .ok_or("DISCORD_BOT_TOKEN not found in skill vault")?
-    };
-
+/// Resolve the Discord bot token from the skill vault.
+fn get_bot_token(app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let state = app_handle.try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
+    let creds = crate::engine::skills::get_skill_credentials(&state.store, "discord")
+        .map_err(|e| format!("Failed to get Discord credentials: {}", e))?;
+    let token = creds.get("DISCORD_BOT_TOKEN")
+        .cloned()
+        .ok_or("DISCORD_BOT_TOKEN not found in skill vault. Enable the Discord skill and add your bot token in Settings → Skills → Discord.")?;
     if token.is_empty() {
         return Err("Discord bot token is empty".into());
     }
+    Ok(token)
+}
+
+/// Resolve the server (guild) ID from args or credential fallback.
+fn resolve_server_id(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    if let Some(sid) = args["server_id"].as_str() {
+        if !sid.is_empty() {
+            return Ok(sid.to_string());
+        }
+    }
+    // Fallback to DISCORD_SERVER_ID from skill credentials
+    let state = app_handle.try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
+    let creds = crate::engine::skills::get_skill_credentials(&state.store, "discord")
+        .map_err(|e| format!("Failed to get Discord credentials: {}", e))?;
+    creds.get("DISCORD_SERVER_ID")
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .ok_or("No server_id provided and DISCORD_SERVER_ID not set in skill credentials. Provide server_id or set it in Settings → Skills → Discord.".into())
+}
+
+async fn execute_setup(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let server_id = resolve_server_id(args, app_handle)?;
+    let categories = args["categories"].as_array()
+        .ok_or("discord_setup_channels: missing 'categories' array")?;
+
+    let token = get_bot_token(app_handle)?;
 
     let client = reqwest::Client::new();
     let mut results: Vec<String> = Vec::new();
@@ -122,7 +215,7 @@ async fn execute_setup(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
             "type": 4
         });
 
-        let cat_result = create_channel(&client, &token, server_id, &cat_body).await;
+        let cat_result = create_channel(&client, &token, &server_id, &cat_body).await;
         let category_id = match cat_result {
             Ok(id) => {
                 results.push(format!("✅ Category '{}' created ({})", cat_name, id));
@@ -157,7 +250,7 @@ async fn execute_setup(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
                     ch_body["topic"] = json!(topic);
                 }
 
-                match create_channel(&client, &token, server_id, &ch_body).await {
+                match create_channel(&client, &token, &server_id, &ch_body).await {
                     Ok(id) => {
                         let type_str = if ch_type == 2 { "🔊" } else { "#" };
                         results.push(format!("  ✅ {}{} created ({})", type_str, ch_name, id));
@@ -184,6 +277,161 @@ async fn execute_setup(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
     info!("[discord_setup] Done: {} created, {} errors", created_count, error_count);
     Ok(summary)
 }
+
+// ── discord_list_channels ──────────────────────────────────────────────
+
+async fn execute_list(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let server_id = resolve_server_id(args, app_handle)?;
+    let token = get_bot_token(app_handle)?;
+
+    info!("[discord] Listing channels for guild {}", server_id);
+
+    let client = reqwest::Client::new();
+    let url = format!("{}/guilds/{}/channels", DISCORD_API, server_id);
+    let resp = client.get(&url)
+        .header("Authorization", format!("Bot {}", token))
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        return Err(format!("Discord API {}: {}", status, &text[..text.len().min(300)]).into());
+    }
+
+    let channels: Vec<Value> = serde_json::from_str(&text)
+        .map_err(|e| format!("Failed to parse channels: {}", e))?;
+
+    // Build a structured tree: categories → children
+    let mut categories: Vec<&Value> = channels.iter()
+        .filter(|c| c["type"].as_i64() == Some(4))
+        .collect();
+    categories.sort_by_key(|c| c["position"].as_i64().unwrap_or(999));
+
+    let mut lines: Vec<String> = Vec::new();
+    lines.push(format!("**Discord Server Channels** (guild: {})\n", server_id));
+
+    // Channels without a parent category
+    let mut orphans: Vec<&Value> = channels.iter()
+        .filter(|c| c["type"].as_i64() != Some(4) && c["parent_id"].is_null())
+        .collect();
+    orphans.sort_by_key(|c| c["position"].as_i64().unwrap_or(999));
+    if !orphans.is_empty() {
+        lines.push("**[No Category]**".to_string());
+        for ch in &orphans {
+            lines.push(format_channel(ch));
+        }
+        lines.push(String::new());
+    }
+
+    for cat in &categories {
+        let cat_id = cat["id"].as_str().unwrap_or("?");
+        let cat_name = cat["name"].as_str().unwrap_or("?");
+        lines.push(format!("**{}** (id: {})", cat_name.to_uppercase(), cat_id));
+
+        let mut children: Vec<&Value> = channels.iter()
+            .filter(|c| c["parent_id"].as_str() == Some(cat_id))
+            .collect();
+        children.sort_by_key(|c| c["position"].as_i64().unwrap_or(999));
+
+        if children.is_empty() {
+            lines.push("  (empty)".to_string());
+        } else {
+            for ch in &children {
+                lines.push(format_channel(ch));
+            }
+        }
+        lines.push(String::new());
+    }
+
+    lines.push(format!("Total: {} channels in {} categories", channels.len(), categories.len()));
+    Ok(lines.join("\n"))
+}
+
+fn format_channel(ch: &Value) -> String {
+    let name = ch["name"].as_str().unwrap_or("?");
+    let id = ch["id"].as_str().unwrap_or("?");
+    let ch_type = ch["type"].as_i64().unwrap_or(0);
+    let topic = ch["topic"].as_str().unwrap_or("");
+    let icon = match ch_type {
+        0  => "#",
+        2  => "🔊",
+        5  => "📢",
+        13 => "🎭",
+        15 => "💬",
+        _  => "•",
+    };
+    let topic_str = if !topic.is_empty() {
+        format!(" — {}", &topic[..topic.len().min(60)])
+    } else {
+        String::new()
+    };
+    format!("  {}{} (id: {}){}", icon, name, id, topic_str)
+}
+
+// ── discord_send_message ───────────────────────────────────────────────
+
+async fn execute_send(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let token = get_bot_token(app_handle)?;
+
+    // Resolve channel ID from args or credential fallback
+    let channel_id = if let Some(cid) = args["channel_id"].as_str() {
+        if !cid.is_empty() { cid.to_string() } else { resolve_default_channel(app_handle)? }
+    } else {
+        resolve_default_channel(app_handle)?
+    };
+
+    let content = args["content"].as_str().unwrap_or("");
+    if content.is_empty() && args["embed"].is_null() {
+        return Err("discord_send_message: 'content' is required (or provide an embed)".into());
+    }
+
+    info!("[discord] Sending message to channel {} ({} chars)", channel_id, content.len());
+
+    let mut body = json!({});
+    if !content.is_empty() {
+        body["content"] = json!(content);
+    }
+    if !args["embed"].is_null() {
+        body["embeds"] = json!([args["embed"]]);
+    }
+
+    let client = reqwest::Client::new();
+    let url = format!("{}/channels/{}/messages", DISCORD_API, channel_id);
+    let resp = client.post(&url)
+        .header("Authorization", format!("Bot {}", token))
+        .header("Content-Type", "application/json")
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("HTTP error: {}", e))?;
+
+    let status = resp.status();
+    let text = resp.text().await.unwrap_or_default();
+
+    if !status.is_success() {
+        return Err(format!("Discord API {}: {}", status, &text[..text.len().min(300)]).into());
+    }
+
+    let v: Value = serde_json::from_str(&text).unwrap_or_default();
+    let msg_id = v["id"].as_str().unwrap_or("?");
+    Ok(format!("Message sent! (id: {}, channel: {})", msg_id, channel_id))
+}
+
+fn resolve_default_channel(app_handle: &tauri::AppHandle) -> EngineResult<String> {
+    let state = app_handle.try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
+    let creds = crate::engine::skills::get_skill_credentials(&state.store, "discord")
+        .map_err(|e| format!("Failed to get Discord credentials: {}", e))?;
+    creds.get("DISCORD_DEFAULT_CHANNEL")
+        .filter(|s| !s.is_empty())
+        .cloned()
+        .ok_or("No channel_id provided and DISCORD_DEFAULT_CHANNEL not set in skill credentials.".into())
+}
+
+// ── Shared helpers ─────────────────────────────────────────────────────
 
 /// Create a single Discord channel/category via REST API.
 /// Returns the created channel's ID on success.

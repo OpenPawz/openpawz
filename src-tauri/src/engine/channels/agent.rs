@@ -223,9 +223,12 @@ pub async fn run_channel_agent(
     //   - self_info: introspect own config when asked
     let mut tools: Vec<ToolDefinition> = {
         let mut all_builtins = ToolDefinition::builtins();
-        // Add discord_setup_channels tool (not in builtins, channel-bridge only)
+        // Add discord tools (also available via skill_tools, but ensure they're present)
         all_builtins.extend(crate::engine::tools::discord_setup::definitions());
-        let whitelist = ["fetch", "memory_store", "memory_search", "self_info", "discord_setup_channels"];
+        let whitelist = [
+            "fetch", "memory_store", "memory_search", "self_info",
+            "discord_setup_channels", "discord_list_channels", "discord_send_message",
+        ];
         let filtered: Vec<ToolDefinition> = all_builtins.into_iter()
             .filter(|t| whitelist.contains(&t.function.name.as_str()))
             .collect();

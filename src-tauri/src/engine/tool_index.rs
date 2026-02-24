@@ -96,6 +96,9 @@ fn tool_domain(name: &str) -> &'static str {
         "slack_send" | "slack_read" => "messaging",
         "telegram_send" | "telegram_read" => "messaging",
 
+        // Discord
+        "discord_setup_channels" | "discord_list_channels" | "discord_send_message" => "discord",
+
         // GitHub
         "github_api" => "github",
 
@@ -145,6 +148,7 @@ pub fn domain_summaries() -> Vec<(&'static str, &'static str, &'static str)> {
         ("email",         "mail",         "Send and read emails via IMAP/SMTP"),
         ("google",        "mail",         "Google Workspace — Gmail, Calendar, Drive, Sheets, Docs"),
         ("messaging",     "forum",        "Slack and Telegram messaging"),
+        ("discord",       "forum",        "Discord server management — list, create, and organize channels; send messages"),
         ("github",        "code",         "GitHub API calls (issues, PRs, repos)"),
         ("integrations",  "api",          "REST APIs, webhooks, image generation"),
         ("coinbase",      "trending_up",  "Coinbase exchange — prices, balances, trades, transfers"),
