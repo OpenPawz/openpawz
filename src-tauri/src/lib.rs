@@ -409,6 +409,11 @@ pub fn run() {
             commands::n8n::engine_integrations_test_credentials,
             commands::n8n::engine_integrations_save_credentials,
             commands::n8n::engine_integrations_get_credentials,
+            // ── Automation Templates (Phase 2.7) ──
+            commands::automations::engine_automations_activate_template,
+            commands::automations::engine_automations_list,
+            commands::automations::engine_automations_toggle,
+            commands::automations::engine_automations_delete,
             // ── MCP Servers (Phase E) ──
             commands::mcp::engine_mcp_list_servers,
             commands::mcp::engine_mcp_save_server,

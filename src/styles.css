@@ -14514,3 +14514,366 @@ details[open] > .skill-advanced-summary::before {
 .setup-guide-fb .spin {
   animation: spin-guide 1s linear infinite;
 }
+
+/* ── Integrations Main Tabs (Phase 2.7) ───────────────────────────── */
+
+.integrations-main-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.75rem;
+}
+
+.integrations-main-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.integrations-main-tab:hover {
+  color: var(--text-primary);
+}
+
+.integrations-main-tab.active {
+  color: var(--accent, #6366f1);
+  border-bottom-color: var(--accent, #6366f1);
+}
+
+/* ── Automations Panel (Phase 2.7) ────────────────────────────────── */
+
+.automations-panel {
+  padding: 0;
+}
+
+.automations-header {
+  margin-bottom: 1rem;
+}
+
+.automations-header h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.automations-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-tertiary);
+  margin: 0.25rem 0 0;
+}
+
+.automations-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.automations-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.45rem 0.75rem;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.automations-tab:hover {
+  color: var(--text-primary);
+}
+
+.automations-tab.active {
+  color: var(--accent, #6366f1);
+  border-bottom-color: var(--accent, #6366f1);
+}
+
+/* Templates toolbar */
+
+.automations-toolbar {
+  margin-bottom: 0.75rem;
+}
+
+.automations-search-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  max-width: 360px;
+}
+
+.automations-search {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.automations-cat-pills {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+/* Template cards */
+
+.automations-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0.75rem;
+}
+
+.automation-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: 1rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  cursor: default;
+}
+
+.automation-card:hover {
+  border-color: var(--accent, #6366f1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.automation-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.automation-card-services {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.automation-svc-dot {
+  display: inline-flex;
+  align-items: center;
+}
+
+.automation-svc-dot.missing {
+  opacity: 0.35;
+}
+
+.automation-card-trigger {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+.automation-card-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem;
+}
+
+.automation-card-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem;
+  line-height: 1.4;
+}
+
+.automation-card-steps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.automation-step-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary, #f0f0f0);
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm, 4px);
+}
+
+.automation-step-arrow {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+.automation-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.automation-missing-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+}
+
+.automation-setup-time {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+/* Active automations */
+
+.automations-active-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.automation-active-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md, 8px);
+  padding: 1rem;
+}
+
+.automation-active-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.automation-active-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.automation-status-active { color: var(--success, #22c55e); }
+.automation-status-paused { color: var(--text-tertiary); }
+.automation-status-error  { color: var(--danger, #ef4444); }
+.automation-status-draft  { color: var(--text-secondary); }
+
+.automation-active-trigger {
+  font-size: 0.7rem;
+  color: var(--text-tertiary);
+}
+
+.automation-active-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 0.15rem;
+}
+
+.automation-active-desc {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin: 0 0 0.5rem;
+}
+
+.automation-active-services {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+
+.automation-svc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.7rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  background: color-mix(in srgb, var(--svc-color) 10%, transparent);
+  color: var(--svc-color);
+}
+
+.automation-active-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.automation-active-stats {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.automation-active-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+/* Empty state */
+
+.automations-empty-active {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: var(--text-secondary);
+}
+
+.automations-empty-active .ms {
+  font-size: 3rem;
+  color: var(--text-tertiary);
+  margin-bottom: 0.75rem;
+}
+
+.automations-empty-active h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 1rem;
+}
+
+.automations-empty-active p {
+  font-size: 0.85rem;
+  margin: 0 0 1rem;
+}
+
+/* Service-specific templates in detail panel */
+
+.automation-svc-templates {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.automation-svc-empty {
+  padding: 0.75rem;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 0.85rem;
+}
+
+.automation-svc-hint {
+  font-size: 0.8rem;
+  font-style: italic;
+  margin-top: 0.25rem;
+}

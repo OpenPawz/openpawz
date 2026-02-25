@@ -10,6 +10,7 @@ import {
 } from './atoms';
 import { SERVICE_CATALOG } from './catalog';
 import { openSetupGuide } from './setup-guide';
+import { loadAutomations, loadServiceTemplates } from './automations';
 
 // ── Module state (set by index.ts) ─────────────────────────────────────
 
@@ -35,6 +36,7 @@ let _searchQuery = '';
 let _activeCategory: ServiceCategory | 'all' = 'all';
 let _sortOption: SortOption = 'popular';
 let _viewMode: 'grid' | 'list' = 'grid';
+let _mainTab: 'services' | 'automations' = 'services';
 
 // ── Main render ────────────────────────────────────────────────────────
 
@@ -58,8 +60,41 @@ export function renderIntegrations(): void {
           ${connectedCount > 0 ? `<span class="integrations-connected-badge">${connectedCount} connected</span>` : ''}
         </p>
       </div>
+      <div class="integrations-main-tabs">
+        <button class="integrations-main-tab ${_mainTab === 'services' ? 'active' : ''}" data-main-tab="services">
+          <span class="ms ms-sm">extension</span> Services
+        </button>
+        <button class="integrations-main-tab ${_mainTab === 'automations' ? 'active' : ''}" data-main-tab="automations">
+          <span class="ms ms-sm">auto_fix_high</span> Automations
+        </button>
+      </div>
     </div>
 
+    <div id="integrations-tab-body"></div>
+  `;
+
+  // Wire main tab switching
+  container.querySelectorAll('.integrations-main-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _mainTab = (btn as HTMLElement).dataset.mainTab as 'services' | 'automations';
+      renderIntegrations();
+    });
+  });
+
+  const tabBody = container.querySelector('#integrations-tab-body') as HTMLElement;
+  if (_mainTab === 'automations') {
+    tabBody.innerHTML = '<div class="automations-panel"></div>';
+    loadAutomations(tabBody.querySelector('.automations-panel')!);
+  } else {
+    _renderServicesTab(tabBody);
+  }
+}
+
+/** Render the services sub-tab with toolbar, categories, grid, and detail panel. */
+function _renderServicesTab(tabBody: HTMLElement): void {
+  const totalCount = SERVICE_CATALOG.length;
+
+  tabBody.innerHTML = `
     <div class="integrations-toolbar">
       <div class="integrations-search-wrap">
         <span class="ms ms-sm">search</span>
@@ -224,10 +259,8 @@ function _renderDetail(service: ServiceDefinition): void {
     </div>
 
     <div class="integrations-detail-section">
-      <h3><span class="ms ms-sm">auto_fix_high</span> Automations</h3>
-      <div class="integrations-examples">
-        ${service.automationExamples.map((a) => `<div class="integrations-example-chip">${escHtml(a)}</div>`).join('')}
-      </div>
+      <h3><span class="ms ms-sm">auto_fix_high</span> Automation Templates</h3>
+      <div id="detail-svc-templates"></div>
     </div>
 
     ${service.docsUrl ? `
@@ -237,6 +270,10 @@ function _renderDetail(service: ServiceDefinition): void {
       </a>
     </div>` : ''}
   `;
+
+  // Render service-specific automation templates
+  const tplContainer = document.getElementById('detail-svc-templates');
+  if (tplContainer) loadServiceTemplates(tplContainer, service.id);
 
   // Wire detail close
   document.getElementById('detail-close')?.addEventListener('click', () => {

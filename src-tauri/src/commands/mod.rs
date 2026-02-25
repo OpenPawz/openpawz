@@ -5,6 +5,7 @@
 // only deserialise, delegate, and serialise.
 
 pub mod agent;
+pub mod automations;
 pub mod browser;
 pub mod channels;
 pub mod chat;
