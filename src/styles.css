@@ -878,12 +878,10 @@ body {
 
 .status-dot.connected {
   background: var(--kinetic-sage);
-  box-shadow: 0 0 6px rgba(143, 176, 160, 0.4);
 }
 
 .status-dot.error {
   background: var(--error);
-  box-shadow: 0 0 6px rgba(255, 77, 77, 0.4);
 }
 
 @keyframes statusPulse {
@@ -1083,7 +1081,6 @@ body {
 .form-input:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 8px rgba(255, 0, 255, 0.2);
 }
 
 .form-input::placeholder {
@@ -1515,12 +1512,12 @@ body {
   padding: 8px 16px;
   background: rgba(220, 38, 38, 0.12);
   border-bottom: 1px solid rgba(220, 38, 38, 0.3);
-  color: #dc2626;
+  color: var(--error);
   font-size: 13px;
   animation: slideDown 200ms ease-out;
 }
 .db-error-banner .btn {
-  color: #dc2626;
+  color: var(--error);
   font-size: 13px;
   line-height: 1;
   padding: 2px 8px;
@@ -1537,12 +1534,12 @@ body {
   padding: 8px 16px;
   background: rgba(255, 140, 0, 0.12);
   border-bottom: 1px solid rgba(255, 140, 0, 0.3);
-  color: #e67e00;
+  color: var(--warning);
   font-size: 13px;
   animation: slideDown 200ms ease-out;
 }
 .encryption-warning-banner .btn {
-  color: #e67e00;
+  color: var(--warning);
   font-size: 18px;
   line-height: 1;
   padding: 0 4px;
@@ -1752,9 +1749,7 @@ body {
 /* When preview is visible, wrap the entire combo in a focus ring via container */
 .chat-input-container:has(.chat-attachment-preview:not([style*='display:none'])) {
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-}
-.chat-input-container:has(.chat-attachment-preview:not([style*='display:none'])):focus-within {
+}:focus-within {
   box-shadow:
     0 0 0 3px var(--accent-subtle),
     var(--shadow-sm);
@@ -1902,13 +1897,11 @@ body {
   border: none;
   border-radius: var(--radius-sm);
   cursor: default;
-  transition: all var(--transition-fast);
-  box-shadow: var(--shadow-md);
+  transition: border-color var(--transition-fast);
 }
 
 .list-item:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-lg);
+  border-color: var(--accent);
 }
 
 .list-item-header {
@@ -2053,7 +2046,6 @@ body {
   cursor: pointer;
   transition: all var(--transition-fast);
   font-family: inherit;
-  box-shadow: var(--shadow-sm);
 }
 .message-retry-btn svg {
   width: 13px;
@@ -2064,7 +2056,6 @@ body {
   color: var(--accent);
   border-color: var(--accent);
   background: var(--accent-subtle);
-  box-shadow: 0 0 0 2px var(--accent-subtle);
 }
 .message-retry-btn:active {
   transform: scale(0.97);
@@ -2152,7 +2143,6 @@ body {
   background: var(--accent);
   border-radius: 50%;
   cursor: pointer;
-  box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
 }
 
 /* ─── Settings ─── */
@@ -2347,7 +2337,6 @@ body {
   border-radius: var(--radius-sm);
   overflow: hidden;
   margin-top: 12px;
-  box-shadow: var(--shadow-md);
 }
 
 .memory-editor-header {
@@ -3352,7 +3341,7 @@ button:focus:not(:focus-visible) {
   padding: 3px 10px;
   background: var(--bg-secondary, #2a2a2a);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 0;
   font-size: 12px;
   color: var(--text-primary);
   cursor: pointer;
@@ -3375,7 +3364,7 @@ button:focus:not(:focus-visible) {
   line-height: 1;
 }
 .agent-tag-remove:hover {
-  color: var(--error, #ef4444);
+  color: var(--error, #FF4D4D);
 }
 .agent-tag-empty {
   font-size: 12px;
@@ -3392,7 +3381,7 @@ button:focus:not(:focus-visible) {
   color: var(--text-secondary);
   padding: 1px 6px;
   background: var(--bg-secondary, #2a2a2a);
-  border-radius: 8px;
+  border-radius: 0;
 }
 .tasks-modal-footer {
   display: flex;
@@ -5787,13 +5776,11 @@ button:focus:not(:focus-visible) {
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
   padding: 14px 16px;
-  box-shadow: var(--shadow-sm);
   cursor: default;
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast);
 }
 .auto-card:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
+  border-color: var(--accent);
 }
 .auto-card-title {
   font-size: 14px;
@@ -6041,8 +6028,6 @@ button:focus:not(:focus-visible) {
 .channel-pick-btn:hover {
   border-color: var(--blue);
   background: var(--blue-subtle);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
 }
 .channel-pick-icon {
   width: 44px;
@@ -6234,7 +6219,7 @@ button:focus:not(:focus-visible) {
   max-width: 256px;
   width: 100%;
   height: auto;
-  border-radius: 8px;
+  border-radius: 0;
   border: 2px solid var(--border);
   image-rendering: pixelated;
 }
@@ -6353,7 +6338,7 @@ select.form-input {
   position: relative;
   width: 36px;
   height: 20px;
-  border-radius: 10px;
+  border-radius: 0;
   border: 1px solid var(--border);
   cursor: pointer;
   background: var(--bg-secondary);
@@ -6677,7 +6662,7 @@ select.form-input {
   color: var(--text-muted);
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 8px;
+  border-radius: 0;
 }
 .skill-badge .ms {
   font-size: 12px;
@@ -6699,7 +6684,7 @@ select.form-input {
 /* Status blocks (missing binaries / env vars) */
 .skill-status-block {
   background: var(--bg-tertiary, var(--bg-primary));
-  border-radius: 8px;
+  border-radius: 0;
   padding: 10px 12px;
   margin-bottom: 8px;
   font-size: 12px;
@@ -6871,7 +6856,7 @@ details[open] > .skill-advanced-summary::before {
   line-height: 1.5;
   background: var(--bg-tertiary, var(--bg-primary));
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: 0;
   padding: 10px;
 }
 .skill-advanced-actions {
@@ -6898,7 +6883,7 @@ details[open] > .skill-advanced-summary::before {
 .trading-card {
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 0;
   padding: 16px;
 }
 
@@ -6950,7 +6935,7 @@ details[open] > .skill-advanced-summary::before {
 .trading-section {
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 0;
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -7133,7 +7118,7 @@ details[open] > .skill-advanced-summary::before {
   padding: 10px 14px;
   background: var(--bg-primary);
   border: 1px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 0;
 }
 
 .trading-dex-pairs-label {
@@ -7837,7 +7822,7 @@ details[open] > .skill-advanced-summary::before {
   color: var(--text-primary);
   border: 1px solid var(--border);
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: 0;
   font-size: 13px;
   cursor: pointer;
   transition:
@@ -8286,7 +8271,7 @@ details[open] > .skill-advanced-summary::before {
   color: var(--accent);
   font-size: 10px;
   padding: 0 6px;
-  border-radius: 8px;
+  border-radius: 0;
   margin-left: auto;
 }
 .space-cron-items {
@@ -8765,7 +8750,7 @@ details[open] > .skill-advanced-summary::before {
   transform: scale(0.92);
 }
 .chat-talk-btn.talk-active {
-  color: #ff4444;
+  color: var(--accent);
   background: rgba(255, 68, 68, 0.15);
   animation: talk-pulse 1.2s ease-in-out infinite;
 }
@@ -8830,13 +8815,12 @@ details[open] > .skill-advanced-summary::before {
 }
 .attachment-chip:hover {
   border-color: var(--accent);
-  box-shadow: var(--shadow-sm);
 }
 .attachment-chip-thumb {
   width: 36px;
   height: 36px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 0;
   border: 1px solid var(--border);
 }
 .attachment-chip-icon {
@@ -8846,7 +8830,7 @@ details[open] > .skill-advanced-summary::before {
   width: 36px;
   height: 36px;
   background: var(--accent-subtle);
-  border-radius: 6px;
+  border-radius: 0;
   color: var(--accent);
   flex-shrink: 0;
 }
@@ -8915,7 +8899,6 @@ details[open] > .skill-advanced-summary::before {
 }
 .message-attachment-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
 }
 .message-attachment-card:hover .message-attachment-overlay {
   opacity: 1;
@@ -9324,7 +9307,7 @@ details[open] > .skill-advanced-summary::before {
   padding: 8px 14px;
   font-size: 12px;
   line-height: 1.5;
-  border-radius: 6px;
+  border-radius: 0;
   margin: 0 16px 8px 16px;
 }
 .network-banner.network-exfiltration {
@@ -9518,7 +9501,7 @@ details[open] > .skill-advanced-summary::before {
   gap: 8px;
   padding: 8px 12px;
   margin-bottom: 12px;
-  border-radius: 6px;
+  border-radius: 0;
   font-size: 12px;
   background: var(--bg-hover);
 }
@@ -9543,7 +9526,7 @@ details[open] > .skill-advanced-summary::before {
   gap: 8px;
   padding: 8px 12px;
   margin-bottom: 12px;
-  border-radius: 6px;
+  border-radius: 0;
   font-size: 12px;
   background: var(--bg-hover);
   flex-wrap: wrap;
@@ -9667,7 +9650,7 @@ details[open] > .skill-advanced-summary::before {
 .audit-risk-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
@@ -9698,7 +9681,7 @@ details[open] > .skill-advanced-summary::before {
 .audit-result-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 9999px;
+  border-radius: var(--radius-pill);
   font-size: 10px;
   font-weight: 600;
 }
@@ -11725,7 +11708,7 @@ details[open] > .skill-advanced-summary::before {
   font-weight: 700;
   min-width: 16px;
   height: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   padding: 0 4px;
   margin-left: 6px;
   vertical-align: middle;
@@ -11862,7 +11845,7 @@ details[open] > .skill-advanced-summary::before {
   font-weight: 700;
   min-width: 18px;
   height: 18px;
-  border-radius: 9px;
+  border-radius: var(--radius-pill);
   padding: 0 4px;
   display: flex;
   align-items: center;
@@ -11930,7 +11913,6 @@ details[open] > .skill-advanced-summary::before {
   background: var(--accent);
   border-radius: 50%;
   transition: transform 0.2s;
-  box-shadow: var(--shadow-sm);
 }
 
 [data-theme='light'] .theme-toggle-thumb {
@@ -11944,7 +11926,7 @@ details[open] > .skill-advanced-summary::before {
   flex-direction: column;
   gap: 0;
   border: 1px solid var(--border-color);
-  border-radius: 8px;
+  border-radius: 0;
   overflow: hidden;
   background: var(--bg-secondary);
 }
@@ -12046,21 +12028,21 @@ details[open] > .skill-advanced-summary::before {
 
 .log-badge.log-level-info {
   background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
+  color: var(--kinetic-steel);
 }
 
 .log-badge.log-level-warn {
   background: rgba(245, 158, 11, 0.15);
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .log-badge.log-level-error {
   background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  color: var(--error);
 }
 
 .log-module {
-  color: var(--accent, #8b5cf6);
+  color: var(--accent, #FF4D4D);
   font-weight: 500;
 }
 
@@ -12131,7 +12113,7 @@ details[open] > .skill-advanced-summary::before {
 .skill-widget-badge {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: 0;
   font-size: 11px;
   font-weight: 600;
   background: var(--accent, #7c3aed);
@@ -12174,11 +12156,11 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .skill-widget-trend-up {
-  color: #22c55e;
+  color: var(--success);
 }
 
 .skill-widget-trend-down {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .skill-widget-trend-flat {
@@ -12259,15 +12241,15 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .skill-widget-log-warn {
-  color: #f59e0b;
+  color: var(--warning);
 }
 
 .skill-widget-log-error {
-  color: #ef4444;
+  color: var(--error);
 }
 
 .skill-widget-log-success {
-  color: #22c55e;
+  color: var(--success);
 }
 
 /* ── KV ────────────────────────────────────────────────── */
@@ -12313,10 +12295,10 @@ details[open] > .skill-advanced-summary::before {
   font-size: 11px;
   font-weight: 600;
   padding: 2px 8px;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--tier-color, #3b82f6) 15%, transparent);
-  color: var(--tier-color, #3b82f6);
-  border: 1px solid color-mix(in srgb, var(--tier-color, #3b82f6) 30%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--tier-color, #7A8B9A) 15%, transparent);
+  color: var(--tier-color, #7A8B9A);
+  border: 1px solid color-mix(in srgb, var(--tier-color, #7A8B9A) 30%, transparent);
 }
 
 .pawzhub-verified-badge {
@@ -12325,11 +12307,11 @@ details[open] > .skill-advanced-summary::before {
   gap: 3px;
   font-size: 11px;
   font-weight: 600;
-  color: #22c55e;
+  color: var(--success);
 }
 .pawzhub-verified-badge .ms {
   font-size: 14px;
-  color: #22c55e;
+  color: var(--success);
 }
 
 .pawzhub-feature-badge {
@@ -12338,7 +12320,7 @@ details[open] > .skill-advanced-summary::before {
   gap: 3px;
   font-size: 11px;
   padding: 1px 6px;
-  border-radius: 6px;
+  border-radius: 0;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
@@ -12388,7 +12370,7 @@ details[open] > .skill-advanced-summary::before {
 /* ── Extension Views (Phase F.6) ──────────────────────────────────────────── */
 .extensions-section {
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 16px;
   margin-bottom: 24px;
 }
@@ -12400,7 +12382,7 @@ details[open] > .skill-advanced-summary::before {
 }
 .extension-view-page {
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
+  border-radius: 0;
   padding: 20px;
   background: var(--surface-secondary, #1a1a2e);
 }
@@ -12514,7 +12496,7 @@ details[open] > .skill-advanced-summary::before {
 .squad-card-status {
   font-size: 10px;
   padding: 2px 6px;
-  border-radius: 10px;
+  border-radius: 0;
   font-weight: 600;
   text-transform: uppercase;
 }
@@ -12610,7 +12592,7 @@ details[open] > .skill-advanced-summary::before {
 .squad-member-role {
   font-size: 11px;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: 0;
   background: var(--bg-tertiary);
   color: var(--text-muted);
 }
@@ -12705,7 +12687,7 @@ details[open] > .skill-advanced-summary::before {
   margin: 12px 0;
   background: var(--bg-tertiary);
   border: 1px solid var(--accent-primary);
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 13px;
 }
 .swarm-pulse {
@@ -12859,7 +12841,7 @@ details[open] > .skill-advanced-summary::before {
   color: var(--text-muted);
   background: var(--bg-tertiary, rgba(255, 255, 255, 0.05));
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: 0;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -13004,7 +12986,7 @@ details[open] > .skill-advanced-summary::before {
 .cap-group {
   background: var(--bg-tertiary, rgba(255, 255, 255, 0.03));
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   padding: 10px 12px;
 }
 .cap-group-header {
@@ -13192,7 +13174,7 @@ details[open] > .skill-advanced-summary::before {
   font-size: 10px;
   min-width: 16px;
   height: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-pill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -13410,7 +13392,7 @@ details[open] > .skill-advanced-summary::before {
   font-weight: 600;
 }
 .skills-summary-warning {
-  color: var(--accent-warning, #eab308);
+  color: var(--accent-warning, #D4A853);
 }
 
 /* Card grid */
@@ -13470,20 +13452,20 @@ details[open] > .skill-advanced-summary::before {
   letter-spacing: 0.02em;
 }
 .skill-tier-skill {
-  background: color-mix(in srgb, #3b82f6 12%, transparent);
-  color: #3b82f6;
+  background: color-mix(in srgb, var(--kinetic-steel) 12%, transparent);
+  color: var(--kinetic-steel);
 }
 .skill-tier-integration {
-  background: color-mix(in srgb, #a855f7 12%, transparent);
-  color: #a855f7;
+  background: color-mix(in srgb, var(--kinetic-steel) 12%, transparent);
+  color: var(--kinetic-steel);
 }
 .skill-tier-extension {
-  background: color-mix(in srgb, #eab308 12%, transparent);
-  color: #eab308;
+  background: color-mix(in srgb, var(--kinetic-gold) 12%, transparent);
+  color: var(--kinetic-gold);
 }
 .skill-tier-mcp {
-  background: color-mix(in srgb, #ef4444 12%, transparent);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  color: var(--error);
 }
 
 /* Status badges */
@@ -13498,10 +13480,10 @@ details[open] > .skill-advanced-summary::before {
   font-size: 14px;
 }
 .status-ready {
-  color: var(--success, #22c55e);
+  color: var(--success, #8FB0A0);
 }
 .status-warning {
-  color: var(--accent-warning, #eab308);
+  color: var(--accent-warning, #D4A853);
 }
 .status-off {
   color: var(--text-muted);
@@ -13545,16 +13527,15 @@ details[open] > .skill-advanced-summary::before {
 .ph-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: 0;
   padding: 14px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .ph-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(0,0,0,.12);
 }
 .ph-card-installed {
-  border-left: 3px solid var(--accent-success, #22c55e);
+  border-left: 3px solid var(--accent-success, #8FB0A0);
 }
 .ph-card-header {
   display: flex;
@@ -13627,15 +13608,15 @@ details[open] > .skill-advanced-summary::before {
   background: var(--bg-primary);
 }
 .ph-badge-verified {
-  border-color: var(--accent-success, #22c55e);
-  color: var(--accent-success, #22c55e);
+  border-color: var(--accent-success, #8FB0A0);
+  color: var(--accent-success, #8FB0A0);
 }
 .ph-installed-badge {
   display: inline-flex;
   align-items: center;
   gap: 3px;
   font-size: 11px;
-  color: var(--accent-success, #22c55e);
+  color: var(--accent-success, #8FB0A0);
 }
 
 /* ── Section titles ────────────────────────────────────── */
@@ -13653,7 +13634,7 @@ details[open] > .skill-advanced-summary::before {
   color: var(--text-muted);
   background: var(--bg-primary);
   padding: 1px 8px;
-  border-radius: 10px;
+  border-radius: 0;
   border: 1px solid var(--border-subtle);
 }
 
@@ -13688,16 +13669,15 @@ details[open] > .skill-advanced-summary::before {
 .uc-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: 10px;
+  border-radius: 0;
   padding: 14px 16px;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .uc-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 2px 8px rgba(0,0,0,.1);
 }
 .uc-card-active {
-  border-left: 3px solid var(--accent-success, #22c55e);
+  border-left: 3px solid var(--accent-success, #8FB0A0);
 }
 
 /* ── Header ────────────────────────────────────────────── */
@@ -13748,10 +13728,10 @@ details[open] > .skill-advanced-summary::before {
   white-space: nowrap;
 }
 .uc-card-status .ms { font-size: 14px; }
-.uc-status-active    { color: var(--success, #22c55e); }
-.uc-status-warning   { color: var(--warning, #eab308); }
+.uc-status-active    { color: var(--success, #8FB0A0); }
+.uc-status-warning   { color: var(--warning, #D4A853); }
 .uc-status-disabled  { color: var(--text-muted); }
-.uc-status-error     { color: var(--error, #ef4444); }
+.uc-status-error     { color: var(--error, #FF4D4D); }
 .uc-status-available { color: var(--accent); }
 
 /* ── Description ───────────────────────────────────────── */
@@ -13786,20 +13766,20 @@ details[open] > .skill-advanced-summary::before {
   letter-spacing: 0.02em;
 }
 .uc-tier-skill {
-  background: color-mix(in srgb, #3b82f6 12%, transparent);
-  color: #3b82f6;
+  background: color-mix(in srgb, var(--kinetic-steel) 12%, transparent);
+  color: var(--kinetic-steel);
 }
 .uc-tier-integration {
-  background: color-mix(in srgb, #a855f7 12%, transparent);
-  color: #a855f7;
+  background: color-mix(in srgb, var(--kinetic-steel) 12%, transparent);
+  color: var(--kinetic-steel);
 }
 .uc-tier-extension {
-  background: color-mix(in srgb, #eab308 12%, transparent);
-  color: #eab308;
+  background: color-mix(in srgb, var(--kinetic-gold) 12%, transparent);
+  color: var(--kinetic-gold);
 }
 .uc-tier-mcp {
-  background: color-mix(in srgb, #ef4444 12%, transparent);
-  color: #ef4444;
+  background: color-mix(in srgb, var(--error) 12%, transparent);
+  color: var(--error);
 }
 
 /* ── Capability badges ─────────────────────────────────── */
@@ -13816,12 +13796,12 @@ details[open] > .skill-advanced-summary::before {
 }
 .uc-cap-badge .ms { font-size: 12px; }
 .uc-cap-verified {
-  border-color: var(--accent-success, #22c55e);
-  color: var(--accent-success, #22c55e);
+  border-color: var(--accent-success, #8FB0A0);
+  color: var(--accent-success, #8FB0A0);
 }
 .uc-cap-community {
-  border-color: #8b5cf6;
-  color: #8b5cf6;
+  border-color: var(--kinetic-steel);
+  color: var(--kinetic-steel);
 }
 
 /* ── Details expand/collapse ───────────────────────────── */
@@ -13859,7 +13839,7 @@ details[open] > .skill-advanced-summary::before {
   align-items: center;
   gap: 3px;
   font-size: 11px;
-  color: var(--accent-success, #22c55e);
+  color: var(--accent-success, #8FB0A0);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -13955,7 +13935,6 @@ details[open] > .skill-advanced-summary::before {
 .sw-category-card.sw-selected {
   border-color: var(--accent, #FF4D4D);
   background: rgba(255, 77, 77, 0.08);
-  box-shadow: 0 0 0 1px var(--accent, #FF4D4D);
 }
 
 .sw-category-check {
@@ -14578,7 +14557,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .setup-guide-required {
-  color: var(--danger, #ef4444);
+  color: var(--danger, #FF4D4D);
 }
 
 .setup-guide-help {
@@ -14612,7 +14591,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .setup-guide-input-error {
-  border-color: var(--danger, #ef4444) !important;
+  border-color: var(--danger, #FF4D4D) !important;
   box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.15) !important;
 }
 
@@ -14625,8 +14604,8 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .setup-guide-actions .btn-success {
-  background: var(--success, #22c55e) !important;
-  border-color: var(--success, #22c55e) !important;
+  background: var(--success, #8FB0A0) !important;
+  border-color: var(--success, #8FB0A0) !important;
 }
 
 /* Feedback */
@@ -14651,12 +14630,12 @@ details[open] > .skill-advanced-summary::before {
 
 .setup-guide-fb-success {
   background: rgba(34, 197, 94, 0.1);
-  color: var(--success, #22c55e);
+  color: var(--success, #8FB0A0);
 }
 
 .setup-guide-fb-error {
   background: rgba(239, 68, 68, 0.1);
-  color: var(--danger, #ef4444);
+  color: var(--danger, #FF4D4D);
 }
 
 .setup-guide-fb-details {
@@ -14779,7 +14758,7 @@ details[open] > .skill-advanced-summary::before {
   padding: 0.4rem 0.75rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--radius-sm);
   max-width: 360px;
 }
 
@@ -14810,7 +14789,7 @@ details[open] > .skill-advanced-summary::before {
 .automation-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   padding: 1rem;
   transition: border-color 0.15s, box-shadow 0.15s;
   cursor: default;
@@ -14818,7 +14797,6 @@ details[open] > .skill-advanced-summary::before {
 
 .automation-card:hover {
   border-color: var(--accent, #FF4D4D);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 .automation-card-header {
@@ -14915,7 +14893,7 @@ details[open] > .skill-advanced-summary::before {
 .automation-active-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   padding: 1rem;
 }
 
@@ -14934,9 +14912,9 @@ details[open] > .skill-advanced-summary::before {
   font-weight: 500;
 }
 
-.automation-status-active { color: var(--success, #22c55e); }
+.automation-status-active { color: var(--success, #8FB0A0); }
 .automation-status-paused { color: var(--text-tertiary); }
-.automation-status-error  { color: var(--danger, #ef4444); }
+.automation-status-error  { color: var(--danger, #FF4D4D); }
 .automation-status-draft  { color: var(--text-secondary); }
 
 .automation-active-trigger {
@@ -15118,7 +15096,6 @@ details[open] > .skill-advanced-summary::before {
 
 .query-card.ready:hover {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
 }
 
 .query-card.not-ready {
@@ -15378,12 +15355,12 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .credential-prompt-success {
-  color: var(--success, #22c55e);
+  color: var(--success, #8FB0A0);
   background: rgba(34, 197, 94, 0.08);
 }
 
 .credential-prompt-error {
-  color: var(--danger, #ef4444);
+  color: var(--danger, #FF4D4D);
   background: rgba(239, 68, 68, 0.08);
 }
 
@@ -15441,7 +15418,7 @@ details[open] > .skill-advanced-summary::before {
 .guardrail-confirm-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   padding: 1rem;
   max-width: 480px;
 }
@@ -15451,8 +15428,8 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .guardrail-confirm-card.risk-hard {
-  border-left: 3px solid var(--danger, #ef4444);
-  background: color-mix(in srgb, var(--danger, #ef4444) 5%, var(--bg-secondary));
+  border-left: 3px solid var(--danger, #FF4D4D);
+  background: color-mix(in srgb, var(--danger, #FF4D4D) 5%, var(--bg-secondary));
 }
 
 .guardrail-confirm-header {
@@ -15475,7 +15452,7 @@ details[open] > .skill-advanced-summary::before {
   font-size: 0.75rem;
   background: var(--bg-tertiary, rgba(255,255,255,0.06));
   padding: 2px 8px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
   color: var(--text-secondary);
 }
 
@@ -15528,13 +15505,13 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .guardrail-btn-approve {
-  background: color-mix(in srgb, var(--success, #22c55e) 15%, transparent);
-  border-color: var(--success, #22c55e);
-  color: var(--success, #22c55e);
+  background: color-mix(in srgb, var(--success, #8FB0A0) 15%, transparent);
+  border-color: var(--success, #8FB0A0);
+  color: var(--success, #8FB0A0);
 }
 
 .guardrail-btn-approve:hover {
-  background: color-mix(in srgb, var(--success, #22c55e) 25%, transparent);
+  background: color-mix(in srgb, var(--success, #8FB0A0) 25%, transparent);
 }
 
 .guardrail-btn-edit {
@@ -15552,8 +15529,8 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .guardrail-btn-cancel:hover {
-  border-color: var(--danger, #ef4444);
-  color: var(--danger, #ef4444);
+  border-color: var(--danger, #FF4D4D);
+  color: var(--danger, #FF4D4D);
 }
 
 /* ── Rate limit warning ────────────────────────────────────────────── */
@@ -15561,14 +15538,14 @@ details[open] > .skill-advanced-summary::before {
 .guardrail-rate-warning {
   background: var(--bg-secondary);
   border: 1px solid var(--warning, #f59e0b);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   padding: 1rem;
   max-width: 480px;
 }
 
 .guardrail-rate-warning.exhausted {
-  border-color: var(--danger, #ef4444);
-  background: color-mix(in srgb, var(--danger, #ef4444) 5%, var(--bg-secondary));
+  border-color: var(--danger, #FF4D4D);
+  background: color-mix(in srgb, var(--danger, #FF4D4D) 5%, var(--bg-secondary));
 }
 
 .guardrail-rate-header {
@@ -15586,7 +15563,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .exhausted .guardrail-rate-header .ms {
-  color: var(--danger, #ef4444);
+  color: var(--danger, #FF4D4D);
 }
 
 .guardrail-rate-bar {
@@ -15605,7 +15582,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .exhausted .guardrail-rate-fill {
-  background: var(--danger, #ef4444);
+  background: var(--danger, #FF4D4D);
 }
 
 .guardrail-rate-info {
@@ -15624,7 +15601,7 @@ details[open] > .skill-advanced-summary::before {
 .guardrail-dryrun {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   padding: 1rem;
   max-width: 540px;
 }
@@ -15672,7 +15649,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .guardrail-step.risk-hard {
-  background: color-mix(in srgb, var(--danger, #ef4444) 8%, transparent);
+  background: color-mix(in srgb, var(--danger, #FF4D4D) 8%, transparent);
 }
 
 .guardrail-dryrun-actions {
@@ -15685,7 +15662,7 @@ details[open] > .skill-advanced-summary::before {
 .guardrail-audit {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -15750,7 +15727,7 @@ details[open] > .skill-advanced-summary::before {
 .guardrail-permissions {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -15821,7 +15798,7 @@ details[open] > .skill-advanced-summary::before {
 .intfeed-pulse {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
@@ -15940,7 +15917,7 @@ details[open] > .skill-advanced-summary::before {
 
 .intfeed-entry-error {
   font-size: 0.8rem;
-  color: var(--danger, #ef4444);
+  color: var(--danger, #FF4D4D);
   margin-top: 4px;
 }
 
@@ -15962,7 +15939,7 @@ details[open] > .skill-advanced-summary::before {
   color: var(--text-tertiary, var(--text-secondary));
   background: var(--bg-tertiary, rgba(255,255,255,0.04));
   padding: 1px 6px;
-  border-radius: 99px;
+  border-radius: var(--radius-pill);
 }
 
 .intfeed-entry-link {
@@ -16005,7 +15982,7 @@ details[open] > .skill-advanced-summary::before {
   gap: 0.5rem;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   padding: 0.5rem 0.75rem;
   font-size: 0.85rem;
   max-width: 480px;
@@ -16013,11 +15990,11 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .intfeed-receipt.intfeed-status-success {
-  border-left: 3px solid var(--success, #22c55e);
+  border-left: 3px solid var(--success, #8FB0A0);
 }
 
 .intfeed-receipt.intfeed-status-failed {
-  border-left: 3px solid var(--danger, #ef4444);
+  border-left: 3px solid var(--danger, #FF4D4D);
 }
 
 .intfeed-receipt-text {
@@ -16052,7 +16029,7 @@ details[open] > .skill-advanced-summary::before {
 .intfeed-output-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   overflow: hidden;
   max-width: 580px;
   margin: 0.5rem 0;
@@ -16187,7 +16164,7 @@ details[open] > .skill-advanced-summary::before {
   align-items: center;
   gap: 0.35rem;
   padding: 0.3rem 0.7rem;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   font-size: 0.82rem;
@@ -16210,10 +16187,10 @@ details[open] > .skill-advanced-summary::before {
   flex-shrink: 0;
 }
 
-.ihealth-chip-dot--healthy  { background: var(--success, #22c55e); }
+.ihealth-chip-dot--healthy  { background: var(--success, #8FB0A0); }
 .ihealth-chip-dot--degraded { background: var(--warning, #f59e0b); }
-.ihealth-chip-dot--error    { background: var(--danger, #ef4444); }
-.ihealth-chip-dot--expired  { background: var(--danger, #ef4444); }
+.ihealth-chip-dot--error    { background: var(--danger, #FF4D4D); }
+.ihealth-chip-dot--expired  { background: var(--danger, #FF4D4D); }
 .ihealth-chip-dot--unknown  { background: var(--text-secondary, #888); }
 
 .ihealth-strip-empty {
@@ -16228,7 +16205,7 @@ details[open] > .skill-advanced-summary::before {
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--warning, #f59e0b) 8%, transparent);
   border: 1px solid color-mix(in srgb, var(--warning, #f59e0b) 30%, transparent);
   margin-bottom: 0.75rem;
@@ -16290,7 +16267,7 @@ details[open] > .skill-advanced-summary::before {
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.6rem 0.85rem;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   transition: border-color 0.15s;
@@ -16346,7 +16323,7 @@ details[open] > .skill-advanced-summary::before {
   align-items: center;
   gap: 0.75rem;
   padding: 0.55rem 0.85rem;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   margin-bottom: 0.4rem;
@@ -16361,7 +16338,7 @@ details[open] > .skill-advanced-summary::before {
   appearance: none;
   width: 34px;
   height: 18px;
-  border-radius: 9px;
+  border-radius: 0;
   background: var(--border);
   position: relative;
   cursor: pointer;
@@ -16431,7 +16408,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .action-receipt {
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-secondary);
   padding: 0.6rem 0.85rem;
@@ -16440,11 +16417,11 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .action-receipt--success {
-  border-left: 3px solid var(--success, #22c55e);
+  border-left: 3px solid var(--success, #8FB0A0);
 }
 
 .action-receipt--failed {
-  border-left: 3px solid var(--danger, #ef4444);
+  border-left: 3px solid var(--danger, #FF4D4D);
 }
 
 .action-receipt--running {
@@ -16524,8 +16501,8 @@ details[open] > .skill-advanced-summary::before {
   margin-top: 0.35rem;
   padding: 0.3rem 0.5rem;
   border-radius: var(--radius-sm, 4px);
-  background: color-mix(in srgb, var(--danger, #ef4444) 8%, transparent);
-  color: var(--danger, #ef4444);
+  background: color-mix(in srgb, var(--danger, #FF4D4D) 8%, transparent);
+  color: var(--danger, #FF4D4D);
   font-size: 0.78rem;
   display: flex;
   align-items: center;
@@ -16534,7 +16511,7 @@ details[open] > .skill-advanced-summary::before {
 
 /* ── Batch receipt ── */
 .action-receipt-batch {
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   border: 1px solid var(--border);
   background: var(--bg-secondary);
   overflow: hidden;
@@ -16595,7 +16572,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .svc-detail-health-failures {
-  color: var(--danger, #ef4444);
+  color: var(--danger, #FF4D4D);
 }
 
 .svc-detail-expiry {
@@ -16648,8 +16625,8 @@ details[open] > .skill-advanced-summary::before {
   flex-shrink: 0;
 }
 
-.svc-detail-action--success .ms { color: var(--success, #22c55e); }
-.svc-detail-action--failed .ms  { color: var(--danger, #ef4444); }
+.svc-detail-action--success .ms { color: var(--success, #8FB0A0); }
+.svc-detail-action--failed .ms  { color: var(--danger, #FF4D4D); }
 .svc-detail-action--running .ms { color: var(--warning, #f59e0b); }
 
 /* ── Connection info ── */
@@ -16678,7 +16655,7 @@ details[open] > .skill-advanced-summary::before {
   align-items: center;
   gap: 0.4rem;
   padding: 0.45rem 0.7rem;
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius-md);
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   font-size: 0.8rem;
@@ -16694,11 +16671,11 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .svc-detail-quick-btn--danger {
-  color: var(--danger, #ef4444);
-  border-color: color-mix(in srgb, var(--danger, #ef4444) 20%, var(--border));
+  color: var(--danger, #FF4D4D);
+  border-color: color-mix(in srgb, var(--danger, #FF4D4D) 20%, var(--border));
 }
 
 .svc-detail-quick-btn--danger:hover {
-  border-color: var(--danger, #ef4444);
-  background: color-mix(in srgb, var(--danger, #ef4444) 5%, var(--bg-secondary));
+  border-color: var(--danger, #FF4D4D);
+  background: color-mix(in srgb, var(--danger, #FF4D4D) 5%, var(--bg-secondary));
 }
