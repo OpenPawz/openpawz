@@ -3001,6 +3001,13 @@
 
           <!-- ── Tab: General ── -->
           <div class="settings-tab-panel" id="settings-panel-general">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">tune</span>
+              <div>
+                <h2 class="settings-panel-hero-title">General</h2>
+                <p class="settings-panel-hero-sub">Theme, software updates, and about information</p>
+              </div>
+            </div>
             <!-- Hidden select kept for compatibility -->
             <select class="form-input" id="settings-engine-mode" style="display: none">
               <option value="engine" selected>Built-in Paw Engine</option>
@@ -3076,88 +3083,98 @@
 
           <!-- ── Tab: Providers ── -->
           <div class="settings-tab-panel" id="settings-panel-models" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">model_training</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Providers &amp; Models</h2>
+                <p class="settings-panel-hero-sub">Add AI providers, manage API keys, and configure model routing</p>
+              </div>
+            </div>
             <div class="settings-section" id="settings-models-section">
-              <h2 class="settings-section-title">Providers &amp; Models</h2>
-              <p class="settings-section-desc">
-                Add AI providers, manage API keys, and configure model routing. Pawz calls APIs
-                directly from your machine.
-              </p>
               <div id="settings-models-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: Agent Defaults ── -->
           <div class="settings-tab-panel" id="settings-panel-agent-defaults" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">smart_toy</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Agent Defaults</h2>
+                <p class="settings-panel-hero-sub">Default model, tool execution limits, system prompt, and memory settings</p>
+              </div>
+            </div>
             <div class="settings-section" id="settings-agent-defaults-section">
-              <h2 class="settings-section-title">Agent Defaults</h2>
-              <p class="settings-section-desc">
-                Default model, tool execution limits, system prompt, and memory settings.
-              </p>
               <div id="settings-agent-defaults-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: Sessions ── -->
           <div class="settings-tab-panel" id="settings-panel-sessions" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">forum</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Sessions</h2>
+                <p class="settings-panel-hero-sub">View, rename, and manage chat sessions</p>
+              </div>
+            </div>
             <div class="settings-section" id="settings-sessions-section">
-              <h2 class="settings-section-title">Sessions</h2>
-              <p class="settings-section-desc">View, rename, and manage chat sessions.</p>
               <div id="settings-sessions-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: Voice & TTS ── -->
           <div class="settings-tab-panel" id="settings-panel-voice" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">mic</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Voice &amp; TTS</h2>
+                <p class="settings-panel-hero-sub">Text-to-speech, talk mode, and voice wake triggers</p>
+              </div>
+            </div>
             <div class="settings-section" id="settings-voice-section">
-              <h2 class="settings-section-title">Voice &amp; TTS</h2>
-              <p class="settings-section-desc">
-                Text-to-speech, talk mode, and voice wake triggers.
-              </p>
               <div id="settings-voice-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: Browser & Sandbox ── -->
           <div class="settings-tab-panel" id="settings-panel-browser" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">language</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Browser &amp; Sandbox</h2>
+                <p class="settings-panel-hero-sub">Chrome profiles, agent screenshots, workspaces, and network policy</p>
+              </div>
+            </div>
             <div class="settings-section">
-              <h2 class="settings-section-title">
-                <span class="ms ms-sm">language</span>
-                Browser &amp; Sandbox
-              </h2>
-              <p class="settings-section-desc">
-                Managed Chrome profiles, agent screenshots, per-agent workspaces, and outbound
-                network policy.
-              </p>
               <div id="settings-browser-sandbox-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: Tailscale ── -->
           <div class="settings-tab-panel" id="settings-panel-tailscale" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">vpn_lock</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Tailscale</h2>
+                <p class="settings-panel-hero-sub">Expose Pawz to your Tailscale network or the internet via Serve and Funnel</p>
+              </div>
+            </div>
             <div class="settings-section">
-              <h2 class="settings-section-title">
-                <span class="ms ms-sm">cloud</span>
-                Tailscale Remote Access
-              </h2>
-              <p class="settings-section-desc">
-                Expose Pawz to your Tailscale network (Serve) or the internet (Funnel). Requires
-                Tailscale installed on this machine.
-              </p>
               <div id="settings-tailscale-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: Webhook ── -->
           <div class="settings-tab-panel" id="settings-panel-webhook" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">webhook</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Inbound Webhook</h2>
+                <p class="settings-panel-hero-sub">Let external systems POST to a local endpoint to trigger agent runs</p>
+              </div>
+            </div>
             <div class="settings-section">
-              <h2 class="settings-section-title">
-                <span class="ms ms-sm">webhook</span>
-                Inbound Webhook Server
-              </h2>
-              <p class="settings-section-desc">
-                Let external systems (Zapier, n8n, GitHub Actions, cron, curl) POST to a local HTTP
-                endpoint to trigger agent runs.
-              </p>
               <div id="settings-webhook-content"></div>
 
               <!-- Webhook Event Log -->
@@ -3175,37 +3192,41 @@
 
           <!-- ── Tab: n8n Integration ── -->
           <div class="settings-tab-panel" id="settings-panel-n8n" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">account_tree</span>
+              <div>
+                <h2 class="settings-panel-hero-title">n8n Integration</h2>
+                <p class="settings-panel-hero-sub">Connect to n8n for 400+ service integrations via workflows and MCP bridge</p>
+              </div>
+            </div>
             <div class="settings-section">
-              <h2 class="settings-section-title">
-                <span class="ms ms-sm">account_tree</span>
-                n8n Integration
-              </h2>
-              <p class="settings-section-desc">
-                Connect to your n8n instance to give agents access to 400+ services through n8n's
-                node ecosystem. Configure your connection, discover workflows, and optionally bridge
-                via MCP for native tool access.
-              </p>
               <div id="settings-n8n-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: MCP Servers ── -->
           <div class="settings-tab-panel" id="settings-panel-mcp" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">dns</span>
+              <div>
+                <h2 class="settings-panel-hero-title">MCP Servers</h2>
+                <p class="settings-panel-hero-sub">Extend agents with external tools and data sources via Model Context Protocol</p>
+              </div>
+            </div>
             <div class="settings-section">
-              <h2 class="settings-section-title">
-                <span class="ms ms-sm">hub</span>
-                MCP Servers
-              </h2>
-              <p class="settings-section-desc">
-                Connect to Model Context Protocol (MCP) servers to extend your agents with external
-                tools, data sources, and integrations.
-              </p>
               <div id="settings-mcp-content"></div>
             </div>
           </div>
 
           <!-- ── Tab: Security ── -->
           <div class="settings-tab-panel" id="settings-panel-security" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">security</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Security</h2>
+                <p class="settings-panel-hero-sub">Tool approvals, audit log, and execution policies</p>
+              </div>
+            </div>
             <!-- Exec Approvals Config -->
             <div class="settings-section" id="settings-approvals-section" style="display: none">
               <h2 class="settings-section-title">Tool Approval Rules</h2>
@@ -3483,25 +3504,38 @@
 
           <!-- ── Tab: Memory ── -->
           <div class="settings-tab-panel" id="settings-panel-memory" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">psychology</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Memory</h2>
+                <p class="settings-panel-hero-sub">Agent memory and knowledge base management</p>
+              </div>
+            </div>
             <div id="settings-memory-container"></div>
           </div>
 
           <!-- ── Tab: Engine ── -->
           <div class="settings-tab-panel" id="settings-panel-engine" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">memory</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Engine</h2>
+                <p class="settings-panel-hero-sub">Paw engine configuration and diagnostics</p>
+              </div>
+            </div>
             <div id="settings-engine-container"></div>
           </div>
 
           <!-- ── Tab: Logs ── -->
           <div class="settings-tab-panel" id="settings-panel-logs" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">terminal</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Logs</h2>
+                <p class="settings-panel-hero-sub">Live application logs with 7-day retention in ~/Documents/Paw/logs/</p>
+              </div>
+            </div>
             <div class="settings-section">
-              <h2 class="settings-section-title">
-                <span class="ms ms-sm">description</span>
-                Application Logs
-              </h2>
-              <p class="settings-section-desc">
-                View live logs or browse historical log files. Logs are stored in
-                ~/Documents/Paw/logs/ with 7-day retention.
-              </p>
               <div id="settings-logs-content"></div>
             </div>
           </div>
