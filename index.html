@@ -245,6 +245,7 @@
 
         <!-- ═══ Chat View ═══ -->
         <div class="view chat-view" id="chat-view">
+          <!-- Slim header: agent identity + session switcher -->
           <div class="chat-header">
             <div class="chat-header-left">
               <div class="chat-avatar" id="chat-avatar">
@@ -266,12 +267,135 @@
                   <option value="default">Default Model</option>
                 </select>
               </div>
-              <!-- Token meter -->
-              <div class="token-meter" id="token-meter" title="Session token usage">
-                <div class="token-meter-bar">
-                  <div class="token-meter-fill" id="token-meter-fill"></div>
+            </div>
+            <div class="chat-header-right">
+              <select
+                class="chat-session-select"
+                id="chat-session-select"
+                title="Switch session"
+              ></select>
+              <button class="btn btn-ghost" id="new-chat-btn" title="New Chat">
+                <span class="ms">add</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Mission control body: chat + side panel -->
+          <div class="chat-mission-body">
+            <!-- ── Main chat column ── -->
+            <div class="chat-main-col">
+              <!-- Compaction warning banner -->
+              <div class="compaction-warning" id="compaction-warning" style="display: none">
+                <span class="ms ms-sm">warning</span>
+                <span id="compaction-warning-text"
+                  >Context window filling up — older messages may be compacted soon</span
+                >
+                <button class="btn btn-ghost btn-sm" id="compaction-warning-dismiss" title="Dismiss">
+                  ×
+                </button>
+              </div>
+
+              <!-- Session budget alert banner -->
+              <div
+                class="compaction-warning budget-alert"
+                id="session-budget-alert"
+                style="display: none"
+              >
+                <span class="ms ms-sm">attach_money</span>
+                <span id="session-budget-alert-text">Approaching budget limit</span>
+                <button
+                  class="btn btn-ghost btn-sm"
+                  onclick="this.parentElement.style.display = 'none'"
+                  title="Dismiss"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div class="chat-messages" id="chat-messages">
+                <div class="empty-state" id="chat-empty">
+                  <div class="empty-icon">
+                    <span class="ms" style="font-size: 48px">chat</span>
+                  </div>
+                  <div class="empty-title">Start a conversation</div>
+                  <div class="empty-subtitle">Ask anything — your agent is ready</div>
                 </div>
-                <span class="token-meter-label" id="token-meter-label">0 tokens</span>
+              </div>
+
+              <div class="chat-input-container">
+                <div
+                  class="chat-attachment-preview"
+                  id="chat-attachment-preview"
+                  style="display: none"
+                ></div>
+                <div class="chat-input-wrapper">
+                  <button
+                    class="chat-attach-btn"
+                    id="chat-attach-btn"
+                    title="Attach file"
+                    data-icon="paperclip"
+                  ></button>
+                  <input
+                    type="file"
+                    id="chat-file-input"
+                    multiple
+                    accept="image/jpeg,image/png,image/gif,image/webp,.pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.toml,.py,.rs,.js,.ts,.html,.css,.sh,.log,.c,.cpp,.h,.java,.rb,.go,.sql"
+                    style="display: none"
+                  />
+                  <textarea
+                    class="chat-input"
+                    id="chat-input"
+                    placeholder="Message your agent..."
+                    rows="1"
+                  ></textarea>
+                  <button class="chat-talk-btn" id="chat-talk-btn" title="Talk Mode — hold to speak">
+                    <span class="ms">mic</span>
+                  </button>
+                  <button
+                    class="chat-send"
+                    id="chat-send"
+                    title="Send message"
+                    data-icon="arrow-up"
+                  ></button>
+                </div>
+                <button class="chat-abort-btn" id="chat-abort-btn" style="display: none">
+                  <span data-icon="square"></span>
+                  Stop
+                </button>
+              </div>
+            </div>
+
+            <!-- ── Mission side panel ── -->
+            <div class="chat-mission-panel" id="chat-mission-panel">
+
+              <!-- Context Gauge -->
+              <div class="mission-card k-row k-materialise">
+                <div class="mission-card-header">
+                  <span class="ms mission-card-icon">speed</span>
+                  <span class="mission-card-title">CONTEXT WINDOW</span>
+                </div>
+                <div class="mission-gauge-row">
+                  <div class="mission-gauge" id="mission-ctx-gauge">
+                    <!-- Filled by chat-mission-panel.ts -->
+                  </div>
+                  <div class="mission-gauge-stats">
+                    <div class="mission-stat">
+                      <span class="mission-stat-val" id="mission-ctx-used">0</span>
+                      <span class="mission-stat-lbl">used</span>
+                    </div>
+                    <div class="mission-stat">
+                      <span class="mission-stat-val" id="mission-ctx-limit">128k</span>
+                      <span class="mission-stat-lbl">limit</span>
+                    </div>
+                  </div>
+                </div>
+                <!-- Mini token bar (keeps existing IDs for compatibility) -->
+                <div class="token-meter" id="token-meter" title="Session token usage" style="display:none">
+                  <div class="token-meter-bar">
+                    <div class="token-meter-fill" id="token-meter-fill"></div>
+                  </div>
+                  <span class="token-meter-label" id="token-meter-label">0 tokens</span>
+                </div>
                 <!-- Context breakdown popover -->
                 <div class="ctx-breakdown-panel" id="context-breakdown-panel" style="display: none">
                   <div class="ctx-breakdown-header">Context Window</div>
@@ -283,120 +407,91 @@
                   <div class="ctx-breakdown-warn" style="display: none"></div>
                 </div>
               </div>
-            </div>
-            <div class="chat-header-right">
-              <select class="chat-mode-select" id="chat-agent-select" title="Switch agent">
-                <option value="default">Agent</option>
-              </select>
-              <select
-                class="chat-session-select"
-                id="chat-session-select"
-                title="Switch session"
-              ></select>
-              <button class="btn btn-ghost btn-sm" id="session-rename-btn" title="Rename session">
-                <span class="ms ms-sm">edit</span>
-              </button>
-              <button class="btn btn-ghost btn-sm" id="session-delete-btn" title="Delete session">
-                <span class="ms ms-sm">delete</span>
-              </button>
-              <button
-                class="btn btn-ghost btn-sm"
-                id="session-clear-btn"
-                title="Clear session history"
-              >
-                <span class="ms ms-sm">delete_sweep</span>
-              </button>
-              <button
-                class="btn btn-ghost btn-sm"
-                id="session-compact-btn"
-                title="Compact session storage"
-              >
-                <span class="ms ms-sm">compress</span>
-              </button>
-              <button class="btn btn-ghost" id="new-chat-btn" title="New Chat">
-                <span class="ms">add</span>
-              </button>
-            </div>
-          </div>
 
-          <!-- Compaction warning banner -->
-          <div class="compaction-warning" id="compaction-warning" style="display: none">
-            <span class="ms ms-sm">warning</span>
-            <span id="compaction-warning-text"
-              >Context window filling up — older messages may be compacted soon</span
-            >
-            <button class="btn btn-ghost btn-sm" id="compaction-warning-dismiss" title="Dismiss">
-              ×
-            </button>
-          </div>
-
-          <!-- Session budget alert banner -->
-          <div
-            class="compaction-warning budget-alert"
-            id="session-budget-alert"
-            style="display: none"
-          >
-            <span class="ms ms-sm">attach_money</span>
-            <span id="session-budget-alert-text">Approaching budget limit</span>
-            <button
-              class="btn btn-ghost btn-sm"
-              onclick="this.parentElement.style.display = 'none'"
-              title="Dismiss"
-            >
-              ×
-            </button>
-          </div>
-
-          <div class="chat-messages" id="chat-messages">
-            <div class="empty-state" id="chat-empty">
-              <div class="empty-icon">
-                <span class="ms" style="font-size: 48px">chat</span>
+              <!-- Session Metrics -->
+              <div class="mission-card k-row k-materialise">
+                <div class="mission-card-header">
+                  <span class="ms mission-card-icon">monitoring</span>
+                  <span class="mission-card-title">SESSION METRICS</span>
+                </div>
+                <div class="mission-metrics-grid">
+                  <div class="mission-metric">
+                    <span class="mission-metric-val" id="mission-tokens-in">0</span>
+                    <span class="mission-metric-lbl">INPUT</span>
+                  </div>
+                  <div class="mission-metric">
+                    <span class="mission-metric-val" id="mission-tokens-out">0</span>
+                    <span class="mission-metric-lbl">OUTPUT</span>
+                  </div>
+                  <div class="mission-metric">
+                    <span class="mission-metric-val" id="mission-cost">$0</span>
+                    <span class="mission-metric-lbl">COST</span>
+                  </div>
+                  <div class="mission-metric">
+                    <span class="mission-metric-val" id="mission-msgs">0</span>
+                    <span class="mission-metric-lbl">MESSAGES</span>
+                  </div>
+                </div>
               </div>
-              <div class="empty-title">Start a conversation</div>
-              <div class="empty-subtitle">Ask anything — your agent is ready</div>
-            </div>
-          </div>
 
-          <div class="chat-input-container">
-            <div
-              class="chat-attachment-preview"
-              id="chat-attachment-preview"
-              style="display: none"
-            ></div>
-            <div class="chat-input-wrapper">
-              <button
-                class="chat-attach-btn"
-                id="chat-attach-btn"
-                title="Attach file"
-                data-icon="paperclip"
-              ></button>
-              <input
-                type="file"
-                id="chat-file-input"
-                multiple
-                accept="image/jpeg,image/png,image/gif,image/webp,.pdf,.txt,.md,.csv,.json,.xml,.yaml,.yml,.toml,.py,.rs,.js,.ts,.html,.css,.sh,.log,.c,.cpp,.h,.java,.rb,.go,.sql"
-                style="display: none"
-              />
-              <textarea
-                class="chat-input"
-                id="chat-input"
-                placeholder="Message your agent..."
-                rows="1"
-              ></textarea>
-              <button class="chat-talk-btn" id="chat-talk-btn" title="Talk Mode — hold to speak">
-                <span class="ms">mic</span>
-              </button>
-              <button
-                class="chat-send"
-                id="chat-send"
-                title="Send message"
-                data-icon="arrow-up"
-              ></button>
+              <!-- Active Jobs / Tool Calls -->
+              <div class="mission-card k-row k-materialise">
+                <div class="mission-card-header">
+                  <span class="ms mission-card-icon">engineering</span>
+                  <span class="mission-card-title">ACTIVE JOBS</span>
+                  <span class="mission-card-badge k-breathe k-status-healthy" id="mission-jobs-badge">
+                    <span class="k-indicator"></span>
+                    <span id="mission-jobs-count">0</span>
+                  </span>
+                </div>
+                <div class="mission-jobs-list" id="mission-jobs-list">
+                  <div class="mission-jobs-empty">
+                    <span class="ms" style="font-size:16px;color:var(--text-muted)">hourglass_empty</span>
+                    <span>Waiting for activity…</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Quick Actions -->
+              <div class="mission-card k-row k-materialise">
+                <div class="mission-card-header">
+                  <span class="ms mission-card-icon">bolt</span>
+                  <span class="mission-card-title">QUICK ACTIONS</span>
+                </div>
+                <div class="mission-actions-grid">
+                  <button class="mission-action-btn" id="session-rename-btn" title="Rename session">
+                    <span class="ms">edit</span>
+                    <span>Rename</span>
+                  </button>
+                  <button class="mission-action-btn" id="session-delete-btn" title="Delete session">
+                    <span class="ms">delete</span>
+                    <span>Delete</span>
+                  </button>
+                  <button class="mission-action-btn" id="session-clear-btn" title="Clear history">
+                    <span class="ms">delete_sweep</span>
+                    <span>Clear</span>
+                  </button>
+                  <button class="mission-action-btn" id="session-compact-btn" title="Compact storage">
+                    <span class="ms">compress</span>
+                    <span>Compact</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Agent Selector -->
+              <div class="mission-card k-row k-materialise">
+                <div class="mission-card-header">
+                  <span class="ms mission-card-icon">group</span>
+                  <span class="mission-card-title">AGENT</span>
+                </div>
+                <div class="mission-agent-select-wrap">
+                  <select class="mission-agent-select" id="chat-agent-select" title="Switch agent">
+                    <option value="default">Agent</option>
+                  </select>
+                </div>
+              </div>
+
             </div>
-            <button class="chat-abort-btn" id="chat-abort-btn" style="display: none">
-              <span data-icon="square"></span>
-              Stop
-            </button>
           </div>
         </div>
 

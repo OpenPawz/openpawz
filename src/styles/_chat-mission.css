@@ -1,0 +1,333 @@
+/* ══════════════════════════════════════════════════════════════════
+   Chat Mission Control Panel
+   Side panel with context gauge, session metrics, active jobs,
+   quick actions, and agent selector.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Layout: chat body splits into main + panel ── */
+
+.chat-mission-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-main-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.chat-mission-panel {
+  width: 260px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-secondary);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.chat-mission-panel::-webkit-scrollbar {
+  width: 4px;
+}
+.chat-mission-panel::-webkit-scrollbar-track {
+  background: transparent;
+}
+.chat-mission-panel::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+
+/* ── Mission Cards ── */
+
+.mission-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mission-card-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mission-card-icon {
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.mission-card-title {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.mission-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-secondary);
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+/* ── Context Gauge ── */
+
+.mission-gauge-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mission-gauge {
+  flex-shrink: 0;
+}
+
+.mission-gauge-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.mission-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.mission-stat-val {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.mission-stat-lbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Context gauge bar (visible replacement for hidden token-meter) */
+.mission-ctx-bar {
+  height: 4px;
+  background: var(--bg-tertiary, var(--border));
+  border-radius: 0;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.mission-ctx-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 0;
+  transition: width 0.4s ease-out, background-color 0.3s ease-out;
+  width: 0%;
+}
+
+.mission-ctx-bar-fill.warning { background: var(--warning); }
+.mission-ctx-bar-fill.danger  { background: var(--error); }
+
+/* ── Session Metrics Grid ── */
+
+.mission-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.mission-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, var(--border));
+}
+
+.mission-metric-val {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.mission-metric-lbl {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── Active Jobs ── */
+
+.mission-jobs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+
+.mission-jobs-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  padding: 4px 0;
+}
+
+.mission-job-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, var(--border));
+}
+
+.mission-job-item .k-indicator {
+  width: 5px;
+  height: 5px;
+}
+
+.mission-job-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mission-job-time {
+  font-size: 9px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+/* ── Quick Actions Grid ── */
+
+.mission-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.mission-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 4px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle, var(--border));
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.mission-action-btn .ms {
+  font-size: 16px;
+  color: var(--text-muted);
+  transition: color 0.15s;
+}
+
+.mission-action-btn:hover {
+  background: var(--bg-primary);
+  border-color: var(--accent-muted, var(--accent));
+  color: var(--text-primary);
+  transform: scale(1.03) translateY(-1px);
+}
+
+.mission-action-btn:hover .ms {
+  color: var(--accent);
+}
+
+.mission-action-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Agent Selector ── */
+
+.mission-agent-select-wrap {
+  position: relative;
+}
+
+.mission-agent-select {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 6px 24px 6px 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  transition: border-color 0.15s;
+}
+
+.mission-agent-select:hover { border-color: var(--accent-muted, var(--accent)); }
+.mission-agent-select:focus { outline: none; border-color: var(--accent); }
+
+.mission-agent-select option {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+/* ── Responsive: collapse panel on narrow viewports ── */
+
+@media (max-width: 800px) {
+  .chat-mission-panel {
+    display: none;
+  }
+  /* Show the hidden token meter in header when panel is hidden */
+  .chat-view .token-meter {
+    display: flex !important;
+  }
+}

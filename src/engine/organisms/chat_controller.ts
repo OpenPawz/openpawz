@@ -23,6 +23,12 @@ import { showToast } from '../../components/toast';
 import * as AgentsModule from '../../views/agents';
 import * as SettingsModule from '../../views/settings-main';
 import {
+  refreshMissionPanel,
+  initMissionPanel,
+  addActiveJob,
+  clearActiveJobs,
+} from '../../components/chat-mission-panel';
+import {
   interceptSlashCommand,
   getSessionOverrides as getSlashOverrides,
   getAutocompleteSuggestions,
@@ -347,6 +353,7 @@ export function resetTokenMeter(): void {
   appState.sessionToolResultTokens = 0;
   appState.sessionToolCallCount = 0;
   updateTokenMeter();
+  initMissionPanel();
   ($('session-budget-alert') as HTMLElement | null)?.style !== undefined &&
     (($('session-budget-alert') as HTMLElement).style.display = 'none');
 }
@@ -367,6 +374,16 @@ export function updateTokenMeter(): void {
         : `${appState.modelContextLimit}`;
     label.textContent = `0 / ${lim} tokens`;
     meter.title = 'Token tracking active — send a message to see usage';
+
+    // Still update mission panel on zero state
+    refreshMissionPanel({
+      tokensUsed: 0,
+      contextLimit: appState.modelContextLimit,
+      inputTokens: 0,
+      outputTokens: 0,
+      cost: 0,
+      messageCount: appState.messages.length,
+    });
     return;
   }
 
@@ -393,6 +410,16 @@ export function updateTokenMeter(): void {
 
   updateCompactionWarning(pct);
   updateContextBreakdownPopover();
+
+  // Update mission control side panel
+  refreshMissionPanel({
+    tokensUsed: appState.sessionTokensUsed,
+    contextLimit: appState.modelContextLimit,
+    inputTokens: appState.sessionInputTokens,
+    outputTokens: appState.sessionOutputTokens,
+    cost: appState.sessionCost,
+    messageCount: appState.messages.length,
+  });
 }
 
 function updateCompactionWarning(pct: number): void {
@@ -648,6 +675,10 @@ export function showStreamingMessage(): void {
   const abortBtn = $('chat-abort-btn');
   if (abortBtn) abortBtn.style.display = '';
   scrollToBottom();
+
+  // Mission panel: show active job
+  const modelName = ($('chat-model-select') as HTMLSelectElement | null)?.selectedOptions?.[0]?.text ?? 'model';
+  addActiveJob(`Streaming · ${modelName}`);
 }
 
 export function scrollToBottom(): void {
@@ -712,6 +743,9 @@ export function appendThinkingDelta(text: string): void {
 
 export function finalizeStreaming(finalContent: string, toolCalls?: ToolCall[]): void {
   $('streaming-message')?.remove();
+
+  // Mission panel: clear active jobs
+  clearActiveJobs();
 
   // Tear down session-keyed stream
   const key = appState.currentSessionKey ?? '';
