@@ -2236,60 +2236,67 @@
 
         <!-- ═══ Settings View ═══ -->
         <div class="view settings-view" id="settings-view">
-          <h1 class="view-title" style="margin-bottom: 12px">Settings</h1>
+          <div class="settings-layout">
+            <!-- Vertical Settings Sidebar -->
+            <nav
+              class="settings-sidebar"
+              id="settings-tab-bar"
+            >
+              <div class="settings-sidebar-title">SYSTEM CONFIG</div>
 
-          <!-- Settings Tab Navigation -->
-          <div
-            class="settings-tab-bar"
-            id="settings-tab-bar"
-            style="
-              display: flex;
-              gap: 4px;
-              flex-wrap: wrap;
-              margin-bottom: 20px;
-              border-bottom: 1px solid var(--border-color);
-              padding-bottom: 8px;
-            "
-          >
-            <button class="btn btn-ghost btn-sm settings-tab active" data-settings-tab="general">
-              General
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="models">
-              Providers
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="agent-defaults">
-              Agent Defaults
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="sessions">
-              Sessions
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="voice">
-              Voice & TTS
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="browser">
-              Browser & Sandbox
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="tailscale">
-              Tailscale
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="webhook">
-              Webhook
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="n8n">n8n</button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="mcp">
-              MCP Servers
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="security">
-              Security
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="memory">
-              Memory
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="engine">
-              Engine
-            </button>
-            <button class="btn btn-ghost btn-sm settings-tab" data-settings-tab="logs">Logs</button>
-          </div>
+              <div class="settings-nav-section">CORE</div>
+              <button class="settings-nav-item active" data-settings-tab="general">
+                <span class="ms ms-sm">tune</span> General
+              </button>
+              <button class="settings-nav-item" data-settings-tab="models">
+                <span class="ms ms-sm">model_training</span> Providers
+              </button>
+              <button class="settings-nav-item" data-settings-tab="agent-defaults">
+                <span class="ms ms-sm">smart_toy</span> Agent Defaults
+              </button>
+              <button class="settings-nav-item" data-settings-tab="sessions">
+                <span class="ms ms-sm">forum</span> Sessions
+              </button>
+
+              <div class="settings-nav-section">VOICE</div>
+              <button class="settings-nav-item" data-settings-tab="voice">
+                <span class="ms ms-sm">mic</span> Voice &amp; TTS
+              </button>
+              <button class="settings-nav-item" data-settings-tab="browser">
+                <span class="ms ms-sm">language</span> Browser &amp; Sandbox
+              </button>
+
+              <div class="settings-nav-section">NETWORK</div>
+              <button class="settings-nav-item" data-settings-tab="tailscale">
+                <span class="ms ms-sm">vpn_lock</span> Tailscale
+              </button>
+              <button class="settings-nav-item" data-settings-tab="webhook">
+                <span class="ms ms-sm">webhook</span> Webhook
+              </button>
+              <button class="settings-nav-item" data-settings-tab="n8n">
+                <span class="ms ms-sm">account_tree</span> n8n
+              </button>
+              <button class="settings-nav-item" data-settings-tab="mcp">
+                <span class="ms ms-sm">dns</span> MCP Servers
+              </button>
+
+              <div class="settings-nav-section">SYSTEM</div>
+              <button class="settings-nav-item" data-settings-tab="security">
+                <span class="ms ms-sm">security</span> Security
+              </button>
+              <button class="settings-nav-item" data-settings-tab="memory">
+                <span class="ms ms-sm">psychology</span> Memory
+              </button>
+              <button class="settings-nav-item" data-settings-tab="engine">
+                <span class="ms ms-sm">memory</span> Engine
+              </button>
+              <button class="settings-nav-item" data-settings-tab="logs">
+                <span class="ms ms-sm">terminal</span> Logs
+              </button>
+            </nav>
+
+            <!-- Settings Content Area -->
+            <div class="settings-content">
 
           <!-- ── Tab: General ── -->
           <div class="settings-tab-panel" id="settings-panel-general">
@@ -2797,6 +2804,10 @@
               <div id="settings-logs-content"></div>
             </div>
           </div>
+            </div>
+            <!-- end settings-content -->
+          </div>
+          <!-- end settings-layout -->
         </div>
       </main>
     </div>

@@ -87,11 +87,11 @@ export function initSettingsTabs() {
   const bar = $('settings-tab-bar');
   if (!bar) return;
   bar.addEventListener('click', (e) => {
-    const btn = (e.target as HTMLElement).closest('.settings-tab') as HTMLElement | null;
+    const btn = (e.target as HTMLElement).closest('.settings-nav-item') as HTMLElement | null;
     if (!btn) return;
     const tab = btn.dataset.settingsTab;
     if (!tab || tab === _activeSettingsTab) return;
-    bar.querySelectorAll('.settings-tab').forEach((b) => b.classList.remove('active'));
+    bar.querySelectorAll('.settings-nav-item').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     document.querySelectorAll('.settings-tab-panel').forEach((p) => {
       (p as HTMLElement).style.display = 'none';
