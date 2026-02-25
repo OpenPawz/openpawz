@@ -28,14 +28,18 @@ Base URL: `https://api.notion.com/v1`
 - `POST /pages` — Create a new page (in a database or as a child of another page)
 - `GET /pages/{page_id}` — Retrieve a page and its properties
 - `PATCH /pages/{page_id}` — Update page properties
-- `GET /blocks/{page_id}/children` — Get page content (blocks)
-- `PATCH /blocks/{page_id}/children` — Append content blocks to a page
+- `PATCH /pages/{page_id}` with `{"archived": true}` — Archive a page
 
 ## Databases
-- `POST /databases` — Create a database
+- `POST /databases` — Create a database with parent and properties schema
 - `GET /databases/{database_id}` — Retrieve database schema
 - `POST /databases/{database_id}/query` — Query database entries with filters and sorts
 - `PATCH /databases/{database_id}` — Update database properties
+
+## Blocks (page content)
+- `GET /blocks/{block_id}/children` — Read page content (blocks)
+- `PATCH /blocks/{block_id}/children` — Append content blocks to a page
+- `DELETE /blocks/{block_id}` — Delete a block
 
 ## Search
 - `POST /search` — Search across all shared pages and databases
