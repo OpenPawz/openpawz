@@ -442,6 +442,14 @@ pub fn run() {
             commands::tool_bridge::engine_tools_by_service,
             commands::tool_bridge::engine_tools_get_agent_assignment,
             commands::tool_bridge::engine_tools_set_agent_service,
+            // ── Health Monitor & Workflow Chains (Phase 6) ──
+            commands::health_monitor::engine_health_check_services,
+            commands::health_monitor::engine_health_update_service,
+            commands::health_monitor::engine_health_trigger_reauth,
+            commands::health_monitor::engine_health_list_chains,
+            commands::health_monitor::engine_health_save_chain,
+            commands::health_monitor::engine_health_toggle_chain,
+            commands::health_monitor::engine_health_delete_chain,
             // ── MCP Servers (Phase E) ──
             commands::mcp::engine_mcp_list_servers,
             commands::mcp::engine_mcp_save_server,
