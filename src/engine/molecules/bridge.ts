@@ -5,6 +5,7 @@
 import { pawEngine } from './ipc_client';
 import type { EngineEvent, EngineChatRequest } from '../atoms/types';
 import { getAgentAllowedTools, ALL_TOOLS } from '../../features/agent-policies';
+import { getIntegrationHint } from './auto-discover-bridge';
 
 type AgentEventHandler = (payload: unknown) => void;
 type ToolApprovalHandler = (event: EngineEvent) => void;
@@ -142,6 +143,14 @@ export async function engineChatSend(
     }
     if (profile.systemPrompt) parts.push(profile.systemPrompt);
     if (parts.length > 0) agentSystemPrompt = parts.join(' ');
+  }
+
+  // Inject integration auto-discovery context
+  const integrationHint = await getIntegrationHint(content);
+  if (integrationHint) {
+    agentSystemPrompt = agentSystemPrompt
+      ? `${agentSystemPrompt}\n\n${integrationHint}`
+      : integrationHint;
   }
 
   const agentId = opts.agentProfile?.id ?? 'default';

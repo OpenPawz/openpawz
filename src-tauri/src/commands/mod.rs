@@ -18,6 +18,7 @@ pub mod n8n;
 pub mod project;
 pub mod guardrails;
 pub mod health_monitor;
+pub mod integrations;
 pub mod queries;
 pub mod skill_wizard;
 pub mod skills;

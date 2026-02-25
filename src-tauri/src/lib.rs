@@ -450,6 +450,13 @@ pub fn run() {
             commands::health_monitor::engine_health_save_chain,
             commands::health_monitor::engine_health_toggle_chain,
             commands::health_monitor::engine_health_delete_chain,
+            // ── Integrations Management (Phase 7) ──
+            commands::integrations::engine_integrations_list_connected,
+            commands::integrations::engine_integrations_get_connected,
+            commands::integrations::engine_integrations_connect,
+            commands::integrations::engine_integrations_disconnect,
+            commands::integrations::engine_integrations_touch,
+            commands::integrations::engine_integrations_overview,
             // ── MCP Servers (Phase E) ──
             commands::mcp::engine_mcp_list_servers,
             commands::mcp::engine_mcp_save_server,

@@ -23,6 +23,11 @@ import {
 import { renderSkillWidgets } from '../../components/molecules/skill-widget';
 import type { SkillOutput, EngineSkillStatus } from '../../engine/atoms/types';
 import { appState } from '../../state';
+import {
+  renderDashboardIntegrations,
+  wireDashboardEvents,
+  loadServiceHealth,
+} from '../../features/integration-health';
 import { heatmapStrip, statusDot } from '../../components/molecules/data-viz';
 import { isShowcaseActive, getShowcaseData } from '../../components/showcase';
 
@@ -523,10 +528,7 @@ export function renderToday() {
           <span class="today-card-count" id="cmd-integrations-count">…</span>
         </div>
         <div class="today-card-body" id="cmd-integrations-body">
-          <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
-            <span class="ms ms-sm">hub</span>
-            <span>400+ services available · <a href="#" data-view="integrations" style="color:var(--accent);text-decoration:none">Browse all</a></span>
-          </div>
+          <span class="today-loading">Loading integrations…</span>
         </div>
       </div>
 
@@ -658,6 +660,9 @@ function bindEvents() {
   $('today-briefing-btn')?.addEventListener('click', () => triggerBriefing());
   $('today-summarize-btn')?.addEventListener('click', () => triggerInboxSummary());
   $('today-schedule-btn')?.addEventListener('click', () => triggerScheduleCheck());
+
+  // Integration health dashboard wiring
+  loadIntegrationsDashboard();
 }
 
 // ── Task Modal ────────────────────────────────────────────────────────
@@ -800,5 +805,33 @@ async function triggerScheduleCheck() {
     await pawEngine.chatSend('main', 'What do I have scheduled for today? Check my calendar.');
   } catch {
     showToast('Failed to check schedule', 'error');
+  }
+}
+
+// ── Integration Dashboard Loader ──────────────────────────────────────
+
+async function loadIntegrationsDashboard() {
+  const body = $('cmd-integrations-body');
+  const countEl = $('cmd-integrations-count');
+  if (!body) return;
+
+  try {
+    const health = await loadServiceHealth();
+    const connectedIds = health.map((h) => h.service);
+
+    if (countEl) {
+      countEl.textContent = health.length > 0 ? String(health.length) : '0';
+    }
+
+    const html = await renderDashboardIntegrations(connectedIds);
+    body.innerHTML = html;
+    wireDashboardEvents(body);
+  } catch {
+    body.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+        <span class="ms ms-sm">hub</span>
+        <span>400+ services available · <a href="#" data-view="integrations" style="color:var(--accent);text-decoration:none">Browse all</a></span>
+      </div>`;
+    if (countEl) countEl.textContent = '0';
   }
 }
