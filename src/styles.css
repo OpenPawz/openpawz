@@ -3067,7 +3067,7 @@ button:focus:not(:focus-visible) {
 .task-card-model {
   display: inline-block;
   background: var(--accent-dim, rgba(99, 102, 241, 0.15));
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
   font-size: 9px;
   padding: 1px 6px;
   border-radius: var(--radius-sm);
@@ -6117,7 +6117,7 @@ button:focus:not(:focus-visible) {
   line-height: 1.5;
 }
 .wa-prereq a {
-  color: var(--neon-cyan);
+  color: var(--accent);
   text-decoration: underline;
 }
 .wa-steps {
@@ -6179,7 +6179,7 @@ button:focus:not(:focus-visible) {
   gap: 10px;
   margin-top: 10px;
   padding: 12px 16px;
-  border-radius: 8px;
+  border-radius: 0;
   font-size: 13px;
   line-height: 1.5;
   background: rgba(255, 255, 255, 0.04);
@@ -6188,26 +6188,26 @@ button:focus:not(:focus-visible) {
   animation: fadeIn 0.2s ease;
 }
 .wa-status-banner.wa-status-error {
-  background: rgba(255, 60, 60, 0.08);
-  border-color: rgba(255, 60, 60, 0.3);
-  color: #ff6b6b;
+  background: rgba(255, 77, 77, 0.08);
+  border-color: rgba(255, 77, 77, 0.3);
+  color: var(--error);
 }
 .wa-status-banner.wa-status-warning {
-  background: rgba(255, 191, 0, 0.08);
-  border-color: rgba(255, 191, 0, 0.3);
-  color: #ffbf00;
+  background: rgba(212, 168, 83, 0.08);
+  border-color: rgba(212, 168, 83, 0.3);
+  color: var(--warning);
 }
 .wa-status-banner.wa-status-success {
-  background: rgba(0, 255, 136, 0.08);
-  border-color: rgba(0, 255, 136, 0.3);
-  color: var(--neon-green);
+  background: rgba(143, 176, 160, 0.08);
+  border-color: rgba(143, 176, 160, 0.3);
+  color: var(--success);
 }
 .wa-status-banner.wa-status-qr {
   flex-direction: column;
   align-items: center;
   text-align: center;
   background: rgba(255, 255, 255, 0.03);
-  border-color: var(--neon-magenta);
+  border-color: var(--accent);
 }
 .wa-status-icon {
   font-size: 18px;
@@ -6217,7 +6217,7 @@ button:focus:not(:focus-visible) {
   width: 16px;
   height: 16px;
   border: 2px solid var(--border-light);
-  border-top-color: var(--neon-cyan);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   flex-shrink: 0;
@@ -6626,10 +6626,10 @@ select.form-input {
   font-size: 13px;
 }
 .skill-status.status-ready {
-  color: var(--success, #39ff14);
+  color: var(--success, #8FB0A0);
 }
 .skill-status.status-error {
-  color: var(--error, #ff2244);
+  color: var(--error, #FF4D4D);
 }
 .skill-status.status-warn {
   color: var(--warning, #fbbf24);
@@ -6652,7 +6652,7 @@ select.form-input {
   color: var(--text-secondary);
 }
 .skill-revoke-btn {
-  color: var(--error, #ff2244) !important;
+  color: var(--error, #FF4D4D) !important;
   font-size: 11px;
 }
 
@@ -6714,7 +6714,7 @@ select.form-input {
   font-size: 14px;
 }
 .skill-status-danger .skill-status-msg {
-  color: var(--error, #ff2244);
+  color: var(--error, #FF4D4D);
 }
 .skill-status-warn .skill-status-msg {
   color: var(--warning, #fbbf24);
@@ -6777,7 +6777,7 @@ select.form-input {
   display: block;
 }
 .skill-required {
-  color: var(--error, #ff2244);
+  color: var(--error, #FF4D4D);
   font-size: 12px;
 }
 .skill-cred-desc {
@@ -6810,7 +6810,7 @@ select.form-input {
 }
 .status-ready .ms,
 .skill-cred-status .ms[style] {
-  color: var(--success, #39ff14);
+  color: var(--success, #8FB0A0);
 }
 
 /* Advanced / instructions section */
@@ -7060,7 +7060,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .trading-table tbody tr:hover {
-  background: rgba(0, 255, 255, 0.03);
+  background: rgba(122, 139, 154, 0.03);
 }
 
 .trading-time {
@@ -7081,7 +7081,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .trading-badge.trade {
-  background: rgba(0, 204, 255, 0.15);
+  background: rgba(122, 139, 154, 0.15);
   color: var(--blue);
 }
 
@@ -7091,12 +7091,12 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .trading-badge.dex_swap {
-  background: rgba(0, 255, 170, 0.15);
-  color: #00ffaa;
+  background: rgba(143, 176, 160, 0.15);
+  color: var(--kinetic-sage);
 }
 
 .trading-swap {
-  color: #00ffaa !important;
+  color: var(--kinetic-sage) !important;
 }
 
 .trading-pair {
@@ -7115,7 +7115,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .trading-card-accent {
-  border-color: rgba(0, 255, 170, 0.3);
+  border-color: rgba(143, 176, 160, 0.3);
 }
 
 .trading-card-sub {
@@ -7151,9 +7151,9 @@ details[open] > .skill-advanced-summary::before {
   font-size: 11px;
   font-weight: 600;
   font-family: var(--font-mono);
-  background: rgba(0, 255, 170, 0.1);
-  color: #00ffaa;
-  border: 1px solid rgba(0, 255, 170, 0.2);
+  background: rgba(143, 176, 160, 0.1);
+  color: var(--kinetic-sage);
+  border: 1px solid rgba(143, 176, 160, 0.2);
 }
 
 .trading-history-count {
@@ -7227,7 +7227,7 @@ details[open] > .skill-advanced-summary::before {
   border: 1px solid var(--error-subtle);
 }
 .trading-toast.info {
-  background: rgba(0, 204, 255, 0.1);
+  background: rgba(122, 139, 154, 0.1);
   color: var(--blue);
   border: 1px solid var(--blue-subtle);
 }
@@ -10584,8 +10584,8 @@ details[open] > .skill-advanced-summary::before {
 /* ── Live Panel ──────────────────────────────────────────────────────────── */
 
 .research-live-panel {
-  background: rgba(0, 204, 255, 0.04);
-  border: 1px solid rgba(0, 204, 255, 0.2);
+  background: rgba(122, 139, 154, 0.04);
+  border: 1px solid rgba(122, 139, 154, 0.2);
   border-radius: var(--radius-sm);
   margin: 16px 24px;
   overflow: hidden;
@@ -10596,8 +10596,8 @@ details[open] > .skill-advanced-summary::before {
   align-items: center;
   justify-content: space-between;
   padding: 12px 16px;
-  background: rgba(0, 204, 255, 0.06);
-  border-bottom: 1px solid rgba(0, 204, 255, 0.15);
+  background: rgba(122, 139, 154, 0.06);
+  border-bottom: 1px solid rgba(122, 139, 154, 0.15);
 }
 
 .research-live-title {
@@ -10611,7 +10611,7 @@ details[open] > .skill-advanced-summary::before {
 .research-live-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid rgba(0, 204, 255, 0.3);
+  border: 2px solid rgba(122, 139, 154, 0.3);
   border-top-color: var(--blue);
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
@@ -12987,7 +12987,7 @@ details[open] > .skill-advanced-summary::before {
 .capabilities-card .today-card-header {
   background: linear-gradient(
     135deg,
-    var(--accent-subtle, rgba(124, 58, 237, 0.06)) 0%,
+    var(--accent-subtle, rgba(255, 77, 77, 0.06)) 0%,
     transparent 60%
   );
 }
@@ -14704,8 +14704,8 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .integrations-main-tab.active {
-  color: var(--accent, #6366f1);
-  border-bottom-color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
+  border-bottom-color: var(--accent, #FF4D4D);
 }
 
 /* ── Automations Panel (Phase 2.7) ────────────────────────────────── */
@@ -14762,8 +14762,8 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .automations-tab.active {
-  color: var(--accent, #6366f1);
-  border-bottom-color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
+  border-bottom-color: var(--accent, #FF4D4D);
 }
 
 /* Templates toolbar */
@@ -14817,7 +14817,7 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .automation-card:hover {
-  border-color: var(--accent, #6366f1);
+  border-color: var(--accent, #FF4D4D);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
@@ -15538,13 +15538,13 @@ details[open] > .skill-advanced-summary::before {
 }
 
 .guardrail-btn-edit {
-  background: color-mix(in srgb, var(--accent, #6366f1) 15%, transparent);
-  border-color: var(--accent, #6366f1);
-  color: var(--accent, #6366f1);
+  background: color-mix(in srgb, var(--accent, #FF4D4D) 15%, transparent);
+  border-color: var(--accent, #FF4D4D);
+  color: var(--accent, #FF4D4D);
 }
 
 .guardrail-btn-edit:hover {
-  background: color-mix(in srgb, var(--accent, #6366f1) 25%, transparent);
+  background: color-mix(in srgb, var(--accent, #FF4D4D) 25%, transparent);
 }
 
 .guardrail-btn-cancel {
@@ -15640,7 +15640,7 @@ details[open] > .skill-advanced-summary::before {
 
 .guardrail-dryrun-header .ms {
   font-size: 20px;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
 }
 
 .guardrail-dryrun-steps {
@@ -15701,7 +15701,7 @@ details[open] > .skill-advanced-summary::before {
 
 .guardrail-audit-header .ms {
   font-size: 18px;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
 }
 
 .guardrail-audit-header span:nth-child(2) {
@@ -15766,7 +15766,7 @@ details[open] > .skill-advanced-summary::before {
 
 .guardrail-perm-header .ms {
   font-size: 18px;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
 }
 
 .guardrail-perm-list {
@@ -15808,7 +15808,7 @@ details[open] > .skill-advanced-summary::before {
 
 .guardrail-perm-select:focus {
   outline: none;
-  border-color: var(--accent, #6366f1);
+  border-color: var(--accent, #FF4D4D);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -15837,7 +15837,7 @@ details[open] > .skill-advanced-summary::before {
 
 .intfeed-pulse-header .ms {
   font-size: 18px;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
 }
 
 .intfeed-pulse-summary {
@@ -15967,7 +15967,7 @@ details[open] > .skill-advanced-summary::before {
 
 .intfeed-entry-link {
   font-size: 0.75rem;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -15988,7 +15988,7 @@ details[open] > .skill-advanced-summary::before {
 .intfeed-more {
   padding: 0.5rem 1rem;
   font-size: 0.8rem;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
   cursor: pointer;
   text-align: center;
 }
@@ -16035,7 +16035,7 @@ details[open] > .skill-advanced-summary::before {
 
 .intfeed-receipt-link {
   font-size: 0.75rem;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
   text-decoration: none;
   display: inline-flex;
   align-items: center;
@@ -16069,7 +16069,7 @@ details[open] > .skill-advanced-summary::before {
 
 .intfeed-card-header .ms {
   font-size: 18px;
-  color: var(--accent, #6366f1);
+  color: var(--accent, #FF4D4D);
 }
 
 .intfeed-card-body {
