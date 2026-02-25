@@ -63,6 +63,8 @@ import { initCommandPalette } from './components/command-palette';
 import { getTheme, setTheme } from './components/molecules/theme';
 import { initNotifications } from './components/notifications';
 import { initWebhookLog } from './components/webhook-log';
+import { isTourComplete, startTour } from './components/tour';
+import { restoreShowcase, enableShowcase } from './components/showcase';
 
 // ── Tauri bridge ─────────────────────────────────────────────────────────
 interface TauriWindow {
@@ -198,6 +200,9 @@ function handlePaletteAction(action: string) {
     // The shortcuts overlay is handled inside the command-palette module
     // Trigger via keypress simulation
     document.dispatchEvent(new KeyboardEvent('keydown', { key: '?', shiftKey: true }));
+  } else if (action === 'showcase-toggle') {
+    enableShowcase();
+    switchView('today');
   } else if (action.startsWith('skill-toggle:')) {
     const skillId = action.replace('skill-toggle:', '');
     pawEngine.skillSetEnabled(skillId, true).catch((e) => {
@@ -427,7 +432,23 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     console.debug('[main] Pawz engine mode — starting...');
     await connectEngine();
+    restoreShowcase();
     switchView('today');
+
+    // First-run guided tour
+    if (!isTourComplete()) {
+      // Delay slightly so the Today view finishes rendering
+      setTimeout(() => {
+        startTour(() => {
+          console.debug('[main] Tour completed');
+        });
+      }, 800);
+    }
+
+    // Listen for showcase exit to refresh Today
+    window.addEventListener('showcase-exit', () => {
+      switchView('today');
+    });
 
     autoStartConfiguredChannels().catch((e) =>
       console.warn('[main] Auto-start channels error:', e),

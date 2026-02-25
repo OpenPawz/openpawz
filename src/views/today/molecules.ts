@@ -17,11 +17,14 @@ import {
   formatCost,
   agentStatus,
   buildHeatmapData,
+  buildCapabilityGroups,
+  type CapabilityGroup,
 } from './atoms';
 import { renderSkillWidgets } from '../../components/molecules/skill-widget';
 import type { SkillOutput, EngineSkillStatus } from '../../engine/atoms/types';
 import { appState } from '../../state';
 import { heatmapStrip, statusDot } from '../../components/molecules/data-viz';
+import { isShowcaseActive, getShowcaseData } from '../../components/showcase';
 
 // ── Tauri bridge (no pawEngine equivalent for these commands) ──────────
 interface TauriWindow {
@@ -240,6 +243,22 @@ export async function fetchSkillOutputs() {
 
 /** Fetch enabled skills list and populate the Active Skills card. */
 export async function fetchActiveSkills() {
+  const container = $('cmd-skills-body');
+  if (!container) return;
+
+  // Showcase mode — render demo skill chips
+  const showcase = isShowcaseActive() ? getShowcaseData() : null;
+  if (showcase) {
+    const countEl = $('cmd-skills-count');
+    if (countEl) countEl.textContent = String(showcase.skillNames.length);
+    container.innerHTML = `
+      <div class="cmd-skills-grid">
+        ${showcase.skillNames.map((n) => `<span class="cmd-skill-chip">${escHtml(n)} ${statusDot('active')}</span>`).join('')}
+      </div>
+    `;
+    return;
+  }
+
   try {
     const all = await pawEngine.skillsList();
     _activeSkills = all.filter((s) => s.enabled);
@@ -278,10 +297,93 @@ export async function fetchActiveSkills() {
   }
 }
 
+/** Populate the Capabilities card with grouped skill descriptions. */
+export async function fetchCapabilities() {
+  const container = $('cmd-capabilities-body');
+  if (!container) return;
+
+  try {
+    // Use already-fetched skills if available, otherwise fetch
+    let skills = _activeSkills;
+    if (skills.length === 0) {
+      const all = await pawEngine.skillsList();
+      skills = all.filter((s) => s.enabled);
+    }
+
+    if (skills.length === 0) {
+      container.innerHTML = `
+        <div class="today-section-empty">
+          Enable skills in Settings to unlock agent capabilities
+        </div>
+        <button class="btn btn-primary btn-sm capabilities-goto-skills" style="margin-top:8px">
+          <span class="ms ms-sm">bolt</span> Browse Skills
+        </button>
+      `;
+      container.querySelector('.capabilities-goto-skills')?.addEventListener('click', () => {
+        switchView('settings-skills');
+      });
+      return;
+    }
+
+    const groups = buildCapabilityGroups(skills);
+    container.innerHTML = renderCapabilityGroups(groups, skills.length);
+  } catch (e) {
+    console.warn('[today] Capabilities fetch failed:', e);
+    container.innerHTML = `<div class="today-section-empty">Could not load capabilities</div>`;
+  }
+}
+
+function renderCapabilityGroups(groups: CapabilityGroup[], totalSkills: number): string {
+  const groupsHtml = groups
+    .slice(0, 6)
+    .map(
+      (g) => `
+      <div class="cap-group">
+        <div class="cap-group-header">
+          <span class="ms ms-sm">${g.icon}</span>
+          <span class="cap-group-label">${escHtml(g.label)}</span>
+        </div>
+        <div class="cap-group-items">
+          ${g.capabilities
+            .slice(0, 3)
+            .map((c) => `<span class="cap-item">${escHtml(c)}</span>`)
+            .join('')}
+          ${g.capabilities.length > 3 ? `<span class="cap-item cap-more">+${g.capabilities.length - 3} more</span>` : ''}
+        </div>
+      </div>`,
+    )
+    .join('');
+
+  const moreGroups = groups.length > 6 ? `<div class="cap-overflow">+${groups.length - 6} more categories</div>` : '';
+
+  return `
+    <div class="cap-summary">${totalSkills} skill${totalSkills !== 1 ? 's' : ''} across ${groups.length} ${groups.length !== 1 ? 'categories' : 'category'}</div>
+    <div class="cap-groups">${groupsHtml}</div>
+    ${moreGroups}
+  `;
+}
+
 /** Populate the agent fleet status card. */
 export async function fetchFleetStatus() {
   const container = $('cmd-fleet-body');
   if (!container) return;
+
+  // Showcase mode — render demo agents
+  const showcase = isShowcaseActive() ? getShowcaseData() : null;
+  if (showcase) {
+    container.innerHTML = showcase.agents
+      .map((a) => {
+        const status = agentStatus(a.lastUsed);
+        return `<div class="cmd-fleet-item">
+          <div class="cmd-fleet-avatar"><span class="ms" style="font-size:28px">smart_toy</span></div>
+          <span class="cmd-fleet-name">${escHtml(a.name)}</span>
+          ${statusDot(status)}
+          <span class="cmd-fleet-status">${status}</span>
+        </div>`;
+      })
+      .join('');
+    return;
+  }
 
   try {
     const agents = getAgents();
@@ -325,7 +427,8 @@ export function renderToday() {
   const container = $('today-content');
   if (!container) return;
 
-  const tasks = _state.getTasks();
+  const showcase = isShowcaseActive() ? getShowcaseData() : null;
+  const tasks = showcase ? showcase.tasks : _state.getTasks();
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', {
     weekday: 'long',
@@ -338,9 +441,9 @@ export function renderToday() {
   const pendingTasks = tasks.filter((t) => !t.done);
   const completedToday = tasks.filter((t) => t.done && isToday(t.createdAt));
 
-  // Usage stats from appState
-  const tokensUsed = appState.sessionTokensUsed;
-  const cost = appState.sessionCost;
+  // Usage stats — showcase overrides or real data
+  const tokensUsed = showcase ? showcase.tokenCount : appState.sessionTokensUsed;
+  const cost = showcase ? showcase.cost : appState.sessionCost;
 
   container.innerHTML = `
     <div class="today-header">
@@ -455,6 +558,17 @@ export function renderToday() {
           <span class="today-card-title">30-Day Activity</span>
         </div>
         <div class="today-card-body" id="cmd-heatmap-body">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Capabilities Card (full width) -->
+      <div class="card-elevated cmd-card cmd-card-full capabilities-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">auto_awesome</span></span>
+          <span class="today-card-title">Your Agent Can</span>
+        </div>
+        <div class="today-card-body" id="cmd-capabilities-body">
           <span class="today-loading">Loading…</span>
         </div>
       </div>

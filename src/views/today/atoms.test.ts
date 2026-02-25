@@ -10,8 +10,10 @@ import {
   activityIcon,
   relativeTime,
   truncateContent,
+  buildCapabilityGroups,
+  buildShowcaseData,
 } from './atoms';
-import type { EngineTask } from '../../engine/atoms/types';
+import type { EngineTask, EngineSkillStatus } from '../../engine/atoms/types';
 
 // ── getWeatherIcon ─────────────────────────────────────────────────────
 
@@ -241,5 +243,116 @@ describe('truncateContent', () => {
 
   it('returns content at exact limit without ellipsis', () => {
     expect(truncateContent('hello', 5)).toBe('hello');
+  });
+});
+
+// ── buildCapabilityGroups ─────────────────────────────────────────────
+
+function makeSkill(overrides: Partial<EngineSkillStatus> = {}): EngineSkillStatus {
+  return {
+    id: 'test-skill',
+    name: 'Test Skill',
+    description: 'A test skill',
+    icon: '🔧',
+    category: 'general',
+    tier: 'skill',
+    enabled: true,
+    required_credentials: [],
+    configured_credentials: [],
+    missing_credentials: [],
+    missing_binaries: [],
+    required_env_vars: [],
+    missing_env_vars: [],
+    install_hint: '',
+    has_instructions: false,
+    is_ready: true,
+    tool_names: [],
+    default_instructions: '',
+    custom_instructions: '',
+    ...overrides,
+  };
+}
+
+describe('buildCapabilityGroups', () => {
+  it('returns empty array for empty skills', () => {
+    expect(buildCapabilityGroups([])).toEqual([]);
+  });
+
+  it('groups skills by category', () => {
+    const skills = [
+      makeSkill({ id: 's1', name: 'Email', description: 'Send and receive email', category: 'communication' }),
+      makeSkill({ id: 's2', name: 'Slack', description: 'Post to Slack', category: 'communication' }),
+      makeSkill({ id: 's3', name: 'Browser', description: 'Browse the web', category: 'web' }),
+    ];
+    const groups = buildCapabilityGroups(skills);
+    expect(groups).toHaveLength(2);
+
+    const commGroup = groups.find((g) => g.label === 'Communication');
+    expect(commGroup).toBeDefined();
+    expect(commGroup!.capabilities).toHaveLength(2);
+    expect(commGroup!.icon).toBe('mail');
+
+    const webGroup = groups.find((g) => g.label === 'Web & Research');
+    expect(webGroup).toBeDefined();
+    expect(webGroup!.capabilities).toHaveLength(1);
+  });
+
+  it('uses skill description as capability text', () => {
+    const skills = [makeSkill({ description: 'Browse the web', category: 'web' })];
+    const groups = buildCapabilityGroups(skills);
+    expect(groups[0].capabilities[0]).toBe('Browse the web');
+  });
+
+  it('falls back to skill name when no description', () => {
+    const skills = [makeSkill({ name: 'Browser', description: '', category: 'web' })];
+    const groups = buildCapabilityGroups(skills);
+    expect(groups[0].capabilities[0]).toBe('Browser');
+  });
+
+  it('uses generic icon for unknown categories', () => {
+    const skills = [makeSkill({ category: 'custom_thing' })];
+    const groups = buildCapabilityGroups(skills);
+    expect(groups[0].icon).toBe('extension');
+    expect(groups[0].label).toBe('Custom_thing');
+  });
+
+  it('sorts groups alphabetically by label', () => {
+    const skills = [
+      makeSkill({ id: 's1', category: 'web' }),
+      makeSkill({ id: 's2', category: 'communication' }),
+      makeSkill({ id: 's3', category: 'development' }),
+    ];
+    const groups = buildCapabilityGroups(skills);
+    expect(groups[0].label).toBe('Communication');
+    expect(groups[1].label).toBe('Development');
+    expect(groups[2].label).toBe('Web & Research');
+  });
+});
+
+// ── buildShowcaseData ─────────────────────────────────────────────────
+
+describe('buildShowcaseData', () => {
+  it('returns demo agents', () => {
+    const data = buildShowcaseData();
+    expect(data.agents).toHaveLength(3);
+    expect(data.agents[0].name).toBe('Atlas');
+  });
+
+  it('returns demo tasks', () => {
+    const data = buildShowcaseData();
+    expect(data.tasks.length).toBeGreaterThan(0);
+    expect(data.tasks[0].text).toBeTruthy();
+  });
+
+  it('returns demo skill names', () => {
+    const data = buildShowcaseData();
+    expect(data.skillNames.length).toBeGreaterThan(0);
+    expect(data.skillNames).toContain('Browser');
+  });
+
+  it('returns positive token count and cost', () => {
+    const data = buildShowcaseData();
+    expect(data.tokenCount).toBeGreaterThan(0);
+    expect(data.cost).toBeGreaterThan(0);
   });
 });

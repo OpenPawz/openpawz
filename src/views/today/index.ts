@@ -7,6 +7,7 @@ import {
   fetchUnreadEmails,
   fetchSkillOutputs,
   fetchActiveSkills,
+  fetchCapabilities,
   fetchFleetStatus,
   fetchHeatmap,
   renderToday,
@@ -46,6 +47,7 @@ export async function loadToday() {
     fetchSkillOutputs(),
     fetchFleetStatus(),
     fetchActiveSkills(),
+    fetchCapabilities(),
     fetchHeatmap(),
     fetchAndRenderActivity(),
   ]);

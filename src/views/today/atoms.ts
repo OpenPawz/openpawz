@@ -1,6 +1,11 @@
 // Today View — Pure helpers (no DOM, no IPC)
 
-import type { EngineTask, TaskStatus, EngineTaskActivity } from '../../engine/atoms/types';
+import type {
+  EngineTask,
+  TaskStatus,
+  EngineTaskActivity,
+  EngineSkillStatus,
+} from '../../engine/atoms/types';
 
 export interface Task {
   id: string;
@@ -153,6 +158,128 @@ export function agentStatus(lastUsed?: string): 'active' | 'idle' | 'offline' {
   const diffMs = Date.now() - new Date(lastUsed).getTime();
   if (diffMs < 60_000) return 'active'; // active within last minute
   return 'idle';
+}
+
+// ── Capabilities Helpers ──────────────────────────────────────────────
+
+export interface CapabilityGroup {
+  label: string;
+  icon: string;
+  capabilities: string[];
+}
+
+const CATEGORY_META: Record<string, { icon: string; label: string }> = {
+  communication: { icon: 'mail', label: 'Communication' },
+  web: { icon: 'language', label: 'Web & Research' },
+  development: { icon: 'code', label: 'Development' },
+  trading: { icon: 'candlestick_chart', label: 'Trading' },
+  productivity: { icon: 'task_alt', label: 'Productivity' },
+  media: { icon: 'image', label: 'Media & Content' },
+  system: { icon: 'settings', label: 'System' },
+  storage: { icon: 'cloud', label: 'Storage' },
+  search: { icon: 'search', label: 'Search' },
+  automation: { icon: 'smart_toy', label: 'Automation' },
+};
+
+/** Group enabled skills into human-readable capability categories. */
+export function buildCapabilityGroups(skills: EngineSkillStatus[]): CapabilityGroup[] {
+  const groups = new Map<string, string[]>();
+
+  for (const skill of skills) {
+    const cat = (skill.category || 'general').toLowerCase();
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat)!.push(skill.description || skill.name);
+  }
+
+  return Array.from(groups.entries())
+    .map(([cat, descriptions]) => {
+      const meta = CATEGORY_META[cat] || { icon: 'extension', label: cat.charAt(0).toUpperCase() + cat.slice(1) };
+      return {
+        label: meta.label,
+        icon: meta.icon,
+        capabilities: descriptions,
+      };
+    })
+    .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+// ── Tour Step Definitions ─────────────────────────────────────────────
+
+export interface TourStep {
+  target: string;       // CSS selector
+  title: string;
+  description: string;
+  position: 'right' | 'bottom' | 'left';
+}
+
+export const TOUR_STEPS: TourStep[] = [
+  {
+    target: '[data-view="chat"]',
+    title: 'Chat with AI',
+    description: 'Talk to your agents, ask questions, and get tasks done through natural conversation.',
+    position: 'right',
+  },
+  {
+    target: '[data-view="agents"]',
+    title: 'Your Agent Fleet',
+    description: 'Create AI agents with unique personas, specialized tools, and custom instructions.',
+    position: 'right',
+  },
+  {
+    target: '[data-view="settings-skills"]',
+    title: 'Skills & Integrations',
+    description: 'Enable capabilities like email, web browsing, coding, trading, and hundreds more.',
+    position: 'right',
+  },
+  {
+    target: '[data-view="tasks"]',
+    title: 'Task Board',
+    description: 'Organize work on a kanban board. Assign tasks to agents and track progress.',
+    position: 'right',
+  },
+  {
+    target: '[data-view="settings"]',
+    title: 'Settings',
+    description: 'Configure AI providers, models, security policies, and customize your workspace.',
+    position: 'right',
+  },
+];
+
+// ── Showcase Demo Data ────────────────────────────────────────────────
+
+export interface ShowcaseAgent {
+  name: string;
+  avatar: string;
+  lastUsed: string;
+}
+
+export interface ShowcaseData {
+  agents: ShowcaseAgent[];
+  tasks: Task[];
+  skillNames: string[];
+  tokenCount: number;
+  cost: number;
+}
+
+/** Generate synthetic demo data for Showcase mode. */
+export function buildShowcaseData(): ShowcaseData {
+  const now = Date.now();
+  return {
+    agents: [
+      { name: 'Atlas', avatar: 'default', lastUsed: new Date(now - 30_000).toISOString() },
+      { name: 'Scout', avatar: 'default', lastUsed: new Date(now - 120_000).toISOString() },
+      { name: 'Forge', avatar: 'default', lastUsed: new Date(now - 600_000).toISOString() },
+    ],
+    tasks: [
+      { id: 'demo-1', text: 'Review pull request #42', done: false, createdAt: new Date(now - 3600_000).toISOString() },
+      { id: 'demo-2', text: 'Draft weekly standup notes', done: false, createdAt: new Date(now - 7200_000).toISOString() },
+      { id: 'demo-3', text: 'Research competitor pricing', done: true, createdAt: new Date(now - 1800_000).toISOString() },
+      { id: 'demo-4', text: 'Update API documentation', done: false, createdAt: new Date(now - 5400_000).toISOString() },
+    ],
+    skillNames: ['Email', 'Browser', 'GitHub', 'File System', 'Shell', 'Web Search', 'Calendar'],
+    tokenCount: 48_720,
+    cost: 1.24,
+  };
 }
 
 /** Build 30-day activity data from task activity items. */
