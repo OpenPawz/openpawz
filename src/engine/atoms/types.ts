@@ -789,6 +789,34 @@ export interface WebhookConfig {
   allow_dangerous_tools: boolean;
 }
 
+// ── n8n Integration ──────────────────────────────────────────────────
+
+export interface N8nConfig {
+  url: string;
+  api_key: string;
+  enabled: boolean;
+  auto_discover: boolean;
+  mcp_mode: boolean;
+}
+
+export interface N8nTestResult {
+  connected: boolean;
+  version: string;
+  workflow_count: number;
+  error?: string;
+}
+
+export interface N8nWorkflow {
+  id: string;
+  name: string;
+  active: boolean;
+  tags: string[];
+  nodes: string[];
+  triggerType: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ── MCP Servers (Phase E) ────────────────────────────────────────────
 
 export type McpTransport = 'stdio' | 'sse';

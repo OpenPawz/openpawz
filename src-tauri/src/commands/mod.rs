@@ -12,6 +12,7 @@ pub mod config;
 pub mod mail;
 pub mod mcp;
 pub mod memory;
+pub mod n8n;
 pub mod project;
 pub mod skill_wizard;
 pub mod skills;

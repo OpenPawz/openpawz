@@ -392,6 +392,12 @@ pub fn run() {
             commands::webhook::engine_webhook_get_config,
             commands::webhook::engine_webhook_set_config,
             commands::webhook::engine_webhook_regenerate_token,
+            // ── n8n Integration ──
+            commands::n8n::engine_n8n_get_config,
+            commands::n8n::engine_n8n_set_config,
+            commands::n8n::engine_n8n_test_connection,
+            commands::n8n::engine_n8n_list_workflows,
+            commands::n8n::engine_n8n_trigger_workflow,
             // ── MCP Servers (Phase E) ──
             commands::mcp::engine_mcp_list_servers,
             commands::mcp::engine_mcp_save_server,

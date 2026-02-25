@@ -9,6 +9,7 @@ import * as SkillsSettings from './settings-skills';
 import * as BrowserSettings from './settings-browser';
 import * as TailscaleSettings from './settings-tailscale';
 import * as WebhookSettings from './settings-webhook';
+import * as N8nSettings from './settings-n8n';
 import * as McpSettings from './settings-mcp';
 import * as LogsSettings from './settings-logs';
 import * as MemoryPalaceModule from './memory-palace';
@@ -44,6 +45,9 @@ export function loadActiveSettingsTab() {
       break;
     case 'webhook':
       WebhookSettings.loadWebhookSettings();
+      break;
+    case 'n8n':
+      N8nSettings.loadN8nSettings();
       break;
     case 'mcp':
       McpSettings.loadMcpSettings();

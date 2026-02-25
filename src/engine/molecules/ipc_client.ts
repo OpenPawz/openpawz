@@ -57,6 +57,9 @@ import type {
   TailscaleStatus,
   TailscaleConfig,
   WebhookConfig,
+  N8nConfig,
+  N8nTestResult,
+  N8nWorkflow,
   McpServerConfig,
   McpServerStatus,
   SkillOutput,
@@ -1044,6 +1047,28 @@ export class PawEngineClient {
 
   async webhookRegenerateToken(): Promise<string> {
     return invoke<string>('engine_webhook_regenerate_token');
+  }
+
+  // ── n8n Integration ────────────────────────────────────────────────
+
+  async n8nGetConfig(): Promise<N8nConfig> {
+    return invoke<N8nConfig>('engine_n8n_get_config');
+  }
+
+  async n8nSetConfig(config: N8nConfig): Promise<void> {
+    return invoke('engine_n8n_set_config', { config });
+  }
+
+  async n8nTestConnection(url: string, apiKey: string): Promise<N8nTestResult> {
+    return invoke<N8nTestResult>('engine_n8n_test_connection', { url, apiKey });
+  }
+
+  async n8nListWorkflows(): Promise<N8nWorkflow[]> {
+    return invoke<N8nWorkflow[]>('engine_n8n_list_workflows');
+  }
+
+  async n8nTriggerWorkflow(workflowId: string, payload?: unknown): Promise<unknown> {
+    return invoke('engine_n8n_trigger_workflow', { workflowId, payload });
   }
 
   // ── MCP Servers (Phase E) ──────────────────────────────────────────

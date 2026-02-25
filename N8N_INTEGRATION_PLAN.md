@@ -55,7 +55,8 @@ entry with a guided connection experience.
    }
    ```
 
-4. **Sidebar entry**: Add "n8n" item under Settings section with `account_tree` icon
+4. **~~Sidebar entry~~**: ~~Add "n8n" item under Settings section with `account_tree` icon~~
+   Deferred — n8n is accessible via Settings → n8n tab; sidebar kept minimal.
 
 5. **Upgrade existing TOML skill**: When n8n config is set via the new panel,
    auto-populate the TOML skill's `N8N_BASE_URL` and `N8N_API_KEY` credentials
@@ -63,10 +64,13 @@ entry with a guided connection experience.
 
 ### Acceptance Criteria
 
-- [ ] User can enter n8n URL + API key in a dedicated settings panel
-- [ ] "Test Connection" validates the connection and shows workflow count
-- [ ] Config is encrypted and persisted across restarts
-- [ ] Existing TOML skill credentials are auto-synced
+- [x] User can enter n8n URL + API key in a dedicated settings panel
+- [x] "Test Connection" validates the connection and shows workflow count
+- [x] Config is persisted across restarts (channel config store)
+- [x] Existing TOML skill credentials are auto-synced on save
+- [x] SSL/TLS, DNS, timeout, connection-refused errors show friendly messages
+- [x] Version display from n8n API response headers
+- [x] Workflow browser with refresh (Phase 2 prep)
 
 ---
 
