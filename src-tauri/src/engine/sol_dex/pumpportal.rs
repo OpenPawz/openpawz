@@ -1,13 +1,13 @@
 // Solana DEX — PumpPortal Fallback
 // is_jupiter_route_error, pumpportal_get_tx, pumpportal_swap
 
-use log::info;
-use std::time::Duration;
 use super::constants::PUMPPORTAL_API;
 use super::helpers::slippage_pct;
-use super::rpc::{rpc_call, check_tx_confirmation};
+use super::rpc::{check_tx_confirmation, rpc_call};
 use super::transaction::sign_solana_transaction;
 use crate::atoms::error::EngineResult;
+use log::info;
+use std::time::Duration;
 
 // ── PumpPortal Fallback ────────────────────────────────────────────────
 
@@ -28,11 +28,11 @@ pub(crate) fn is_jupiter_route_error(err: &str) -> bool {
 /// Returns the raw transaction bytes ready for signing.
 pub(crate) async fn pumpportal_get_tx(
     wallet_pubkey: &str,
-    action: &str,        // "buy" or "sell"
-    mint: &str,          // token mint address
-    amount: &str,        // SOL amount (if buy, denominatedInSol=true) or token amount (if sell)
+    action: &str, // "buy" or "sell"
+    mint: &str,   // token mint address
+    amount: &str, // SOL amount (if buy, denominatedInSol=true) or token amount (if sell)
     denominated_in_sol: bool,
-    slippage_pct: u64,   // percent, not bps
+    slippage_pct: u64, // percent, not bps
 ) -> EngineResult<Vec<u8>> {
     let client = reqwest::Client::new();
 
@@ -47,10 +47,13 @@ pub(crate) async fn pumpportal_get_tx(
         "pool": "auto"         // auto-detect: pump, raydium, pump-amm, etc.
     });
 
-    info!("[sol_dex] PumpPortal {} request: mint={} amount={} denomInSol={} slippage={}%",
-        action, mint, amount, denominated_in_sol, slippage_pct);
+    info!(
+        "[sol_dex] PumpPortal {} request: mint={} amount={} denomInSol={} slippage={}%",
+        action, mint, amount, denominated_in_sol, slippage_pct
+    );
 
-    let resp = client.post(PUMPPORTAL_API)
+    let resp = client
+        .post(PUMPPORTAL_API)
         .header("Content-Type", "application/json")
         .json(&body)
         .timeout(Duration::from_secs(30))
@@ -65,7 +68,9 @@ pub(crate) async fn pumpportal_get_tx(
         let err_text = resp.text().await.unwrap_or_else(|_| "Unknown error".into());
         // Try to parse as JSON error
         if let Ok(err_json) = serde_json::from_str::<serde_json::Value>(&err_text) {
-            let msg = err_json.get("message").or(err_json.get("error"))
+            let msg = err_json
+                .get("message")
+                .or(err_json.get("error"))
                 .and_then(|v| v.as_str())
                 .unwrap_or(&err_text);
             return Err(format!("PumpPortal error ({}): {}", status, msg).into());
@@ -79,7 +84,10 @@ pub(crate) async fn pumpportal_get_tx(
         return Err("PumpPortal returned empty transaction".into());
     }
 
-    info!("[sol_dex] PumpPortal returned {} byte transaction", tx_bytes.len());
+    info!(
+        "[sol_dex] PumpPortal returned {} byte transaction",
+        tx_bytes.len()
+    );
     Ok(tx_bytes.to_vec())
 }
 
@@ -114,10 +122,14 @@ pub(crate) async fn pumpportal_swap(
         return Err("PumpPortal only supports SOL ↔ token swaps (not token-to-token)".into());
     };
 
-    info!("[sol_dex] PumpPortal fallback: {} {} (mint={}) amount={}", action, token_in_str, mint, pp_amount);
+    info!(
+        "[sol_dex] PumpPortal fallback: {} {} (mint={}) amount={}",
+        action, token_in_str, mint, pp_amount
+    );
 
     // Step 1: Get serialized transaction from PumpPortal
-    let tx_bytes = pumpportal_get_tx(wallet, action, mint, &pp_amount, denom_in_sol, slippage_pct).await?;
+    let tx_bytes =
+        pumpportal_get_tx(wallet, action, mint, &pp_amount, denom_in_sol, slippage_pct).await?;
 
     // Step 2: Sign the transaction locally
     let signed_tx = sign_solana_transaction(&tx_bytes, secret_bytes)?;
@@ -125,10 +137,15 @@ pub(crate) async fn pumpportal_swap(
 
     // Step 3: Send via our RPC
     info!("[sol_dex] Sending PumpPortal-built transaction via RPC...");
-    let send_result = rpc_call(rpc_url, "sendTransaction", serde_json::json!([
-        signed_b64,
-        { "encoding": "base64", "skipPreflight": true, "maxRetries": 3 }
-    ])).await?;
+    let send_result = rpc_call(
+        rpc_url,
+        "sendTransaction",
+        serde_json::json!([
+            signed_b64,
+            { "encoding": "base64", "skipPreflight": true, "maxRetries": 3 }
+        ]),
+    )
+    .await?;
 
     let tx_sig = send_result.as_str().unwrap_or("unknown");
     info!("[sol_dex] PumpPortal swap sent! Tx: {}", tx_sig);
@@ -149,10 +166,12 @@ pub(crate) async fn pumpportal_swap(
         | Transaction | [{}](https://solscan.io/tx/{}) |\n\n\
         _Routed via PumpPortal (pump.fun/PumpSwap/Raydium). Jupiter had no route for this pair._\n\
         _Check Solscan for final confirmation._",
-        amount_str, token_in_upper,
+        amount_str,
+        token_in_upper,
         token_out_upper,
         action,
         confirmation,
-        &tx_sig[..std::cmp::min(16, tx_sig.len())], tx_sig
+        &tx_sig[..std::cmp::min(16, tx_sig.len())],
+        tx_sig
     ))
 }

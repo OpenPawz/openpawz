@@ -215,7 +215,10 @@ mod tests {
             assert!(
                 result >= lower.max(100) && result <= upper,
                 "jitter({}) = {} not in [{}, {}]",
-                base, result, lower, upper
+                base,
+                result,
+                lower,
+                upper
             );
         }
     }

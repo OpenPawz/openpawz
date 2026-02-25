@@ -2,13 +2,15 @@
 // Implements the AiProvider golden trait.
 // All Claude-specific SSE event parsing and prompt-caching logic lives here.
 
-use crate::engine::types::*;
 use crate::atoms::traits::{AiProvider, ProviderError};
-use crate::engine::providers::openai::{MAX_RETRIES, is_retryable_status, retry_delay, parse_retry_after};
 use crate::engine::http::CircuitBreaker;
+use crate::engine::providers::openai::{
+    is_retryable_status, parse_retry_after, retry_delay, MAX_RETRIES,
+};
+use crate::engine::types::*;
 use async_trait::async_trait;
 use futures::StreamExt;
-use log::{info, warn, error};
+use log::{error, info, warn};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::sync::LazyLock;
@@ -27,7 +29,9 @@ pub struct AnthropicProvider {
 
 impl AnthropicProvider {
     pub fn new(config: &ProviderConfig) -> Self {
-        let base_url = config.base_url.clone()
+        let base_url = config
+            .base_url
+            .clone()
             .unwrap_or_else(|| config.kind.default_base_url().to_string());
         let is_azure = base_url.contains(".azure.com");
         AnthropicProvider {
@@ -80,8 +84,8 @@ impl AnthropicProvider {
                         content_blocks.push(json!({"type": "text", "text": text}));
                     }
                     for tc in tool_calls {
-                        let input: Value = serde_json::from_str(&tc.function.arguments)
-                            .unwrap_or(json!({}));
+                        let input: Value =
+                            serde_json::from_str(&tc.function.arguments).unwrap_or(json!({}));
                         content_blocks.push(json!({
                             "type": "tool_use",
                             "id": tc.id,
@@ -113,7 +117,8 @@ impl AnthropicProvider {
                                     // Anthropic uses base64 source format, not URL
                                     // data:image/png;base64,... → extract media_type and data
                                     if let Some(rest) = image_url.url.strip_prefix("data:") {
-                                        if let Some((media_type, b64)) = rest.split_once(";base64,") {
+                                        if let Some((media_type, b64)) = rest.split_once(";base64,")
+                                        {
                                             content_blocks.push(json!({
                                                 "type": "image",
                                                 "source": {
@@ -134,7 +139,11 @@ impl AnthropicProvider {
                                         }));
                                     }
                                 }
-                                ContentBlock::Document { mime_type, data, name: _ } => {
+                                ContentBlock::Document {
+                                    mime_type,
+                                    data,
+                                    name: _,
+                                } => {
                                     // Anthropic supports PDFs natively as document content blocks
                                     content_blocks.push(json!({
                                         "type": "document",
@@ -169,7 +178,9 @@ impl AnthropicProvider {
     /// for multi-turn conversations. Marks the second-to-last user turn
     /// so Anthropic caches the conversation prefix (system + tools + history).
     fn add_turn_cache_breakpoints(messages: &mut [Value]) {
-        if messages.len() < 4 { return; } // Need enough turns for caching to matter
+        if messages.len() < 4 {
+            return;
+        } // Need enough turns for caching to matter
 
         // Find the second-to-last user message (the breakpoint)
         // This ensures all messages up to this point are cached,
@@ -180,7 +191,9 @@ impl AnthropicProvider {
                 user_indices.push(i);
             }
         }
-        if user_indices.len() < 2 { return; }
+        if user_indices.len() < 2 {
+            return;
+        }
         let breakpoint_idx = user_indices[user_indices.len() - 2];
 
         // Add cache_control to the last content block of the breakpoint message
@@ -207,13 +220,16 @@ impl AnthropicProvider {
     }
 
     fn format_tools(tools: &[ToolDefinition]) -> Vec<Value> {
-        tools.iter().map(|t| {
-            json!({
-                "name": t.function.name,
-                "description": t.function.description,
-                "input_schema": t.function.parameters,
+        tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "name": t.function.name,
+                    "description": t.function.description,
+                    "input_schema": t.function.parameters,
+                })
             })
-        }).collect()
+            .collect()
     }
 
     fn parse_sse_event(data: &str) -> Option<StreamChunk> {
@@ -225,17 +241,15 @@ impl AnthropicProvider {
                 let delta = &v["delta"];
                 let delta_type = delta["type"].as_str().unwrap_or("");
                 match delta_type {
-                    "text_delta" => {
-                        Some(StreamChunk {
-                            delta_text: delta["text"].as_str().map(|s| s.to_string()),
-                            tool_calls: vec![],
-                            finish_reason: None,
-                            usage: None,
-                            model: None,
-                            thought_parts: vec![],
-                            thinking_text: None,
-                        })
-                    }
+                    "text_delta" => Some(StreamChunk {
+                        delta_text: delta["text"].as_str().map(|s| s.to_string()),
+                        tool_calls: vec![],
+                        finish_reason: None,
+                        usage: None,
+                        model: None,
+                        thought_parts: vec![],
+                        thinking_text: None,
+                    }),
                     "thinking_delta" => {
                         // Anthropic extended thinking: stream the reasoning text
                         Some(StreamChunk {
@@ -256,7 +270,9 @@ impl AnthropicProvider {
                                 index,
                                 id: None,
                                 function_name: None,
-                                arguments_delta: delta["partial_json"].as_str().map(|s| s.to_string()),
+                                arguments_delta: delta["partial_json"]
+                                    .as_str()
+                                    .map(|s| s.to_string()),
                                 thought_signature: None,
                             }],
                             finish_reason: None,
@@ -353,17 +369,15 @@ impl AnthropicProvider {
                     thinking_text: None,
                 })
             }
-            "message_stop" => {
-                Some(StreamChunk {
-                    delta_text: None,
-                    tool_calls: vec![],
-                    finish_reason: Some("stop".into()),
-                    usage: None,
-                    model: None,
-                    thought_parts: vec![],
-                    thinking_text: None,
-                })
-            }
+            "message_stop" => Some(StreamChunk {
+                delta_text: None,
+                tool_calls: vec![],
+                finish_reason: Some("stop".into()),
+                usage: None,
+                model: None,
+                thought_parts: vec![],
+                thinking_text: None,
+            }),
             _ => None,
         }
     }
@@ -453,7 +467,10 @@ impl AnthropicProvider {
                 // Extended thinking requires higher max_tokens to include both
                 // thinking + response tokens. Override the model-aware max_tokens.
                 body["max_tokens"] = json!(budget + max_tokens as i64);
-                info!("[engine] Anthropic: extended thinking enabled (budget={})", budget);
+                info!(
+                    "[engine] Anthropic: extended thinking enabled (budget={})",
+                    budget
+                );
             }
         }
 
@@ -470,14 +487,23 @@ impl AnthropicProvider {
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
                 let delay = retry_delay(attempt - 1, retry_after.take()).await;
-                warn!("[engine] Anthropic retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
+                warn!(
+                    "[engine] Anthropic retry {}/{} after {}ms",
+                    attempt,
+                    MAX_RETRIES,
+                    delay.as_millis()
+                );
             }
 
-            let mut req = self.client
+            let mut req = self
+                .client
                 .post(&url)
                 .header("anthropic-version", "2023-06-01")
                 .header("Content-Type", "application/json")
-                .header("anthropic-beta", "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14");
+                .header(
+                    "anthropic-beta",
+                    "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14",
+                );
             if self.is_azure {
                 req = req.header("api-key", &self.api_key);
             } else {
@@ -490,7 +516,9 @@ impl AnthropicProvider {
                     ANTHROPIC_CIRCUIT.record_failure();
                     last_error = format!("HTTP request failed: {}", e);
                     last_status = 0;
-                    if attempt < MAX_RETRIES { continue; }
+                    if attempt < MAX_RETRIES {
+                        continue;
+                    }
                     return Err(ProviderError::Transport(last_error));
                 }
             };
@@ -498,13 +526,22 @@ impl AnthropicProvider {
             if !response.status().is_success() {
                 let status = response.status().as_u16();
                 last_status = status;
-                retry_after = response.headers()
+                retry_after = response
+                    .headers()
                     .get("retry-after")
                     .and_then(|v| v.to_str().ok())
                     .and_then(parse_retry_after);
                 let body_text = response.text().await.unwrap_or_default();
-                last_error = format!("API error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 200));
-                error!("[engine] Anthropic error {}: {}", status, crate::engine::types::truncate_utf8(&body_text, 500));
+                last_error = format!(
+                    "API error {}: {}",
+                    status,
+                    crate::engine::types::truncate_utf8(&body_text, 200)
+                );
+                error!(
+                    "[engine] Anthropic error {}: {}",
+                    status,
+                    crate::engine::types::truncate_utf8(&body_text, 500)
+                );
 
                 ANTHROPIC_CIRCUIT.record_failure();
 
@@ -522,7 +559,10 @@ impl AnthropicProvider {
                         retry_after_secs: retry_after.take(),
                     })
                 } else {
-                    Err(ProviderError::Api { status, message: last_error })
+                    Err(ProviderError::Api {
+                        status,
+                        message: last_error,
+                    })
                 };
             }
 
@@ -531,9 +571,8 @@ impl AnthropicProvider {
             let mut buffer = String::new();
 
             while let Some(result) = byte_stream.next().await {
-                let bytes = result.map_err(|e| {
-                    ProviderError::Transport(format!("Stream read error: {}", e))
-                })?;
+                let bytes = result
+                    .map_err(|e| ProviderError::Transport(format!("Stream read error: {}", e)))?;
                 buffer.push_str(&String::from_utf8_lossy(&bytes));
 
                 while let Some(line_end) = buffer.find('\n') {
@@ -559,7 +598,10 @@ impl AnthropicProvider {
                 message: last_error,
                 retry_after_secs: retry_after,
             }),
-            s => Err(ProviderError::Api { status: s, message: last_error }),
+            s => Err(ProviderError::Api {
+                status: s,
+                message: last_error,
+            }),
         }
     }
 }
@@ -584,6 +626,7 @@ impl AiProvider for AnthropicProvider {
         temperature: Option<f64>,
         thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
-        self.chat_stream_inner(messages, tools, model, temperature, thinking_level).await
+        self.chat_stream_inner(messages, tools, model, temperature, thinking_level)
+            .await
     }
 }

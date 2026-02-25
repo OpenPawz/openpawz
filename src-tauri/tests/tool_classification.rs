@@ -5,10 +5,8 @@
 
 // ── Injection Scanner Cross-Module Tests ───────────────────────────────────
 
-use paw_temp_lib::engine::injection::{
-    scan_for_injection, is_likely_injection, InjectionSeverity,
-};
 use paw_temp_lib::engine::channels::{check_access, PendingUser};
+use paw_temp_lib::engine::injection::{is_likely_injection, scan_for_injection, InjectionSeverity};
 
 // ── Multi-pattern stacking ──
 
@@ -99,7 +97,14 @@ fn injection_match_has_correct_metadata() {
 fn access_control_open_allows_everyone() {
     let mut pending: Vec<PendingUser> = Vec::new();
     let allowed: Vec<String> = Vec::new();
-    let result = check_access("open", "any-user", "anyone", "Anyone", &allowed, &mut pending);
+    let result = check_access(
+        "open",
+        "any-user",
+        "anyone",
+        "Anyone",
+        &allowed,
+        &mut pending,
+    );
     assert!(result.is_ok());
 }
 
@@ -116,7 +121,14 @@ fn access_control_allowlist_denies_unlisted() {
 fn access_control_allowlist_permits_listed() {
     let mut pending: Vec<PendingUser> = Vec::new();
     let allowed: Vec<String> = vec!["alice".into()];
-    let result = check_access("allowlist", "alice", "alice", "Alice", &allowed, &mut pending);
+    let result = check_access(
+        "allowlist",
+        "alice",
+        "alice",
+        "Alice",
+        &allowed,
+        &mut pending,
+    );
     assert!(result.is_ok());
 }
 
@@ -124,7 +136,14 @@ fn access_control_allowlist_permits_listed() {
 fn access_control_pairing_creates_pending_request() {
     let mut pending: Vec<PendingUser> = Vec::new();
     let allowed: Vec<String> = Vec::new();
-    let result = check_access("pairing", "new-user", "newbie", "Newbie", &allowed, &mut pending);
+    let result = check_access(
+        "pairing",
+        "new-user",
+        "newbie",
+        "Newbie",
+        &allowed,
+        &mut pending,
+    );
     assert!(result.is_err());
     assert_eq!(pending.len(), 1);
     assert_eq!(pending[0].user_id, "new-user");
@@ -147,7 +166,14 @@ fn access_control_pairing_deduplicates_pending() {
 fn access_control_pairing_allows_approved_user() {
     let mut pending: Vec<PendingUser> = Vec::new();
     let allowed: Vec<String> = vec!["approved-user".into()];
-    let result = check_access("pairing", "approved-user", "au", "AU", &allowed, &mut pending);
+    let result = check_access(
+        "pairing",
+        "approved-user",
+        "au",
+        "AU",
+        &allowed,
+        &mut pending,
+    );
     assert!(result.is_ok());
     assert!(pending.is_empty()); // No pending request needed
 }
@@ -161,7 +187,14 @@ fn injection_detected_on_allowed_user_message() {
     let allowed: Vec<String> = vec!["malicious-user".into()];
 
     // User passes access
-    let access = check_access("allowlist", "malicious-user", "mal", "Mal", &allowed, &mut pending);
+    let access = check_access(
+        "allowlist",
+        "malicious-user",
+        "mal",
+        "Mal",
+        &allowed,
+        &mut pending,
+    );
     assert!(access.is_ok());
 
     // But their message is still an injection

@@ -8,15 +8,15 @@
 // Heavy logic lives in crate::engine::chat (the organism).
 // These functions: extract state → call organisms → return.
 
-use tauri::{State, Emitter, Manager};
-use log::{info, warn, error};
+use log::{error, info, warn};
+use tauri::{Emitter, Manager, State};
 
-use crate::commands::state::{EngineState, normalize_model_name, resolve_provider_for_model};
-use crate::engine::types::*;
-use crate::engine::providers::AnyProvider;
+use crate::commands::state::{normalize_model_name, resolve_provider_for_model, EngineState};
 use crate::engine::agent_loop;
-use crate::engine::memory;
 use crate::engine::chat as chat_org;
+use crate::engine::memory;
+use crate::engine::providers::AnyProvider;
+use crate::engine::types::*;
 
 // ── Chat ─────────────────────────────────────────────────────────────────────
 
@@ -41,7 +41,9 @@ pub async fn engine_chat_send(
             let raw = request.model.clone().unwrap_or_default();
             let model = if raw.is_empty() || raw.eq_ignore_ascii_case("default") {
                 let cfg = state.config.lock();
-                cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string())
+                cfg.default_model
+                    .clone()
+                    .unwrap_or_else(|| "gpt-4o".to_string())
             } else {
                 raw
             };
@@ -61,7 +63,10 @@ pub async fn engine_chat_send(
     {
         let has_active_run = state.active_runs.lock().contains_key(&session_id);
         if has_active_run {
-            info!("[engine] Session {} has active run — queuing request and signaling yield", session_id);
+            info!(
+                "[engine] Session {} has active run — queuing request and signaling yield",
+                session_id
+            );
 
             // Signal the active agent to wrap up
             if let Some(signal) = state.yield_signals.lock().get(&session_id) {
@@ -74,13 +79,18 @@ pub async fn engine_chat_send(
                 let cfg = state.config.lock();
                 let raw = request.model.clone().unwrap_or_default();
                 let m = if raw.is_empty() || raw.eq_ignore_ascii_case("default") {
-                    cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string())
+                    cfg.default_model
+                        .clone()
+                        .unwrap_or_else(|| "gpt-4o".to_string())
                 } else {
                     normalize_model_name(&raw).to_string()
                 };
                 let p = resolve_provider_for_model(&m, &cfg.providers)
-                    .or_else(|| cfg.default_provider.as_ref()
-                        .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned()))
+                    .or_else(|| {
+                        cfg.default_provider
+                            .as_ref()
+                            .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned())
+                    })
                     .or_else(|| cfg.providers.first().cloned());
                 match p {
                     Some(provider) => (provider, m),
@@ -94,7 +104,9 @@ pub async fn engine_chat_send(
                 model: queued_model,
                 system_prompt: request.system_prompt.clone(),
             };
-            state.request_queue.lock()
+            state
+                .request_queue
+                .lock()
                 .entry(session_id.clone())
                 .or_default()
                 .push(queued);
@@ -113,15 +125,20 @@ pub async fn engine_chat_send(
 
         let raw_model = request.model.clone().unwrap_or_default();
         let base_model = if raw_model.is_empty() || raw_model.eq_ignore_ascii_case("default") {
-            cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string())
+            cfg.default_model
+                .clone()
+                .unwrap_or_else(|| "gpt-4o".to_string())
         } else {
             raw_model
         };
 
-        let user_explicitly_chose_model = request.model.as_ref()
+        let user_explicitly_chose_model = request
+            .model
+            .as_ref()
             .is_some_and(|m| !m.is_empty() && !m.eq_ignore_ascii_case("default"));
         let (model, was_downgraded) = if !user_explicitly_chose_model {
-            cfg.model_routing.resolve_auto_tier(&request.message, &base_model)
+            cfg.model_routing
+                .resolve_auto_tier(&request.message, &base_model)
         } else {
             (base_model, false)
         };
@@ -155,7 +172,9 @@ pub async fn engine_chat_send(
         match provider {
             Some(p) => (p, model),
             None => {
-                return Err("No AI provider configured. Go to Settings → Engine to add an API key.".into())
+                return Err(
+                    "No AI provider configured. Go to Settings → Engine to add an API key.".into(),
+                )
             }
         }
     };
@@ -180,8 +199,14 @@ pub async fn engine_chat_send(
     });
 
     // ── Soul context + today's memories ───────────────────────────────────
-    let agent_id_owned = request.agent_id.clone().unwrap_or_else(|| "default".to_string());
-    let core_context = state.store.compose_core_context(&agent_id_owned).unwrap_or(None);
+    let agent_id_owned = request
+        .agent_id
+        .clone()
+        .unwrap_or_else(|| "default".to_string());
+    let core_context = state
+        .store
+        .compose_core_context(&agent_id_owned)
+        .unwrap_or(None);
     if let Some(ref cc) = core_context {
         info!(
             "[engine] Core soul context loaded ({} chars) for agent '{}'",
@@ -189,16 +214,29 @@ pub async fn engine_chat_send(
             agent_id_owned
         );
     } else {
-        info!("[engine] No core soul files found for agent '{}'", agent_id_owned);
+        info!(
+            "[engine] No core soul files found for agent '{}'",
+            agent_id_owned
+        );
     }
 
     let (todays_memories, todays_memory_contents) = {
-        let tm = state.store.get_todays_memories(&agent_id_owned).unwrap_or(None);
-        let contents = state.store.get_todays_memory_contents(&agent_id_owned).unwrap_or_default();
+        let tm = state
+            .store
+            .get_todays_memories(&agent_id_owned)
+            .unwrap_or(None);
+        let contents = state
+            .store
+            .get_todays_memory_contents(&agent_id_owned)
+            .unwrap_or_default();
         (tm, contents)
     };
     if let Some(ref tm) = todays_memories {
-        info!("[engine] Today's memory notes injected ({} chars, {} entries)", tm.len(), todays_memory_contents.len());
+        info!(
+            "[engine] Today's memory notes injected ({} chars, {} entries)",
+            tm.len(),
+            todays_memory_contents.len()
+        );
     }
 
     // ── Auto-capture flag ──────────────────────────────────────────────────
@@ -206,9 +244,13 @@ pub async fn engine_chat_send(
 
     // ── Skill instructions ─────────────────────────────────────────────────
     let skill_instructions =
-        crate::engine::skills::get_enabled_skill_instructions(&state.store, &agent_id_owned).unwrap_or_default();
+        crate::engine::skills::get_enabled_skill_instructions(&state.store, &agent_id_owned)
+            .unwrap_or_default();
     if !skill_instructions.is_empty() {
-        info!("[engine] Skill instructions injected ({} chars)", skill_instructions.len());
+        info!(
+            "[engine] Skill instructions injected ({} chars)",
+            skill_instructions.len()
+        );
     }
 
     // ── Runtime context block (extracted values for organism) ─────────────
@@ -222,7 +264,13 @@ pub async fn engine_chat_send(
             .map(|p| format!("{} ({:?})", p.id, p.kind))
             .unwrap_or_else(|| "unknown".into());
         let user_tz = cfg.user_timezone.clone();
-        chat_org::build_runtime_context(&model, &provider_name, &session_id, &agent_id_owned, &user_tz)
+        chat_org::build_runtime_context(
+            &model,
+            &provider_name,
+            &session_id,
+            &agent_id_owned,
+            &user_tz,
+        )
     };
 
     // ── Compose full system prompt (organism) ──────────────────────────────
@@ -256,18 +304,29 @@ pub async fn engine_chat_send(
         if auto_recall_on {
             let emb_client = state.embedding_client();
             match memory::search_memories(
-                &state.store, &request.message, recall_limit, recall_threshold,
-                emb_client.as_ref(), Some(&agent_id_owned),
-            ).await {
+                &state.store,
+                &request.message,
+                recall_limit,
+                recall_threshold,
+                emb_client.as_ref(),
+                Some(&agent_id_owned),
+            )
+            .await
+            {
                 Ok(mems) if !mems.is_empty() => {
                     // Filter out memories already in today's notes (dedup)
-                    let deduped: Vec<&Memory> = mems.iter()
-                        .filter(|m| !todays_memory_contents.iter().any(|tc| {
-                            memory::content_overlap(&m.content, tc) > memory::DEDUP_OVERLAP_THRESHOLD
-                        }))
+                    let deduped: Vec<&Memory> = mems
+                        .iter()
+                        .filter(|m| {
+                            !todays_memory_contents.iter().any(|tc| {
+                                memory::content_overlap(&m.content, tc)
+                                    > memory::DEDUP_OVERLAP_THRESHOLD
+                            })
+                        })
                         .collect();
                     if !deduped.is_empty() {
-                        let ctx: Vec<String> = deduped.iter()
+                        let ctx: Vec<String> = deduped
+                            .iter()
                             .map(|m| format!("- [{}] {}", m.category, m.content))
                             .collect();
                         let memory_block = format!("## Relevant Memories\n{}", ctx.join("\n"));
@@ -300,8 +359,12 @@ pub async fn engine_chat_send(
         let cfg = state.config.lock();
         cfg.context_window_tokens
     };
-    let mut messages =
-        state.store.load_conversation(&session_id, full_system_prompt.as_deref(), Some(context_window), Some(&agent_id_owned))?;
+    let mut messages = state.store.load_conversation(
+        &session_id,
+        full_system_prompt.as_deref(),
+        Some(context_window),
+        Some(&agent_id_owned),
+    )?;
 
     // ── Process attachments into multi-modal blocks (organism) ────────────
     chat_org::process_attachments(&request.message, &request.attachments, &mut messages);
@@ -363,10 +426,7 @@ pub async fn engine_chat_send(
     // ── Set up yield signal for this session (VS Code pattern) ────────────
     let yield_signal = {
         let mut signals = state.yield_signals.lock();
-        let signal = signals
-            .entry(session_id.clone())
-            .or_default()
-            .clone();
+        let signal = signals.entry(session_id.clone()).or_default().clone();
         signal.reset(); // Fresh start for this request
         signal
     };
@@ -445,10 +505,8 @@ pub async fn engine_chat_send(
 
                     // Auto-capture memorable facts (with dedup guard)
                     if auto_capture_on && !final_text.is_empty() {
-                        let facts = memory::extract_memorable_facts(
-                            &user_message_for_capture,
-                            &final_text,
-                        );
+                        let facts =
+                            memory::extract_memorable_facts(&user_message_for_capture, &final_text);
                         if !facts.is_empty() {
                             let emb_client = engine_state.embedding_client();
                             for (content, category) in &facts {
@@ -466,7 +524,9 @@ pub async fn engine_chat_send(
                                         "[engine] Auto-captured memory: {}",
                                         crate::engine::types::truncate_utf8(&id, 8)
                                     ),
-                                    Ok(None) => info!("[engine] Auto-capture skipped (near-duplicate)"),
+                                    Ok(None) => {
+                                        info!("[engine] Auto-capture skipped (near-duplicate)")
+                                    }
                                     Err(e) => warn!("[engine] Auto-capture failed: {}", e),
                                 }
                             }
@@ -493,10 +553,7 @@ pub async fn engine_chat_send(
                         };
                         let session_summary = format!(
                             "Session work: User asked: \"{}\". Agent responded: {}",
-                            crate::engine::types::truncate_utf8(
-                                &user_message_for_capture,
-                                150
-                            ),
+                            crate::engine::types::truncate_utf8(&user_message_for_capture, 150),
                             summary,
                         );
                         let emb_client = engine_state.embedding_client();
@@ -512,7 +569,8 @@ pub async fn engine_chat_send(
                         {
                             Ok(Some(id)) => info!(
                                 "[engine] Session summary stored ({} chars, id={})",
-                                session_summary.len(), &id[..id.len().min(8)]
+                                session_summary.len(),
+                                &id[..id.len().min(8)]
                             ),
                             Ok(None) => info!("[engine] Session summary skipped (near-duplicate)"),
                             Err(e) => warn!("[engine] Session summary store failed: {}", e),
@@ -522,12 +580,15 @@ pub async fn engine_chat_send(
                     // ── Auto-prune: cap stored messages per session ──
                     {
                         use crate::atoms::constants::CHAT_SESSION_MAX_MESSAGES;
-                        match engine_state.store.prune_session_messages(
-                            &session_id_clone, CHAT_SESSION_MAX_MESSAGES
-                        ) {
+                        match engine_state
+                            .store
+                            .prune_session_messages(&session_id_clone, CHAT_SESSION_MAX_MESSAGES)
+                        {
                             Ok(pruned) if pruned > 0 => {
-                                info!("[engine] Pruned {} old messages from session {} (cap={})",
-                                    pruned, session_id_clone, CHAT_SESSION_MAX_MESSAGES);
+                                info!(
+                                    "[engine] Pruned {} old messages from session {} (cap={})",
+                                    pruned, session_id_clone, CHAT_SESSION_MAX_MESSAGES
+                                );
                             }
                             Err(e) => warn!("[engine] Session prune failed: {}", e),
                             _ => {}
@@ -560,7 +621,9 @@ pub async fn engine_chat_send(
     });
 
     // ── Register abort handle for this session ─────────────────────────────
-    active_runs.lock().insert(abort_session_id.clone(), handle.inner().abort_handle());
+    active_runs
+        .lock()
+        .insert(abort_session_id.clone(), handle.inner().abort_handle());
 
     // ── Panic safety monitor + abort handle cleanup + queue processing ───
     let cleanup_runs = active_runs.clone();
@@ -579,10 +642,18 @@ pub async fn engine_chat_send(
         // After the current request completes, check if there are queued
         // messages and process the next one.
         {
-            let next = queue_ref.lock().get_mut(&queue_session_id)
-                .and_then(|q| if q.is_empty() { None } else { Some(q.remove(0)) });
+            let next = queue_ref.lock().get_mut(&queue_session_id).and_then(|q| {
+                if q.is_empty() {
+                    None
+                } else {
+                    Some(q.remove(0))
+                }
+            });
             if let Some(queued) = next {
-                info!("[engine] Processing queued request for session {}", queue_session_id);
+                info!(
+                    "[engine] Processing queued request for session {}",
+                    queue_session_id
+                );
                 // Re-send via the Tauri command system
                 if let Some(engine_state) = queue_app.try_state::<EngineState>() {
                     // Store the queued user message
@@ -598,12 +669,17 @@ pub async fn engine_chat_send(
                     };
                     let _ = engine_state.store.add_message(&user_msg);
                     // Emit a queue-processing event so frontend knows
-                    let _ = queue_app.emit("engine-event", EngineEvent::Delta {
-                        session_id: queue_session_id.clone(),
-                        run_id: format!("queue-{}", uuid::Uuid::new_v4()),
-                        text: String::new(),
-                    });
-                    info!("[engine] Queued request stored, frontend should re-send via normal flow");
+                    let _ = queue_app.emit(
+                        "engine-event",
+                        EngineEvent::Delta {
+                            session_id: queue_session_id.clone(),
+                            run_id: format!("queue-{}", uuid::Uuid::new_v4()),
+                            text: String::new(),
+                        },
+                    );
+                    info!(
+                        "[engine] Queued request stored, frontend should re-send via normal flow"
+                    );
                 }
             }
         }
@@ -612,7 +688,10 @@ pub async fn engine_chat_send(
             // Check if the error is a JoinError from cancellation
             let is_cancelled = matches!(err, tauri::Error::JoinError(je) if je.is_cancelled());
             if is_cancelled {
-                info!("[engine] Agent task aborted by user for session {}", cleanup_session_id);
+                info!(
+                    "[engine] Agent task aborted by user for session {}",
+                    cleanup_session_id
+                );
                 let _ = panic_app.emit(
                     "engine-event",
                     EngineEvent::Complete {
@@ -649,22 +728,25 @@ pub fn engine_chat_history(
     session_id: String,
     limit: Option<i64>,
 ) -> Result<Vec<StoredMessage>, String> {
-    state.store.get_messages(&session_id, limit.unwrap_or(200)).map_err(|e| e.to_string())
+    state
+        .store
+        .get_messages(&session_id, limit.unwrap_or(200))
+        .map_err(|e| e.to_string())
 }
 
 /// Abort an in-flight agent run for the given session.
 #[tauri::command]
-pub fn engine_chat_abort(
-    state: State<'_, EngineState>,
-    session_id: String,
-) -> Result<(), String> {
+pub fn engine_chat_abort(state: State<'_, EngineState>, session_id: String) -> Result<(), String> {
     let mut runs = state.active_runs.lock();
     if let Some(handle) = runs.remove(&session_id) {
         handle.abort();
         info!("[engine] Aborted agent run for session {}", session_id);
         Ok(())
     } else {
-        warn!("[engine] No active run found for session {} — may have already finished", session_id);
+        warn!(
+            "[engine] No active run found for session {} — may have already finished",
+            session_id
+        );
         Ok(()) // Not an error — the run may have completed between click and arrival
     }
 }
@@ -689,7 +771,10 @@ pub fn engine_session_rename(
     session_id: String,
     label: String,
 ) -> Result<(), String> {
-    state.store.rename_session(&session_id, &label).map_err(|e| e.to_string())
+    state
+        .store
+        .rename_session(&session_id, &label)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -697,7 +782,10 @@ pub fn engine_session_delete(
     state: State<'_, EngineState>,
     session_id: String,
 ) -> Result<(), String> {
-    state.store.delete_session(&session_id).map_err(|e| e.to_string())
+    state
+        .store
+        .delete_session(&session_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -706,7 +794,10 @@ pub fn engine_session_clear(
     session_id: String,
 ) -> Result<(), String> {
     info!("[engine] Clearing messages for session {}", session_id);
-    state.store.clear_messages(&session_id).map_err(|e| e.to_string())
+    state
+        .store
+        .clear_messages(&session_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -716,7 +807,10 @@ pub fn engine_session_cleanup(
     exclude_id: Option<String>,
 ) -> Result<usize, String> {
     let age = max_age_secs.unwrap_or(3600); // default: 1 hour
-    state.store.cleanup_empty_sessions(age, exclude_id.as_deref()).map_err(|e| e.to_string())
+    state
+        .store
+        .cleanup_empty_sessions(age, exclude_id.as_deref())
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -724,7 +818,10 @@ pub async fn engine_session_compact(
     state: State<'_, EngineState>,
     session_id: String,
 ) -> Result<crate::engine::compaction::CompactionResult, String> {
-    info!("[engine] Manual compaction requested for session {}", session_id);
+    info!(
+        "[engine] Manual compaction requested for session {}",
+        session_id
+    );
 
     let (provider_config, model) = {
         let cfg = state.config.lock();
@@ -743,7 +840,9 @@ pub async fn engine_session_compact(
 
     let provider = crate::engine::providers::AnyProvider::from_config(&provider_config);
     let compact_config = crate::engine::compaction::CompactionConfig::default();
-    let store_arc = std::sync::Arc::new(crate::engine::sessions::SessionStore::open().map_err(|e| e.to_string())?);
+    let store_arc = std::sync::Arc::new(
+        crate::engine::sessions::SessionStore::open().map_err(|e| e.to_string())?,
+    );
 
     crate::engine::compaction::compact_session(
         &store_arc,
@@ -764,9 +863,7 @@ pub fn engine_approve_tool(
     tool_call_id: String,
     approved: bool,
 ) -> Result<(), String> {
-    let mut map = state
-        .pending_approvals
-        .lock();
+    let mut map = state.pending_approvals.lock();
 
     if let Some(sender) = map.remove(&tool_call_id) {
         info!(

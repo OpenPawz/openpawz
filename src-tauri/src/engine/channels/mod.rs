@@ -10,13 +10,13 @@
 mod access;
 mod agent;
 
+use crate::atoms::error::{EngineError, EngineResult};
 use crate::engine::state::EngineState;
-use crate::atoms::error::{EngineResult, EngineError};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 // Re-export public API
-pub use access::{check_access, approve_user_generic, deny_user_generic, remove_user_generic};
+pub use access::{approve_user_generic, check_access, deny_user_generic, remove_user_generic};
 pub use agent::{run_channel_agent, run_routed_channel_agent};
 
 // ── Common Channel Config ──────────────────────────────────────────────
@@ -27,14 +27,13 @@ pub fn load_channel_config<T: for<'de> Deserialize<'de> + Default>(
     app_handle: &tauri::AppHandle,
     config_key: &str,
 ) -> EngineResult<T> {
-    let engine_state = app_handle.try_state::<EngineState>()
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
     match engine_state.store.get_config(config_key) {
-        Ok(Some(json)) => {
-            serde_json::from_str::<T>(&json)
-                .map_err(|e| EngineError::Config(format!("Parse {} config: {}", config_key, e)))
-        }
+        Ok(Some(json)) => serde_json::from_str::<T>(&json)
+            .map_err(|e| EngineError::Config(format!("Parse {} config: {}", config_key, e))),
         _ => Ok(T::default()),
     }
 }
@@ -44,7 +43,8 @@ pub fn save_channel_config<T: Serialize>(
     config_key: &str,
     config: &T,
 ) -> EngineResult<()> {
-    let engine_state = app_handle.try_state::<EngineState>()
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
     let json = serde_json::to_string(config)
@@ -113,10 +113,11 @@ pub fn is_provider_billing_error(err: &str) -> bool {
         || lower.contains("quota exceeded")
         || lower.contains("payment required")
         || lower.contains("account")
-        || (lower.contains("api error 4") && (
-            lower.contains("401") || lower.contains("402")
-            || lower.contains("403") || lower.contains("429")
-        ))
+        || (lower.contains("api error 4")
+            && (lower.contains("401")
+                || lower.contains("402")
+                || lower.contains("403")
+                || lower.contains("429")))
 }
 
 #[cfg(test)]

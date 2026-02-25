@@ -2,17 +2,17 @@
 // AnyProvider wraps Box<dyn AiProvider> so adding a new provider
 // never requires modifying the factory enum — just implement the trait.
 
-pub mod openai;
 pub mod anthropic;
 pub mod google;
+pub mod openai;
 
-pub use openai::OpenAiProvider;
 pub use anthropic::AnthropicProvider;
 pub use google::GoogleProvider;
+pub use openai::OpenAiProvider;
 
-use crate::engine::types::{Message, ToolDefinition, StreamChunk, ProviderConfig, ProviderKind};
-use crate::atoms::traits::AiProvider;
 use crate::atoms::error::EngineResult;
+use crate::atoms::traits::AiProvider;
+use crate::engine::types::{Message, ProviderConfig, ProviderKind, StreamChunk, ToolDefinition};
 
 // ── Provider factory ───────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ impl AnyProvider {
     pub fn from_config(config: &ProviderConfig) -> Self {
         let provider: Box<dyn AiProvider> = match config.kind {
             ProviderKind::Anthropic => Box::new(AnthropicProvider::new(config)),
-            ProviderKind::Google    => Box::new(GoogleProvider::new(config)),
+            ProviderKind::Google => Box::new(GoogleProvider::new(config)),
             // All OpenAI-compatible variants:
             // OpenAI, Ollama, OpenRouter, Custom, DeepSeek, Grok, Mistral, Moonshot
             _ => Box::new(OpenAiProvider::new(config)),

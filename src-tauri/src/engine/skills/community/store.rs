@@ -1,6 +1,6 @@
-use crate::engine::sessions::SessionStore;
 use super::types::CommunitySkill;
 use crate::atoms::error::EngineResult;
+use crate::engine::sessions::SessionStore;
 
 // ── DB Storage for Community Skills ────────────────────────────────────
 
@@ -8,7 +8,8 @@ impl SessionStore {
     /// Initialize the community skills table.
     pub fn init_community_skills_table(&self) -> EngineResult<()> {
         let conn = self.conn.lock();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS community_skills (
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,
@@ -20,11 +21,12 @@ impl SessionStore {
                 installed_at TEXT NOT NULL DEFAULT (datetime('now')),
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
-        ")?;
+        ",
+        )?;
 
         // Migration: add agent_ids column if table existed without it
         let _ = conn.execute_batch(
-            "ALTER TABLE community_skills ADD COLUMN agent_ids TEXT NOT NULL DEFAULT '[]'"
+            "ALTER TABLE community_skills ADD COLUMN agent_ids TEXT NOT NULL DEFAULT '[]'",
         );
 
         Ok(())
@@ -33,7 +35,8 @@ impl SessionStore {
     /// Save (upsert) a community skill.
     pub fn save_community_skill(&self, skill: &CommunitySkill) -> EngineResult<()> {
         let conn = self.conn.lock();
-        let agent_ids_json = serde_json::to_string(&skill.agent_ids).unwrap_or_else(|_| "[]".to_string());
+        let agent_ids_json =
+            serde_json::to_string(&skill.agent_ids).unwrap_or_else(|_| "[]".to_string());
         conn.execute(
             "INSERT INTO community_skills (id, name, description, instructions, source, enabled, agent_ids, installed_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
@@ -54,23 +57,26 @@ impl SessionStore {
              FROM community_skills ORDER BY name"
         )?;
 
-        let skills = stmt.query_map([], |row| {
-            let agent_ids_json: String = row.get::<_, String>(6).unwrap_or_else(|_| "[]".to_string());
-            let agent_ids: Vec<String> = serde_json::from_str(&agent_ids_json).unwrap_or_default();
-            Ok(CommunitySkill {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                description: row.get(2)?,
-                instructions: row.get(3)?,
-                source: row.get(4)?,
-                enabled: row.get::<_, i32>(5)? != 0,
-                agent_ids,
-                installed_at: row.get(7)?,
-                updated_at: row.get(8)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let skills = stmt
+            .query_map([], |row| {
+                let agent_ids_json: String =
+                    row.get::<_, String>(6).unwrap_or_else(|_| "[]".to_string());
+                let agent_ids: Vec<String> =
+                    serde_json::from_str(&agent_ids_json).unwrap_or_default();
+                Ok(CommunitySkill {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    description: row.get(2)?,
+                    instructions: row.get(3)?,
+                    source: row.get(4)?,
+                    enabled: row.get::<_, i32>(5)? != 0,
+                    agent_ids,
+                    installed_at: row.get(7)?,
+                    updated_at: row.get(8)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(skills)
     }
@@ -111,7 +117,10 @@ impl SessionStore {
 /// Get instructions from enabled community skills for a specific agent.
 /// Skills with empty agent_ids apply to ALL agents.
 /// Skills with specific agent_ids only apply to those agents.
-pub fn get_community_skill_instructions(store: &SessionStore, agent_id: &str) -> EngineResult<String> {
+pub fn get_community_skill_instructions(
+    store: &SessionStore,
+    agent_id: &str,
+) -> EngineResult<String> {
     let skills = store.list_community_skills()?;
     let mut sections: Vec<String> = Vec::new();
 

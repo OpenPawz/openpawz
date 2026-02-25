@@ -41,8 +41,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "skill_store_get".into(),
-                description:
-                    "Retrieve a value from a skill's persistent storage by key.".into(),
+                description: "Retrieve a value from a skill's persistent storage by key.".into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -63,8 +62,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "skill_store_list".into(),
-                description:
-                    "List all key-value pairs stored for a skill.".into(),
+                description: "List all key-value pairs stored for a skill.".into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -81,8 +79,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "skill_store_delete".into(),
-                description:
-                    "Delete a key from a skill's persistent storage.".into(),
+                description: "Delete a key from a skill's persistent storage.".into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -156,14 +153,13 @@ fn execute_get(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Resul
 
     match result {
         Some(v) => Ok(v),
-        None => Ok(format!("No value found for key '{key}' in skill '{skill_id}'.")),
+        None => Ok(format!(
+            "No value found for key '{key}' in skill '{skill_id}'."
+        )),
     }
 }
 
-fn execute_list(
-    args: &serde_json::Value,
-    app_handle: &tauri::AppHandle,
-) -> Result<String, String> {
+fn execute_list(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
     let skill_id = args["skill_id"]
         .as_str()
         .ok_or("Missing required parameter: skill_id")?;

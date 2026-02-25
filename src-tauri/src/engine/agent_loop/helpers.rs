@@ -124,10 +124,7 @@ pub fn empty_response_fallback() -> String {
 /// After tool execution, check if `request_tools` added new tool names to
 /// `loaded_tools`. If so, find their definitions and inject them into the
 /// active tool list so the model can use them in the next round.
-pub fn refresh_tool_rag(
-    app_handle: &tauri::AppHandle,
-    tools: &mut Vec<ToolDefinition>,
-) {
+pub fn refresh_tool_rag(app_handle: &tauri::AppHandle, tools: &mut Vec<ToolDefinition>) {
     let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() else {
         return;
     };
@@ -145,7 +142,13 @@ pub fn refresh_tool_rag(
     let mut all_defs = ToolDefinition::builtins();
     let enabled_ids: Vec<String> = crate::engine::skills::builtin_skills()
         .iter()
-        .filter(|s| state.store.get_skill_enabled_state(&s.id).unwrap_or(None).unwrap_or(s.default_enabled))
+        .filter(|s| {
+            state
+                .store
+                .get_skill_enabled_state(&s.id)
+                .unwrap_or(None)
+                .unwrap_or(s.default_enabled)
+        })
         .map(|s| s.id.clone())
         .collect();
     all_defs.extend(ToolDefinition::skill_tools(&enabled_ids));
@@ -201,10 +204,7 @@ fn estimate_msg_tokens(m: &Message) -> usize {
 /// context window. Preserves the system prompt (first message) and the last
 /// user message. Ensures the first non-system message is a User message
 /// (required by Gemini).
-pub fn truncate_mid_loop(
-    app_handle: &tauri::AppHandle,
-    messages: &mut Vec<Message>,
-) {
+pub fn truncate_mid_loop(app_handle: &tauri::AppHandle, messages: &mut Vec<Message>) {
     let mid_loop_max = {
         if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
             let cfg = state.config.lock();

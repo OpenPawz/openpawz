@@ -69,10 +69,12 @@ pub async fn execute(
     agent_id: &str,
 ) -> Option<Result<String, String>> {
     Some(match name {
-        "skill_output" => execute_skill_output(args, app_handle, agent_id)
-            .map_err(|e| e.to_string()),
-        "delete_skill_output" => execute_delete_skill_output(args, app_handle, agent_id)
-            .map_err(|e| e.to_string()),
+        "skill_output" => {
+            execute_skill_output(args, app_handle, agent_id).map_err(|e| e.to_string())
+        }
+        "delete_skill_output" => {
+            execute_delete_skill_output(args, app_handle, agent_id).map_err(|e| e.to_string())
+        }
         _ => return None,
     })
 }
@@ -107,8 +109,8 @@ fn execute_skill_output(
         return Err("Parameter 'data' must be a JSON object".to_string());
     }
 
-    let data_str = serde_json::to_string(data)
-        .map_err(|e| format!("Failed to serialize data: {e}"))?;
+    let data_str =
+        serde_json::to_string(data).map_err(|e| format!("Failed to serialize data: {e}"))?;
 
     // Generate deterministic ID from skill_id + agent_id
     let id = format!("so-{}-{}", skill_id, agent_id);
@@ -150,10 +152,19 @@ fn execute_delete_skill_output(
     let deleted = state.store.delete_skill_output(&id)?;
 
     if deleted {
-        info!("[engine] Skill output deleted: skill={} agent={}", skill_id, agent_id);
-        Ok(format!("Widget for skill '{}' removed from dashboard.", skill_id))
+        info!(
+            "[engine] Skill output deleted: skill={} agent={}",
+            skill_id, agent_id
+        );
+        Ok(format!(
+            "Widget for skill '{}' removed from dashboard.",
+            skill_id
+        ))
     } else {
-        Ok(format!("No widget found for skill '{}' — nothing to remove.", skill_id))
+        Ok(format!(
+            "No widget found for skill '{}' — nothing to remove.",
+            skill_id
+        ))
     }
 }
 

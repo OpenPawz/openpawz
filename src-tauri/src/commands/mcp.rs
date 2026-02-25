@@ -36,8 +36,7 @@ pub fn engine_mcp_save_server(
         servers.push(server);
     }
 
-    channels::save_channel_config(&app_handle, CONFIG_KEY, &servers)
-        .map_err(|e| e.to_string())
+    channels::save_channel_config(&app_handle, CONFIG_KEY, &servers).map_err(|e| e.to_string())
 }
 
 // ── Remove a server config ─────────────────────────────────────────────
@@ -58,8 +57,7 @@ pub async fn engine_mcp_remove_server(
     let mut servers: Vec<McpServerConfig> =
         channels::load_channel_config(&app_handle, CONFIG_KEY).unwrap_or_default();
     servers.retain(|s| s.id != id);
-    channels::save_channel_config(&app_handle, CONFIG_KEY, &servers)
-        .map_err(|e| e.to_string())
+    channels::save_channel_config(&app_handle, CONFIG_KEY, &servers).map_err(|e| e.to_string())
 }
 
 // ── Connect to a server ────────────────────────────────────────────────

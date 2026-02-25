@@ -2,10 +2,10 @@
 // Each row maps a (skill_id, agent_id) pair to a JSON blob of structured data
 // plus a widget_type that tells the frontend how to render it.
 
-use rusqlite::params;
-use serde::{Deserialize, Serialize};
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use rusqlite::params;
+use serde::{Deserialize, Serialize};
 
 /// A persisted skill output row, returned to the frontend for widget rendering.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,27 +60,31 @@ impl SessionStore {
                 "SELECT id, skill_id, agent_id, widget_type, title, data, created_at, updated_at
                  FROM skill_outputs
                  WHERE skill_id = ?1 AND agent_id = ?2
-                 ORDER BY updated_at DESC".into(),
+                 ORDER BY updated_at DESC"
+                    .into(),
                 vec![sid.to_string(), aid.to_string()],
             ),
             (Some(sid), None) => (
                 "SELECT id, skill_id, agent_id, widget_type, title, data, created_at, updated_at
                  FROM skill_outputs
                  WHERE skill_id = ?1
-                 ORDER BY updated_at DESC".into(),
+                 ORDER BY updated_at DESC"
+                    .into(),
                 vec![sid.to_string()],
             ),
             (None, Some(aid)) => (
                 "SELECT id, skill_id, agent_id, widget_type, title, data, created_at, updated_at
                  FROM skill_outputs
                  WHERE agent_id = ?1
-                 ORDER BY updated_at DESC".into(),
+                 ORDER BY updated_at DESC"
+                    .into(),
                 vec![aid.to_string()],
             ),
             (None, None) => (
                 "SELECT id, skill_id, agent_id, widget_type, title, data, created_at, updated_at
                  FROM skill_outputs
-                 ORDER BY updated_at DESC".into(),
+                 ORDER BY updated_at DESC"
+                    .into(),
                 vec![],
             ),
         };
@@ -129,20 +133,31 @@ impl SessionStore {
 mod tests {
     use super::*;
     use crate::engine::sessions::schema_for_testing;
-    use rusqlite::Connection;
     use parking_lot::Mutex;
+    use rusqlite::Connection;
 
     fn test_store() -> SessionStore {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA journal_mode = WAL;").unwrap();
         schema_for_testing(&conn);
-        SessionStore { conn: Mutex::new(conn) }
+        SessionStore {
+            conn: Mutex::new(conn),
+        }
     }
 
     #[test]
     fn upsert_and_list() {
         let store = test_store();
-        store.upsert_skill_output("so-1", "weather", "default", "status", "Weather", r#"{"temp":"22C"}"#).unwrap();
+        store
+            .upsert_skill_output(
+                "so-1",
+                "weather",
+                "default",
+                "status",
+                "Weather",
+                r#"{"temp":"22C"}"#,
+            )
+            .unwrap();
         let all = store.list_skill_outputs(None, None).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].skill_id, "weather");
@@ -152,8 +167,26 @@ mod tests {
     #[test]
     fn upsert_updates_existing() {
         let store = test_store();
-        store.upsert_skill_output("so-1", "weather", "default", "status", "Weather", r#"{"temp":"22C"}"#).unwrap();
-        store.upsert_skill_output("so-1", "weather", "default", "metric", "Weather v2", r#"{"temp":"30C"}"#).unwrap();
+        store
+            .upsert_skill_output(
+                "so-1",
+                "weather",
+                "default",
+                "status",
+                "Weather",
+                r#"{"temp":"22C"}"#,
+            )
+            .unwrap();
+        store
+            .upsert_skill_output(
+                "so-1",
+                "weather",
+                "default",
+                "metric",
+                "Weather v2",
+                r#"{"temp":"30C"}"#,
+            )
+            .unwrap();
         let all = store.list_skill_outputs(None, None).unwrap();
         assert_eq!(all.len(), 1);
         assert_eq!(all[0].title, "Weather v2");
@@ -163,8 +196,12 @@ mod tests {
     #[test]
     fn list_filters_by_skill() {
         let store = test_store();
-        store.upsert_skill_output("so-1", "weather", "default", "status", "Weather", "{}").unwrap();
-        store.upsert_skill_output("so-2", "stocks",  "default", "table",  "Stocks",  "{}").unwrap();
+        store
+            .upsert_skill_output("so-1", "weather", "default", "status", "Weather", "{}")
+            .unwrap();
+        store
+            .upsert_skill_output("so-2", "stocks", "default", "table", "Stocks", "{}")
+            .unwrap();
         let filtered = store.list_skill_outputs(Some("weather"), None).unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].skill_id, "weather");
@@ -173,8 +210,12 @@ mod tests {
     #[test]
     fn list_filters_by_agent() {
         let store = test_store();
-        store.upsert_skill_output("so-1", "weather", "default", "status", "W1", "{}").unwrap();
-        store.upsert_skill_output("so-2", "weather", "agent-2", "status", "W2", "{}").unwrap();
+        store
+            .upsert_skill_output("so-1", "weather", "default", "status", "W1", "{}")
+            .unwrap();
+        store
+            .upsert_skill_output("so-2", "weather", "agent-2", "status", "W2", "{}")
+            .unwrap();
         let filtered = store.list_skill_outputs(None, Some("agent-2")).unwrap();
         assert_eq!(filtered.len(), 1);
         assert_eq!(filtered[0].agent_id, "agent-2");
@@ -183,7 +224,9 @@ mod tests {
     #[test]
     fn delete_skill_output() {
         let store = test_store();
-        store.upsert_skill_output("so-1", "weather", "default", "status", "X", "{}").unwrap();
+        store
+            .upsert_skill_output("so-1", "weather", "default", "status", "X", "{}")
+            .unwrap();
         let deleted = store.delete_skill_output("so-1").unwrap();
         assert!(deleted);
         let all = store.list_skill_outputs(None, None).unwrap();
@@ -200,9 +243,15 @@ mod tests {
     #[test]
     fn delete_by_skill() {
         let store = test_store();
-        store.upsert_skill_output("so-1", "weather", "default", "status", "A", "{}").unwrap();
-        store.upsert_skill_output("so-2", "weather", "agent-2", "status", "B", "{}").unwrap();
-        store.upsert_skill_output("so-3", "stocks",  "default", "table",  "C", "{}").unwrap();
+        store
+            .upsert_skill_output("so-1", "weather", "default", "status", "A", "{}")
+            .unwrap();
+        store
+            .upsert_skill_output("so-2", "weather", "agent-2", "status", "B", "{}")
+            .unwrap();
+        store
+            .upsert_skill_output("so-3", "stocks", "default", "table", "C", "{}")
+            .unwrap();
         let count = store.delete_skill_outputs_by_skill("weather").unwrap();
         assert_eq!(count, 2);
         let all = store.list_skill_outputs(None, None).unwrap();

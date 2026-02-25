@@ -13,14 +13,14 @@
 //   - Optional pairing mode
 //   - Basic auth over TLS
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{debug, info, warn, error};
+use crate::atoms::error::EngineResult;
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
-use crate::atoms::error::EngineResult;
 
 // ── Nextcloud Talk Config ──────────────────────────────────────────────
 
@@ -72,7 +72,9 @@ static BOT_USERNAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "nextcloud_config";
@@ -107,11 +109,15 @@ fn normalize_server_url(raw: &str) -> EngineResult<String> {
         return Err(format!(
             "Unsupported URL scheme '{}://'. Use https:// for your Nextcloud server.",
             scheme
-        ).into());
+        )
+        .into());
     }
 
     // No scheme — assume https
-    warn!("[nextcloud] No URL scheme provided, assuming https://{}", url);
+    warn!(
+        "[nextcloud] No URL scheme provided, assuming https://{}",
+        url
+    );
     Ok(format!("https://{}", url))
 }
 
@@ -158,7 +164,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
-    let config: NextcloudConfig = channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
+    let config: NextcloudConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed),
@@ -185,11 +192,13 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
 
     // Verify credentials by getting user status
     let caps_url = format!("{}/ocs/v2.php/cloud/capabilities", base);
-    let caps_resp = client.get(&caps_url)
+    let caps_resp = client
+        .get(&caps_url)
         .basic_auth(&config.username, Some(&config.password))
         .header("OCS-APIREQUEST", "true")
         .header("Accept", "application/json")
-        .send().await?;
+        .send()
+        .await?;
 
     if !caps_resp.status().is_success() {
         return Err(format!("Auth failed: HTTP {}", caps_resp.status()).into());
@@ -205,10 +214,13 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
 
     info!("[nextcloud] Authenticated as {}", bot_user);
 
-    let _ = app_handle.emit("nextcloud-status", json!({
-        "kind": "connected",
-        "username": &bot_user,
-    }));
+    let _ = app_handle.emit(
+        "nextcloud-status",
+        json!({
+            "kind": "connected",
+            "username": &bot_user,
+        }),
+    );
 
     // Get initial list of conversations
     let rooms_url = format!("{}/ocs/v2.php/apps/spreed/api/v4/room", base);
@@ -217,7 +229,8 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
     let mut last_config_reload = std::time::Instant::now();
 
     // Track last known message ID per room to avoid reprocessing
-    let mut last_known_id: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut last_known_id: std::collections::HashMap<String, i64> =
+        std::collections::HashMap::new();
 
     // Initial pass: get rooms and set last_known_id to current timestamp
     let rooms = nc_get_rooms(&client, &rooms_url, &config.username, &config.password).await?;
@@ -232,24 +245,33 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
 
     // Polling loop
     loop {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         // Poll for new messages across all rooms with unread messages
-        let rooms = nc_get_rooms(&client, &rooms_url, &config.username, &config.password).await
+        let rooms = nc_get_rooms(&client, &rooms_url, &config.username, &config.password)
+            .await
             .unwrap_or_default();
 
         for room in &rooms {
-            if stop.load(Ordering::Relaxed) { break; }
+            if stop.load(Ordering::Relaxed) {
+                break;
+            }
 
             let token = room["token"].as_str().unwrap_or("").to_string();
             let room_type = room["type"].as_u64().unwrap_or(0);
             // type 1 = one-to-one, 2 = group, 3 = public, 4 = changelog
             let is_dm = room_type == 1;
             let unread = room["unreadMessages"].as_u64().unwrap_or(0);
-            if unread == 0 { continue; }
+            if unread == 0 {
+                continue;
+            }
 
             // Skip group conversations unless configured
-            if !is_dm && !current_config.respond_in_groups { continue; }
+            if !is_dm && !current_config.respond_in_groups {
+                continue;
+            }
 
             let last_id = last_known_id.get(&token).copied().unwrap_or(0);
 
@@ -259,11 +281,13 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
                 base, token, last_id
             );
 
-            let msgs_resp = client.get(&chat_url)
+            let msgs_resp = client
+                .get(&chat_url)
                 .basic_auth(&config.username, Some(&config.password))
                 .header("OCS-APIREQUEST", "true")
                 .header("Accept", "application/json")
-                .send().await;
+                .send()
+                .await;
 
             let msgs: Vec<serde_json::Value> = match msgs_resp {
                 Ok(r) if r.status().is_success() => {
@@ -282,7 +306,9 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
 
             for msg in &msgs {
                 let msg_id = msg["id"].as_i64().unwrap_or(0);
-                if msg_id <= last_id { continue; }
+                if msg_id <= last_id {
+                    continue;
+                }
 
                 let actor_type = msg["actorType"].as_str().unwrap_or("");
                 let actor_id = msg["actorId"].as_str().unwrap_or("");
@@ -291,14 +317,29 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
                 let text = msg["message"].as_str().unwrap_or("").to_string();
 
                 // Skip system messages, own messages, bot messages
-                if message_type == "system" { continue; }
-                if actor_type != "users" { continue; }
-                if actor_id == bot_user { continue; }
-                if text.is_empty() { continue; }
+                if message_type == "system" {
+                    continue;
+                }
+                if actor_type != "users" {
+                    continue;
+                }
+                if actor_id == bot_user {
+                    continue;
+                }
+                if text.is_empty() {
+                    continue;
+                }
 
-                debug!("[nextcloud] Message from {} in {}: {}",
-                    actor_name, token,
-                    if text.len() > 50 { format!("{}...", &text[..50]) } else { text.clone() });
+                debug!(
+                    "[nextcloud] Message from {} in {}: {}",
+                    actor_name,
+                    token,
+                    if text.len() > 50 {
+                        format!("{}...", &text[..50])
+                    } else {
+                        text.clone()
+                    }
+                );
 
                 // Access control for DMs
                 if is_dm {
@@ -311,13 +352,25 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
                         &mut current_config.pending_users,
                     ) {
                         let denial_str = denial_msg.to_string();
-                        let _ = channels::save_channel_config(&app_handle, CONFIG_KEY, &current_config);
-                        let _ = app_handle.emit("nextcloud-status", json!({
-                            "kind": "pairing_request",
-                            "user_id": actor_id,
-                            "username": actor_name,
-                        }));
-                        let _ = nc_send_message(&client, base, &config.username, &config.password, &token, &denial_str).await;
+                        let _ =
+                            channels::save_channel_config(&app_handle, CONFIG_KEY, &current_config);
+                        let _ = app_handle.emit(
+                            "nextcloud-status",
+                            json!({
+                                "kind": "pairing_request",
+                                "user_id": actor_id,
+                                "username": actor_name,
+                            }),
+                        );
+                        let _ = nc_send_message(
+                            &client,
+                            base,
+                            &config.username,
+                            &config.password,
+                            &token,
+                            &denial_str,
+                        )
+                        .await;
                         continue;
                     }
                 }
@@ -325,25 +378,47 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
                 MESSAGE_COUNT.fetch_add(1, Ordering::Relaxed);
 
                 let agent_id = current_config.agent_id.as_deref().unwrap_or("default");
-                let ctx = "You are chatting via Nextcloud Talk. Use plain text or simple markdown. \
+                let ctx =
+                    "You are chatting via Nextcloud Talk. Use plain text or simple markdown. \
                            Keep responses concise.";
 
                 let response = channels::run_channel_agent(
-                    &app_handle, "nextcloud", ctx, &text, actor_id, agent_id,
+                    &app_handle,
+                    "nextcloud",
+                    ctx,
+                    &text,
+                    actor_id,
+                    agent_id,
                     current_config.allow_dangerous_tools,
-                ).await;
+                )
+                .await;
 
                 match response {
                     Ok(reply) if !reply.is_empty() => {
                         // Nextcloud Talk max message length is 32000 chars
                         for chunk in channels::split_message(&reply, 32000) {
-                            let _ = nc_send_message(&client, base, &config.username, &config.password, &token, &chunk).await;
+                            let _ = nc_send_message(
+                                &client,
+                                base,
+                                &config.username,
+                                &config.password,
+                                &token,
+                                &chunk,
+                            )
+                            .await;
                         }
                     }
                     Err(e) => {
                         error!("[nextcloud] Agent error for {}: {}", actor_id, e);
-                        let _ = nc_send_message(&client, base, &config.username, &config.password, &token,
-                            &format!("⚠️ Error: {}", e)).await;
+                        let _ = nc_send_message(
+                            &client,
+                            base,
+                            &config.username,
+                            &config.password,
+                            &token,
+                            &format!("⚠️ Error: {}", e),
+                        )
+                        .await;
                     }
                     _ => {}
                 }
@@ -365,7 +440,9 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
 
         // Reload config periodically
         if last_config_reload.elapsed() > std::time::Duration::from_secs(30) {
-            if let Ok(fresh) = channels::load_channel_config::<NextcloudConfig>(&app_handle, CONFIG_KEY) {
+            if let Ok(fresh) =
+                channels::load_channel_config::<NextcloudConfig>(&app_handle, CONFIG_KEY)
+            {
                 current_config = fresh;
             }
             last_config_reload = std::time::Instant::now();
@@ -375,9 +452,12 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
         tokio::time::sleep(std::time::Duration::from_secs(5)).await;
     }
 
-    let _ = app_handle.emit("nextcloud-status", json!({
-        "kind": "disconnected",
-    }));
+    let _ = app_handle.emit(
+        "nextcloud-status",
+        json!({
+            "kind": "disconnected",
+        }),
+    );
 
     Ok(())
 }
@@ -390,11 +470,13 @@ async fn nc_get_rooms(
     username: &str,
     password: &str,
 ) -> EngineResult<Vec<serde_json::Value>> {
-    let resp = client.get(rooms_url)
+    let resp = client
+        .get(rooms_url)
         .basic_auth(username, Some(password))
         .header("OCS-APIREQUEST", "true")
         .header("Accept", "application/json")
-        .send().await?;
+        .send()
+        .await?;
 
     let body: serde_json::Value = resp.json().await?;
 
@@ -411,12 +493,14 @@ async fn nc_send_message(
 ) -> EngineResult<()> {
     let url = format!("{}/ocs/v2.php/apps/spreed/api/v1/chat/{}", base, room_token);
 
-    match client.post(&url)
+    match client
+        .post(&url)
         .basic_auth(username, Some(password))
         .header("OCS-APIREQUEST", "true")
         .header("Accept", "application/json")
         .json(&json!({ "message": message }))
-        .send().await
+        .send()
+        .await
     {
         Ok(r) if !r.status().is_success() => {
             warn!("[nextcloud] sendMessage failed: {}", r.status());

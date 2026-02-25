@@ -2,11 +2,11 @@
 // create_evolution_instance, extract_qr_from_response, delete_evolution_instance,
 // connect_evolution_instance, send_whatsapp_message
 
+use super::config::{WhatsAppConfig, CONFIG_KEY};
+use crate::atoms::error::EngineResult;
 use crate::engine::channels;
 use log::{info, warn};
 use serde_json::json;
-use super::config::{WhatsAppConfig, CONFIG_KEY};
-use crate::atoms::error::EngineResult;
 
 // ── Instance Management ────────────────────────────────────────────────
 
@@ -18,7 +18,10 @@ pub(crate) async fn create_evolution_instance(config: &WhatsAppConfig) -> Engine
     // v1.x format: webhook is a plain string URL, no "integration" field.
     // Webhook events are configured via container env vars (WEBHOOK_GLOBAL_*).
     // Provide a unique token per instance to avoid "Token already exists" collisions.
-    let instance_token = format!("paw-{}", &uuid::Uuid::new_v4().to_string().replace('-', "")[..12]);
+    let instance_token = format!(
+        "paw-{}",
+        &uuid::Uuid::new_v4().to_string().replace('-', "")[..12]
+    );
     let body = json!({
         "instanceName": config.instance_name,
         "token": instance_token,
@@ -26,21 +29,31 @@ pub(crate) async fn create_evolution_instance(config: &WhatsAppConfig) -> Engine
         "webhook": format!("http://host.docker.internal:{}/webhook/whatsapp", config.webhook_port),
     });
 
-    info!("[whatsapp] Creating instance '{}' with token '{}'", config.instance_name, instance_token);
+    info!(
+        "[whatsapp] Creating instance '{}' with token '{}'",
+        config.instance_name, instance_token
+    );
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .header("apikey", &config.api_key)
         .json(&body)
-        .send().await?;
+        .send()
+        .await?;
 
     let status = resp.status();
     let text = resp.text().await.unwrap_or_default();
-    info!("[whatsapp] Instance create response [{}]: {}", status, &text[..text.len().min(500)]);
+    info!(
+        "[whatsapp] Instance create response [{}]: {}",
+        status,
+        &text[..text.len().min(500)]
+    );
 
     if !status.is_success() {
         // Instance with this name already exists — delete it and retry
         let lower = text.to_lowercase();
-        let is_instance_exists = lower.contains("instance") && (lower.contains("already") || lower.contains("exists"));
+        let is_instance_exists =
+            lower.contains("instance") && (lower.contains("already") || lower.contains("exists"));
         let is_token_exists = lower.contains("token") && lower.contains("already");
 
         if is_instance_exists || is_token_exists {
@@ -48,7 +61,10 @@ pub(crate) async fn create_evolution_instance(config: &WhatsAppConfig) -> Engine
             delete_evolution_instance(config).await;
 
             // Generate a fresh token for the retry
-            let retry_token = format!("paw-{}", &uuid::Uuid::new_v4().to_string().replace('-', "")[..12]);
+            let retry_token = format!(
+                "paw-{}",
+                &uuid::Uuid::new_v4().to_string().replace('-', "")[..12]
+            );
             let retry_body = json!({
                 "instanceName": config.instance_name,
                 "token": retry_token,
@@ -57,17 +73,27 @@ pub(crate) async fn create_evolution_instance(config: &WhatsAppConfig) -> Engine
             });
 
             // Retry create after delete
-            let resp2 = client.post(&url)
+            let resp2 = client
+                .post(&url)
                 .header("apikey", &config.api_key)
                 .json(&retry_body)
-                .send().await?;
+                .send()
+                .await?;
 
             let status2 = resp2.status();
             let text2 = resp2.text().await.unwrap_or_default();
-            info!("[whatsapp] Instance create (retry) response [{}]: {}", status2, &text2[..text2.len().min(500)]);
+            info!(
+                "[whatsapp] Instance create (retry) response [{}]: {}",
+                status2,
+                &text2[..text2.len().min(500)]
+            );
 
             if !status2.is_success() {
-                return Err(format!("Create instance failed after delete ({}): {}", status2, text2).into());
+                return Err(format!(
+                    "Create instance failed after delete ({}): {}",
+                    status2, text2
+                )
+                .into());
             }
 
             let resp_json: serde_json::Value = serde_json::from_str(&text2).unwrap_or_default();
@@ -76,7 +102,11 @@ pub(crate) async fn create_evolution_instance(config: &WhatsAppConfig) -> Engine
         return Err(format!("Create instance failed ({}): {}", status, text).into());
     }
 
-    info!("[whatsapp] Instance create response [{}]: {}", status, &text[..text.len().min(500)]);
+    info!(
+        "[whatsapp] Instance create response [{}]: {}",
+        status,
+        &text[..text.len().min(500)]
+    );
 
     // Parse QR code from response
     let resp_json: serde_json::Value = serde_json::from_str(&text)?;
@@ -89,7 +119,8 @@ pub(crate) fn extract_qr_from_response(resp: &serde_json::Value) -> String {
     // v1.x create: { "qrcode": { "base64": "data:image/..." } }
     // v1.x connect: { "base64": "data:image/..." }
     // Also try nested: { "qrcode": "data:image/..." } or { "qrcode": { "code": "...", "base64": "..." } }
-    let qr = resp["qrcode"]["base64"].as_str()
+    let qr = resp["qrcode"]["base64"]
+        .as_str()
         .or_else(|| resp["base64"].as_str())
         .or_else(|| resp["qrcode"].as_str().filter(|s| s.starts_with("data:")))
         .unwrap_or("")
@@ -98,13 +129,25 @@ pub(crate) fn extract_qr_from_response(resp: &serde_json::Value) -> String {
     if qr.is_empty() {
         // Log what we got so we can debug unexpected response formats
         let qr_field = &resp["qrcode"];
-        warn!("[whatsapp] QR extraction returned empty. qrcode field type: {}, keys: {:?}",
-            if qr_field.is_object() { "object" } else if qr_field.is_string() { "string" } else if qr_field.is_null() { "null" } else { "other" },
+        warn!(
+            "[whatsapp] QR extraction returned empty. qrcode field type: {}, keys: {:?}",
+            if qr_field.is_object() {
+                "object"
+            } else if qr_field.is_string() {
+                "string"
+            } else if qr_field.is_null() {
+                "null"
+            } else {
+                "other"
+            },
             qr_field.as_object().map(|o| o.keys().collect::<Vec<_>>())
         );
     } else {
-        info!("[whatsapp] QR code extracted ({} bytes, starts with: {})",
-            qr.len(), &qr[..qr.len().min(40)]);
+        info!(
+            "[whatsapp] QR code extracted ({} bytes, starts with: {})",
+            qr.len(),
+            &qr[..qr.len().min(40)]
+        );
     }
 
     qr
@@ -113,16 +156,25 @@ pub(crate) fn extract_qr_from_response(resp: &serde_json::Value) -> String {
 /// Delete an existing Evolution API instance.
 pub(crate) async fn delete_evolution_instance(config: &WhatsAppConfig) {
     let client = reqwest::Client::new();
-    let url = format!("{}/instance/delete/{}", config.api_url, config.instance_name);
+    let url = format!(
+        "{}/instance/delete/{}",
+        config.api_url, config.instance_name
+    );
 
-    match client.delete(&url)
+    match client
+        .delete(&url)
         .header("apikey", &config.api_key)
-        .send().await
+        .send()
+        .await
     {
         Ok(resp) => {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            info!("[whatsapp] Delete instance response [{}]: {}", status, &text[..text.len().min(200)]);
+            info!(
+                "[whatsapp] Delete instance response [{}]: {}",
+                status,
+                &text[..text.len().min(200)]
+            );
         }
         Err(e) => {
             warn!("[whatsapp] Delete instance failed: {}", e);
@@ -136,14 +188,22 @@ pub(crate) async fn delete_evolution_instance(config: &WhatsAppConfig) {
 #[allow(dead_code)]
 pub(crate) async fn connect_evolution_instance(config: &WhatsAppConfig) -> EngineResult<String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/instance/connect/{}", config.api_url, config.instance_name);
+    let url = format!(
+        "{}/instance/connect/{}",
+        config.api_url, config.instance_name
+    );
 
-    let resp = client.get(&url)
+    let resp = client
+        .get(&url)
         .header("apikey", &config.api_key)
-        .send().await?;
+        .send()
+        .await?;
 
     let text = resp.text().await.unwrap_or_default();
-    info!("[whatsapp] Connect instance response: {}", &text[..text.len().min(500)]);
+    info!(
+        "[whatsapp] Connect instance response: {}",
+        &text[..text.len().min(500)]
+    );
     let resp_json: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
 
     Ok(extract_qr_from_response(&resp_json))
@@ -160,7 +220,10 @@ pub(crate) async fn send_whatsapp_message(
     let config: WhatsAppConfig = channels::load_channel_config(app_handle, CONFIG_KEY)?;
     let client = reqwest::Client::new();
 
-    let url = format!("{}/message/sendText/{}", config.api_url, config.instance_name);
+    let url = format!(
+        "{}/message/sendText/{}",
+        config.api_url, config.instance_name
+    );
 
     // WhatsApp has no hard character limit, but split very long messages
     let chunks = channels::split_message(text, 4000);
@@ -171,10 +234,12 @@ pub(crate) async fn send_whatsapp_message(
             "text": chunk,
         });
 
-        let resp = client.post(&url)
+        let resp = client
+            .post(&url)
             .header("apikey", &config.api_key)
             .json(&body)
-            .send().await;
+            .send()
+            .await;
 
         match resp {
             Ok(r) => {

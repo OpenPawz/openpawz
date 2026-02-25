@@ -10,10 +10,10 @@
 //   client.rs    — JSON-RPC initialize/tools-list/tools-call
 //   registry.rs  — multi-server lifecycle + tool dispatch
 
-pub mod types;
-pub mod transport;
 pub mod client;
 pub mod registry;
+pub mod transport;
+pub mod types;
 
 // Re-export the main public types
 pub use registry::McpRegistry;

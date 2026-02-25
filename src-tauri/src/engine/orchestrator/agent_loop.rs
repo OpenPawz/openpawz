@@ -31,27 +31,47 @@ pub(crate) enum AgentRole<'a> {
 /// intentionally excluded — they always require user approval.
 const SAFE_TOOLS: &[&str] = &[
     // Core read-only
-    "fetch", "read_file", "list_directory",
+    "fetch",
+    "read_file",
+    "list_directory",
     // Web tools
-    "web_search", "web_read", "web_screenshot", "web_browse",
+    "web_search",
+    "web_read",
+    "web_screenshot",
+    "web_browse",
     // Soul / persona
-    "soul_read", "soul_write", "soul_list",
+    "soul_read",
+    "soul_write",
+    "soul_list",
     // Memory
-    "memory_store", "memory_search",
+    "memory_store",
+    "memory_search",
     // Self-awareness
     "self_info",
     // Skill tools (read-only)
-    "email_read", "slack_read", "github_api", "image_generate",
+    "email_read",
+    "slack_read",
+    "github_api",
+    "image_generate",
     // Orchestrator / worker control — intercepted before reaching HIL,
     // but listed here so they're skipped if interception is bypassed.
-    "delegate_task", "check_agent_status", "send_agent_message",
-    "project_complete", "create_sub_agent", "report_progress",
+    "delegate_task",
+    "check_agent_status",
+    "send_agent_message",
+    "project_complete",
+    "create_sub_agent",
+    "report_progress",
     // Inter-agent comms (safe: only sends/reads messages between agents)
-    "agent_send_message", "agent_read_messages",
+    "agent_send_message",
+    "agent_read_messages",
     // Squads (safe: team management)
-    "create_squad", "list_squads", "manage_squad", "squad_broadcast",
+    "create_squad",
+    "list_squads",
+    "manage_squad",
+    "squad_broadcast",
     // Task management (read/create — not destructive)
-    "create_task", "list_tasks",
+    "create_task",
+    "list_tasks",
 ];
 
 // ── Unified loop ───────────────────────────────────────────────────────
@@ -87,14 +107,22 @@ pub(crate) async fn run_orchestrator_loop(
     loop {
         round += 1;
         if round > max_rounds {
-            warn!("[orchestrator] {} max rounds ({}) reached", label, max_rounds);
+            warn!(
+                "[orchestrator] {} max rounds ({}) reached",
+                label, max_rounds
+            );
             return Ok(final_text);
         }
 
-        info!("[orchestrator] {} round {}/{} project={}", label, round, max_rounds, project_id);
+        info!(
+            "[orchestrator] {} round {}/{} project={}",
+            label, round, max_rounds, project_id
+        );
 
         // ── Stream from the AI model ───────────────────────────────
-        let chunks = provider.chat_stream(messages, tools, model, None, None).await?;
+        let chunks = provider
+            .chat_stream(messages, tools, model, None, None)
+            .await?;
 
         let mut text_accum = String::new();
         let mut tool_call_map: std::collections::HashMap<
@@ -107,33 +135,61 @@ pub(crate) async fn run_orchestrator_loop(
         for chunk in &chunks {
             if let Some(dt) = &chunk.delta_text {
                 text_accum.push_str(dt);
-                let _ = app_handle.emit("engine-event", EngineEvent::Delta {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    text: dt.clone(),
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::Delta {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: dt.clone(),
+                    },
+                );
             }
             // Emit thinking/reasoning text
             if let Some(tt) = &chunk.thinking_text {
-                let _ = app_handle.emit("engine-event", EngineEvent::ThinkingDelta {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    text: tt.clone(),
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::ThinkingDelta {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: tt.clone(),
+                    },
+                );
             }
             for tc_delta in &chunk.tool_calls {
                 has_tool_calls = true;
-                let entry = tool_call_map.entry(tc_delta.index)
-                    .or_insert_with(|| (String::new(), String::new(), String::new(), None, Vec::new()));
-                if let Some(id) = &tc_delta.id { entry.0 = id.clone(); }
-                if let Some(name) = &tc_delta.function_name { entry.1 = name.clone(); }
-                if let Some(args_delta) = &tc_delta.arguments_delta { entry.2.push_str(args_delta); }
-                if tc_delta.thought_signature.is_some() { entry.3 = tc_delta.thought_signature.clone(); }
+                let entry = tool_call_map.entry(tc_delta.index).or_insert_with(|| {
+                    (
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        None,
+                        Vec::new(),
+                    )
+                });
+                if let Some(id) = &tc_delta.id {
+                    entry.0 = id.clone();
+                }
+                if let Some(name) = &tc_delta.function_name {
+                    entry.1 = name.clone();
+                }
+                if let Some(args_delta) = &tc_delta.arguments_delta {
+                    entry.2.push_str(args_delta);
+                }
+                if tc_delta.thought_signature.is_some() {
+                    entry.3 = tc_delta.thought_signature.clone();
+                }
             }
             if !chunk.thought_parts.is_empty() {
                 let first_idx = chunk.tool_calls.first().map(|tc| tc.index).unwrap_or(0);
-                let entry = tool_call_map.entry(first_idx)
-                    .or_insert_with(|| (String::new(), String::new(), String::new(), None, Vec::new()));
+                let entry = tool_call_map.entry(first_idx).or_insert_with(|| {
+                    (
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        None,
+                        Vec::new(),
+                    )
+                });
                 entry.4.extend(chunk.thought_parts.clone());
             }
         }
@@ -150,14 +206,17 @@ pub(crate) async fn run_orchestrator_loop(
             });
 
             if matches!(role, AgentRole::Boss) {
-                let _ = app_handle.emit("engine-event", EngineEvent::Complete {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    text: final_text.clone(),
-                    tool_calls_count: 0,
-                    usage: None,
-                    model: confirmed_model.clone(),
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::Complete {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: final_text.clone(),
+                        tool_calls_count: 0,
+                        usage: None,
+                        model: confirmed_model.clone(),
+                    },
+                );
             }
 
             return Ok(final_text);
@@ -169,11 +228,18 @@ pub(crate) async fn run_orchestrator_loop(
         sorted_indices.sort();
         for idx in sorted_indices {
             let (id, name, arguments, thought_sig, thoughts) = tool_call_map.get(&idx).unwrap();
-            let call_id = if id.is_empty() { format!("call_{}", uuid::Uuid::new_v4()) } else { id.clone() };
+            let call_id = if id.is_empty() {
+                format!("call_{}", uuid::Uuid::new_v4())
+            } else {
+                id.clone()
+            };
             tool_calls.push(ToolCall {
                 id: call_id,
                 call_type: "function".into(),
-                function: FunctionCall { name: name.clone(), arguments: arguments.clone() },
+                function: FunctionCall {
+                    name: name.clone(),
+                    arguments: arguments.clone(),
+                },
                 thought_signature: thought_sig.clone(),
                 thought_parts: thoughts.clone(),
             });
@@ -191,19 +257,25 @@ pub(crate) async fn run_orchestrator_loop(
         let mut should_stop = false;
 
         for tc in &tool_calls {
-            info!("[orchestrator] {} tool call: {} id={}", label, tc.function.name, tc.id);
+            info!(
+                "[orchestrator] {} tool call: {} id={}",
+                label, tc.function.name, tc.id
+            );
 
             // Try role-specific interception first
             let intercepted: Option<Result<String, String>> = match &role {
                 AgentRole::Boss => {
                     let result = execute_boss_tool(tc, app_handle, project_id).await;
-                    if tc.function.name == "project_complete" { should_stop = true; }
+                    if tc.function.name == "project_complete" {
+                        should_stop = true;
+                    }
                     result
                 }
                 AgentRole::Worker { .. } => {
                     let result = execute_worker_tool(tc, app_handle, project_id, agent_id).await;
                     if tc.function.name == "report_progress" {
-                        let args: serde_json::Value = serde_json::from_str(&tc.function.arguments).unwrap_or_default();
+                        let args: serde_json::Value =
+                            serde_json::from_str(&tc.function.arguments).unwrap_or_default();
                         if args["status"].as_str() == Some("done") {
                             should_stop = true;
                         }
@@ -218,13 +290,16 @@ pub(crate) async fn run_orchestrator_loop(
                     Err(e) => format!("Error: {}", e),
                 };
 
-                let _ = app_handle.emit("engine-event", EngineEvent::ToolResultEvent {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    tool_call_id: tc.id.clone(),
-                    output: output.clone(),
-                    success: true,
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::ToolResultEvent {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        tool_call_id: tc.id.clone(),
+                        output: output.clone(),
+                        success: true,
+                    },
+                );
 
                 messages.push(Message {
                     role: Role::Tool,
@@ -246,15 +321,20 @@ pub(crate) async fn run_orchestrator_loop(
                     let mut map = pending_approvals.lock();
                     map.insert(tc.id.clone(), approval_tx);
                 }
-                let _ = app_handle.emit("engine-event", EngineEvent::ToolRequest {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    tool_call: tc.clone(),
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::ToolRequest {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        tool_call: tc.clone(),
+                    },
+                );
                 match tokio::time::timeout(
                     std::time::Duration::from_secs(tool_timeout_secs),
                     approval_rx,
-                ).await {
+                )
+                .await
+                {
                     Ok(Ok(allowed)) => allowed,
                     _ => {
                         let mut map = pending_approvals.lock();
@@ -276,13 +356,16 @@ pub(crate) async fn run_orchestrator_loop(
             }
 
             let result = crate::engine::tools::execute_tool(tc, app_handle, agent_id).await;
-            let _ = app_handle.emit("engine-event", EngineEvent::ToolResultEvent {
-                session_id: session_id.to_string(),
-                run_id: run_id.to_string(),
-                tool_call_id: tc.id.clone(),
-                output: result.output.clone(),
-                success: result.success,
-            });
+            let _ = app_handle.emit(
+                "engine-event",
+                EngineEvent::ToolResultEvent {
+                    session_id: session_id.to_string(),
+                    run_id: run_id.to_string(),
+                    tool_call_id: tc.id.clone(),
+                    output: result.output.clone(),
+                    success: result.success,
+                },
+            );
             messages.push(Message {
                 role: Role::Tool,
                 content: MessageContent::Text(result.output),

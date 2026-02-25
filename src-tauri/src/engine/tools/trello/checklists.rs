@@ -3,9 +3,9 @@
 // Tools: trello_create_checklist, trello_add_checklist_item, trello_toggle_checklist_item,
 //        trello_delete_checklist
 
-use crate::atoms::types::*;
+use super::{auth_url, get_credentials, trello_request};
 use crate::atoms::error::EngineResult;
-use super::{get_credentials, auth_url, trello_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -30,7 +30,8 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_add_checklist_item".into(),
-                description: "Add an item to a Trello checklist. Can add multiple items at once.".into(),
+                description: "Add an item to a Trello checklist. Can add multiple items at once."
+                    .into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -82,10 +83,26 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "trello_create_checklist"      => Some(exec_create(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_add_checklist_item"    => Some(exec_add_item(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_toggle_checklist_item" => Some(exec_toggle(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_delete_checklist"      => Some(exec_delete(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_create_checklist" => Some(
+            exec_create(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_add_checklist_item" => Some(
+            exec_add_item(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_toggle_checklist_item" => Some(
+            exec_toggle(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_delete_checklist" => Some(
+            exec_delete(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -111,12 +128,20 @@ async fn exec_create(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
 
 async fn exec_add_item(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
     let (key, token) = get_credentials(app_handle)?;
-    let checklist_id = args["checklist_id"].as_str().ok_or("Missing 'checklist_id'")?;
-    let checked = if args["checked"].as_bool().unwrap_or(false) { "true" } else { "false" };
+    let checklist_id = args["checklist_id"]
+        .as_str()
+        .ok_or("Missing 'checklist_id'")?;
+    let checked = if args["checked"].as_bool().unwrap_or(false) {
+        "true"
+    } else {
+        "false"
+    };
 
     // Support both single 'name' and batch 'names'
     let names: Vec<String> = if let Some(arr) = args["names"].as_array() {
-        arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect()
+        arr.iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect()
     } else if let Some(name) = args["name"].as_str() {
         vec![name.to_string()]
     } else {
@@ -130,13 +155,23 @@ async fn exec_add_item(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
     let mut added = 0;
     for name in &names {
         let body = json!({ "name": name, "checked": checked });
-        let url = auth_url(&format!("/checklists/{}/checkItems", checklist_id), &key, &token);
+        let url = auth_url(
+            &format!("/checklists/{}/checkItems", checklist_id),
+            &key,
+            &token,
+        );
         trello_request(reqwest::Method::POST, &url, Some(&body)).await?;
         added += 1;
     }
 
-    info!("[trello] Added {} items to checklist {}", added, checklist_id);
-    Ok(format!("Added {} item(s) to checklist `{}`.", added, checklist_id))
+    info!(
+        "[trello] Added {} items to checklist {}",
+        added, checklist_id
+    );
+    Ok(format!(
+        "Added {} item(s) to checklist `{}`.",
+        added, checklist_id
+    ))
 }
 
 // ── toggle checklist item ──────────────────────────────────────────────
@@ -145,10 +180,16 @@ async fn exec_toggle(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let (key, token) = get_credentials(app_handle)?;
     let card_id = args["card_id"].as_str().ok_or("Missing 'card_id'")?;
     let item_id = args["item_id"].as_str().ok_or("Missing 'item_id'")?;
-    let state = args["state"].as_str().ok_or("Missing 'state' (complete or incomplete)")?;
+    let state = args["state"]
+        .as_str()
+        .ok_or("Missing 'state' (complete or incomplete)")?;
 
     let body = json!({ "state": state });
-    let url = auth_url(&format!("/cards/{}/checkItem/{}", card_id, item_id), &key, &token);
+    let url = auth_url(
+        &format!("/cards/{}/checkItem/{}", card_id, item_id),
+        &key,
+        &token,
+    );
     trello_request(reqwest::Method::PUT, &url, Some(&body)).await?;
 
     Ok(format!("Checklist item `{}` marked as {}.", item_id, state))
@@ -158,7 +199,9 @@ async fn exec_toggle(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
 
 async fn exec_delete(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
     let (key, token) = get_credentials(app_handle)?;
-    let checklist_id = args["checklist_id"].as_str().ok_or("Missing 'checklist_id'")?;
+    let checklist_id = args["checklist_id"]
+        .as_str()
+        .ok_or("Missing 'checklist_id'")?;
 
     let url = auth_url(&format!("/checklists/{}", checklist_id), &key, &token);
     trello_request(reqwest::Method::DELETE, &url, None).await?;

@@ -12,14 +12,14 @@
 //   - All communication goes through Telegram's TLS API
 //   - Bot token stored encrypted in engine DB
 
+use crate::atoms::error::EngineResult;
 use crate::engine::channels;
 use crate::engine::state::EngineState;
-use log::{debug, info, warn, error};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
-use crate::atoms::error::EngineResult;
 
 // ── Telegram API Types ─────────────────────────────────────────────────
 
@@ -141,7 +141,9 @@ static BOT_NAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 // ── API Helpers ────────────────────────────────────────────────────────
@@ -150,10 +152,7 @@ const TG_API: &str = "https://api.telegram.org/bot";
 
 async fn tg_get_me(client: &reqwest::Client, token: &str) -> EngineResult<(String, String)> {
     let url = format!("{}{}/getMe", TG_API, token);
-    let resp: TgResponse<serde_json::Value> = client
-        .get(&url)
-        .send().await?
-        .json().await?;
+    let resp: TgResponse<serde_json::Value> = client.get(&url).send().await?.json().await?;
 
     if !resp.ok {
         return Err(format!("getMe failed: {}", resp.description.unwrap_or_default()).into());
@@ -178,8 +177,10 @@ async fn tg_get_updates(
     let resp: TgResponse<Vec<TgUpdate>> = client
         .get(&url)
         .timeout(std::time::Duration::from_secs(timeout + 10))
-        .send().await?
-        .json().await?;
+        .send()
+        .await?
+        .json()
+        .await?;
 
     if !resp.ok {
         return Err(format!("getUpdates error: {}", resp.description.unwrap_or_default()).into());
@@ -211,9 +212,7 @@ async fn tg_send_message(
         }
 
         let url = format!("{}{}/sendMessage", TG_API, token);
-        let resp = client.post(&url)
-            .json(&body)
-            .send().await;
+        let resp = client.post(&url).json(&body).send().await;
 
         match resp {
             Ok(r) => {
@@ -280,7 +279,10 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
     stop.store(false, Ordering::Relaxed);
     BRIDGE_RUNNING.store(true, Ordering::Relaxed);
 
-    info!("[telegram] Starting bridge with policy={}", config.dm_policy);
+    info!(
+        "[telegram] Starting bridge with policy={}",
+        config.dm_policy
+    );
 
     tauri::async_runtime::spawn(async move {
         let mut reconnect_attempt: u32 = 0;
@@ -288,12 +290,20 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
             match run_polling_loop(app_handle.clone(), config.clone()).await {
                 Ok(()) => break,
                 Err(e) => {
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                     error!("[telegram] Bridge error: {} — reconnecting", e);
                     let delay = crate::engine::http::reconnect_delay(reconnect_attempt).await;
-                    warn!("[telegram] Reconnecting in {}ms (attempt {})", delay.as_millis(), reconnect_attempt + 1);
+                    warn!(
+                        "[telegram] Reconnecting in {}ms (attempt {})",
+                        delay.as_millis(),
+                        reconnect_attempt + 1
+                    );
                     reconnect_attempt += 1;
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                 }
             }
         }
@@ -329,7 +339,10 @@ pub fn get_status(app_handle: &tauri::AppHandle) -> TelegramStatus {
 }
 
 /// The main polling loop. Runs forever until stop signal.
-async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) -> EngineResult<()> {
+async fn run_polling_loop(
+    app_handle: tauri::AppHandle,
+    config: TelegramConfig,
+) -> EngineResult<()> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
         .build()?;
@@ -341,11 +354,14 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
     let _ = BOT_NAME.set(name.clone());
 
     // Emit connected event to frontend
-    let _ = app_handle.emit("telegram-status", serde_json::json!({
-        "kind": "connected",
-        "bot_username": &username,
-        "bot_name": &name,
-    }));
+    let _ = app_handle.emit(
+        "telegram-status",
+        serde_json::json!({
+            "kind": "connected",
+            "bot_username": &username,
+            "bot_name": &name,
+        }),
+    );
 
     let stop = get_stop_signal();
     let mut offset: i64 = 0;
@@ -376,11 +392,22 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                         };
                         let user = msg.from.as_ref().unwrap();
                         let user_id = user.id;
-                        let username = user.username.clone().unwrap_or_else(|| user.first_name.clone());
+                        let username = user
+                            .username
+                            .clone()
+                            .unwrap_or_else(|| user.first_name.clone());
                         let chat_id = msg.chat.id;
 
-                        debug!("[telegram] Message from {} ({}): {}", username, user_id,
-                            if text.len() > 50 { format!("{}...", crate::engine::types::truncate_utf8(&text, 50)) } else { text.clone() });
+                        debug!(
+                            "[telegram] Message from {} ({}): {}",
+                            username,
+                            user_id,
+                            if text.len() > 50 {
+                                format!("{}...", crate::engine::types::truncate_utf8(&text, 50))
+                            } else {
+                                text.clone()
+                            }
+                        );
 
                         // ── Access control ─────────────────────────────
                         match current_config.dm_policy.as_str() {
@@ -395,7 +422,11 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                             "pairing" => {
                                 if !current_config.allowed_users.contains(&user_id) {
                                     // Check if already pending
-                                    if !current_config.pending_users.iter().any(|p| p.user_id == user_id) {
+                                    if !current_config
+                                        .pending_users
+                                        .iter()
+                                        .any(|p| p.user_id == user_id)
+                                    {
                                         // Add to pending
                                         let pending = PendingUser {
                                             user_id,
@@ -408,15 +439,23 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                                         let _ = save_telegram_config(&app_handle, &current_config);
 
                                         // Notify frontend
-                                        let _ = app_handle.emit("telegram-status", serde_json::json!({
-                                            "kind": "pairing_request",
-                                            "user_id": user_id,
-                                            "username": &username,
-                                        }));
+                                        let _ = app_handle.emit(
+                                            "telegram-status",
+                                            serde_json::json!({
+                                                "kind": "pairing_request",
+                                                "user_id": user_id,
+                                                "username": &username,
+                                            }),
+                                        );
                                     }
-                                    let _ = tg_send_message(&client, &token, chat_id,
+                                    let _ = tg_send_message(
+                                        &client,
+                                        &token,
+                                        chat_id,
                                         "🔒 Pairing request sent to Paw. Waiting for approval...",
-                                        Some(msg.message_id)).await;
+                                        Some(msg.message_id),
+                                    )
+                                    .await;
                                     continue;
                                 }
                             }
@@ -429,7 +468,9 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                         // ── Store username → chat_id for proactive messaging ──
                         if let Some(uname) = &user.username {
                             let key = uname.to_lowercase();
-                            if !current_config.known_users.contains_key(&key) || current_config.known_users.get(&key) != Some(&chat_id) {
+                            if !current_config.known_users.contains_key(&key)
+                                || current_config.known_users.get(&key) != Some(&chat_id)
+                            {
                                 current_config.known_users.insert(key, chat_id);
                                 let _ = save_telegram_config(&app_handle, &current_config);
                             }
@@ -442,7 +483,8 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                         // Prune old messages to bound TG session growth
                         let agent_id_str = current_config.agent_id.as_deref().unwrap_or("default");
                         if let Some(st) = app_handle.try_state::<EngineState>() {
-                            let tg_session_id = format!("eng-telegram-{}-{}", agent_id_str, user_id);
+                            let tg_session_id =
+                                format!("eng-telegram-{}-{}", agent_id_str, user_id);
                             let _ = st.store.prune_session_messages(&tg_session_id, 50);
                         }
                         let response = channels::run_channel_agent(
@@ -460,13 +502,26 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
                         match response {
                             Ok(reply) => {
                                 if !reply.is_empty() {
-                                    let _ = tg_send_message(&client, &token, chat_id, &reply, Some(msg.message_id)).await;
+                                    let _ = tg_send_message(
+                                        &client,
+                                        &token,
+                                        chat_id,
+                                        &reply,
+                                        Some(msg.message_id),
+                                    )
+                                    .await;
                                 }
                             }
                             Err(e) => {
                                 error!("[telegram] Agent error for user {}: {}", user_id, e);
-                                let _ = tg_send_message(&client, &token, chat_id,
-                                    &format!("⚠️ Error: {}", e), Some(msg.message_id)).await;
+                                let _ = tg_send_message(
+                                    &client,
+                                    &token,
+                                    chat_id,
+                                    &format!("⚠️ Error: {}", e),
+                                    Some(msg.message_id),
+                                )
+                                .await;
                             }
                         }
                     }
@@ -484,30 +539,35 @@ async fn run_polling_loop(app_handle: tauri::AppHandle, config: TelegramConfig) 
         }
     }
 
-    let _ = app_handle.emit("telegram-status", serde_json::json!({
-        "kind": "disconnected",
-    }));
+    let _ = app_handle.emit(
+        "telegram-status",
+        serde_json::json!({
+            "kind": "disconnected",
+        }),
+    );
 
     Ok(())
 }
 
-
 // ── Config Persistence ─────────────────────────────────────────────────
 
 pub fn load_telegram_config(app_handle: &tauri::AppHandle) -> EngineResult<TelegramConfig> {
-    let engine_state = app_handle.try_state::<EngineState>()
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
     match engine_state.store.get_config("telegram_config") {
-        Ok(Some(json)) => {
-            Ok(serde_json::from_str::<TelegramConfig>(&json)?)
-        }
+        Ok(Some(json)) => Ok(serde_json::from_str::<TelegramConfig>(&json)?),
         _ => Ok(TelegramConfig::default()),
     }
 }
 
-pub fn save_telegram_config(app_handle: &tauri::AppHandle, config: &TelegramConfig) -> EngineResult<()> {
-    let engine_state = app_handle.try_state::<EngineState>()
+pub fn save_telegram_config(
+    app_handle: &tauri::AppHandle,
+    config: &TelegramConfig,
+) -> EngineResult<()> {
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
     let json = serde_json::to_string(config)?;
@@ -535,10 +595,11 @@ pub async fn approve_user(app_handle: &tauri::AppHandle, user_id: i64) -> Engine
         let _ = tg_send_message(
             &client,
             &config.bot_token,
-            user_id,  // chat_id == user_id for DMs
+            user_id, // chat_id == user_id for DMs
             "✅ You've been approved! You can now chat with me. Send any message to get started.",
             None,
-        ).await;
+        )
+        .await;
     }
 
     Ok(())
@@ -558,7 +619,8 @@ pub async fn deny_user(app_handle: &tauri::AppHandle, user_id: i64) -> EngineRes
             user_id,
             "❌ Your pairing request was denied.",
             None,
-        ).await;
+        )
+        .await;
     }
 
     let mut config = config;

@@ -131,7 +131,14 @@ pub fn validate_manifest(manifest: &SkillManifest) -> Result<(), String> {
                 w.widget_type, valid_types
             ));
         }
-        let valid_field_types = ["text", "number", "badge", "datetime", "percentage", "currency"];
+        let valid_field_types = [
+            "text",
+            "number",
+            "badge",
+            "datetime",
+            "percentage",
+            "currency",
+        ];
         for field in &w.fields {
             if !valid_field_types.contains(&field.field_type.as_str()) {
                 return Err(format!(
@@ -235,7 +242,10 @@ text = "GitHub tools are available via MCP."
         assert_eq!(manifest.credentials[0].key, "NOTION_API_KEY");
         assert!(manifest.credentials[0].required);
         assert!(manifest.instructions.is_some());
-        assert_eq!(manifest.instructions.as_ref().unwrap().text, "You have access to the Notion API.");
+        assert_eq!(
+            manifest.instructions.as_ref().unwrap().text,
+            "You have access to the Notion API."
+        );
         assert!(manifest.widget.is_some());
         let w = manifest.widget.as_ref().unwrap();
         assert_eq!(w.widget_type, "table");

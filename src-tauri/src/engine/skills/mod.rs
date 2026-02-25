@@ -11,32 +11,33 @@
 //   community  — SKILL.md parser, GitHub fetcher, skills.sh search, DB CRUD
 //   toml       — pawz-skill.toml manifest subsystem (types, parser, scanner, installer)
 
-pub(crate) mod types;
 mod builtins;
-mod vault;
-pub(crate) mod crypto;
-mod status;
-mod prompt;
 pub mod community;
+pub(crate) mod crypto;
+mod prompt;
+mod status;
 pub mod toml;
+pub(crate) mod types;
+mod vault;
 
 // ── Re-exports (keep crate::engine::skills::* API stable) ────────────────────
 
-pub use types::{SkillCategory, SkillDefinition, SkillTier, SkillSource, CredentialField, SkillRecord, SkillStatus};
 pub use builtins::builtin_skills;
-pub use crypto::{decrypt_credential, encrypt_credential, get_vault_key, is_legacy_encrypted};
-pub use status::{get_all_skill_status, get_skill_credentials};
-pub use prompt::get_enabled_skill_instructions;
 pub use community::{
-    CommunitySkill, DiscoveredSkill,
-    fetch_repo_skills, install_community_skill,
-    search_community_skills, get_community_skill_instructions,
-    parse_skill_md,
-    PawzHubEntry, search_pawzhub, browse_pawzhub_category, fetch_pawzhub_toml,
+    browse_pawzhub_category, fetch_pawzhub_toml, fetch_repo_skills,
+    get_community_skill_instructions, install_community_skill, parse_skill_md,
+    search_community_skills, search_pawzhub, CommunitySkill, DiscoveredSkill, PawzHubEntry,
 };
+pub use crypto::{decrypt_credential, encrypt_credential, get_vault_key, is_legacy_encrypted};
+pub use prompt::get_enabled_skill_instructions;
+pub use status::{get_all_skill_status, get_skill_credentials};
 pub use toml::{
-    scan_toml_skills, install_toml_skill, uninstall_toml_skill,
-    TomlSkillEntry, SkillManifest, parse_manifest,
+    install_toml_skill, parse_manifest, scan_toml_skills, uninstall_toml_skill, SkillManifest,
+    TomlSkillEntry,
+};
+pub use types::{
+    CredentialField, SkillCategory, SkillDefinition, SkillRecord, SkillSource, SkillStatus,
+    SkillTier,
 };
 
 // SkillTier is now defined in types.rs and re-exported above.

@@ -1,9 +1,9 @@
 // WhatsApp Bridge — Configuration
 // WhatsAppConfig, CONFIG_KEY, load_config, save_config, approve/deny/remove_user
 
+use crate::atoms::error::EngineResult;
 use crate::engine::channels::{self, PendingUser};
 use serde::{Deserialize, Serialize};
-use crate::atoms::error::EngineResult;
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -53,7 +53,10 @@ pub struct WhatsAppConfig {
 impl Default for WhatsAppConfig {
     fn default() -> Self {
         // Generate a random API key on first creation
-        let api_key = format!("paw-wa-{}", &uuid::Uuid::new_v4().to_string().replace('-', "")[..16]);
+        let api_key = format!(
+            "paw-wa-{}",
+            &uuid::Uuid::new_v4().to_string().replace('-', "")[..16]
+        );
         WhatsAppConfig {
             enabled: false,
             instance_name: "paw".into(),

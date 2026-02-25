@@ -322,11 +322,31 @@ pub struct AgentFile {
 }
 
 pub const AGENT_STANDARD_FILES: &[(&str, &str, &str)] = &[
-    ("AGENTS.md",    "Instructions",  "Operating rules, priorities, memory usage guide"),
-    ("SOUL.md",      "Persona",       "Personality, tone, communication style, boundaries"),
-    ("USER.md",      "About User",    "Who the user is, how to address them, preferences"),
-    ("IDENTITY.md",  "Identity",      "Agent name, emoji, vibe/creature, avatar"),
-    ("TOOLS.md",     "Tool Notes",    "Notes about local tools and conventions"),
+    (
+        "AGENTS.md",
+        "Instructions",
+        "Operating rules, priorities, memory usage guide",
+    ),
+    (
+        "SOUL.md",
+        "Persona",
+        "Personality, tone, communication style, boundaries",
+    ),
+    (
+        "USER.md",
+        "About User",
+        "Who the user is, how to address them, preferences",
+    ),
+    (
+        "IDENTITY.md",
+        "Identity",
+        "Agent name, emoji, vibe/creature, avatar",
+    ),
+    (
+        "TOOLS.md",
+        "Tool Notes",
+        "Notes about local tools and conventions",
+    ),
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -376,8 +396,12 @@ pub struct Position {
 }
 
 /// serde default helpers — must live in this module so #[serde(default = "fn")] resolves correctly
-pub(crate) fn default_max_trade() -> f64 { 100.0 }
-pub(crate) fn default_max_daily() -> f64 { 500.0 }
+pub(crate) fn default_max_trade() -> f64 {
+    100.0
+}
+pub(crate) fn default_max_daily() -> f64 {
+    500.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingPolicy {
@@ -448,10 +472,18 @@ pub struct ModelRouting {
     pub auto_tier: bool,
 }
 
-pub(crate) fn default_user_timezone() -> String { "America/Chicago".to_string() }
-pub(crate) fn default_daily_budget_usd() -> f64 { 10.0 }
-pub(crate) fn default_max_concurrent_runs() -> u32 { 4 }
-pub(crate) fn default_context_window_tokens() -> usize { 32_000 }
+pub(crate) fn default_user_timezone() -> String {
+    "America/Chicago".to_string()
+}
+pub(crate) fn default_daily_budget_usd() -> f64 {
+    10.0
+}
+pub(crate) fn default_max_concurrent_runs() -> u32 {
+    4
+}
+pub(crate) fn default_context_window_tokens() -> usize {
+    32_000
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EngineConfig {
@@ -486,16 +518,16 @@ pub struct Task {
     pub id: String,
     pub title: String,
     pub description: String,
-    pub status: String,         // inbox, assigned, in_progress, review, blocked, done
-    pub priority: String,       // low, medium, high, urgent
-    pub assigned_agent: Option<String>,   // legacy single agent (kept for simple cases)
+    pub status: String,   // inbox, assigned, in_progress, review, blocked, done
+    pub priority: String, // low, medium, high, urgent
+    pub assigned_agent: Option<String>, // legacy single agent (kept for simple cases)
     #[serde(default)]
-    pub assigned_agents: Vec<TaskAgent>,  // multi-agent assignments
+    pub assigned_agents: Vec<TaskAgent>, // multi-agent assignments
     pub session_id: Option<String>,
     /// Override model for this task (e.g. "gemini-2.0-flash"). If empty, uses agent routing / default.
     #[serde(default)]
     pub model: Option<String>,
-    pub cron_schedule: Option<String>,  // e.g. "every 1h", "daily 09:00", cron expression
+    pub cron_schedule: Option<String>, // e.g. "every 1h", "daily 09:00", cron expression
     pub cron_enabled: bool,
     pub last_run_at: Option<String>,
     pub next_run_at: Option<String>,
@@ -514,14 +546,14 @@ pub struct Task {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskAgent {
     pub agent_id: String,
-    pub role: String,           // lead, collaborator
+    pub role: String, // lead, collaborator
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskActivity {
     pub id: String,
     pub task_id: String,
-    pub kind: String,           // created, assigned, status_change, comment, agent_started, agent_completed, agent_error, cron_triggered
+    pub kind: String, // created, assigned, status_change, comment, agent_started, agent_completed, agent_error, cron_triggered
     pub agent: Option<String>,
     pub content: String,
     pub created_at: String,
@@ -532,8 +564,8 @@ pub struct Project {
     pub id: String,
     pub title: String,
     pub goal: String,
-    pub status: String,         // planning, running, paused, completed, failed
-    pub boss_agent: String,     // agent_id of the orchestrator/boss agent
+    pub status: String,     // planning, running, paused, completed, failed
+    pub boss_agent: String, // agent_id of the orchestrator/boss agent
     #[serde(default)]
     pub agents: Vec<ProjectAgent>,
     pub created_at: String,
@@ -543,9 +575,9 @@ pub struct Project {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectAgent {
     pub agent_id: String,
-    pub role: String,           // boss, worker
-    pub specialty: String,      // coder, researcher, designer, communicator, security, general
-    pub status: String,         // idle, working, done, error
+    pub role: String,      // boss, worker
+    pub specialty: String, // coder, researcher, designer, communicator, security, general
+    pub status: String,    // idle, working, done, error
     pub current_task: Option<String>,
     /// Optional per-agent model override (takes highest priority)
     #[serde(default)]
@@ -563,10 +595,10 @@ pub struct ProjectMessage {
     pub id: String,
     pub project_id: String,
     pub from_agent: String,
-    pub to_agent: Option<String>,   // None = broadcast to project
-    pub kind: String,               // delegation, progress, result, error, message
+    pub to_agent: Option<String>, // None = broadcast to project
+    pub kind: String,             // delegation, progress, result, error, message
     pub content: String,
-    pub metadata: Option<String>,   // JSON blob for structured data
+    pub metadata: Option<String>, // JSON blob for structured data
     pub created_at: String,
 }
 
@@ -578,10 +610,10 @@ pub struct ProjectMessage {
 pub struct AgentMessage {
     pub id: String,
     pub from_agent: String,
-    pub to_agent: String,           // target agent_id, or "broadcast" for all
-    pub channel: String,            // topic/channel name for filtering (e.g. "general", "alerts")
+    pub to_agent: String, // target agent_id, or "broadcast" for all
+    pub channel: String,  // topic/channel name for filtering (e.g. "general", "alerts")
     pub content: String,
-    pub metadata: Option<String>,   // JSON blob for structured payloads
+    pub metadata: Option<String>, // JSON blob for structured payloads
     pub read: bool,
     pub created_at: String,
 }
@@ -595,7 +627,7 @@ pub struct Squad {
     pub id: String,
     pub name: String,
     pub goal: String,
-    pub status: String,             // active, paused, disbanded
+    pub status: String, // active, paused, disbanded
     #[serde(default)]
     pub members: Vec<SquadMember>,
     pub created_at: String,
@@ -606,5 +638,5 @@ pub struct Squad {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SquadMember {
     pub agent_id: String,
-    pub role: String,               // coordinator, member
+    pub role: String, // coordinator, member
 }

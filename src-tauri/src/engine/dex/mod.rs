@@ -16,26 +16,28 @@
 //   discovery      — DexScreener search + trending
 //   monitoring     — whale scanner, watch-wallet, top-traders
 
-pub(crate) mod constants;
-pub(crate) mod primitives;
 pub(crate) mod abi;
-pub(crate) mod rlp;
-pub(crate) mod tx;
-pub(crate) mod rpc;
-pub(crate) mod tokens;
-mod wallet;
-mod swap;
-mod portfolio;
-mod transfer;
-mod token_analysis;
+pub(crate) mod constants;
 mod discovery;
 mod monitoring;
+mod portfolio;
+pub(crate) mod primitives;
+pub(crate) mod rlp;
+pub(crate) mod rpc;
+mod swap;
+mod token_analysis;
+pub(crate) mod tokens;
+mod transfer;
+pub(crate) mod tx;
+mod wallet;
 
 // Re-export all public execute functions (called from engine/tools/dex.rs via crate::engine::dex::*)
-pub use wallet::execute_dex_wallet_create;
-pub use swap::{execute_dex_quote, execute_dex_swap};
-pub use portfolio::{execute_dex_balance, execute_dex_portfolio};
-pub use transfer::execute_dex_transfer;
-pub use token_analysis::{execute_dex_token_info, execute_dex_check_token};
 pub use discovery::{execute_dex_search_token, execute_dex_trending};
-pub use monitoring::{execute_dex_watch_wallet, execute_dex_whale_transfers, execute_dex_top_traders};
+pub use monitoring::{
+    execute_dex_top_traders, execute_dex_watch_wallet, execute_dex_whale_transfers,
+};
+pub use portfolio::{execute_dex_balance, execute_dex_portfolio};
+pub use swap::{execute_dex_quote, execute_dex_swap};
+pub use token_analysis::{execute_dex_check_token, execute_dex_token_info};
+pub use transfer::execute_dex_transfer;
+pub use wallet::execute_dex_wallet_create;

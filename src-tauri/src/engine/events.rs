@@ -36,10 +36,7 @@ pub enum EngineEvent {
 
 /// Check all event-triggered tasks and execute those that match the given event.
 /// Returns the IDs of tasks that were triggered.
-pub async fn dispatch_event(
-    app_handle: &tauri::AppHandle,
-    event: &EngineEvent,
-) -> Vec<String> {
+pub async fn dispatch_event(app_handle: &tauri::AppHandle, event: &EngineEvent) -> Vec<String> {
     let state = match app_handle.try_state::<EngineState>() {
         Some(s) => s,
         None => return vec![],
@@ -56,7 +53,9 @@ pub async fn dispatch_event(
     let mut triggered = Vec::new();
 
     for task in &tasks {
-        if !task.cron_enabled { continue; }
+        if !task.cron_enabled {
+            continue;
+        }
         let trigger_json = match &task.event_trigger {
             Some(t) if !t.is_empty() => t,
             _ => continue,
@@ -71,29 +70,46 @@ pub async fn dispatch_event(
             info!("[events] Event matched task '{}' ({})", task.title, task.id);
 
             let now = chrono::Utc::now();
-            state.store.update_task_cron_run(
-                &task.id,
-                &now.to_rfc3339(),
-                Some(&(now + chrono::Duration::minutes(1)).to_rfc3339()),
-            ).ok();
+            state
+                .store
+                .update_task_cron_run(
+                    &task.id,
+                    &now.to_rfc3339(),
+                    Some(&(now + chrono::Duration::minutes(1)).to_rfc3339()),
+                )
+                .ok();
 
             let aid = uuid::Uuid::new_v4().to_string();
             let event_desc = match event {
                 EngineEvent::Webhook { path, .. } => format!("webhook:{}", path),
-                EngineEvent::AgentMessage { from_agent, channel, .. } =>
-                    format!("agent_message:{}#{}", from_agent, channel),
+                EngineEvent::AgentMessage {
+                    from_agent,
+                    channel,
+                    ..
+                } => format!("agent_message:{}#{}", from_agent, channel),
             };
-            state.store.add_task_activity(
-                &aid, &task.id, "event_triggered", None,
-                &format!("Event-triggered: {}", event_desc),
-            ).ok();
+            state
+                .store
+                .add_task_activity(
+                    &aid,
+                    &task.id,
+                    "event_triggered",
+                    None,
+                    &format!("Event-triggered: {}", event_desc),
+                )
+                .ok();
 
             let task_id = task.id.clone();
             let app = app_handle.clone();
             tauri::async_runtime::spawn(async move {
                 let state_inner = app.state::<EngineState>();
-                if let Err(e) = crate::engine::tasks::execute_task(&app, &state_inner, &task_id).await {
-                    warn!("[events] Failed to execute event-triggered task {}: {}", task_id, e);
+                if let Err(e) =
+                    crate::engine::tasks::execute_task(&app, &state_inner, &task_id).await
+                {
+                    warn!(
+                        "[events] Failed to execute event-triggered task {}: {}",
+                        task_id, e
+                    );
                 }
             });
 
@@ -116,7 +132,14 @@ fn matches_event(trigger: &serde_json::Value, event: &EngineEvent) -> bool {
                 None => true,
             }
         }
-        ("agent_message", EngineEvent::AgentMessage { from_agent, channel, .. }) => {
+        (
+            "agent_message",
+            EngineEvent::AgentMessage {
+                from_agent,
+                channel,
+                ..
+            },
+        ) => {
             let channel_match = match trigger["channel"].as_str() {
                 Some(ch) => ch == channel,
                 None => true,

@@ -2,11 +2,14 @@
 // Runs exec tool calls inside Docker containers for security isolation.
 // Uses bollard (Docker API client) to manage ephemeral containers.
 
-use bollard::Docker;
-use bollard::container::{Config, CreateContainerOptions, StartContainerOptions, LogsOptions, RemoveContainerOptions, WaitContainerOptions};
+use crate::atoms::error::{EngineError, EngineResult};
+use bollard::container::{
+    Config, CreateContainerOptions, LogsOptions, RemoveContainerOptions, StartContainerOptions,
+    WaitContainerOptions,
+};
 use bollard::models::HostConfig;
+use bollard::Docker;
 use futures::StreamExt;
-use crate::atoms::error::{EngineResult, EngineError};
 use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -64,18 +67,16 @@ pub struct SandboxResult {
 /// Check if Docker daemon is reachable.
 pub async fn is_docker_available() -> bool {
     match Docker::connect_with_local_defaults() {
-        Ok(docker) => {
-            match docker.ping().await {
-                Ok(_) => {
-                    info!("[sandbox] Docker daemon is available");
-                    true
-                }
-                Err(e) => {
-                    warn!("[sandbox] Docker ping failed: {}", e);
-                    false
-                }
+        Ok(docker) => match docker.ping().await {
+            Ok(_) => {
+                info!("[sandbox] Docker daemon is available");
+                true
             }
-        }
+            Err(e) => {
+                warn!("[sandbox] Docker ping failed: {}", e);
+                false
+            }
+        },
         Err(e) => {
             warn!("[sandbox] Cannot connect to Docker: {}", e);
             false
@@ -117,20 +118,35 @@ async fn ensure_image(docker: &Docker, image: &str) -> EngineResult<()> {
 /// Execute a shell command inside an ephemeral Docker container.
 /// The container is created, started, waited on, and removed automatically.
 pub async fn run_in_sandbox(command: &str, config: &SandboxConfig) -> EngineResult<SandboxResult> {
-    let docker = Docker::connect_with_local_defaults()
-        .map_err(|e| EngineError::Other(e.to_string()))?;
+    let docker =
+        Docker::connect_with_local_defaults().map_err(|e| EngineError::Other(e.to_string()))?;
 
     // Ensure the image is available
     ensure_image(&docker, &config.image).await?;
 
     // Build container config
-    let container_name = format!("paw-sandbox-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("x"));
+    let container_name = format!(
+        "paw-sandbox-{}",
+        uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap_or("x")
+    );
 
     let host_config = HostConfig {
         memory: Some(config.memory_limit),
         cpu_shares: Some(config.cpu_shares),
-        network_mode: if config.network_enabled { None } else { Some("none".to_string()) },
-        binds: if config.bind_mounts.is_empty() { None } else { Some(config.bind_mounts.clone()) },
+        network_mode: if config.network_enabled {
+            None
+        } else {
+            Some("none".to_string())
+        },
+        binds: if config.bind_mounts.is_empty() {
+            None
+        } else {
+            Some(config.bind_mounts.clone())
+        },
         // Security: drop all capabilities, no privileged mode
         cap_drop: Some(vec!["ALL".to_string()]),
         // Read-only root filesystem (write to /tmp only)
@@ -140,7 +156,11 @@ pub async fn run_in_sandbox(command: &str, config: &SandboxConfig) -> EngineResu
 
     let container_config = Config {
         image: Some(config.image.clone()),
-        cmd: Some(vec!["sh".to_string(), "-c".to_string(), command.to_string()]),
+        cmd: Some(vec![
+            "sh".to_string(),
+            "-c".to_string(),
+            command.to_string(),
+        ]),
         working_dir: Some(config.workdir.clone()),
         host_config: Some(host_config),
         // No tty, capture stdout/stderr
@@ -161,14 +181,22 @@ pub async fn run_in_sandbox(command: &str, config: &SandboxConfig) -> EngineResu
     };
 
     // Create container
-    let container = docker.create_container(Some(create_opts), container_config).await
+    let container = docker
+        .create_container(Some(create_opts), container_config)
+        .await
         .map_err(|e| EngineError::Other(e.to_string()))?;
     let container_id = container.id.clone();
 
-    info!("[sandbox] Created container {} for command: {}", &container_id[..12], &command[..command.floor_char_boundary(100)]);
+    info!(
+        "[sandbox] Created container {} for command: {}",
+        &container_id[..12],
+        &command[..command.floor_char_boundary(100)]
+    );
 
     // Start container
-    docker.start_container(&container_id, None::<StartContainerOptions<String>>).await
+    docker
+        .start_container(&container_id, None::<StartContainerOptions<String>>)
+        .await
         .map_err(|e| {
             // Try to clean up on start failure
             #[allow(clippy::let_underscore_future)]
@@ -198,7 +226,11 @@ pub async fn run_in_sandbox(command: &str, config: &SandboxConfig) -> EngineResu
             timed_out = false;
         }
         Err(_) => {
-            warn!("[sandbox] Container {} timed out after {}s", &container_id[..12], config.timeout_secs);
+            warn!(
+                "[sandbox] Container {} timed out after {}s",
+                &container_id[..12],
+                config.timeout_secs
+            );
             // Kill the container
             let _ = docker.kill_container::<String>(&container_id, None).await;
             exit_code = -1;
@@ -220,17 +252,15 @@ pub async fn run_in_sandbox(command: &str, config: &SandboxConfig) -> EngineResu
     let mut log_stream = docker.logs(&container_id, Some(log_opts));
     while let Some(log_result) = log_stream.next().await {
         match log_result {
-            Ok(output) => {
-                match output {
-                    bollard::container::LogOutput::StdOut { message } => {
-                        stdout.push_str(&String::from_utf8_lossy(&message));
-                    }
-                    bollard::container::LogOutput::StdErr { message } => {
-                        stderr.push_str(&String::from_utf8_lossy(&message));
-                    }
-                    _ => {}
+            Ok(output) => match output {
+                bollard::container::LogOutput::StdOut { message } => {
+                    stdout.push_str(&String::from_utf8_lossy(&message));
                 }
-            }
+                bollard::container::LogOutput::StdErr { message } => {
+                    stderr.push_str(&String::from_utf8_lossy(&message));
+                }
+                _ => {}
+            },
             Err(e) => {
                 warn!("[sandbox] Error reading container logs: {}", e);
                 break;
@@ -254,8 +284,15 @@ pub async fn run_in_sandbox(command: &str, config: &SandboxConfig) -> EngineResu
         force: true,
         ..Default::default()
     };
-    if let Err(e) = docker.remove_container(&container_id, Some(remove_opts)).await {
-        warn!("[sandbox] Failed to remove container {}: {}", &container_id[..12], e);
+    if let Err(e) = docker
+        .remove_container(&container_id, Some(remove_opts))
+        .await
+    {
+        warn!(
+            "[sandbox] Failed to remove container {}: {}",
+            &container_id[..12],
+            e
+        );
     } else {
         info!("[sandbox] Removed container {}", &container_id[..12]);
     }
@@ -275,7 +312,9 @@ async fn cleanup_container(docker: &Docker, container_id: &str) {
         force: true,
         ..Default::default()
     };
-    let _ = docker.remove_container(container_id, Some(remove_opts)).await;
+    let _ = docker
+        .remove_container(container_id, Some(remove_opts))
+        .await;
 }
 
 // ── Config persistence ─────────────────────────────────────────────────
@@ -289,7 +328,10 @@ pub fn load_sandbox_config(store: &crate::engine::sessions::SessionStore) -> San
 }
 
 /// Save sandbox config to engine_config table.
-pub fn save_sandbox_config(store: &crate::engine::sessions::SessionStore, config: &SandboxConfig) -> EngineResult<()> {
+pub fn save_sandbox_config(
+    store: &crate::engine::sessions::SessionStore,
+    config: &SandboxConfig,
+) -> EngineResult<()> {
     let json = serde_json::to_string(config)?;
     store.set_config("sandbox_config", &json)
 }

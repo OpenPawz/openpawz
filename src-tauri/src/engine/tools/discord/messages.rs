@@ -3,9 +3,9 @@
 // Tools: discord_send_message, discord_edit_message, discord_delete_messages,
 //        discord_get_messages, discord_pin_message, discord_unpin_message, discord_react
 
-use crate::atoms::types::*;
+use super::{authorized_client, discord_request, get_bot_token, resolve_channel_id, DISCORD_API};
 use crate::atoms::error::EngineResult;
-use super::{DISCORD_API, get_bot_token, resolve_channel_id, authorized_client, discord_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -159,13 +159,33 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "discord_send_message"    => Some(exec_send(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_edit_message"    => Some(exec_edit(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_delete_messages" => Some(exec_delete(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_get_messages"    => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_pin_message"     => Some(exec_pin(args, app_handle, true).await.map_err(|e| e.to_string())),
-        "discord_unpin_message"   => Some(exec_pin(args, app_handle, false).await.map_err(|e| e.to_string())),
-        "discord_react"           => Some(exec_react(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_send_message" => {
+            Some(exec_send(args, app_handle).await.map_err(|e| e.to_string()))
+        }
+        "discord_edit_message" => {
+            Some(exec_edit(args, app_handle).await.map_err(|e| e.to_string()))
+        }
+        "discord_delete_messages" => Some(
+            exec_delete(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "discord_get_messages" => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_pin_message" => Some(
+            exec_pin(args, app_handle, true)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "discord_unpin_message" => Some(
+            exec_pin(args, app_handle, false)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "discord_react" => Some(
+            exec_react(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -183,15 +203,26 @@ async fn exec_send(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
     }
 
     let mut body = json!({});
-    if !content.is_empty() { body["content"] = json!(content); }
-    if !args["embed"].is_null() { body["embeds"] = json!([args["embed"]]); }
+    if !content.is_empty() {
+        body["content"] = json!(content);
+    }
+    if !args["embed"].is_null() {
+        body["embeds"] = json!([args["embed"]]);
+    }
 
-    info!("[discord] Sending message to channel {} ({} chars)", channel_id, content.len());
+    info!(
+        "[discord] Sending message to channel {} ({} chars)",
+        channel_id,
+        content.len()
+    );
     let url = format!("{}/channels/{}/messages", DISCORD_API, channel_id);
     let result = discord_request(&client, reqwest::Method::POST, &url, &auth, Some(&body)).await?;
 
     let msg_id = result["id"].as_str().unwrap_or("?");
-    Ok(format!("Message sent! (id: {}, channel: {})", msg_id, channel_id))
+    Ok(format!(
+        "Message sent! (id: {}, channel: {})",
+        msg_id, channel_id
+    ))
 }
 
 // ── edit ───────────────────────────────────────────────────────────────
@@ -203,13 +234,23 @@ async fn exec_edit(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
     let (client, auth) = authorized_client(&token);
 
     let mut body = json!({});
-    if let Some(c) = args["content"].as_str() { body["content"] = json!(c); }
-    if !args["embed"].is_null() { body["embeds"] = json!([args["embed"]]); }
+    if let Some(c) = args["content"].as_str() {
+        body["content"] = json!(c);
+    }
+    if !args["embed"].is_null() {
+        body["embeds"] = json!([args["embed"]]);
+    }
 
-    let url = format!("{}/channels/{}/messages/{}", DISCORD_API, channel_id, message_id);
+    let url = format!(
+        "{}/channels/{}/messages/{}",
+        DISCORD_API, channel_id, message_id
+    );
     discord_request(&client, reqwest::Method::PATCH, &url, &auth, Some(&body)).await?;
 
-    Ok(format!("Message {} edited in channel {}", message_id, channel_id))
+    Ok(format!(
+        "Message {} edited in channel {}",
+        message_id, channel_id
+    ))
 }
 
 // ── delete / purge ─────────────────────────────────────────────────────
@@ -231,7 +272,10 @@ async fn exec_delete(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
         if ids.len() >= 2 {
             // Bulk delete (2-100)
             let body = json!({ "messages": ids });
-            let url = format!("{}/channels/{}/messages/bulk-delete", DISCORD_API, channel_id);
+            let url = format!(
+                "{}/channels/{}/messages/bulk-delete",
+                DISCORD_API, channel_id
+            );
             discord_request(&client, reqwest::Method::POST, &url, &auth, Some(&body)).await?;
             return Ok(format!("Bulk-deleted {} messages", ids.len()));
         }
@@ -241,7 +285,10 @@ async fn exec_delete(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     if let Some(count) = args["count"].as_i64() {
         let count = count.clamp(1, 100);
         // Fetch message IDs first
-        let url = format!("{}/channels/{}/messages?limit={}", DISCORD_API, channel_id, count);
+        let url = format!(
+            "{}/channels/{}/messages?limit={}",
+            DISCORD_API, channel_id, count
+        );
         let data = discord_request(&client, reqwest::Method::GET, &url, &auth, None).await?;
         let msgs: Vec<Value> = serde_json::from_value(data).unwrap_or_default();
         let ids: Vec<&str> = msgs.iter().filter_map(|m| m["id"].as_str()).collect();
@@ -251,13 +298,19 @@ async fn exec_delete(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
         }
 
         if ids.len() == 1 {
-            let url = format!("{}/channels/{}/messages/{}", DISCORD_API, channel_id, ids[0]);
+            let url = format!(
+                "{}/channels/{}/messages/{}",
+                DISCORD_API, channel_id, ids[0]
+            );
             discord_request(&client, reqwest::Method::DELETE, &url, &auth, None).await?;
             return Ok("Deleted 1 message.".into());
         }
 
         let body = json!({ "messages": ids });
-        let url = format!("{}/channels/{}/messages/bulk-delete", DISCORD_API, channel_id);
+        let url = format!(
+            "{}/channels/{}/messages/bulk-delete",
+            DISCORD_API, channel_id
+        );
         discord_request(&client, reqwest::Method::POST, &url, &auth, Some(&body)).await?;
         return Ok(format!("Deleted {} recent messages.", ids.len()));
     }
@@ -273,7 +326,10 @@ async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
     let (client, auth) = authorized_client(&token);
 
     let limit = args["limit"].as_i64().unwrap_or(25).clamp(1, 100);
-    let mut url = format!("{}/channels/{}/messages?limit={}", DISCORD_API, channel_id, limit);
+    let mut url = format!(
+        "{}/channels/{}/messages?limit={}",
+        DISCORD_API, channel_id, limit
+    );
     if let Some(before) = args["before"].as_str() {
         url.push_str(&format!("&before={}", before));
     }
@@ -284,15 +340,33 @@ async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
     let data = discord_request(&client, reqwest::Method::GET, &url, &auth, None).await?;
     let msgs: Vec<Value> = serde_json::from_value(data).unwrap_or_default();
 
-    let mut lines = vec![format!("**Messages in channel {}** ({} returned)\n", channel_id, msgs.len())];
+    let mut lines = vec![format!(
+        "**Messages in channel {}** ({} returned)\n",
+        channel_id,
+        msgs.len()
+    )];
     for msg in msgs.iter().rev() {
         let author = msg["author"]["username"].as_str().unwrap_or("?");
-        let content = msg["author"]["bot"].as_bool().map(|b| if b { "🤖" } else { "" }).unwrap_or("");
+        let content = msg["author"]["bot"]
+            .as_bool()
+            .map(|b| if b { "🤖" } else { "" })
+            .unwrap_or("");
         let text = msg["content"].as_str().unwrap_or("");
         let id = msg["id"].as_str().unwrap_or("?");
         let ts = msg["timestamp"].as_str().unwrap_or("?");
-        let preview = if text.len() > 200 { format!("{}…", &text[..text.floor_char_boundary(200)]) } else { text.to_string() };
-        lines.push(format!("[{}] {}{}: {} (id: {})", &ts[..ts.len().min(16)], content, author, preview, id));
+        let preview = if text.len() > 200 {
+            format!("{}…", &text[..text.floor_char_boundary(200)])
+        } else {
+            text.to_string()
+        };
+        lines.push(format!(
+            "[{}] {}{}: {} (id: {})",
+            &ts[..ts.len().min(16)],
+            content,
+            author,
+            preview,
+            id
+        ));
     }
     Ok(lines.join("\n"))
 }
@@ -305,12 +379,22 @@ async fn exec_pin(args: &Value, app_handle: &tauri::AppHandle, pin: bool) -> Eng
     let message_id = args["message_id"].as_str().ok_or("Missing 'message_id'")?;
     let (client, auth) = authorized_client(&token);
 
-    let url = format!("{}/channels/{}/pins/{}", DISCORD_API, channel_id, message_id);
-    let method = if pin { reqwest::Method::PUT } else { reqwest::Method::DELETE };
+    let url = format!(
+        "{}/channels/{}/pins/{}",
+        DISCORD_API, channel_id, message_id
+    );
+    let method = if pin {
+        reqwest::Method::PUT
+    } else {
+        reqwest::Method::DELETE
+    };
     discord_request(&client, method, &url, &auth, None).await?;
 
     let action = if pin { "Pinned" } else { "Unpinned" };
-    Ok(format!("{} message {} in channel {}", action, message_id, channel_id))
+    Ok(format!(
+        "{} message {} in channel {}",
+        action, message_id, channel_id
+    ))
 }
 
 // ── react ──────────────────────────────────────────────────────────────
@@ -322,8 +406,14 @@ async fn exec_react(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult
     let emoji = args["emoji"].as_str().ok_or("Missing 'emoji'")?;
     let (client, auth) = authorized_client(&token);
 
-    let url = format!("{}/channels/{}/messages/{}/reactions/{}/@me", DISCORD_API, channel_id, message_id, emoji);
+    let url = format!(
+        "{}/channels/{}/messages/{}/reactions/{}/@me",
+        DISCORD_API, channel_id, message_id, emoji
+    );
     discord_request(&client, reqwest::Method::PUT, &url, &auth, None).await?;
 
-    Ok(format!("Reacted with {} on message {} in channel {}", emoji, message_id, channel_id))
+    Ok(format!(
+        "Reacted with {} on message {} in channel {}",
+        emoji, message_id, channel_id
+    ))
 }

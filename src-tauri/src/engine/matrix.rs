@@ -17,30 +17,26 @@
 //   - Optional pairing mode
 //   - All communication through the homeserver's TLS API
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{debug, info, warn, error};
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
 
-use crate::atoms::error::{EngineResult, EngineError};
+use crate::atoms::error::{EngineError, EngineResult};
 use matrix_sdk::{
-    Client, Room,
-    config::SyncSettings,
     authentication::matrix::MatrixSession,
+    config::SyncSettings,
     ruma::{
-        OwnedUserId, OwnedDeviceId,
         events::room::{
             member::StrippedRoomMemberEvent,
-            message::{
-                MessageType, OriginalSyncRoomMessageEvent,
-                RoomMessageEventContent,
-            },
+            message::{MessageType, OriginalSyncRoomMessageEvent, RoomMessageEventContent},
         },
+        OwnedDeviceId, OwnedUserId,
     },
-    SessionMeta,
+    Client, Room, SessionMeta,
 };
 
 // ── Matrix Config ──────────────────────────────────────────────────────
@@ -99,15 +95,16 @@ static BOT_USER_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "matrix_config";
 
 /// Where to store the matrix-sdk SQLite crypto/state database.
 fn store_path() -> std::path::PathBuf {
-    let base = dirs::document_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    let base = dirs::document_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
     base.join("Paw").join("matrix-store")
 }
 
@@ -138,12 +135,20 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
             match run_sdk_bridge(app_handle.clone(), config.clone()).await {
                 Ok(()) => break, // Clean shutdown
                 Err(e) => {
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                     error!("[matrix] Bridge error: {} — reconnecting", e);
                     let delay = crate::engine::http::reconnect_delay(reconnect_attempt).await;
-                    warn!("[matrix] Reconnecting in {}ms (attempt {})", delay.as_millis(), reconnect_attempt + 1);
+                    warn!(
+                        "[matrix] Reconnecting in {}ms (attempt {})",
+                        delay.as_millis(),
+                        reconnect_attempt + 1
+                    );
                     reconnect_attempt += 1;
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                 }
             }
         }
@@ -162,7 +167,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
-    let config: MatrixConfig = channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
+    let config: MatrixConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed),
@@ -177,7 +183,10 @@ pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
 
 // ── matrix-sdk E2EE Bridge ─────────────────────────────────────────────
 
-async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) -> EngineResult<()> {
+async fn run_sdk_bridge(
+    app_handle: tauri::AppHandle,
+    mut config: MatrixConfig,
+) -> EngineResult<()> {
     let stop = get_stop_signal();
     let hs = config.homeserver.trim_end_matches('/');
 
@@ -187,7 +196,10 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
         .sqlite_store(store_path(), None)
         .build()
         .await
-        .map_err(|e| EngineError::Channel { channel: "matrix".into(), message: e.to_string() })?;
+        .map_err(|e| EngineError::Channel {
+            channel: "matrix".into(),
+            message: e.to_string(),
+        })?;
 
     // ── Restore session from access token ─────────────────────────────
     // We need user_id and device_id to restore. If not cached, resolve
@@ -203,7 +215,8 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
         }
     };
 
-    let user_id: OwnedUserId = user_id_str.parse()
+    let user_id: OwnedUserId = user_id_str
+        .parse()
         .map_err(|e| format!("Invalid user_id '{}': {}", user_id_str, e))?;
     let device_id: OwnedDeviceId = device_id_str.into();
 
@@ -218,17 +231,28 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
         },
     };
 
-    sdk_client.restore_session(session).await
-        .map_err(|e| EngineError::Channel { channel: "matrix".into(), message: e.to_string() })?;
+    sdk_client
+        .restore_session(session)
+        .await
+        .map_err(|e| EngineError::Channel {
+            channel: "matrix".into(),
+            message: e.to_string(),
+        })?;
 
     let bot_user_id_str = user_id.to_string();
     let _ = BOT_USER_ID.set(bot_user_id_str.clone());
-    info!("[matrix] Authenticated as {} (E2EE enabled)", bot_user_id_str);
+    info!(
+        "[matrix] Authenticated as {} (E2EE enabled)",
+        bot_user_id_str
+    );
 
-    let _ = app_handle.emit("matrix-status", json!({
-        "kind": "connected",
-        "user_id": &bot_user_id_str,
-    }));
+    let _ = app_handle.emit(
+        "matrix-status",
+        json!({
+            "kind": "connected",
+            "user_id": &bot_user_id_str,
+        }),
+    );
 
     // ── Register event handlers ───────────────────────────────────────
 
@@ -245,7 +269,7 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
             } else {
                 info!("[matrix] Joined room {}", room.room_id());
             }
-        }
+        },
     );
 
     // Handle incoming messages (decrypted automatically by matrix-sdk)
@@ -253,22 +277,24 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
     let config_for_handler = config.clone();
     let bot_uid = user_id.clone();
 
-    sdk_client.add_event_handler(
-        move |ev: OriginalSyncRoomMessageEvent, room: Room| {
-            let app = app_for_handler.clone();
-            let cfg = config_for_handler.clone();
-            let bot = bot_uid.clone();
-            async move {
-                handle_room_message(ev, room, app, cfg, bot).await;
-            }
+    sdk_client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, room: Room| {
+        let app = app_for_handler.clone();
+        let cfg = config_for_handler.clone();
+        let bot = bot_uid.clone();
+        async move {
+            handle_room_message(ev, room, app, cfg, bot).await;
         }
-    );
+    });
 
     // ── Initial sync (catch up, don't process old messages) ───────────
-    let sync_settings = SyncSettings::default()
-        .timeout(std::time::Duration::from_secs(30));
-    let initial_response = sdk_client.sync_once(sync_settings.clone()).await
-        .map_err(|e| EngineError::Channel { channel: "matrix".into(), message: e.to_string() })?;
+    let sync_settings = SyncSettings::default().timeout(std::time::Duration::from_secs(30));
+    let initial_response = sdk_client
+        .sync_once(sync_settings.clone())
+        .await
+        .map_err(|e| EngineError::Channel {
+            channel: "matrix".into(),
+            message: e.to_string(),
+        })?;
     info!("[matrix] Initial sync complete");
 
     // ── Long-polling sync loop ────────────────────────────────────────
@@ -276,10 +302,11 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
     let mut current_token: Option<String> = Some(initial_response.next_batch);
     let mut sync_errors: u32 = 0;
     loop {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
-        let mut ss = SyncSettings::default()
-            .timeout(std::time::Duration::from_secs(30));
+        let mut ss = SyncSettings::default().timeout(std::time::Duration::from_secs(30));
         if let Some(ref token) = current_token {
             ss = ss.token(token.clone());
         }
@@ -290,7 +317,11 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
                 sync_errors = 0;
             }
             Err(e) => {
-                warn!("[matrix] Sync error: {} — backing off (attempt {})", e, sync_errors + 1);
+                warn!(
+                    "[matrix] Sync error: {} — backing off (attempt {})",
+                    e,
+                    sync_errors + 1
+                );
                 let delay = crate::engine::http::reconnect_delay(sync_errors).await;
                 debug!("[matrix] Next sync retry in {}ms", delay.as_millis());
                 sync_errors += 1;
@@ -298,9 +329,12 @@ async fn run_sdk_bridge(app_handle: tauri::AppHandle, mut config: MatrixConfig) 
         }
     }
 
-    let _ = app_handle.emit("matrix-status", json!({
-        "kind": "disconnected",
-    }));
+    let _ = app_handle.emit(
+        "matrix-status",
+        json!({
+            "kind": "disconnected",
+        }),
+    );
 
     Ok(())
 }
@@ -315,14 +349,18 @@ async fn handle_room_message(
     bot_user_id: OwnedUserId,
 ) {
     // Skip own messages
-    if ev.sender == bot_user_id { return; }
+    if ev.sender == bot_user_id {
+        return;
+    }
 
     // Only handle text messages
     let body = match &ev.content.msgtype {
         MessageType::Text(text) => text.body.clone(),
         _ => return,
     };
-    if body.is_empty() { return; }
+    if body.is_empty() {
+        return;
+    }
 
     let sender = ev.sender.to_string();
     let room_id = room.room_id().to_string();
@@ -334,21 +372,32 @@ async fn handle_room_message(
     let bot_id_str = bot_user_id.to_string();
     if !is_dm {
         let mentioned = body.contains(&bot_id_str);
-        if !config.respond_in_rooms && !mentioned { return; }
+        if !config.respond_in_rooms && !mentioned {
+            return;
+        }
     }
 
     let content = body.replace(&bot_id_str, "").trim().to_string();
-    if content.is_empty() { return; }
+    if content.is_empty() {
+        return;
+    }
 
-    debug!("[matrix] {} from {} in {}: {}",
+    debug!(
+        "[matrix] {} from {} in {}: {}",
         if is_dm { "DM" } else { "Message" },
-        sender, room_id,
-        if content.len() > 50 { format!("{}...", &content[..50]) } else { content.clone() });
+        sender,
+        room_id,
+        if content.len() > 50 {
+            format!("{}...", &content[..50])
+        } else {
+            content.clone()
+        }
+    );
 
     // ── Access control ────────────────────────────────────────────────
     if is_dm {
-        let mut current_config: MatrixConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)
-            .unwrap_or(config.clone());
+        let mut current_config: MatrixConfig =
+            channels::load_channel_config(&app_handle, CONFIG_KEY).unwrap_or(config.clone());
         if let Err(denial_msg) = channels::check_access(
             &current_config.dm_policy,
             &sender,
@@ -359,10 +408,13 @@ async fn handle_room_message(
         ) {
             let denial_str = denial_msg.to_string();
             let _ = channels::save_channel_config(&app_handle, CONFIG_KEY, &current_config);
-            let _ = app_handle.emit("matrix-status", json!({
-                "kind": "pairing_request",
-                "user_id": &sender,
-            }));
+            let _ = app_handle.emit(
+                "matrix-status",
+                json!({
+                    "kind": "pairing_request",
+                    "user_id": &sender,
+                }),
+            );
             send_room_message(&room, &denial_str).await;
             return;
         }
@@ -371,8 +423,8 @@ async fn handle_room_message(
     MESSAGE_COUNT.fetch_add(1, Ordering::Relaxed);
 
     // ── Route to agent ────────────────────────────────────────────────
-    let current_config: MatrixConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)
-        .unwrap_or(config);
+    let current_config: MatrixConfig =
+        channels::load_channel_config(&app_handle, CONFIG_KEY).unwrap_or(config);
     let agent_id = current_config.agent_id.as_deref().unwrap_or("default");
     let ctx = if is_dm {
         "You are replying to a private Matrix DM (end-to-end encrypted). \
@@ -383,9 +435,15 @@ async fn handle_room_message(
     };
 
     let response = channels::run_channel_agent(
-        &app_handle, "matrix", ctx, &content, &sender, agent_id,
+        &app_handle,
+        "matrix",
+        ctx,
+        &content,
+        &sender,
+        agent_id,
         current_config.allow_dangerous_tools,
-    ).await;
+    )
+    .await;
 
     match response {
         Ok(reply) if !reply.is_empty() => {
@@ -405,7 +463,11 @@ async fn handle_room_message(
 async fn send_room_message(room: &Room, text: &str) {
     let content = RoomMessageEventContent::text_plain(text);
     if let Err(e) = room.send(content).await {
-        warn!("[matrix] Failed to send message to {}: {}", room.room_id(), e);
+        warn!(
+            "[matrix] Failed to send message to {}: {}",
+            room.room_id(),
+            e
+        );
     }
 }
 
@@ -413,20 +475,29 @@ async fn send_room_message(room: &Room, text: &str) {
 async fn resolve_whoami(homeserver: &str, access_token: &str) -> EngineResult<(String, String)> {
     let http = reqwest::Client::new();
     let whoami_url = format!("{}/_matrix/client/v3/account/whoami", homeserver);
-    let resp: serde_json::Value = http.get(&whoami_url)
+    let resp: serde_json::Value = http
+        .get(&whoami_url)
         .header("Authorization", format!("Bearer {}", access_token))
-        .send().await?
-        .json().await?;
+        .send()
+        .await?
+        .json()
+        .await?;
 
     if let Some(err) = resp.get("errcode") {
-        return Err(format!("Matrix auth error: {} - {}",
-            err, resp["error"].as_str().unwrap_or("")).into());
+        return Err(format!(
+            "Matrix auth error: {} - {}",
+            err,
+            resp["error"].as_str().unwrap_or("")
+        )
+        .into());
     }
 
-    let user_id = resp["user_id"].as_str()
+    let user_id = resp["user_id"]
+        .as_str()
         .ok_or("Missing user_id in /whoami response")?
         .to_string();
-    let device_id = resp["device_id"].as_str()
+    let device_id = resp["device_id"]
+        .as_str()
         .unwrap_or(&format!("PAW_{}", &uuid::Uuid::new_v4().to_string()[..8]))
         .to_string();
 

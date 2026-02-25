@@ -13,15 +13,15 @@
 // account with domain-wide delegation, downloads the JSON key, and pastes it
 // into the Pawz skill credential field.
 
-use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
+use crate::atoms::types::*;
+use base64::Engine as _;
 use log::{info, warn};
+use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use parking_lot::Mutex;
-use base64::Engine as _;
-use serde::{Serialize, Deserialize};
 
 // ── Token cache ────────────────────────────────────────────────────────────
 
@@ -30,8 +30,7 @@ struct CachedToken {
     expires_at: u64,
 }
 
-static TOKEN_CACHE: LazyLock<Mutex<Option<CachedToken>>> =
-    LazyLock::new(|| Mutex::new(None));
+static TOKEN_CACHE: LazyLock<Mutex<Option<CachedToken>>> = LazyLock::new(|| Mutex::new(None));
 
 /// Clear the cached access token (used by google_oauth disconnect).
 pub fn clear_token_cache() {
@@ -274,23 +273,55 @@ pub async fn execute(
 ) -> Option<Result<String, String>> {
     let creds = match super::get_skill_creds("google_workspace", app_handle) {
         Ok(c) => c,
-        Err(e) => return if name.starts_with("google_") { Some(Err(e.to_string())) } else { None },
+        Err(e) => {
+            return if name.starts_with("google_") {
+                Some(Err(e.to_string()))
+            } else {
+                None
+            }
+        }
     };
 
     Some(match name {
-        "google_gmail_list"       => exec_gmail_list(args, &creds).await.map_err(|e| e.to_string()),
-        "google_gmail_read"       => exec_gmail_read(args, &creds).await.map_err(|e| e.to_string()),
-        "google_gmail_send"       => exec_gmail_send(args, &creds).await.map_err(|e| e.to_string()),
-        "google_calendar_list"    => exec_calendar_list(args, &creds).await.map_err(|e| e.to_string()),
-        "google_calendar_create"  => exec_calendar_create(args, &creds).await.map_err(|e| e.to_string()),
-        "google_drive_list"       => exec_drive_list(args, &creds).await.map_err(|e| e.to_string()),
-        "google_drive_read"       => exec_drive_read(args, &creds).await.map_err(|e| e.to_string()),
-        "google_drive_upload"     => exec_drive_upload(args, &creds).await.map_err(|e| e.to_string()),
-        "google_drive_share"      => exec_drive_share(args, &creds).await.map_err(|e| e.to_string()),
-        "google_docs_create"      => exec_docs_create(args, &creds).await.map_err(|e| e.to_string()),
-        "google_sheets_read"      => exec_sheets_read(args, &creds).await.map_err(|e| e.to_string()),
-        "google_sheets_append"    => exec_sheets_append(args, &creds).await.map_err(|e| e.to_string()),
-        "google_api"              => exec_google_api(args, &creds).await.map_err(|e| e.to_string()),
+        "google_gmail_list" => exec_gmail_list(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_gmail_read" => exec_gmail_read(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_gmail_send" => exec_gmail_send(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_calendar_list" => exec_calendar_list(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_calendar_create" => exec_calendar_create(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_drive_list" => exec_drive_list(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_drive_read" => exec_drive_read(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_drive_upload" => exec_drive_upload(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_drive_share" => exec_drive_share(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_docs_create" => exec_docs_create(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_sheets_read" => exec_sheets_read(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_sheets_append" => exec_sheets_append(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "google_api" => exec_google_api(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
         _ => return None,
     })
 }
@@ -317,7 +348,10 @@ async fn get_access_token(creds: &HashMap<String, String>) -> EngineResult<Strin
     {
         let cache = TOKEN_CACHE.lock();
         if let Some(ref cached) = *cache {
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
             if now < cached.expires_at.saturating_sub(60) {
                 return Ok(cached.access_token.clone());
             }
@@ -336,7 +370,8 @@ async fn get_access_token(creds: &HashMap<String, String>) -> EngineResult<Strin
 
 /// OAuth2 flow: refresh the access token using the stored refresh token.
 async fn get_access_token_oauth2(creds: &HashMap<String, String>) -> EngineResult<String> {
-    let refresh_token = creds.get("GOOGLE_REFRESH_TOKEN")
+    let refresh_token = creds
+        .get("GOOGLE_REFRESH_TOKEN")
         .ok_or("Missing GOOGLE_REFRESH_TOKEN")?;
 
     // Check if we have a non-expired access token stored
@@ -345,7 +380,10 @@ async fn get_access_token_oauth2(creds: &HashMap<String, String>) -> EngineResul
         creds.get("GOOGLE_TOKEN_EXPIRES_AT"),
     ) {
         if let Ok(expires_at) = expires_at_str.parse::<u64>() {
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
             if now < expires_at.saturating_sub(60) {
                 // Cache it and return
                 let mut cache = TOKEN_CACHE.lock();
@@ -367,18 +405,34 @@ async fn get_access_token_oauth2(creds: &HashMap<String, String>) -> EngineResul
             if !id.is_empty() && !secret.is_empty() {
                 (id.to_string(), secret.to_string())
             } else {
-                (creds.get("GOOGLE_CLIENT_ID").ok_or("Missing GOOGLE_CLIENT_ID")?.clone(),
-                 creds.get("GOOGLE_CLIENT_SECRET").ok_or("Missing GOOGLE_CLIENT_SECRET")?.clone())
+                (
+                    creds
+                        .get("GOOGLE_CLIENT_ID")
+                        .ok_or("Missing GOOGLE_CLIENT_ID")?
+                        .clone(),
+                    creds
+                        .get("GOOGLE_CLIENT_SECRET")
+                        .ok_or("Missing GOOGLE_CLIENT_SECRET")?
+                        .clone(),
+                )
             }
         } else {
-            (creds.get("GOOGLE_CLIENT_ID").ok_or("Missing GOOGLE_CLIENT_ID")?.clone(),
-             creds.get("GOOGLE_CLIENT_SECRET").ok_or("Missing GOOGLE_CLIENT_SECRET")?.clone())
+            (
+                creds
+                    .get("GOOGLE_CLIENT_ID")
+                    .ok_or("Missing GOOGLE_CLIENT_ID")?
+                    .clone(),
+                creds
+                    .get("GOOGLE_CLIENT_SECRET")
+                    .ok_or("Missing GOOGLE_CLIENT_SECRET")?
+                    .clone(),
+            )
         }
     };
 
-    let (access_token, expires_at) = super::google_oauth::refresh_access_token(
-        refresh_token, &client_id, &client_secret,
-    ).await?;
+    let (access_token, expires_at) =
+        super::google_oauth::refresh_access_token(refresh_token, &client_id, &client_secret)
+            .await?;
 
     info!("[google] Access token refreshed via OAuth2");
 
@@ -406,15 +460,19 @@ async fn get_access_token_service_account(creds: &HashMap<String, String>) -> En
     let sa: serde_json::Value = serde_json::from_str(sa_json_str)
         .map_err(|e| format!("Invalid SERVICE_ACCOUNT_JSON: {}", e))?;
 
-    let client_email = sa["client_email"].as_str()
+    let client_email = sa["client_email"]
+        .as_str()
         .ok_or("SERVICE_ACCOUNT_JSON missing 'client_email'")?;
-    let private_key_pem = sa["private_key"].as_str()
+    let private_key_pem = sa["private_key"]
+        .as_str()
         .ok_or("SERVICE_ACCOUNT_JSON missing 'private_key'")?;
-    let token_uri = sa["token_uri"].as_str()
+    let token_uri = sa["token_uri"]
+        .as_str()
         .unwrap_or("https://oauth2.googleapis.com/token");
 
     // The impersonation email — use DELEGATE_EMAIL if set, otherwise fall back to client_email
-    let delegate_email = creds.get("DELEGATE_EMAIL")
+    let delegate_email = creds
+        .get("DELEGATE_EMAIL")
         .map(|s| s.as_str())
         .unwrap_or(client_email);
 
@@ -426,9 +484,13 @@ async fn get_access_token_service_account(creds: &HashMap<String, String>) -> En
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/documents",
-    ].join(" ");
+    ]
+    .join(" ");
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let exp = now + 3600;
 
     // Build and sign JWT using the jsonwebtoken crate (RS256)
@@ -450,7 +512,8 @@ async fn get_access_token_service_account(creds: &HashMap<String, String>) -> En
 
     // Exchange JWT for access token
     let client = reqwest::Client::new();
-    let resp = client.post(token_uri)
+    let resp = client
+        .post(token_uri)
         .form(&[
             ("grant_type", "urn:ietf:params:oauth:grant-type:jwt-bearer"),
             ("assertion", &jwt),
@@ -461,15 +524,19 @@ async fn get_access_token_service_account(creds: &HashMap<String, String>) -> En
         .map_err(|e| format!("Token exchange request failed: {}", e))?;
 
     let status = resp.status();
-    let body = resp.text().await.map_err(|e| format!("Token response read error: {}", e))?;
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("Token response read error: {}", e))?;
 
     if !status.is_success() {
         return Err(format!("Google token exchange failed ({}): {}", status, body).into());
     }
 
-    let token_resp: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Invalid token response JSON: {}", e))?;
-    let access_token = token_resp["access_token"].as_str()
+    let token_resp: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Invalid token response JSON: {}", e))?;
+    let access_token = token_resp["access_token"]
+        .as_str()
         .ok_or("Token response missing 'access_token'")?
         .to_string();
 
@@ -488,7 +555,8 @@ async fn get_access_token_service_account(creds: &HashMap<String, String>) -> En
 }
 
 fn base64_url_decode(s: &str) -> Result<Vec<u8>, String> {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(s)
+    base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(s)
         .or_else(|_| base64::engine::general_purpose::STANDARD.decode(s))
         .map_err(|e| format!("base64 decode error: {}", e))
 }
@@ -511,11 +579,11 @@ async fn google_request(
 ) -> EngineResult<(u16, serde_json::Value)> {
     let client = reqwest::Client::new();
     let mut req = match method {
-        "POST"   => client.post(url),
-        "PUT"    => client.put(url),
-        "PATCH"  => client.patch(url),
+        "POST" => client.post(url),
+        "PUT" => client.put(url),
+        "PATCH" => client.patch(url),
         "DELETE" => client.delete(url),
-        _        => client.get(url),
+        _ => client.get(url),
     };
 
     req = req
@@ -527,16 +595,18 @@ async fn google_request(
         req = req.header("Content-Type", "application/json").json(b);
     }
 
-    let resp = req.send().await.map_err(|e| format!("Google API request failed: {}", e))?;
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("Google API request failed: {}", e))?;
     let status = resp.status().as_u16();
     let text = resp.text().await.unwrap_or_default();
 
-    let json: serde_json::Value = serde_json::from_str(&text)
-        .unwrap_or(serde_json::json!({ "raw": text }));
+    let json: serde_json::Value =
+        serde_json::from_str(&text).unwrap_or(serde_json::json!({ "raw": text }));
 
     if status >= 400 {
-        let error_msg = json["error"]["message"].as_str()
-            .unwrap_or(&text);
+        let error_msg = json["error"]["message"].as_str().unwrap_or(&text);
         return Err(format!("Google API error ({}): {}", status, error_msg).into());
     }
 
@@ -545,12 +615,22 @@ async fn google_request(
 
 // ── Gmail implementations ──────────────────────────────────────────────────
 
-async fn exec_gmail_list(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_gmail_list(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let query = args["query"].as_str().unwrap_or("");
     let max_results = args["max_results"].as_u64().unwrap_or(10).min(50);
-    let delegate = creds.get("DELEGATE_EMAIL").map(|s| s.as_str()).unwrap_or("me");
-    let user = if delegate == "me" || delegate.is_empty() { "me" } else { delegate };
+    let delegate = creds
+        .get("DELEGATE_EMAIL")
+        .map(|s| s.as_str())
+        .unwrap_or("me");
+    let user = if delegate == "me" || delegate.is_empty() {
+        "me"
+    } else {
+        delegate
+    };
 
     let mut url = format!(
         "https://gmail.googleapis.com/gmail/v1/users/{}/messages?maxResults={}",
@@ -567,7 +647,9 @@ async fn exec_gmail_list(args: &serde_json::Value, creds: &HashMap<String, Strin
         return Ok("No messages found.".into());
     }
 
-    let msg_ids: Vec<&str> = messages.unwrap().iter()
+    let msg_ids: Vec<&str> = messages
+        .unwrap()
+        .iter()
         .filter_map(|m| m["id"].as_str())
         .collect();
 
@@ -583,18 +665,27 @@ async fn exec_gmail_list(args: &serde_json::Value, creds: &HashMap<String, Strin
             Ok((_, msg)) => {
                 let headers = msg["payload"]["headers"].as_array();
                 let get_header = |name: &str| -> String {
-                    headers.and_then(|h| h.iter()
-                        .find(|hdr| hdr["name"].as_str() == Some(name))
-                        .and_then(|hdr| hdr["value"].as_str())
-                        .map(|s| s.to_string())
-                    ).unwrap_or_default()
+                    headers
+                        .and_then(|h| {
+                            h.iter()
+                                .find(|hdr| hdr["name"].as_str() == Some(name))
+                                .and_then(|hdr| hdr["value"].as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .unwrap_or_default()
                 };
                 let subject = get_header("Subject");
                 let from = get_header("From");
                 let date = get_header("Date");
                 let snippet = msg["snippet"].as_str().unwrap_or("");
-                let labels = msg["labelIds"].as_array()
-                    .map(|l| l.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join(", "))
+                let labels = msg["labelIds"]
+                    .as_array()
+                    .map(|l| {
+                        l.iter()
+                            .filter_map(|v| v.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    })
                     .unwrap_or_default();
 
                 output.push_str(&format!(
@@ -611,11 +702,21 @@ async fn exec_gmail_list(args: &serde_json::Value, creds: &HashMap<String, Strin
     Ok(output)
 }
 
-async fn exec_gmail_read(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_gmail_read(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let message_id = args["message_id"].as_str().ok_or("Missing 'message_id'")?;
-    let delegate = creds.get("DELEGATE_EMAIL").map(|s| s.as_str()).unwrap_or("me");
-    let user = if delegate == "me" || delegate.is_empty() { "me" } else { delegate };
+    let delegate = creds
+        .get("DELEGATE_EMAIL")
+        .map(|s| s.as_str())
+        .unwrap_or("me");
+    let user = if delegate == "me" || delegate.is_empty() {
+        "me"
+    } else {
+        delegate
+    };
 
     let url = format!(
         "https://gmail.googleapis.com/gmail/v1/users/{}/messages/{}?format=full",
@@ -626,11 +727,14 @@ async fn exec_gmail_read(args: &serde_json::Value, creds: &HashMap<String, Strin
 
     let headers = msg["payload"]["headers"].as_array();
     let get_header = |name: &str| -> String {
-        headers.and_then(|h| h.iter()
-            .find(|hdr| hdr["name"].as_str() == Some(name))
-            .and_then(|hdr| hdr["value"].as_str())
-            .map(|s| s.to_string())
-        ).unwrap_or_default()
+        headers
+            .and_then(|h| {
+                h.iter()
+                    .find(|hdr| hdr["name"].as_str() == Some(name))
+                    .and_then(|hdr| hdr["value"].as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default()
     };
 
     let subject = get_header("Subject");
@@ -642,7 +746,11 @@ async fn exec_gmail_read(args: &serde_json::Value, creds: &HashMap<String, Strin
     let body_text = extract_message_body(&msg["payload"]);
 
     let truncated = if body_text.len() > 20_000 {
-        format!("{}...\n[truncated, {} total chars]", &body_text[..20_000], body_text.len())
+        format!(
+            "{}...\n[truncated, {} total chars]",
+            &body_text[..20_000],
+            body_text.len()
+        )
     } else {
         body_text
     };
@@ -702,15 +810,25 @@ fn extract_message_body(payload: &serde_json::Value) -> String {
     String::new()
 }
 
-async fn exec_gmail_send(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_gmail_send(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let to = args["to"].as_str().ok_or("Missing 'to' address")?;
     let subject = args["subject"].as_str().ok_or("Missing 'subject'")?;
     let body = args["body"].as_str().ok_or("Missing 'body'")?;
     let cc = args["cc"].as_str().unwrap_or("");
     let is_html = args["html"].as_bool().unwrap_or(false);
-    let delegate = creds.get("DELEGATE_EMAIL").map(|s| s.as_str()).unwrap_or("me");
-    let user = if delegate == "me" || delegate.is_empty() { "me" } else { delegate };
+    let delegate = creds
+        .get("DELEGATE_EMAIL")
+        .map(|s| s.as_str())
+        .unwrap_or("me");
+    let user = if delegate == "me" || delegate.is_empty() {
+        "me"
+    } else {
+        delegate
+    };
 
     let content_type = if is_html { "text/html" } else { "text/plain" };
 
@@ -745,7 +863,10 @@ async fn exec_gmail_send(args: &serde_json::Value, creds: &HashMap<String, Strin
 
 // ── Calendar implementations ───────────────────────────────────────────────
 
-async fn exec_calendar_list(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_calendar_list(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let calendar_id = args["calendar_id"].as_str().unwrap_or("primary");
     let max_results = args["max_results"].as_u64().unwrap_or(20).min(100);
@@ -771,19 +892,24 @@ async fn exec_calendar_list(args: &serde_json::Value, creds: &HashMap<String, St
     let mut output = format!("# Calendar — {} events\n\n", events.unwrap().len());
     for event in events.unwrap() {
         let summary = event["summary"].as_str().unwrap_or("(No title)");
-        let start = event["start"]["dateTime"].as_str()
+        let start = event["start"]["dateTime"]
+            .as_str()
             .or_else(|| event["start"]["date"].as_str())
             .unwrap_or("?");
-        let end = event["end"]["dateTime"].as_str()
+        let end = event["end"]["dateTime"]
+            .as_str()
             .or_else(|| event["end"]["date"].as_str())
             .unwrap_or("?");
         let location = event["location"].as_str().unwrap_or("");
         let event_id = event["id"].as_str().unwrap_or("");
-        let attendees = event["attendees"].as_array()
-            .map(|a| a.iter()
-                .filter_map(|att| att["email"].as_str())
-                .collect::<Vec<_>>()
-                .join(", "))
+        let attendees = event["attendees"]
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|att| att["email"].as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
             .unwrap_or_default();
 
         output.push_str(&format!(
@@ -802,7 +928,10 @@ async fn exec_calendar_list(args: &serde_json::Value, creds: &HashMap<String, St
     Ok(output)
 }
 
-async fn exec_calendar_create(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_calendar_create(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let calendar_id = args["calendar_id"].as_str().unwrap_or("primary");
 
@@ -823,7 +952,8 @@ async fn exec_calendar_create(args: &serde_json::Value, creds: &HashMap<String, 
         event_body["location"] = serde_json::json!(loc);
     }
     if let Some(attendees) = args["attendees"].as_array() {
-        let att: Vec<serde_json::Value> = attendees.iter()
+        let att: Vec<serde_json::Value> = attendees
+            .iter()
             .filter_map(|a| a.as_str().map(|email| serde_json::json!({"email": email})))
             .collect();
         event_body["attendees"] = serde_json::json!(att);
@@ -838,7 +968,10 @@ async fn exec_calendar_create(args: &serde_json::Value, creds: &HashMap<String, 
     let event_id = resp["id"].as_str().unwrap_or("unknown");
     let html_link = resp["htmlLink"].as_str().unwrap_or("");
 
-    info!("[google] Calendar event created: {} ({})", summary, event_id);
+    info!(
+        "[google] Calendar event created: {} ({})",
+        summary, event_id
+    );
 
     Ok(format!(
         "✅ Event created!\n  Title: {}\n  Start: {}\n  End: {}\n  ID: {}\n  Link: {}",
@@ -848,7 +981,10 @@ async fn exec_calendar_create(args: &serde_json::Value, creds: &HashMap<String, 
 
 // ── Drive implementations ──────────────────────────────────────────────────
 
-async fn exec_drive_list(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_drive_list(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let max_results = args["max_results"].as_u64().unwrap_or(20).min(100);
 
@@ -880,7 +1016,8 @@ async fn exec_drive_list(args: &serde_json::Value, creds: &HashMap<String, Strin
         let id = file["id"].as_str().unwrap_or("?");
         let mime = file["mimeType"].as_str().unwrap_or("?");
         let modified = file["modifiedTime"].as_str().unwrap_or("?");
-        let size = file["size"].as_str()
+        let size = file["size"]
+            .as_str()
             .and_then(|s| s.parse::<u64>().ok())
             .map(format_bytes)
             .unwrap_or_else(|| "-".to_string());
@@ -910,13 +1047,22 @@ async fn exec_drive_list(args: &serde_json::Value, creds: &HashMap<String, Strin
 }
 
 fn format_bytes(bytes: u64) -> String {
-    if bytes < 1024 { return format!("{} B", bytes); }
-    if bytes < 1_048_576 { return format!("{:.1} KB", bytes as f64 / 1024.0); }
-    if bytes < 1_073_741_824 { return format!("{:.1} MB", bytes as f64 / 1_048_576.0); }
+    if bytes < 1024 {
+        return format!("{} B", bytes);
+    }
+    if bytes < 1_048_576 {
+        return format!("{:.1} KB", bytes as f64 / 1024.0);
+    }
+    if bytes < 1_073_741_824 {
+        return format!("{:.1} MB", bytes as f64 / 1_048_576.0);
+    }
     format!("{:.2} GB", bytes as f64 / 1_073_741_824.0)
 }
 
-async fn exec_drive_read(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_drive_read(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let file_id = args["file_id"].as_str().ok_or("Missing 'file_id'")?;
     let export_format = args["export_format"].as_str().unwrap_or("text/plain");
@@ -937,10 +1083,12 @@ async fn exec_drive_read(args: &serde_json::Value, creds: &HashMap<String, Strin
         // Export Google Docs/Sheets/Slides
         let url = format!(
             "https://www.googleapis.com/drive/v3/files/{}/export?mimeType={}",
-            file_id, url_encode(export_format)
+            file_id,
+            url_encode(export_format)
         );
         let client = reqwest::Client::new();
-        let resp = client.get(&url)
+        let resp = client
+            .get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .timeout(Duration::from_secs(30))
             .send()
@@ -958,7 +1106,8 @@ async fn exec_drive_read(args: &serde_json::Value, creds: &HashMap<String, Strin
             file_id
         );
         let client = reqwest::Client::new();
-        let resp = client.get(&url)
+        let resp = client
+            .get(&url)
             .header("Authorization", format!("Bearer {}", token))
             .timeout(Duration::from_secs(30))
             .send()
@@ -972,7 +1121,11 @@ async fn exec_drive_read(args: &serde_json::Value, creds: &HashMap<String, Strin
     };
 
     let truncated = if content.len() > 30_000 {
-        format!("{}...\n[truncated, {} total chars]", &content[..30_000], content.len())
+        format!(
+            "{}...\n[truncated, {} total chars]",
+            &content[..30_000],
+            content.len()
+        )
     } else {
         content
     };
@@ -982,7 +1135,10 @@ async fn exec_drive_read(args: &serde_json::Value, creds: &HashMap<String, Strin
 
 // ── Drive upload implementation ────────────────────────────────────────────
 
-async fn exec_drive_upload(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_drive_upload(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let title = args["title"].as_str().ok_or("Missing 'title'")?;
     let content = args["content"].as_str().ok_or("Missing 'content'")?;
@@ -1007,7 +1163,8 @@ async fn exec_drive_upload(args: &serde_json::Value, creds: &HashMap<String, Str
             "https://www.googleapis.com/upload/drive/v3/files/{}?uploadType=media",
             fid
         );
-        let resp = client.patch(&url)
+        let resp = client
+            .patch(&url)
             .header("Authorization", format!("Bearer {}", token))
             .header("Content-Type", "text/plain; charset=UTF-8")
             .body(content.to_string())
@@ -1056,9 +1213,13 @@ async fn exec_drive_upload(args: &serde_json::Value, creds: &HashMap<String, Str
 
         let url = "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,webViewLink";
 
-        let resp = client.post(url)
+        let resp = client
+            .post(url)
             .header("Authorization", format!("Bearer {}", token))
-            .header("Content-Type", format!("multipart/related; boundary={}", boundary))
+            .header(
+                "Content-Type",
+                format!("multipart/related; boundary={}", boundary),
+            )
             .body(body)
             .timeout(Duration::from_secs(60))
             .send()
@@ -1068,7 +1229,9 @@ async fn exec_drive_upload(args: &serde_json::Value, creds: &HashMap<String, Str
         let status = resp.status();
         let resp_body: serde_json::Value = resp.json().await.unwrap_or(serde_json::json!({}));
         if !status.is_success() {
-            let msg = resp_body["error"]["message"].as_str().unwrap_or("Unknown error");
+            let msg = resp_body["error"]["message"]
+                .as_str()
+                .unwrap_or("Unknown error");
             return Err(format!("Drive upload error ({}): {}", status, msg).into());
         }
 
@@ -1097,7 +1260,10 @@ async fn exec_drive_upload(args: &serde_json::Value, creds: &HashMap<String, Str
 
 // ── Drive share implementation ─────────────────────────────────────────────
 
-async fn exec_drive_share(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_drive_share(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let file_id = args["file_id"].as_str().ok_or("Missing 'file_id'")?;
     let email = args["email"].as_str();
@@ -1142,7 +1308,10 @@ async fn exec_drive_share(args: &serde_json::Value, creds: &HashMap<String, Stri
 
 // ── Docs create implementation ─────────────────────────────────────────────
 
-async fn exec_docs_create(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_docs_create(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let title = args["title"].as_str().ok_or("Missing 'title'")?;
     let content = args["content"].as_str().unwrap_or("");
@@ -1154,9 +1323,11 @@ async fn exec_docs_create(args: &serde_json::Value, creds: &HashMap<String, Stri
         "https://docs.googleapis.com/v1/documents",
         &token,
         Some(&create_body),
-    ).await?;
+    )
+    .await?;
 
-    let doc_id = doc_resp["documentId"].as_str()
+    let doc_id = doc_resp["documentId"]
+        .as_str()
         .ok_or("Failed to create Google Doc — no documentId in response")?;
 
     // Step 2: Insert content if provided
@@ -1172,12 +1343,24 @@ async fn exec_docs_create(args: &serde_json::Value, creds: &HashMap<String, Stri
 
         match google_request(
             "POST",
-            &format!("https://docs.googleapis.com/v1/documents/{}:batchUpdate", doc_id),
+            &format!(
+                "https://docs.googleapis.com/v1/documents/{}:batchUpdate",
+                doc_id
+            ),
             &token,
             Some(&update_body),
-        ).await {
-            Ok(_) => info!("[google] Inserted {} chars into doc {}", content.len(), doc_id),
-            Err(e) => warn!("[google] Failed to insert content into doc {}: {} — doc was created but is empty", doc_id, e),
+        )
+        .await
+        {
+            Ok(_) => info!(
+                "[google] Inserted {} chars into doc {}",
+                content.len(),
+                doc_id
+            ),
+            Err(e) => warn!(
+                "[google] Failed to insert content into doc {}: {} — doc was created but is empty",
+                doc_id, e
+            ),
         }
     }
 
@@ -1187,21 +1370,33 @@ async fn exec_docs_create(args: &serde_json::Value, creds: &HashMap<String, Stri
         Document ID: {}\n\
         URL: https://docs.google.com/document/d/{}/edit\n\
         Content: {} characters inserted",
-        title, doc_id, doc_id,
-        if content.is_empty() { "0 (blank doc)" } else { &content_len_str }
+        title,
+        doc_id,
+        doc_id,
+        if content.is_empty() {
+            "0 (blank doc)"
+        } else {
+            &content_len_str
+        }
     ))
 }
 
 // ── Sheets implementations ─────────────────────────────────────────────────
 
-async fn exec_sheets_read(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_sheets_read(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
-    let spreadsheet_id = args["spreadsheet_id"].as_str().ok_or("Missing 'spreadsheet_id'")?;
+    let spreadsheet_id = args["spreadsheet_id"]
+        .as_str()
+        .ok_or("Missing 'spreadsheet_id'")?;
     let range = args["range"].as_str().ok_or("Missing 'range'")?;
 
     let url = format!(
         "https://sheets.googleapis.com/v4/spreadsheets/{}/values/{}",
-        spreadsheet_id, url_encode(range)
+        spreadsheet_id,
+        url_encode(range)
     );
 
     let (_, resp) = google_request("GET", &url, &token, None).await?;
@@ -1212,23 +1407,38 @@ async fn exec_sheets_read(args: &serde_json::Value, creds: &HashMap<String, Stri
     }
 
     let rows = values.unwrap();
-    let mut output = format!("# Spreadsheet data — {} rows from '{}'\n\n", rows.len(), range);
+    let mut output = format!(
+        "# Spreadsheet data — {} rows from '{}'\n\n",
+        rows.len(),
+        range
+    );
 
     // Format as markdown table if we have a header row
     if let Some(header) = rows.first() {
-        let headers: Vec<&str> = header.as_array()
+        let headers: Vec<&str> = header
+            .as_array()
             .map(|h| h.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
 
         if !headers.is_empty() {
             output.push_str(&format!("| {} |\n", headers.join(" | ")));
-            output.push_str(&format!("| {} |\n", headers.iter().map(|_| "---").collect::<Vec<_>>().join(" | ")));
+            output.push_str(&format!(
+                "| {} |\n",
+                headers
+                    .iter()
+                    .map(|_| "---")
+                    .collect::<Vec<_>>()
+                    .join(" | ")
+            ));
 
             for row in rows.iter().skip(1) {
-                let cells: Vec<String> = row.as_array()
-                    .map(|r| r.iter()
-                        .map(|v| v.as_str().unwrap_or("").to_string())
-                        .collect())
+                let cells: Vec<String> = row
+                    .as_array()
+                    .map(|r| {
+                        r.iter()
+                            .map(|v| v.as_str().unwrap_or("").to_string())
+                            .collect()
+                    })
                     .unwrap_or_default();
                 // Pad to header length
                 let padded: Vec<String> = (0..headers.len())
@@ -1242,9 +1452,14 @@ async fn exec_sheets_read(args: &serde_json::Value, creds: &HashMap<String, Stri
     Ok(output)
 }
 
-async fn exec_sheets_append(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_sheets_append(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
-    let spreadsheet_id = args["spreadsheet_id"].as_str().ok_or("Missing 'spreadsheet_id'")?;
+    let spreadsheet_id = args["spreadsheet_id"]
+        .as_str()
+        .ok_or("Missing 'spreadsheet_id'")?;
     let range = args["range"].as_str().ok_or("Missing 'range'")?;
     let values = args.get("values").ok_or("Missing 'values' array")?;
 
@@ -1303,7 +1518,11 @@ pub async fn gmail_list_json(
 
     let msg_ids: Vec<String> = list_resp["messages"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|m| m["id"].as_str().map(|s| s.to_string())).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|m| m["id"].as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     if msg_ids.is_empty() {
@@ -1320,15 +1539,23 @@ pub async fn gmail_list_json(
         if let Ok((_, msg)) = google_request("GET", &msg_url, &token, None).await {
             let headers = msg["payload"]["headers"].as_array();
             let get_hdr = |name: &str| -> String {
-                headers.and_then(|h| h.iter()
-                    .find(|hdr| hdr["name"].as_str() == Some(name))
-                    .and_then(|hdr| hdr["value"].as_str())
-                    .map(|s| s.to_string()))
-                .unwrap_or_default()
+                headers
+                    .and_then(|h| {
+                        h.iter()
+                            .find(|hdr| hdr["name"].as_str() == Some(name))
+                            .and_then(|hdr| hdr["value"].as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .unwrap_or_default()
             };
 
-            let label_ids: Vec<String> = msg["labelIds"].as_array()
-                .map(|l| l.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+            let label_ids: Vec<String> = msg["labelIds"]
+                .as_array()
+                .map(|l| {
+                    l.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
                 .unwrap_or_default();
 
             let is_read = !label_ids.iter().any(|l| l == "UNREAD");
@@ -1365,11 +1592,14 @@ pub async fn gmail_read_json(
 
     let headers = msg["payload"]["headers"].as_array();
     let get_hdr = |name: &str| -> String {
-        headers.and_then(|h| h.iter()
-            .find(|hdr| hdr["name"].as_str() == Some(name))
-            .and_then(|hdr| hdr["value"].as_str())
-            .map(|s| s.to_string()))
-        .unwrap_or_default()
+        headers
+            .and_then(|h| {
+                h.iter()
+                    .find(|hdr| hdr["name"].as_str() == Some(name))
+                    .and_then(|hdr| hdr["value"].as_str())
+                    .map(|s| s.to_string())
+            })
+            .unwrap_or_default()
     };
 
     let body = extract_message_body(&msg["payload"]);
@@ -1413,7 +1643,10 @@ pub async fn gmail_send_json(
 
 // ── Generic Google API ─────────────────────────────────────────────────────
 
-async fn exec_google_api(args: &serde_json::Value, creds: &HashMap<String, String>) -> EngineResult<String> {
+async fn exec_google_api(
+    args: &serde_json::Value,
+    creds: &HashMap<String, String>,
+) -> EngineResult<String> {
     let token = get_access_token(creds).await?;
     let url = args["url"].as_str().ok_or("Missing 'url'")?;
     let method = args["method"].as_str().unwrap_or("GET");
@@ -1434,7 +1667,10 @@ async fn exec_google_api(args: &serde_json::Value, creds: &HashMap<String, Strin
                     parsed_body.as_ref()
                 }
                 Err(e) => {
-                    warn!("[google] Failed to parse body string as JSON: {}. Sending as-is.", e);
+                    warn!(
+                        "[google] Failed to parse body string as JSON: {}. Sending as-is.",
+                        e
+                    );
                     raw_body
                 }
             }
@@ -1448,10 +1684,17 @@ async fn exec_google_api(args: &serde_json::Value, creds: &HashMap<String, Strin
 
     let text = serde_json::to_string_pretty(&resp).unwrap_or_default();
     let truncated = if text.len() > 30_000 {
-        format!("{}...\n[truncated, {} total bytes]", &text[..30_000], text.len())
+        format!(
+            "{}...\n[truncated, {} total bytes]",
+            &text[..30_000],
+            text.len()
+        )
     } else {
         text
     };
 
-    Ok(format!("Google API {} {} → {}\n\n{}", method, url, status, truncated))
+    Ok(format!(
+        "Google API {} {} → {}\n\n{}",
+        method, url, status, truncated
+    ))
 }

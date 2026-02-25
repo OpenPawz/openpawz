@@ -2,8 +2,8 @@
 
 use super::abi::strip_leading_zeros;
 use super::primitives::keccak256;
-use super::rlp::{rlp_encode_bytes, rlp_encode_list, u64_to_minimal_be, u256_to_minimal_be};
-use crate::atoms::error::{EngineResult, EngineError};
+use super::rlp::{rlp_encode_bytes, rlp_encode_list, u256_to_minimal_be, u64_to_minimal_be};
+use crate::atoms::error::{EngineError, EngineResult};
 
 /// Sign an EIP-1559 transaction and return the raw serialized bytes.
 #[allow(clippy::too_many_arguments)]

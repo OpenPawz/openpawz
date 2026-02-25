@@ -2,13 +2,13 @@
 // EVOLUTION_IMAGE, CONTAINER_NAME, discover_colima_socket,
 // ensure_docker_ready, ensure_evolution_container
 
-use crate::atoms::error::{EngineResult, EngineError};
-use log::{info, warn, error};
+use super::bridge::get_stop_signal;
+use super::config::WhatsAppConfig;
+use crate::atoms::error::{EngineError, EngineResult};
+use log::{error, info, warn};
 use serde_json::json;
 use std::sync::atomic::Ordering;
 use tauri::Emitter;
-use super::bridge::get_stop_signal;
-use super::config::WhatsAppConfig;
 
 // ── Constants ──────────────────────────────────────────────────────────
 
@@ -39,7 +39,10 @@ pub(crate) fn discover_colima_socket() {
     for sock in &candidates {
         if std::path::Path::new(sock).exists() {
             let docker_host = format!("unix://{}", sock);
-            info!("[whatsapp] Found Colima socket, setting DOCKER_HOST={}", docker_host);
+            info!(
+                "[whatsapp] Found Colima socket, setting DOCKER_HOST={}",
+                docker_host
+            );
             std::env::set_var("DOCKER_HOST", &docker_host);
             return;
         }
@@ -56,7 +59,9 @@ pub(crate) fn discover_colima_socket() {}
 /// If Docker isn't installed, install it automatically.
 /// If Docker isn't running, start it automatically.
 /// Returns the Docker client on success, or a user-friendly error.
-pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> EngineResult<bollard::Docker> {
+pub(crate) async fn ensure_docker_ready(
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<bollard::Docker> {
     use bollard::Docker;
 
     let stop = get_stop_signal();
@@ -79,10 +84,13 @@ pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Engine
     }
 
     info!("[whatsapp] Docker not responding, checking installation...");
-    let _ = app_handle.emit("whatsapp-status", json!({
-        "kind": "docker_starting",
-        "message": "Setting up WhatsApp...",
-    }));
+    let _ = app_handle.emit(
+        "whatsapp-status",
+        json!({
+            "kind": "docker_starting",
+            "message": "Setting up WhatsApp...",
+        }),
+    );
 
     // Check if docker CLI exists at all
     let docker_installed = std::process::Command::new("docker")
@@ -94,10 +102,13 @@ pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Engine
     if !docker_installed {
         // Auto-install Docker Engine
         info!("[whatsapp] Docker not found, installing automatically...");
-        let _ = app_handle.emit("whatsapp-status", json!({
-            "kind": "installing",
-            "message": "Installing WhatsApp service (first time only)...",
-        }));
+        let _ = app_handle.emit(
+            "whatsapp-status",
+            json!({
+                "kind": "installing",
+                "message": "Installing WhatsApp service (first time only)...",
+            }),
+        );
 
         let install_ok = if cfg!(target_os = "macos") {
             // macOS: use Homebrew to install Docker CLI + Colima (lightweight runtime)
@@ -119,7 +130,13 @@ pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Engine
         } else if cfg!(target_os = "windows") {
             // Windows: try winget
             std::process::Command::new("winget")
-                .args(["install", "--id", "Docker.DockerCLI", "--accept-source-agreements", "--accept-package-agreements"])
+                .args([
+                    "install",
+                    "--id",
+                    "Docker.DockerCLI",
+                    "--accept-source-agreements",
+                    "--accept-package-agreements",
+                ])
                 .output()
                 .map(|o| o.status.success())
                 .unwrap_or(false)
@@ -137,7 +154,12 @@ pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Engine
                     .output();
                 // Add user to docker group so future runs don't need sudo
                 let _ = std::process::Command::new("sudo")
-                    .args(["usermod", "-aG", "docker", &std::env::var("USER").unwrap_or_default()])
+                    .args([
+                        "usermod",
+                        "-aG",
+                        "docker",
+                        &std::env::var("USER").unwrap_or_default(),
+                    ])
                     .output();
                 true
             } else {
@@ -195,13 +217,14 @@ pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Engine
 
             // Start Colima (boots a lightweight Linux VM)
             info!("[whatsapp] Starting Colima...");
-            let _ = app_handle.emit("whatsapp-status", json!({
-                "kind": "docker_starting",
-                "message": "Starting WhatsApp service...",
-            }));
-            let colima_start = std::process::Command::new("colima")
-                .arg("start")
-                .output();
+            let _ = app_handle.emit(
+                "whatsapp-status",
+                json!({
+                    "kind": "docker_starting",
+                    "message": "Starting WhatsApp service...",
+                }),
+            );
+            let colima_start = std::process::Command::new("colima").arg("start").output();
             match colima_start {
                 Ok(out) if out.status.success() => {
                     info!("[whatsapp] Colima started successfully");
@@ -245,10 +268,13 @@ pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Engine
         if let Ok(docker) = Docker::connect_with_local_defaults() {
             if docker.ping().await.is_ok() {
                 info!("[whatsapp] Backend service ready after ~{}s", attempt * 2);
-                let _ = app_handle.emit("whatsapp-status", json!({
-                    "kind": "docker_ready",
-                    "message": "Setting up WhatsApp...",
-                }));
+                let _ = app_handle.emit(
+                    "whatsapp-status",
+                    json!({
+                        "kind": "docker_ready",
+                        "message": "Setting up WhatsApp...",
+                    }),
+                );
                 return Ok(docker);
             }
         }
@@ -257,14 +283,14 @@ pub(crate) async fn ensure_docker_ready(app_handle: &tauri::AppHandle) -> Engine
         }
     }
 
-    let _ = app_handle.emit("whatsapp-status", json!({
-        "kind": "docker_timeout",
-        "message": "WhatsApp is still loading. Try again in a moment.",
-    }));
-    Err(
-        "WhatsApp service didn't start in time. Give it a moment and try again."
-        .into()
-    )
+    let _ = app_handle.emit(
+        "whatsapp-status",
+        json!({
+            "kind": "docker_timeout",
+            "message": "WhatsApp is still loading. Try again in a moment.",
+        }),
+    );
+    Err("WhatsApp service didn't start in time. Give it a moment and try again.".into())
 }
 
 // ── Docker DRY Helpers ─────────────────────────────────────────────────
@@ -281,7 +307,10 @@ async fn poll_api_ready(client: &reqwest::Client, api_url: &str) -> bool {
             }
             _ => {
                 if attempt % 5 == 0 {
-                    info!("[whatsapp] Waiting for Evolution API to start... (attempt {}/30)", attempt);
+                    info!(
+                        "[whatsapp] Waiting for Evolution API to start... (attempt {}/30)",
+                        attempt
+                    );
                 }
             }
         }
@@ -292,7 +321,10 @@ async fn poll_api_ready(client: &reqwest::Client, api_url: &str) -> bool {
 /// Force-stop and remove a Docker container, ignoring errors.
 async fn force_remove_container(docker: &bollard::Docker, container_id: &str) {
     let _ = docker.stop_container(container_id, None).await;
-    let opts = bollard::container::RemoveContainerOptions { force: true, ..Default::default() };
+    let opts = bollard::container::RemoveContainerOptions {
+        force: true,
+        ..Default::default()
+    };
     let _ = docker.remove_container(container_id, Some(opts)).await;
 }
 
@@ -300,10 +332,16 @@ async fn force_remove_container(docker: &bollard::Docker, container_id: &str) {
 
 /// Ensure the Evolution API Docker container is running.
 /// Pulls the image if needed, creates and starts the container.
-pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, config: &WhatsAppConfig) -> EngineResult<String> {
-    use bollard::container::{Config as ContainerConfig, CreateContainerOptions, StartContainerOptions, ListContainersOptions};
-    use bollard::models::HostConfig;
+pub(crate) async fn ensure_evolution_container(
+    app_handle: &tauri::AppHandle,
+    config: &WhatsAppConfig,
+) -> EngineResult<String> {
+    use bollard::container::{
+        Config as ContainerConfig, CreateContainerOptions, ListContainersOptions,
+        StartContainerOptions,
+    };
     use bollard::image::CreateImageOptions;
+    use bollard::models::HostConfig;
     use futures::StreamExt;
 
     let docker = ensure_docker_ready(app_handle).await?;
@@ -317,7 +355,9 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
         ..Default::default()
     };
 
-    let containers = docker.list_containers(Some(opts)).await
+    let containers = docker
+        .list_containers(Some(opts))
+        .await
         .map_err(|e| EngineError::Other(e.to_string()))?;
 
     if let Some(existing) = containers.first() {
@@ -327,7 +367,10 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
 
         // Check if container needs recreating (wrong image or stale API key)
         let needs_recreate = if image != EVOLUTION_IMAGE {
-            info!("[whatsapp] Container uses wrong image ({} vs {}), recreating...", image, EVOLUTION_IMAGE);
+            info!(
+                "[whatsapp] Container uses wrong image ({} vs {}), recreating...",
+                image, EVOLUTION_IMAGE
+            );
             true
         } else {
             // Inspect env vars to check API key matches
@@ -357,7 +400,10 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
             force_remove_container(&docker, &container_id).await;
             // Fall through to create below
         } else if state == "restarting" || state == "dead" {
-            info!("[whatsapp] Container is {} — removing and recreating", state);
+            info!(
+                "[whatsapp] Container is {} — removing and recreating",
+                state
+            );
             force_remove_container(&docker, &container_id).await;
             info!("[whatsapp] Old container removed");
             // Fall through to create a new container below
@@ -367,7 +413,10 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
             let api_url = format!("http://127.0.0.1:{}", config.api_port);
             match client.get(&api_url).send().await {
                 Ok(resp) if resp.status().is_success() || resp.status().as_u16() == 401 => {
-                    info!("[whatsapp] Evolution API container already running and healthy: {}", &container_id[..12]);
+                    info!(
+                        "[whatsapp] Evolution API container already running and healthy: {}",
+                        &container_id[..12]
+                    );
                     return Ok(container_id);
                 }
                 _ => {
@@ -386,7 +435,9 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
         } else {
             // Container exists but stopped — start it and wait for API
             info!("[whatsapp] Starting existing Evolution API container");
-            docker.start_container(&container_id, None::<StartContainerOptions<String>>).await
+            docker
+                .start_container(&container_id, None::<StartContainerOptions<String>>)
+                .await
                 .map_err(|e| EngineError::Other(e.to_string()))?;
 
             info!("[whatsapp] Waiting for Evolution API to be ready...");
@@ -395,7 +446,9 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
             if poll_api_ready(&client, &api_url).await {
                 return Ok(container_id);
             }
-            return Err("WhatsApp service started but didn't become ready. Try again in a moment.".into());
+            return Err(
+                "WhatsApp service started but didn't become ready. Try again in a moment.".into(),
+            );
         }
     }
 
@@ -404,10 +457,13 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
     match docker.inspect_image(EVOLUTION_IMAGE).await {
         Ok(_) => info!("[whatsapp] Image already present"),
         Err(_) => {
-            let _ = app_handle.emit("whatsapp-status", json!({
-                "kind": "downloading",
-                "message": "First-time setup — downloading WhatsApp service...",
-            }));
+            let _ = app_handle.emit(
+                "whatsapp-status",
+                json!({
+                    "kind": "downloading",
+                    "message": "First-time setup — downloading WhatsApp service...",
+                }),
+            );
             let pull_opts = CreateImageOptions {
                 from_image: EVOLUTION_IMAGE,
                 ..Default::default()
@@ -450,7 +506,10 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
             format!("AUTHENTICATION_API_KEY={}", config.api_key),
             "SERVER_PORT=8080".to_string(),
             // Webhook: point back to Paw's webhook listener
-            format!("WEBHOOK_GLOBAL_URL=http://host.docker.internal:{}/webhook/whatsapp", config.webhook_port),
+            format!(
+                "WEBHOOK_GLOBAL_URL=http://host.docker.internal:{}/webhook/whatsapp",
+                config.webhook_port
+            ),
             "WEBHOOK_GLOBAL_ENABLED=true".to_string(),
             "WEBHOOK_GLOBAL_WEBHOOK_BY_EVENTS=true".to_string(),
             // Events we care about
@@ -478,17 +537,27 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
         platform: None,
     };
 
-    let container = docker.create_container(Some(create_opts), container_config).await
+    let container = docker
+        .create_container(Some(create_opts), container_config)
+        .await
         .map_err(|e| EngineError::Other(e.to_string()))?;
 
     let container_id = container.id.clone();
-    info!("[whatsapp] Created Evolution API container: {}", &container_id[..12]);
+    info!(
+        "[whatsapp] Created Evolution API container: {}",
+        &container_id[..12]
+    );
 
     // Start it
-    docker.start_container(&container_id, None::<StartContainerOptions<String>>).await
+    docker
+        .start_container(&container_id, None::<StartContainerOptions<String>>)
+        .await
         .map_err(|e| EngineError::Other(e.to_string()))?;
 
-    info!("[whatsapp] Evolution API container started on port {}", config.api_port);
+    info!(
+        "[whatsapp] Evolution API container started on port {}",
+        config.api_port
+    );
 
     // Wait for the API to be ready
     let client = reqwest::Client::new();
@@ -510,7 +579,10 @@ pub(crate) async fn ensure_evolution_container(app_handle: &tauri::AppHandle, co
         log_lines.push(line.to_string());
     }
     if !log_lines.is_empty() {
-        error!("[whatsapp] Container logs (last 20 lines):\n{}", log_lines.join(""));
+        error!(
+            "[whatsapp] Container logs (last 20 lines):\n{}",
+            log_lines.join("")
+        );
     }
     Err("WhatsApp service didn't start. It may need more time — try again in a moment.".into())
 }

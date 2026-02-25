@@ -1,7 +1,7 @@
-use rusqlite::params;
-use crate::engine::types::AgentFile;
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::types::AgentFile;
+use rusqlite::params;
 
 impl SessionStore {
     // ── Agent Files (Soul / Persona) ───────────────────────────────────
@@ -12,21 +12,26 @@ impl SessionStore {
             "SELECT agent_id, file_name, content, updated_at FROM agent_files WHERE agent_id = ?1 ORDER BY file_name"
         )?;
 
-        let files = stmt.query_map(params![agent_id], |row| {
-            Ok(AgentFile {
-                agent_id: row.get(0)?,
-                file_name: row.get(1)?,
-                content: row.get(2)?,
-                updated_at: row.get(3)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let files = stmt
+            .query_map(params![agent_id], |row| {
+                Ok(AgentFile {
+                    agent_id: row.get(0)?,
+                    file_name: row.get(1)?,
+                    content: row.get(2)?,
+                    updated_at: row.get(3)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(files)
     }
 
-    pub fn get_agent_file(&self, agent_id: &str, file_name: &str) -> EngineResult<Option<AgentFile>> {
+    pub fn get_agent_file(
+        &self,
+        agent_id: &str,
+        file_name: &str,
+    ) -> EngineResult<Option<AgentFile>> {
         let conn = self.conn.lock();
         let result = conn.query_row(
             "SELECT agent_id, file_name, content, updated_at FROM agent_files WHERE agent_id = ?1 AND file_name = ?2",
@@ -45,7 +50,12 @@ impl SessionStore {
         }
     }
 
-    pub fn set_agent_file(&self, agent_id: &str, file_name: &str, content: &str) -> EngineResult<()> {
+    pub fn set_agent_file(
+        &self,
+        agent_id: &str,
+        file_name: &str,
+        content: &str,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         conn.execute(
             "INSERT OR REPLACE INTO agent_files (agent_id, file_name, content, updated_at)

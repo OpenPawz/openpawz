@@ -27,13 +27,13 @@
 mod crypto;
 mod relay;
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use crypto::{hex_decode, hex_encode, derive_pubkey};
+use crate::atoms::error::{EngineError, EngineResult};
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use crypto::{derive_pubkey, hex_decode, hex_encode};
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
-use crate::atoms::error::{EngineResult, EngineError};
 
 // ── Nostr Config ───────────────────────────────────────────────────────
 
@@ -80,7 +80,9 @@ static BOT_PUBKEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "nostr_config";
@@ -94,7 +96,8 @@ const KEYRING_USER: &str = "private-key";
 fn keychain_set_private_key(hex_key: &str) -> EngineResult<()> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
         .map_err(|e| EngineError::Keyring(e.to_string()))?;
-    entry.set_password(hex_key)
+    entry
+        .set_password(hex_key)
         .map_err(|e| EngineError::Keyring(e.to_string()))?;
     info!("[nostr] Private key stored in OS keychain");
     Ok(())
@@ -118,7 +121,10 @@ fn keychain_delete_private_key() -> EngineResult<()> {
     let entry = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER)
         .map_err(|e| EngineError::Keyring(e.to_string()))?;
     match entry.delete_credential() {
-        Ok(()) => { info!("[nostr] Private key removed from OS keychain"); Ok(()) }
+        Ok(()) => {
+            info!("[nostr] Private key removed from OS keychain");
+            Ok(())
+        }
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(EngineError::Keyring(e.to_string())),
     }
@@ -143,8 +149,7 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
     }
 
     // Validate and derive pubkey from private key
-    let sk_bytes = hex_decode(&config.private_key_hex)
-        .map_err(|_| "Invalid private key hex")?;
+    let sk_bytes = hex_decode(&config.private_key_hex).map_err(|_| "Invalid private key hex")?;
     if sk_bytes.len() != 32 {
         return Err("Private key must be 32 bytes (64 hex chars)".into());
     }
@@ -170,16 +175,27 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
             let handle = tauri::async_runtime::spawn(async move {
                 let mut attempt: u32 = 0;
                 loop {
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                     match relay::run_relay_loop(&app, &cfg, &relay_url, &pk_hex, &sk).await {
-                        Ok(()) => { attempt = 0; }
+                        Ok(()) => {
+                            attempt = 0;
+                        }
                         Err(e) => {
                             warn!("[nostr] Relay {} error: {}", relay_url, e);
                         }
                     }
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                     let delay = crate::engine::http::reconnect_delay(attempt).await;
-                    debug!("[nostr] Relay {} reconnect in {}ms (attempt {})", relay_url, delay.as_millis(), attempt + 1);
+                    debug!(
+                        "[nostr] Relay {} reconnect in {}ms (attempt {})",
+                        relay_url,
+                        delay.as_millis(),
+                        attempt + 1
+                    );
                     attempt += 1;
                 }
             });
@@ -206,7 +222,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
-    let config: NostrConfig = channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
+    let config: NostrConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed),

@@ -1,8 +1,8 @@
-use rusqlite::params;
-use crate::engine::types::{Memory, MemoryStats};
-use super::SessionStore;
 use super::embedding::{bytes_to_f32_vec, cosine_similarity};
+use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::types::{Memory, MemoryStats};
+use rusqlite::params;
 
 impl Memory {
     /// Map a row with columns (id, content, category, importance, created_at, agent_id) → Memory.
@@ -17,7 +17,11 @@ impl Memory {
             importance: importance as u8,
             created_at: row.get(4)?,
             score: None,
-            agent_id: if agent_id.is_empty() { None } else { Some(agent_id) },
+            agent_id: if agent_id.is_empty() {
+                None
+            } else {
+                Some(agent_id)
+            },
         })
     }
 }
@@ -25,7 +29,15 @@ impl Memory {
 impl SessionStore {
     // ── Memory CRUD ────────────────────────────────────────────────────
 
-    pub fn store_memory(&self, id: &str, content: &str, category: &str, importance: u8, embedding: Option<&[u8]>, agent_id: Option<&str>) -> EngineResult<()> {
+    pub fn store_memory(
+        &self,
+        id: &str,
+        content: &str,
+        category: &str,
+        importance: u8,
+        embedding: Option<&[u8]>,
+        agent_id: Option<&str>,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         let aid = agent_id.unwrap_or("");
         conn.execute(
@@ -46,7 +58,8 @@ impl SessionStore {
         let conn = self.conn.lock();
         conn.execute("DELETE FROM memories WHERE id = ?1", params![id])?;
         // Sync FTS5 index
-        conn.execute("DELETE FROM memories_fts WHERE id = ?1", params![id]).ok();
+        conn.execute("DELETE FROM memories_fts WHERE id = ?1", params![id])
+            .ok();
         Ok(())
     }
 
@@ -55,59 +68,100 @@ impl SessionStore {
 
         let total: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?;
 
-        let has_embeddings: bool = conn.query_row(
-            "SELECT COUNT(*) > 0 FROM memories WHERE embedding IS NOT NULL", [], |r| r.get(0)
-        ).unwrap_or(false);
+        let has_embeddings: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM memories WHERE embedding IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(false);
 
         let mut stmt = conn.prepare(
-            "SELECT category, COUNT(*) FROM memories GROUP BY category ORDER BY COUNT(*) DESC"
+            "SELECT category, COUNT(*) FROM memories GROUP BY category ORDER BY COUNT(*) DESC",
         )?;
 
-        let categories: Vec<(String, i64)> = stmt.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let categories: Vec<(String, i64)> = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
-        Ok(MemoryStats { total_memories: total, categories, has_embeddings })
+        Ok(MemoryStats {
+            total_memories: total,
+            categories,
+            has_embeddings,
+        })
     }
 
     /// Search memories by cosine similarity against a query embedding.
     /// Falls back to keyword search if no embeddings are stored.
-    pub fn search_memories_by_embedding(&self, query_embedding: &[f32], limit: usize, threshold: f64, agent_id: Option<&str>) -> EngineResult<Vec<Memory>> {
+    pub fn search_memories_by_embedding(
+        &self,
+        query_embedding: &[f32],
+        limit: usize,
+        threshold: f64,
+        agent_id: Option<&str>,
+    ) -> EngineResult<Vec<Memory>> {
         let conn = self.conn.lock();
 
         let mut stmt = conn.prepare(
             "SELECT id, content, category, importance, embedding, created_at, agent_id FROM memories WHERE embedding IS NOT NULL"
         )?;
 
-        let mut scored: Vec<(Memory, f64)> = stmt.query_map([], |row| {
-            let id: String = row.get(0)?;
-            let content: String = row.get(1)?;
-            let category: String = row.get(2)?;
-            let importance: i32 = row.get(3)?;
-            let embedding_blob: Vec<u8> = row.get(4)?;
-            let created_at: String = row.get(5)?;
-            let mem_agent_id: String = row.get::<_, String>(6).unwrap_or_default();
-            Ok((id, content, category, importance as u8, embedding_blob, created_at, mem_agent_id))
-        })?
-        .filter_map(|r| r.ok())
-        .filter_map(|(id, content, category, importance, blob, created_at, mem_agent_id)| {
-            // Filter by agent_id if specified
-            if let Some(aid) = agent_id {
-                if !mem_agent_id.is_empty() && mem_agent_id != aid {
-                    return None;
-                }
-            }
-            let stored_emb = bytes_to_f32_vec(&blob);
-            let score = cosine_similarity(query_embedding, &stored_emb);
-            if score >= threshold {
-                Some((Memory { id, content, category, importance, created_at, score: Some(score), agent_id: if mem_agent_id.is_empty() { None } else { Some(mem_agent_id) } }, score))
-            } else {
-                None
-            }
-        })
-        .collect();
+        let mut scored: Vec<(Memory, f64)> = stmt
+            .query_map([], |row| {
+                let id: String = row.get(0)?;
+                let content: String = row.get(1)?;
+                let category: String = row.get(2)?;
+                let importance: i32 = row.get(3)?;
+                let embedding_blob: Vec<u8> = row.get(4)?;
+                let created_at: String = row.get(5)?;
+                let mem_agent_id: String = row.get::<_, String>(6).unwrap_or_default();
+                Ok((
+                    id,
+                    content,
+                    category,
+                    importance as u8,
+                    embedding_blob,
+                    created_at,
+                    mem_agent_id,
+                ))
+            })?
+            .filter_map(|r| r.ok())
+            .filter_map(
+                |(id, content, category, importance, blob, created_at, mem_agent_id)| {
+                    // Filter by agent_id if specified
+                    if let Some(aid) = agent_id {
+                        if !mem_agent_id.is_empty() && mem_agent_id != aid {
+                            return None;
+                        }
+                    }
+                    let stored_emb = bytes_to_f32_vec(&blob);
+                    let score = cosine_similarity(query_embedding, &stored_emb);
+                    if score >= threshold {
+                        Some((
+                            Memory {
+                                id,
+                                content,
+                                category,
+                                importance,
+                                created_at,
+                                score: Some(score),
+                                agent_id: if mem_agent_id.is_empty() {
+                                    None
+                                } else {
+                                    Some(mem_agent_id)
+                                },
+                            },
+                            score,
+                        ))
+                    } else {
+                        None
+                    }
+                },
+            )
+            .collect();
 
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(limit);
@@ -116,7 +170,12 @@ impl SessionStore {
     }
 
     /// BM25 full-text search via FTS5 — much better than LIKE keyword search.
-    pub fn search_memories_bm25(&self, query: &str, limit: usize, agent_id: Option<&str>) -> EngineResult<Vec<Memory>> {
+    pub fn search_memories_bm25(
+        &self,
+        query: &str,
+        limit: usize,
+        agent_id: Option<&str>,
+    ) -> EngineResult<Vec<Memory>> {
         let conn = self.conn.lock();
 
         // FTS5 match query — escape special characters
@@ -136,23 +195,34 @@ impl SessionStore {
                  WHERE memories_fts MATCH ?1
                    AND (f.agent_id = '' OR f.agent_id = ?2)
                  ORDER BY rank
-                 LIMIT ?3"
+                 LIMIT ?3",
             )?;
 
-            let memories: Vec<Memory> = stmt.query_map(params![fts_query, aid, limit as i64], |row| {
-                let bm25_rank: f64 = row.get(4)?;
-                Ok(Memory {
-                    id: row.get(0)?,
-                    content: row.get(1)?,
-                    category: row.get(2)?,
-                    importance: { let i: i32 = row.get(5)?; i as u8 },
-                    created_at: row.get(6)?,
-                    score: Some(-bm25_rank), // FTS5 rank is negative (lower=better), negate for consistency
-                    agent_id: { let a: String = row.get(3)?; if a.is_empty() { None } else { Some(a) } },
-                })
-            })?
-            .filter_map(|r| r.ok())
-            .collect();
+            let memories: Vec<Memory> = stmt
+                .query_map(params![fts_query, aid, limit as i64], |row| {
+                    let bm25_rank: f64 = row.get(4)?;
+                    Ok(Memory {
+                        id: row.get(0)?,
+                        content: row.get(1)?,
+                        category: row.get(2)?,
+                        importance: {
+                            let i: i32 = row.get(5)?;
+                            i as u8
+                        },
+                        created_at: row.get(6)?,
+                        score: Some(-bm25_rank), // FTS5 rank is negative (lower=better), negate for consistency
+                        agent_id: {
+                            let a: String = row.get(3)?;
+                            if a.is_empty() {
+                                None
+                            } else {
+                                Some(a)
+                            }
+                        },
+                    })
+                })?
+                .filter_map(|r| r.ok())
+                .collect();
             return Ok(memories);
         } else {
             "SELECT f.id, f.content, f.category, f.agent_id, rank,
@@ -165,20 +235,31 @@ impl SessionStore {
         };
 
         let mut stmt = conn.prepare(sql)?;
-        let memories: Vec<Memory> = stmt.query_map(params![fts_query, limit as i64], |row| {
-            let bm25_rank: f64 = row.get(4)?;
-            Ok(Memory {
-                id: row.get(0)?,
-                content: row.get(1)?,
-                category: row.get(2)?,
-                importance: { let i: i32 = row.get(5)?; i as u8 },
-                created_at: row.get(6)?,
-                score: Some(-bm25_rank),
-                agent_id: { let a: String = row.get(3)?; if a.is_empty() { None } else { Some(a) } },
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let memories: Vec<Memory> = stmt
+            .query_map(params![fts_query, limit as i64], |row| {
+                let bm25_rank: f64 = row.get(4)?;
+                Ok(Memory {
+                    id: row.get(0)?,
+                    content: row.get(1)?,
+                    category: row.get(2)?,
+                    importance: {
+                        let i: i32 = row.get(5)?;
+                        i as u8
+                    },
+                    created_at: row.get(6)?,
+                    score: Some(-bm25_rank),
+                    agent_id: {
+                        let a: String = row.get(3)?;
+                        if a.is_empty() {
+                            None
+                        } else {
+                            Some(a)
+                        }
+                    },
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(memories)
     }
@@ -192,12 +273,13 @@ impl SessionStore {
             "SELECT id, content, category, importance, created_at, agent_id FROM memories
              WHERE LOWER(content) LIKE ?1
              ORDER BY importance DESC, created_at DESC
-             LIMIT ?2"
+             LIMIT ?2",
         )?;
 
-        let memories = stmt.query_map(params![pattern, limit as i64], Memory::from_row)?
-        .filter_map(|r| r.ok())
-        .collect();
+        let memories = stmt
+            .query_map(params![pattern, limit as i64], Memory::from_row)?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(memories)
     }
@@ -207,10 +289,11 @@ impl SessionStore {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, content, category, importance, created_at, agent_id FROM memories
-             ORDER BY created_at DESC LIMIT ?1"
+             ORDER BY created_at DESC LIMIT ?1",
         )?;
 
-        let memories = stmt.query_map(params![limit as i64], Memory::from_row)?
+        let memories = stmt
+            .query_map(params![limit as i64], Memory::from_row)?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -223,10 +306,11 @@ impl SessionStore {
         let mut stmt = conn.prepare(
             "SELECT id, content, category, importance, created_at, agent_id FROM memories
              WHERE embedding IS NULL
-             ORDER BY created_at DESC LIMIT ?1"
+             ORDER BY created_at DESC LIMIT ?1",
         )?;
 
-        let memories = stmt.query_map(params![limit as i64], Memory::from_row)?
+        let memories = stmt
+            .query_map(params![limit as i64], Memory::from_row)?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -253,14 +337,15 @@ impl SessionStore {
             "SELECT content, category FROM memories
              WHERE created_at >= ?1 AND (agent_id = ?2 OR agent_id = '')
              ORDER BY importance DESC, created_at DESC
-             LIMIT 10"
+             LIMIT 10",
         )?;
 
-        let rows: Vec<(String, String)> = stmt.query_map(params![today_start, agent_id], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let rows: Vec<(String, String)> = stmt
+            .query_map(params![today_start, agent_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         if rows.is_empty() {
             return Ok(None);
@@ -269,10 +354,18 @@ impl SessionStore {
         let mut lines = Vec::new();
         for (content, category) in &rows {
             // Truncate long entries to keep the block compact
-            let short = if content.len() > 200 { format!("{}…", &content[..content.floor_char_boundary(200)]) } else { content.clone() };
+            let short = if content.len() > 200 {
+                format!("{}…", &content[..content.floor_char_boundary(200)])
+            } else {
+                content.clone()
+            };
             lines.push(format!("- [{}] {}", category, short));
         }
-        Ok(Some(format!("## Today's Memory Notes ({})\n{}", today, lines.join("\n"))))
+        Ok(Some(format!(
+            "## Today's Memory Notes ({})\n{}",
+            today,
+            lines.join("\n")
+        )))
     }
 
     /// Get raw content strings of today's memories (for dedup against auto-recall).
@@ -284,14 +377,15 @@ impl SessionStore {
             "SELECT content FROM memories
              WHERE created_at >= ?1 AND (agent_id = ?2 OR agent_id = '')
              ORDER BY importance DESC, created_at DESC
-             LIMIT 20"
+             LIMIT 20",
         )?;
 
-        let rows: Vec<String> = stmt.query_map(params![today_start, agent_id], |row| {
-            row.get::<_, String>(0)
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let rows: Vec<String> = stmt
+            .query_map(params![today_start, agent_id], |row| {
+                row.get::<_, String>(0)
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(rows)
     }
@@ -299,7 +393,12 @@ impl SessionStore {
     /// Get recent memory contents *in a specific category* for dedup checking.
     /// Scoping to category avoids false positives (e.g. a "preference" blocking
     /// a "session" summary with similar wording).
-    pub fn get_recent_memory_contents_by_category(&self, max_age_secs: i64, category: &str, agent_id: Option<&str>) -> EngineResult<Vec<String>> {
+    pub fn get_recent_memory_contents_by_category(
+        &self,
+        max_age_secs: i64,
+        category: &str,
+        agent_id: Option<&str>,
+    ) -> EngineResult<Vec<String>> {
         let conn = self.conn.lock();
         let cutoff = chrono::Utc::now() - chrono::Duration::seconds(max_age_secs);
         let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
@@ -308,14 +407,15 @@ impl SessionStore {
             "SELECT content FROM memories
              WHERE created_at >= ?1 AND category = ?2 AND (agent_id = ?3 OR agent_id = '')
              ORDER BY created_at DESC
-             LIMIT 50"
+             LIMIT 50",
         )?;
 
-        let rows: Vec<String> = stmt.query_map(params![cutoff_str, category, aid], |row| {
-            row.get::<_, String>(0)
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let rows: Vec<String> = stmt
+            .query_map(params![cutoff_str, category, aid], |row| {
+                row.get::<_, String>(0)
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(rows)
     }

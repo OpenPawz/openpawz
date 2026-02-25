@@ -1,10 +1,10 @@
 // Paw Agent Engine — Slack tools
 // slack_send, slack_read
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
 use log::info;
 use std::time::Duration;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
@@ -12,7 +12,9 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "slack_send".into(),
-                description: "Send a message to a Slack channel or DM. Credentials are stored securely.".into(),
+                description:
+                    "Send a message to a Slack channel or DM. Credentials are stored securely."
+                        .into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -55,8 +57,12 @@ pub async fn execute(
         Err(e) => return Some(Err(e.to_string())),
     };
     Some(match name {
-        "slack_send" => execute_slack_send(args, &creds).await.map_err(|e| e.to_string()),
-        "slack_read" => execute_slack_read(args, &creds).await.map_err(|e| e.to_string()),
+        "slack_send" => execute_slack_send(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "slack_read" => execute_slack_read(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
         _ => unreachable!(),
     })
 }
@@ -66,8 +72,11 @@ async fn execute_slack_send(
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
     let text = args["text"].as_str().ok_or("slack_send: missing 'text'")?;
-    let token = creds.get("SLACK_BOT_TOKEN").ok_or("Missing SLACK_BOT_TOKEN")?;
-    let channel = args["channel"].as_str()
+    let token = creds
+        .get("SLACK_BOT_TOKEN")
+        .ok_or("Missing SLACK_BOT_TOKEN")?;
+    let channel = args["channel"]
+        .as_str()
         .map(|s| s.to_string())
         .or_else(|| creds.get("SLACK_DEFAULT_CHANNEL").cloned())
         .ok_or("slack_send: no channel specified and no default channel configured")?;
@@ -78,7 +87,8 @@ async fn execute_slack_send(
         .timeout(Duration::from_secs(15))
         .build()?;
 
-    let resp = client.post("https://slack.com/api/chat.postMessage")
+    let resp = client
+        .post("https://slack.com/api/chat.postMessage")
         .header("Authorization", format!("Bearer {}", token))
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "channel": channel, "text": text }))
@@ -89,7 +99,10 @@ async fn execute_slack_send(
 
     if body["ok"].as_bool().unwrap_or(false) {
         let ts = body["ts"].as_str().unwrap_or("unknown");
-        Ok(format!("Message sent to Slack channel {} (ts: {})", channel, ts))
+        Ok(format!(
+            "Message sent to Slack channel {} (ts: {})",
+            channel, ts
+        ))
     } else {
         let err = body["error"].as_str().unwrap_or("unknown error");
         Err(format!("Slack API error: {}", err).into())
@@ -100,9 +113,13 @@ async fn execute_slack_read(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let channel = args["channel"].as_str().ok_or("slack_read: missing 'channel'")?;
+    let channel = args["channel"]
+        .as_str()
+        .ok_or("slack_read: missing 'channel'")?;
     let limit = args["limit"].as_u64().unwrap_or(10);
-    let token = creds.get("SLACK_BOT_TOKEN").ok_or("Missing SLACK_BOT_TOKEN")?;
+    let token = creds
+        .get("SLACK_BOT_TOKEN")
+        .ok_or("Missing SLACK_BOT_TOKEN")?;
 
     info!("[skill:slack] Reading {} messages from {}", limit, channel);
 
@@ -110,7 +127,8 @@ async fn execute_slack_read(
         .timeout(Duration::from_secs(15))
         .build()?;
 
-    let resp = client.get("https://slack.com/api/conversations.history")
+    let resp = client
+        .get("https://slack.com/api/conversations.history")
         .header("Authorization", format!("Bearer {}", token))
         .query(&[("channel", channel), ("limit", &limit.to_string())])
         .send()

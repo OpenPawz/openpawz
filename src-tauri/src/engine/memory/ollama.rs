@@ -7,9 +7,9 @@
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
-use crate::engine::types::*;
 use crate::atoms::error::EngineResult;
-use log::{info, warn, error};
+use crate::engine::types::*;
+use log::{error, info, warn};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,7 +63,10 @@ pub async fn ensure_ollama_ready(config: &MemoryConfig) -> OllamaReadyStatus {
         status.ollama_running = true;
     } else if is_local {
         // ── Step 2: Try to start Ollama ──
-        info!("[memory] Ollama not reachable at {} — attempting to start...", base_url);
+        info!(
+            "[memory] Ollama not reachable at {} — attempting to start...",
+            base_url
+        );
         match start_ollama_process().await {
             Ok(()) => {
                 // Wait for it to become reachable (up to 15 seconds)
@@ -71,7 +74,10 @@ pub async fn ensure_ollama_ready(config: &MemoryConfig) -> OllamaReadyStatus {
                 for i in 0..30 {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                     if check_ollama_reachable(&client, base_url).await {
-                        info!("[memory] Ollama started successfully after {}ms", (i + 1) * 500);
+                        info!(
+                            "[memory] Ollama started successfully after {}ms",
+                            (i + 1) * 500
+                        );
                         started = true;
                         break;
                     }
@@ -80,7 +86,9 @@ pub async fn ensure_ollama_ready(config: &MemoryConfig) -> OllamaReadyStatus {
                     status.ollama_running = true;
                     status.was_auto_started = true;
                 } else {
-                    let msg = "Started Ollama process but it didn't become reachable within 15 seconds".to_string();
+                    let msg =
+                        "Started Ollama process but it didn't become reachable within 15 seconds"
+                            .to_string();
                     warn!("[memory] {}", msg);
                     status.error = Some(msg);
                     return status;
@@ -94,7 +102,10 @@ pub async fn ensure_ollama_ready(config: &MemoryConfig) -> OllamaReadyStatus {
             }
         }
     } else {
-        let msg = format!("Ollama not reachable at {} (remote server — cannot auto-start)", base_url);
+        let msg = format!(
+            "Ollama not reachable at {} (remote server — cannot auto-start)",
+            base_url
+        );
         warn!("[memory] {}", msg);
         status.error = Some(msg);
         return status;
@@ -133,7 +144,10 @@ pub async fn ensure_ollama_ready(config: &MemoryConfig) -> OllamaReadyStatus {
                     status.was_auto_pulled = true;
                 }
                 Err(pull_e) => {
-                    let msg = format!("Cannot verify or pull model '{}': check={}, pull={}", model, e, pull_e);
+                    let msg = format!(
+                        "Cannot verify or pull model '{}': check={}, pull={}",
+                        model, e, pull_e
+                    );
                     error!("[memory] {}", msg);
                     status.error = Some(msg);
                     return status;
@@ -146,7 +160,10 @@ pub async fn ensure_ollama_ready(config: &MemoryConfig) -> OllamaReadyStatus {
     let emb_client = EmbeddingClient::new(config);
     match emb_client.embed("test").await {
         Ok(vec) => {
-            info!("[memory] ✓ Embedding test passed — {} dimensions", vec.len());
+            info!(
+                "[memory] ✓ Embedding test passed — {} dimensions",
+                vec.len()
+            );
             status.embedding_dims = vec.len();
         }
         Err(e) => {
@@ -167,7 +184,8 @@ pub fn is_ollama_init_done() -> bool {
 
 /// Check if Ollama is reachable by hitting the /api/tags endpoint.
 async fn check_ollama_reachable(client: &Client, base_url: &str) -> bool {
-    match client.get(format!("{}/api/tags", base_url))
+    match client
+        .get(format!("{}/api/tags", base_url))
         .timeout(std::time::Duration::from_secs(3))
         .send()
         .await
@@ -217,7 +235,10 @@ fn which_ollama() -> Option<String> {
     let candidates = if cfg!(target_os = "windows") {
         vec![
             "ollama".to_string(),
-            format!("{}\\AppData\\Local\\Programs\\Ollama\\ollama.exe", std::env::var("USERPROFILE").unwrap_or_default()),
+            format!(
+                "{}\\AppData\\Local\\Programs\\Ollama\\ollama.exe",
+                std::env::var("USERPROFILE").unwrap_or_default()
+            ),
         ]
     } else if cfg!(target_os = "macos") {
         vec![
@@ -231,7 +252,10 @@ fn which_ollama() -> Option<String> {
             "ollama".to_string(),
             "/usr/local/bin/ollama".to_string(),
             "/usr/bin/ollama".to_string(),
-            format!("{}/.local/bin/ollama", std::env::var("HOME").unwrap_or_default()),
+            format!(
+                "{}/.local/bin/ollama",
+                std::env::var("HOME").unwrap_or_default()
+            ),
         ]
     };
 
@@ -246,11 +270,12 @@ fn which_ollama() -> Option<String> {
         }
     }
 
-    let which_cmd = if cfg!(target_os = "windows") { "where" } else { "which" };
-    if let Ok(output) = std::process::Command::new(which_cmd)
-        .arg("ollama")
-        .output()
-    {
+    let which_cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+    if let Ok(output) = std::process::Command::new(which_cmd).arg("ollama").output() {
         if output.status.success() {
             let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !path.is_empty() {
@@ -263,9 +288,14 @@ fn which_ollama() -> Option<String> {
 }
 
 /// Check if a model is available in Ollama (static version, no &self).
-pub(crate) async fn check_model_available_static(client: &Client, base_url: &str, model: &str) -> EngineResult<bool> {
+pub(crate) async fn check_model_available_static(
+    client: &Client,
+    base_url: &str,
+    model: &str,
+) -> EngineResult<bool> {
     let url = format!("{}/api/tags", base_url);
-    let resp = client.get(&url)
+    let resp = client
+        .get(&url)
         .timeout(std::time::Duration::from_secs(5))
         .send()
         .await?;
@@ -293,16 +323,24 @@ pub(crate) async fn check_model_available_static(client: &Client, base_url: &str
 }
 
 /// Pull a model from Ollama (static version, no &self).
-pub(crate) async fn pull_model_static(client: &Client, base_url: &str, model: &str) -> EngineResult<()> {
+pub(crate) async fn pull_model_static(
+    client: &Client,
+    base_url: &str,
+    model: &str,
+) -> EngineResult<()> {
     let url = format!("{}/api/pull", base_url);
     let body = json!({
         "name": model,
         "stream": false,
     });
 
-    info!("[memory] Pulling model '{}' (this may take a few minutes for first download)...", model);
+    info!(
+        "[memory] Pulling model '{}' (this may take a few minutes for first download)...",
+        model
+    );
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .json(&body)
         .timeout(std::time::Duration::from_secs(600))
         .send()

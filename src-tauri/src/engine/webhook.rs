@@ -13,9 +13,9 @@
 // Rate limiting: token-bucket per source IP.
 // Response: synchronous agent text reply in JSON body.
 
-use crate::atoms::error::{EngineResult, EngineError};
+use crate::atoms::error::{EngineError, EngineResult};
 use crate::engine::channels;
-use log::{info, warn, error};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -50,9 +50,15 @@ pub struct WebhookConfig {
     pub allow_dangerous_tools: bool,
 }
 
-fn default_bind() -> String { "127.0.0.1".into() }
-fn default_port() -> u16 { 3940 }
-fn default_rate_limit() -> u32 { 60 }
+fn default_bind() -> String {
+    "127.0.0.1".into()
+}
+fn default_port() -> u16 {
+    3940
+}
+fn default_rate_limit() -> u32 {
+    60
+}
 
 impl Default for WebhookConfig {
     fn default() -> Self {
@@ -86,7 +92,9 @@ struct WebhookRequest {
     user_id: String,
 }
 
-fn default_user_id() -> String { "webhook".into() }
+fn default_user_id() -> String {
+    "webhook".into()
+}
 
 #[derive(Debug, Serialize)]
 struct WebhookResponse {
@@ -106,7 +114,9 @@ static REQUEST_COUNT: AtomicU64 = AtomicU64::new(0);
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "webhook_config";
@@ -129,7 +139,9 @@ impl RateLimiter {
 
     /// Returns true if the request is allowed, false if rate-limited.
     fn check(&self, ip: &str) -> bool {
-        if self.limit == 0 { return true; } // unlimited
+        if self.limit == 0 {
+            return true;
+        } // unlimited
         let mut map = self.buckets.lock();
         let now = Instant::now();
         let entry = map.entry(ip.to_string()).or_insert((0, now));
@@ -155,7 +167,9 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
 
     let config: WebhookConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)?;
     if !config.enabled {
-        return Err(EngineError::Config("Webhook server is disabled — enable it in settings first".into()));
+        return Err(EngineError::Config(
+            "Webhook server is disabled — enable it in settings first".into(),
+        ));
     }
 
     let stop = get_stop_signal();
@@ -165,10 +179,13 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
     tauri::async_runtime::spawn(async move {
         if let Err(e) = run_server(app_handle.clone(), config).await {
             error!("[webhook] Server crashed: {}", e);
-            let _ = app_handle.emit("webhook-status", json!({
-                "kind": "error",
-                "message": e.to_string(),
-            }));
+            let _ = app_handle.emit(
+                "webhook-status",
+                json!({
+                    "kind": "error",
+                    "message": e.to_string(),
+                }),
+            );
         }
         BRIDGE_RUNNING.store(false, Ordering::Relaxed);
     });
@@ -184,8 +201,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> channels::ChannelStatus {
-    let config: WebhookConfig = channels::load_channel_config(app_handle, CONFIG_KEY)
-        .unwrap_or_default();
+    let config: WebhookConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     channels::ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed) && config.enabled,
@@ -204,7 +221,8 @@ async fn run_server(app_handle: tauri::AppHandle, config: WebhookConfig) -> Engi
     let stop = get_stop_signal();
     let addr = format!("{}:{}", config.bind_address, config.port);
 
-    let listener = TcpListener::bind(&addr).await
+    let listener = TcpListener::bind(&addr)
+        .await
         .map_err(|e| format!("Bind {}:{} failed: {}", config.bind_address, config.port, e))?;
 
     if config.bind_address != "127.0.0.1" && config.bind_address != "localhost" {
@@ -212,21 +230,24 @@ async fn run_server(app_handle: tauri::AppHandle, config: WebhookConfig) -> Engi
     }
 
     info!("[webhook] Listening on http://{}", addr);
-    let _ = app_handle.emit("webhook-status", json!({
-        "kind": "connected",
-        "address": &addr,
-    }));
+    let _ = app_handle.emit(
+        "webhook-status",
+        json!({
+            "kind": "connected",
+            "address": &addr,
+        }),
+    );
 
     let config = Arc::new(config);
     let rate_limiter = Arc::new(RateLimiter::new(config.rate_limit_per_minute));
 
     loop {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
-        let accept = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            listener.accept(),
-        ).await;
+        let accept =
+            tokio::time::timeout(std::time::Duration::from_secs(1), listener.accept()).await;
 
         match accept {
             Ok(Ok((stream, peer))) => {
@@ -263,9 +284,13 @@ async fn handle_request(
 ) -> EngineResult<()> {
     // Read the full HTTP request (up to 64KB)
     let mut buf = vec![0u8; 65536];
-    let n = stream.read(&mut buf).await
+    let n = stream
+        .read(&mut buf)
+        .await
         .map_err(|e| format!("Read error: {}", e))?;
-    if n == 0 { return Ok(()); }
+    if n == 0 {
+        return Ok(());
+    }
     let raw = String::from_utf8_lossy(&buf[..n]).to_string();
 
     // Parse first line: "METHOD /path HTTP/1.x"
@@ -274,11 +299,17 @@ async fn handle_request(
     let (method, path) = if parts.len() >= 2 {
         (parts[0], parts[1])
     } else {
-        send_json(&mut stream, 400, &WebhookResponse {
-            ok: false, response: None,
-            error: Some("Malformed request".into()),
-            agent_id: None,
-        }).await?;
+        send_json(
+            &mut stream,
+            400,
+            &WebhookResponse {
+                ok: false,
+                response: None,
+                error: Some("Malformed request".into()),
+                agent_id: None,
+            },
+        )
+        .await?;
         return Ok(());
     };
 
@@ -289,14 +320,20 @@ async fn handle_request(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
             body.len(), body
         );
-        stream.write_all(resp.as_bytes()).await.map_err(|e| format!("Write error: {}", e))?;
+        stream
+            .write_all(resp.as_bytes())
+            .await
+            .map_err(|e| format!("Write error: {}", e))?;
         return Ok(());
     }
 
     // ── CORS preflight ──────────────────────────────────────────────
     if method == "OPTIONS" {
         let resp = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: POST, GET, OPTIONS\r\nAccess-Control-Allow-Headers: Authorization, Content-Type\r\nConnection: close\r\n\r\n";
-        stream.write_all(resp.as_bytes()).await.map_err(|e| format!("Write error: {}", e))?;
+        stream
+            .write_all(resp.as_bytes())
+            .await
+            .map_err(|e| format!("Write error: {}", e))?;
         return Ok(());
     }
 
@@ -306,7 +343,9 @@ async fn handle_request(
         if lower.starts_with("authorization:") {
             let value = line["authorization:".len()..].trim();
             // Accept "Bearer <token>" or raw "<token>"
-            let token = value.strip_prefix("Bearer ").or_else(|| value.strip_prefix("bearer "))
+            let token = value
+                .strip_prefix("Bearer ")
+                .or_else(|| value.strip_prefix("bearer "))
                 .unwrap_or(value);
             token == config.auth_token
         } else {
@@ -314,21 +353,33 @@ async fn handle_request(
         }
     });
     if !auth_ok {
-        send_json(&mut stream, 401, &WebhookResponse {
-            ok: false, response: None,
-            error: Some("Unauthorized — provide Authorization: Bearer <token>".into()),
-            agent_id: None,
-        }).await?;
+        send_json(
+            &mut stream,
+            401,
+            &WebhookResponse {
+                ok: false,
+                response: None,
+                error: Some("Unauthorized — provide Authorization: Bearer <token>".into()),
+                agent_id: None,
+            },
+        )
+        .await?;
         return Ok(());
     }
 
     // ── Rate limiting ───────────────────────────────────────────────
     if !rate_limiter.check(peer_ip) {
-        send_json(&mut stream, 429, &WebhookResponse {
-            ok: false, response: None,
-            error: Some("Rate limit exceeded — try again later".into()),
-            agent_id: None,
-        }).await?;
+        send_json(
+            &mut stream,
+            429,
+            &WebhookResponse {
+                ok: false,
+                response: None,
+                error: Some("Rate limit exceeded — try again later".into()),
+                agent_id: None,
+            },
+        )
+        .await?;
         return Ok(());
     }
 
@@ -340,11 +391,17 @@ async fn handle_request(
 
         if segments.len() >= 4 && segments[2] == "tool" {
             // POST /webhook/:agent_id/tool/:tool_name — future: direct tool execution
-            send_json(&mut stream, 501, &WebhookResponse {
-                ok: false, response: None,
-                error: Some("Direct tool execution not yet implemented".into()),
-                agent_id: None,
-            }).await?;
+            send_json(
+                &mut stream,
+                501,
+                &WebhookResponse {
+                    ok: false,
+                    response: None,
+                    error: Some("Direct tool execution not yet implemented".into()),
+                    agent_id: None,
+                },
+            )
+            .await?;
             return Ok(());
         }
 
@@ -353,41 +410,61 @@ async fn handle_request(
         let webhook_req: WebhookRequest = match serde_json::from_str(body_str) {
             Ok(r) => r,
             Err(e) => {
-                send_json(&mut stream, 400, &WebhookResponse {
-                    ok: false, response: None,
-                    error: Some(format!("Invalid JSON body: {}", e)),
-                    agent_id: None,
-                }).await?;
+                send_json(
+                    &mut stream,
+                    400,
+                    &WebhookResponse {
+                        ok: false,
+                        response: None,
+                        error: Some(format!("Invalid JSON body: {}", e)),
+                        agent_id: None,
+                    },
+                )
+                .await?;
                 return Ok(());
             }
         };
 
         // Resolve agent ID: body override > URL segment > config default
-        let agent_id = webhook_req.agent_id.as_deref()
-            .unwrap_or(if url_agent_id.is_empty() { &config.default_agent_id } else { url_agent_id });
+        let agent_id = webhook_req
+            .agent_id
+            .as_deref()
+            .unwrap_or(if url_agent_id.is_empty() {
+                &config.default_agent_id
+            } else {
+                url_agent_id
+            });
 
         let context = webhook_req.context.as_deref().unwrap_or(
             "You are responding to an automated webhook request. Keep responses concise and structured. \
              Use JSON formatting if the caller is likely a machine."
         );
 
-        info!("[webhook] POST from {} → agent={} user={} msg_len={}",
-            peer_ip, agent_id, webhook_req.user_id, webhook_req.message.len());
+        info!(
+            "[webhook] POST from {} → agent={} user={} msg_len={}",
+            peer_ip,
+            agent_id,
+            webhook_req.user_id,
+            webhook_req.message.len()
+        );
 
         REQUEST_COUNT.fetch_add(1, Ordering::Relaxed);
 
         // Emit activity event for frontend
-        let _ = app_handle.emit("webhook-activity", json!({
-            "peer": peer_ip,
-            "agent_id": agent_id,
-            "user_id": webhook_req.user_id,
-            "message_preview": if webhook_req.message.len() > 80 {
-                format!("{}…", &webhook_req.message[..80])
-            } else {
-                webhook_req.message.clone()
-            },
-            "timestamp": chrono::Utc::now().to_rfc3339(),
-        }));
+        let _ = app_handle.emit(
+            "webhook-activity",
+            json!({
+                "peer": peer_ip,
+                "agent_id": agent_id,
+                "user_id": webhook_req.user_id,
+                "message_preview": if webhook_req.message.len() > 80 {
+                    format!("{}…", &webhook_req.message[..80])
+                } else {
+                    webhook_req.message.clone()
+                },
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        );
 
         // Run agent
         let result = channels::run_channel_agent(
@@ -398,35 +475,53 @@ async fn handle_request(
             &webhook_req.user_id,
             agent_id,
             config.allow_dangerous_tools,
-        ).await;
+        )
+        .await;
 
         match result {
             Ok(text) => {
-                send_json(&mut stream, 200, &WebhookResponse {
-                    ok: true,
-                    response: Some(text),
-                    error: None,
-                    agent_id: Some(agent_id.to_string()),
-                }).await?;
+                send_json(
+                    &mut stream,
+                    200,
+                    &WebhookResponse {
+                        ok: true,
+                        response: Some(text),
+                        error: None,
+                        agent_id: Some(agent_id.to_string()),
+                    },
+                )
+                .await?;
             }
             Err(e) => {
                 error!("[webhook] Agent error: {}", e);
-                send_json(&mut stream, 500, &WebhookResponse {
-                    ok: false, response: None,
-                    error: Some(format!("Agent error: {}", e)),
-                    agent_id: Some(agent_id.to_string()),
-                }).await?;
+                send_json(
+                    &mut stream,
+                    500,
+                    &WebhookResponse {
+                        ok: false,
+                        response: None,
+                        error: Some(format!("Agent error: {}", e)),
+                        agent_id: Some(agent_id.to_string()),
+                    },
+                )
+                .await?;
             }
         }
         return Ok(());
     }
 
     // ── 404 for anything else ───────────────────────────────────────
-    send_json(&mut stream, 404, &WebhookResponse {
-        ok: false, response: None,
-        error: Some(format!("Not found: {} {}", method, path)),
-        agent_id: None,
-    }).await?;
+    send_json(
+        &mut stream,
+        404,
+        &WebhookResponse {
+            ok: false,
+            response: None,
+            error: Some(format!("Not found: {} {}", method, path)),
+            agent_id: None,
+        },
+    )
+    .await?;
     Ok(())
 }
 
@@ -447,13 +542,14 @@ async fn send_json(
         501 => "Not Implemented",
         _ => "Unknown",
     };
-    let json = serde_json::to_string(body)
-        .map_err(|e| format!("Serialize error: {}", e))?;
+    let json = serde_json::to_string(body).map_err(|e| format!("Serialize error: {}", e))?;
     let resp = format!(
         "HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nAccess-Control-Allow-Origin: *\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         status, status_text, json.len(), json
     );
-    stream.write_all(resp.as_bytes()).await
+    stream
+        .write_all(resp.as_bytes())
+        .await
         .map_err(|e| format!("Write error: {}", e))?;
     Ok(())
 }

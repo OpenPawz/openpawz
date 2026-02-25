@@ -3,12 +3,12 @@
 // Calls Ollama or OpenAI-compatible embedding APIs to produce vector
 // representations of text. Used by the memory system for semantic search.
 
+use crate::atoms::error::EngineResult;
 use crate::engine::types::*;
 use log::{info, warn};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
-use crate::atoms::error::EngineResult;
 
 /// Track whether we've already tried to pull the model this session.
 static MODEL_PULL_ATTEMPTED: AtomicBool = AtomicBool::new(false);
@@ -48,13 +48,21 @@ impl EmbeddingClient {
 
         // If model not found, try auto-pulling it (once per session)
         let ollama_err_str = ollama_err.to_string();
-        if (ollama_err_str.contains("not found") || ollama_err_str.contains("404") || ollama_err_str.contains("does not exist"))
+        if (ollama_err_str.contains("not found")
+            || ollama_err_str.contains("404")
+            || ollama_err_str.contains("does not exist"))
             && !MODEL_PULL_ATTEMPTED.swap(true, Ordering::SeqCst)
         {
-            info!("[memory] Model '{}' not found, attempting auto-pull...", self.model);
+            info!(
+                "[memory] Model '{}' not found, attempting auto-pull...",
+                self.model
+            );
             match self.pull_model().await {
                 Ok(()) => {
-                    info!("[memory] Model '{}' pulled successfully, retrying embed", self.model);
+                    info!(
+                        "[memory] Model '{}' pulled successfully, retrying embed",
+                        self.model
+                    );
                     let retry = self.embed_ollama(safe_text).await;
                     if let Ok(vec) = retry {
                         return Ok(vec);
@@ -76,7 +84,8 @@ impl EmbeddingClient {
             "Embedding failed. Ollama: {} | OpenAI: {}",
             ollama_err,
             openai_result.unwrap_err()
-        ).into())
+        )
+        .into())
     }
 
     /// Ollama current API: POST /api/embed { model, input } → { embeddings: [[f32...]] }
@@ -89,7 +98,9 @@ impl EmbeddingClient {
             "input": text,
         });
 
-        let new_result = self.client.post(&new_url)
+        let new_result = self
+            .client
+            .post(&new_url)
             .json(&new_body)
             .timeout(std::time::Duration::from_secs(60))
             .send()
@@ -101,7 +112,8 @@ impl EmbeddingClient {
                     // New format returns { embeddings: [[f32...], ...] }
                     if let Some(embeddings) = v["embeddings"].as_array() {
                         if let Some(first) = embeddings.first().and_then(|e| e.as_array()) {
-                            let vec: Vec<f32> = first.iter()
+                            let vec: Vec<f32> = first
+                                .iter()
                                 .filter_map(|v| v.as_f64().map(|f| f as f32))
                                 .collect();
                             if !vec.is_empty() {
@@ -111,7 +123,8 @@ impl EmbeddingClient {
                     }
                     // Some Ollama versions return singular "embedding" even on /api/embed
                     if let Some(embedding) = v["embedding"].as_array() {
-                        let vec: Vec<f32> = embedding.iter()
+                        let vec: Vec<f32> = embedding
+                            .iter()
                             .filter_map(|v| v.as_f64().map(|f| f as f32))
                             .collect();
                         if !vec.is_empty() {
@@ -122,10 +135,16 @@ impl EmbeddingClient {
             } else {
                 let status = resp.status();
                 let body = resp.text().await.unwrap_or_default();
-                if status.as_u16() == 404 || body.contains("not found") || body.contains("does not exist") {
+                if status.as_u16() == 404
+                    || body.contains("not found")
+                    || body.contains("does not exist")
+                {
                     return Err(format!("Model '{}' not found — {}", self.model, body).into());
                 }
-                info!("[memory] New /api/embed returned {} — trying legacy endpoint", status);
+                info!(
+                    "[memory] New /api/embed returned {} — trying legacy endpoint",
+                    status
+                );
             }
         }
 
@@ -136,12 +155,19 @@ impl EmbeddingClient {
             "prompt": text,
         });
 
-        let resp = self.client.post(&legacy_url)
+        let resp = self
+            .client
+            .post(&legacy_url)
             .json(&legacy_body)
             .timeout(std::time::Duration::from_secs(60))
             .send()
             .await
-            .map_err(|e| format!("Ollama not reachable at {} — is Ollama running? Error: {}", self.base_url, e))?;
+            .map_err(|e| {
+                format!(
+                    "Ollama not reachable at {} — is Ollama running? Error: {}",
+                    self.base_url, e
+                )
+            })?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -151,10 +177,12 @@ impl EmbeddingClient {
 
         let v: Value = resp.json().await?;
 
-        let embedding = v["embedding"].as_array()
+        let embedding = v["embedding"]
+            .as_array()
             .ok_or_else(|| "No 'embedding' array in Ollama response".to_string())?;
 
-        let vec: Vec<f32> = embedding.iter()
+        let vec: Vec<f32> = embedding
+            .iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
             .collect();
 
@@ -173,7 +201,9 @@ impl EmbeddingClient {
             "input": text,
         });
 
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .json(&body)
             .timeout(std::time::Duration::from_secs(30))
             .send()
@@ -187,10 +217,12 @@ impl EmbeddingClient {
 
         let v: Value = resp.json().await?;
 
-        let embedding = v["data"][0]["embedding"].as_array()
+        let embedding = v["data"][0]["embedding"]
+            .as_array()
             .ok_or_else(|| "No 'data[0].embedding' array in OpenAI response".to_string())?;
 
-        let vec: Vec<f32> = embedding.iter()
+        let vec: Vec<f32> = embedding
+            .iter()
             .filter_map(|v| v.as_f64().map(|f| f as f32))
             .collect();
 
@@ -210,7 +242,9 @@ impl EmbeddingClient {
     /// Check if Ollama is reachable.
     pub async fn check_ollama_running(&self) -> EngineResult<bool> {
         let url = format!("{}/api/tags", self.base_url.trim_end_matches('/'));
-        match self.client.get(&url)
+        match self
+            .client
+            .get(&url)
             .timeout(std::time::Duration::from_secs(5))
             .send()
             .await
@@ -223,7 +257,9 @@ impl EmbeddingClient {
     /// Check if the configured model is available in Ollama.
     pub async fn check_model_available(&self) -> EngineResult<bool> {
         let url = format!("{}/api/tags", self.base_url.trim_end_matches('/'));
-        let resp = self.client.get(&url)
+        let resp = self
+            .client
+            .get(&url)
             .timeout(std::time::Duration::from_secs(5))
             .send()
             .await?;
@@ -262,9 +298,14 @@ impl EmbeddingClient {
             "stream": false,
         });
 
-        info!("[memory] Pulling model '{}' from Ollama (this may take a minute)...", self.model);
+        info!(
+            "[memory] Pulling model '{}' from Ollama (this may take a minute)...",
+            self.model
+        );
 
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .json(&body)
             .timeout(std::time::Duration::from_secs(600))
             .send()
@@ -294,9 +335,14 @@ impl EmbeddingClient {
             "stream": true,
         });
 
-        info!("[memory] Pulling model '{}' from Ollama (streaming)...", self.model);
+        info!(
+            "[memory] Pulling model '{}' from Ollama (streaming)...",
+            self.model
+        );
 
-        let resp = self.client.post(&url)
+        let resp = self
+            .client
+            .post(&url)
             .json(&body)
             .timeout(std::time::Duration::from_secs(600))
             .send()
@@ -311,7 +357,9 @@ impl EmbeddingClient {
         let body_text = resp.text().await?;
         for line in body_text.lines() {
             let line = line.trim();
-            if line.is_empty() { continue; }
+            if line.is_empty() {
+                continue;
+            }
             if let Ok(v) = serde_json::from_str::<Value>(line) {
                 let status = v["status"].as_str().unwrap_or("downloading");
                 let completed = v["completed"].as_u64().unwrap_or(0);

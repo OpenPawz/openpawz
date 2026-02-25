@@ -1,8 +1,8 @@
 // Paw Agent Engine — Email tools
 // email_send, email_read
 
-use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
+use crate::atoms::types::*;
 use log::info;
 use std::process::Command as ProcessCommand;
 
@@ -70,7 +70,10 @@ pub async fn execute(
                         remapped["to"] = recipient;
                     }
                 }
-                info!("[email] Redirecting {} → {} (email skill disabled, google_workspace enabled)", name, google_name);
+                info!(
+                    "[email] Redirecting {} → {} (email skill disabled, google_workspace enabled)",
+                    name, google_name
+                );
                 return super::google::execute(google_name, &remapped, app_handle).await;
             }
             return Some(Err(
@@ -81,8 +84,12 @@ pub async fn execute(
         }
     };
     Some(match name {
-        "email_send" => execute_email_send(args, &creds).await.map_err(|e| e.to_string()),
-        "email_read" => execute_email_read(args, &creds).await.map_err(|e| e.to_string()),
+        "email_send" => execute_email_send(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "email_read" => execute_email_read(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
         _ => unreachable!(),
     })
 }
@@ -92,15 +99,26 @@ async fn execute_email_send(
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
     let to = args["to"].as_str().ok_or("email_send: missing 'to'")?;
-    let subject = args["subject"].as_str().ok_or("email_send: missing 'subject'")?;
+    let subject = args["subject"]
+        .as_str()
+        .ok_or("email_send: missing 'subject'")?;
     let body = args["body"].as_str().ok_or("email_send: missing 'body'")?;
     let is_html = args["html"].as_bool().unwrap_or(false);
 
-    let host = creds.get("SMTP_HOST").ok_or("Missing SMTP_HOST credential")?;
-    let port: u16 = creds.get("SMTP_PORT").ok_or("Missing SMTP_PORT credential")?
-        .parse().map_err(|_| "Invalid SMTP_PORT")?;
-    let user = creds.get("SMTP_USER").ok_or("Missing SMTP_USER credential")?;
-    let password = creds.get("SMTP_PASSWORD").ok_or("Missing SMTP_PASSWORD credential")?;
+    let host = creds
+        .get("SMTP_HOST")
+        .ok_or("Missing SMTP_HOST credential")?;
+    let port: u16 = creds
+        .get("SMTP_PORT")
+        .ok_or("Missing SMTP_PORT credential")?
+        .parse()
+        .map_err(|_| "Invalid SMTP_PORT")?;
+    let user = creds
+        .get("SMTP_USER")
+        .ok_or("Missing SMTP_USER credential")?;
+    let password = creds
+        .get("SMTP_PASSWORD")
+        .ok_or("Missing SMTP_PASSWORD credential")?;
 
     info!("[skill:email] Sending to {} via {}:{}", to, host, port);
 
@@ -125,11 +143,16 @@ async fn execute_email_send(
     let output = ProcessCommand::new("curl")
         .args([
             "--ssl-reqd",
-            "--url", &url,
-            "--user", &format!("{}:{}", user, password),
-            "--mail-from", user,
-            "--mail-rcpt", to,
-            "-T", "-",
+            "--url",
+            &url,
+            "--user",
+            &format!("{}:{}", user, password),
+            "--mail-from",
+            user,
+            "--mail-rcpt",
+            to,
+            "-T",
+            "-",
         ])
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
@@ -158,21 +181,31 @@ async fn execute_email_read(
     let limit = args["limit"].as_u64().unwrap_or(5);
     let folder = args["folder"].as_str().unwrap_or("INBOX");
 
-    let host = creds.get("IMAP_HOST")
+    let host = creds
+        .get("IMAP_HOST")
         .or_else(|| creds.get("SMTP_HOST"))
         .ok_or("Missing IMAP_HOST credential")?;
     let port = creds.get("IMAP_PORT").map(|p| p.as_str()).unwrap_or("993");
-    let user = creds.get("SMTP_USER").ok_or("Missing SMTP_USER credential")?;
-    let password = creds.get("SMTP_PASSWORD").ok_or("Missing SMTP_PASSWORD credential")?;
+    let user = creds
+        .get("SMTP_USER")
+        .ok_or("Missing SMTP_USER credential")?;
+    let password = creds
+        .get("SMTP_PASSWORD")
+        .ok_or("Missing SMTP_PASSWORD credential")?;
 
-    info!("[skill:email] Reading {} from {}:{}/{}", limit, host, port, folder);
+    info!(
+        "[skill:email] Reading {} from {}:{}/{}",
+        limit, host, port, folder
+    );
 
     let url = format!("imaps://{}:{}/{}", host, port, folder);
     let output = ProcessCommand::new("curl")
         .args([
             "--ssl-reqd",
-            "--url", &format!("{};MAILINDEX=1:{}", url, limit),
-            "--user", &format!("{}:{}", user, password),
+            "--url",
+            &format!("{};MAILINDEX=1:{}", url, limit),
+            "--user",
+            &format!("{}:{}", user, password),
         ])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

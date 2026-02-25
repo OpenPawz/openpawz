@@ -8,7 +8,6 @@ pub use crate::atoms::types::*;
 // These are the data structures that flow through the entire engine.
 // They are independent of any specific AI provider.
 
-
 // ── Utility ────────────────────────────────────────────────────────────
 
 /// UTF-8–safe string truncation.  Returns a `&str` of at most `max_bytes`
@@ -30,43 +29,40 @@ pub fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
 
 // ── Model / Provider Config ────────────────────────────────────────────
 
-
-
 impl ProviderKind {
     pub fn default_base_url(&self) -> &str {
         match self {
-            ProviderKind::OpenAI      => "https://api.openai.com/v1",
-            ProviderKind::Anthropic   => "https://api.anthropic.com",
-            ProviderKind::Google      => "https://generativelanguage.googleapis.com/v1beta",
-            ProviderKind::Ollama      => "http://localhost:11434",
-            ProviderKind::OpenRouter  => "https://openrouter.ai/api/v1",
-            ProviderKind::Custom      => "",
-            ProviderKind::DeepSeek    => "https://api.deepseek.com/v1",
-            ProviderKind::Grok        => "https://api.x.ai/v1",
-            ProviderKind::Mistral     => "https://api.mistral.ai/v1",
-            ProviderKind::Moonshot    => "https://api.moonshot.cn/v1",
+            ProviderKind::OpenAI => "https://api.openai.com/v1",
+            ProviderKind::Anthropic => "https://api.anthropic.com",
+            ProviderKind::Google => "https://generativelanguage.googleapis.com/v1beta",
+            ProviderKind::Ollama => "http://localhost:11434",
+            ProviderKind::OpenRouter => "https://openrouter.ai/api/v1",
+            ProviderKind::Custom => "",
+            ProviderKind::DeepSeek => "https://api.deepseek.com/v1",
+            ProviderKind::Grok => "https://api.x.ai/v1",
+            ProviderKind::Mistral => "https://api.mistral.ai/v1",
+            ProviderKind::Moonshot => "https://api.moonshot.cn/v1",
         }
     }
 }
 
 // ── Messages ───────────────────────────────────────────────────────────
 
-
-
-
 impl MessageContent {
     pub fn as_text(&self) -> String {
         match self {
             MessageContent::Text(s) => s.clone(),
-            MessageContent::Blocks(blocks) => {
-                blocks.iter().filter_map(|b| {
+            MessageContent::Blocks(blocks) => blocks
+                .iter()
+                .filter_map(|b| {
                     if let ContentBlock::Text { text } = b {
                         Some(text.as_str())
                     } else {
                         None
                     }
-                }).collect::<Vec<_>>().join("")
-            }
+                })
+                .collect::<Vec<_>>()
+                .join(""),
         }
     }
 
@@ -79,15 +75,9 @@ impl MessageContent {
     }
 }
 
-
-
 // ── Tool Calling ───────────────────────────────────────────────────────
 
-
 // A Gemini "thought" part that must be echoed back with function calls
-
-
-
 
 // ── Tool Calling ──────────────────────────────────────────────────────
 // impl ToolDefinition — moved to engine/tools.rs
@@ -95,26 +85,19 @@ impl MessageContent {
 
 // ── Tool Execution Result ──────────────────────────────────────────────
 
-
 // ── Streaming Events (Tauri → Frontend) ────────────────────────────────
-
 
 // ── Session ────────────────────────────────────────────────────────────
 
-
-
 // ── Chat Send Request (from frontend) ──────────────────────────────────
-
 
 // Attachment sent with a chat message (images, files).
 
 // ── Chat Send Response (to frontend) ───────────────────────────────────
 
-
 // ── Provider API response shapes ───────────────────────────────────────
 
 // Unified streaming chunk from any provider
-
 
 // Token usage reported by the API (for metering).
 
@@ -128,7 +111,7 @@ impl MessageContent {
 // ── Model Pricing ─────────────────────────────────────────────────────
 // model_price(), estimate_cost_usd(), classify_task_complexity() — moved to engine/pricing.rs
 // Re-exported via pub use below.
-pub use crate::engine::pricing::{model_price, estimate_cost_usd, classify_task_complexity};
+pub use crate::engine::pricing::{classify_task_complexity, estimate_cost_usd, model_price};
 
 // ── Agent Files (Soul / Persona) ───────────────────────────────────────
 
@@ -144,7 +127,6 @@ pub use crate::engine::pricing::{model_price, estimate_cost_usd, classify_task_c
 
 // Trading policy for auto-approve guidelines.
 // serde default helpers for TradingPolicy live in crate::atoms::types
-
 
 impl Default for TradingPolicy {
     fn default() -> Self {
@@ -200,12 +182,16 @@ impl ModelRouting {
     pub fn resolve(&self, agent_id: &str, role: &str, specialty: &str, fallback: &str) -> String {
         // 1. Per-agent override
         if let Some(m) = self.agent_models.get(agent_id) {
-            if !m.is_empty() { return m.clone(); }
+            if !m.is_empty() {
+                return m.clone();
+            }
         }
         // 2. Per-specialty override
         if !specialty.is_empty() {
             if let Some(m) = self.specialty_models.get(specialty) {
-                if !m.is_empty() { return m.clone(); }
+                if !m.is_empty() {
+                    return m.clone();
+                }
             }
         }
         // 3. Role-based: only "boss" and "worker" have dedicated model fields.
@@ -240,7 +226,10 @@ impl ModelRouting {
 // ── Engine State ───────────────────────────────────────────────────────
 
 // serde default helpers for EngineConfig live in crate::atoms::types
-use crate::atoms::types::{default_user_timezone, default_daily_budget_usd, default_max_concurrent_runs, default_context_window_tokens};
+use crate::atoms::types::{
+    default_context_window_tokens, default_daily_budget_usd, default_max_concurrent_runs,
+    default_user_timezone,
+};
 
 impl Default for EngineConfig {
     fn default() -> Self {
@@ -280,8 +269,5 @@ Be thorough, resourceful, and action-oriented. When the user asks you to do some
 }
 
 // ── Tasks ──────────────────────────────────────────────────────────────
-
-
-
 
 // ── Orchestrator: Projects ────────────────────────────────────────────

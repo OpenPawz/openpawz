@@ -74,17 +74,26 @@ pub enum EngineError {
 impl EngineError {
     /// Create a provider error with name and message.
     pub fn provider(provider: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::Provider { provider: provider.into(), message: message.into() }
+        Self::Provider {
+            provider: provider.into(),
+            message: message.into(),
+        }
     }
 
     /// Create a tool error with name and message.
     pub fn tool(tool: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::Tool { tool: tool.into(), message: message.into() }
+        Self::Tool {
+            tool: tool.into(),
+            message: message.into(),
+        }
     }
 
     /// Create a channel error with name and message.
     pub fn channel(channel: impl Into<String>, message: impl Into<String>) -> Self {
-        Self::Channel { channel: channel.into(), message: message.into() }
+        Self::Channel {
+            channel: channel.into(),
+            message: message.into(),
+        }
     }
 }
 

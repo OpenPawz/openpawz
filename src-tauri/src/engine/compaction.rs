@@ -2,10 +2,10 @@
 // Summarizes long sessions using the AI model, then replaces old messages
 // with a compact summary to free context window space.
 
-use crate::engine::types::*;
+use crate::atoms::error::EngineResult;
 use crate::engine::providers::AnyProvider;
 use crate::engine::sessions::SessionStore;
-use crate::atoms::error::EngineResult;
+use crate::engine::types::*;
 use log::{info, warn};
 use std::sync::Arc;
 
@@ -79,7 +79,10 @@ fn build_summary_prompt(messages: &[StoredMessage]) -> Vec<Message> {
             } else {
                 msg.content.clone()
             };
-            transcript.push_str(&format!("[{}: {} → {}]\n", role_label, name, output_preview));
+            transcript.push_str(&format!(
+                "[{}: {} → {}]\n",
+                role_label, name, output_preview
+            ));
         } else {
             let content_preview = if msg.content.len() > 500 {
                 format!("{}… (truncated)", &msg.content[..500])
@@ -142,7 +145,8 @@ pub async fn compact_session(
         return Err(format!(
             "Session has only {} messages (minimum {} for compaction)",
             total_before, config.min_messages
-        ).into());
+        )
+        .into());
     }
 
     let tokens_before: usize = all_messages.iter().map(estimate_message_tokens).sum();
@@ -233,10 +237,7 @@ pub async fn compact_session(
 
     info!(
         "[compaction] Done: {} → {} messages, ~{} → ~{} tokens",
-        result.messages_before,
-        result.messages_after,
-        result.tokens_before,
-        result.tokens_after
+        result.messages_before, result.messages_after, result.tokens_before, result.tokens_after
     );
 
     Ok(result)
@@ -255,7 +256,11 @@ pub async fn auto_compact_if_needed(
     match store.get_messages(session_id, 10_000) {
         Ok(messages) => {
             if needs_compaction(&messages, &config) {
-                info!("[compaction] Auto-compacting session {} ({} messages)", session_id, messages.len());
+                info!(
+                    "[compaction] Auto-compacting session {} ({} messages)",
+                    session_id,
+                    messages.len()
+                );
                 match compact_session(store, provider, model, session_id, &config).await {
                     Ok(result) => {
                         info!("[compaction] Auto-compact success: {:?}", result);
@@ -271,7 +276,10 @@ pub async fn auto_compact_if_needed(
             }
         }
         Err(e) => {
-            warn!("[compaction] Failed to load messages for auto-compact check: {}", e);
+            warn!(
+                "[compaction] Failed to load messages for auto-compact check: {}",
+                e
+            );
             None
         }
     }

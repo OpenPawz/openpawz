@@ -1,7 +1,7 @@
-use rusqlite::params;
-use crate::engine::types::{Task, TaskActivity, TaskAgent};
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::types::{Task, TaskActivity, TaskAgent};
+use rusqlite::params;
 
 impl Task {
     /// Map a row with columns (id, title, description, status, priority, assigned_agent,
@@ -33,12 +33,14 @@ impl Task {
 /// Populate `task.assigned_agents` for every task in `tasks`.
 /// Uses a single prepared statement to avoid N round-trips.
 fn load_task_agents(conn: &rusqlite::Connection, tasks: &mut [Task]) -> EngineResult<()> {
-    let mut agent_stmt = conn.prepare(
-        "SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at"
-    )?;
+    let mut agent_stmt = conn
+        .prepare("SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at")?;
     for task in tasks.iter_mut() {
         if let Ok(agents) = agent_stmt.query_map(params![task.id], |row| {
-            Ok(TaskAgent { agent_id: row.get(0)?, role: row.get(1)? })
+            Ok(TaskAgent {
+                agent_id: row.get(0)?,
+                role: row.get(1)?,
+            })
         }) {
             task.assigned_agents = agents.filter_map(|r| r.ok()).collect();
         }
@@ -63,7 +65,8 @@ impl SessionStore {
              FROM tasks ORDER BY updated_at DESC"
         )?;
 
-        let mut tasks: Vec<Task> = stmt.query_map([], Task::from_row)?
+        let mut tasks: Vec<Task> = stmt
+            .query_map([], Task::from_row)?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -100,10 +103,20 @@ impl SessionStore {
                     updated_at=datetime('now')
              WHERE id=?1",
             params![
-                task.id, task.title, task.description, task.status, task.priority,
-                task.assigned_agent, task.session_id, task.model, task.cron_schedule,
-                task.cron_enabled as i32, task.last_run_at, task.next_run_at,
-                task.event_trigger, task.persistent as i32,
+                task.id,
+                task.title,
+                task.description,
+                task.status,
+                task.priority,
+                task.assigned_agent,
+                task.session_id,
+                task.model,
+                task.cron_schedule,
+                task.cron_enabled as i32,
+                task.last_run_at,
+                task.next_run_at,
+                task.event_trigger,
+                task.persistent as i32,
             ],
         )?;
         Ok(())
@@ -112,13 +125,23 @@ impl SessionStore {
     /// Delete a task and its activity.
     pub fn delete_task(&self, task_id: &str) -> EngineResult<()> {
         let conn = self.conn.lock();
-        conn.execute("DELETE FROM task_activity WHERE task_id = ?1", params![task_id])?;
+        conn.execute(
+            "DELETE FROM task_activity WHERE task_id = ?1",
+            params![task_id],
+        )?;
         conn.execute("DELETE FROM tasks WHERE id = ?1", params![task_id])?;
         Ok(())
     }
 
     /// Add an activity entry for a task.
-    pub fn add_task_activity(&self, id: &str, task_id: &str, kind: &str, agent: Option<&str>, content: &str) -> EngineResult<()> {
+    pub fn add_task_activity(
+        &self,
+        id: &str,
+        task_id: &str,
+        kind: &str,
+        agent: Option<&str>,
+        content: &str,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO task_activity (id, task_id, kind, agent, content)
@@ -134,21 +157,22 @@ impl SessionStore {
         let mut stmt = conn.prepare(
             "SELECT id, task_id, kind, agent, content, created_at
              FROM task_activity WHERE task_id = ?1
-             ORDER BY created_at DESC LIMIT ?2"
+             ORDER BY created_at DESC LIMIT ?2",
         )?;
 
-        let entries = stmt.query_map(params![task_id, limit], |row| {
-            Ok(TaskActivity {
-                id: row.get(0)?,
-                task_id: row.get(1)?,
-                kind: row.get(2)?,
-                agent: row.get(3)?,
-                content: row.get(4)?,
-                created_at: row.get(5)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let entries = stmt
+            .query_map(params![task_id, limit], |row| {
+                Ok(TaskActivity {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    kind: row.get(2)?,
+                    agent: row.get(3)?,
+                    content: row.get(4)?,
+                    created_at: row.get(5)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(entries)
     }
@@ -158,21 +182,22 @@ impl SessionStore {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, task_id, kind, agent, content, created_at
-             FROM task_activity ORDER BY created_at DESC LIMIT ?1"
+             FROM task_activity ORDER BY created_at DESC LIMIT ?1",
         )?;
 
-        let entries = stmt.query_map(params![limit], |row| {
-            Ok(TaskActivity {
-                id: row.get(0)?,
-                task_id: row.get(1)?,
-                kind: row.get(2)?,
-                agent: row.get(3)?,
-                content: row.get(4)?,
-                created_at: row.get(5)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let entries = stmt
+            .query_map(params![limit], |row| {
+                Ok(TaskActivity {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    kind: row.get(2)?,
+                    agent: row.get(3)?,
+                    content: row.get(4)?,
+                    created_at: row.get(5)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(entries)
     }
@@ -188,7 +213,8 @@ impl SessionStore {
              FROM tasks WHERE cron_enabled = 1 AND next_run_at IS NOT NULL AND next_run_at <= ?1"
         )?;
 
-        let mut tasks: Vec<Task> = stmt.query_map(params![now], Task::from_row)?
+        let mut tasks: Vec<Task> = stmt
+            .query_map(params![now], Task::from_row)?
             .filter_map(|r| r.ok())
             .collect();
 
@@ -198,7 +224,12 @@ impl SessionStore {
     }
 
     /// Update a task's cron run timestamps.
-    pub fn update_task_cron_run(&self, task_id: &str, last_run: &str, next_run: Option<&str>) -> EngineResult<()> {
+    pub fn update_task_cron_run(
+        &self,
+        task_id: &str,
+        last_run: &str,
+        next_run: Option<&str>,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         conn.execute(
             "UPDATE tasks SET last_run_at = ?2, next_run_at = ?3, updated_at = datetime('now') WHERE id = ?1",
@@ -213,7 +244,10 @@ impl SessionStore {
     pub fn set_task_agents(&self, task_id: &str, agents: &[TaskAgent]) -> EngineResult<()> {
         let conn = self.conn.lock();
         // Clear existing
-        conn.execute("DELETE FROM task_agents WHERE task_id = ?1", params![task_id])?;
+        conn.execute(
+            "DELETE FROM task_agents WHERE task_id = ?1",
+            params![task_id],
+        )?;
         // Insert new
         for ta in agents {
             conn.execute(
@@ -222,7 +256,10 @@ impl SessionStore {
             )?;
         }
         // Also update legacy assigned_agent to the first lead (or first agent)
-        let primary = agents.iter().find(|a| a.role == "lead").or_else(|| agents.first());
+        let primary = agents
+            .iter()
+            .find(|a| a.role == "lead")
+            .or_else(|| agents.first());
         let primary_id = primary.map(|a| a.agent_id.as_str());
         conn.execute(
             "UPDATE tasks SET assigned_agent = ?2, updated_at = datetime('now') WHERE id = ?1",
@@ -235,17 +272,18 @@ impl SessionStore {
     pub fn get_task_agents(&self, task_id: &str) -> EngineResult<Vec<TaskAgent>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at"
+            "SELECT agent_id, role FROM task_agents WHERE task_id = ?1 ORDER BY added_at",
         )?;
 
-        let agents = stmt.query_map(params![task_id], |row| {
-            Ok(TaskAgent {
-                agent_id: row.get(0)?,
-                role: row.get(1)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let agents = stmt
+            .query_map(params![task_id], |row| {
+                Ok(TaskAgent {
+                    agent_id: row.get(0)?,
+                    role: row.get(1)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
         Ok(agents)
     }
 }

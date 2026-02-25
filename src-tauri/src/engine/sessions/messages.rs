@@ -1,7 +1,7 @@
-use rusqlite::params;
-use crate::engine::types::{StoredMessage, Message, MessageContent, Role, ToolCall, ContentBlock};
-use crate::atoms::error::EngineResult;
 use super::SessionStore;
+use crate::atoms::error::EngineResult;
+use crate::engine::types::{ContentBlock, Message, MessageContent, Role, StoredMessage, ToolCall};
+use rusqlite::params;
 
 impl SessionStore {
     // ── Message CRUD ───────────────────────────────────────────────────
@@ -40,23 +40,24 @@ impl SessionStore {
 
         let mut stmt = conn.prepare(
             "SELECT id, session_id, role, content, tool_calls_json, tool_call_id, name, created_at
-             FROM messages WHERE session_id = ?1 ORDER BY created_at ASC LIMIT ?2"
+             FROM messages WHERE session_id = ?1 ORDER BY created_at ASC LIMIT ?2",
         )?;
 
-        let messages = stmt.query_map(params![session_id, limit], |row| {
-            Ok(StoredMessage {
-                id: row.get(0)?,
-                session_id: row.get(1)?,
-                role: row.get(2)?,
-                content: row.get(3)?,
-                tool_calls_json: row.get(4)?,
-                tool_call_id: row.get(5)?,
-                name: row.get(6)?,
-                created_at: row.get(7)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let messages = stmt
+            .query_map(params![session_id, limit], |row| {
+                Ok(StoredMessage {
+                    id: row.get(0)?,
+                    session_id: row.get(1)?,
+                    role: row.get(2)?,
+                    content: row.get(3)?,
+                    tool_calls_json: row.get(4)?,
+                    tool_call_id: row.get(5)?,
+                    name: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(messages)
     }
@@ -101,7 +102,9 @@ impl SessionStore {
                 _ => Role::User,
             };
 
-            let tool_calls: Option<Vec<ToolCall>> = sm.tool_calls_json.as_ref()
+            let tool_calls: Option<Vec<ToolCall>> = sm
+                .tool_calls_json
+                .as_ref()
                 .and_then(|json| serde_json::from_str(json).ok());
 
             messages.push(Message {
@@ -153,15 +156,24 @@ impl SessionStore {
         let estimate_tokens = |m: &Message| -> usize {
             let text_len = match &m.content {
                 MessageContent::Text(t) => t.len(),
-                MessageContent::Blocks(blocks) => blocks.iter().map(|b| match b {
-                    ContentBlock::Text { text } => text.len(),
-                    ContentBlock::ImageUrl { .. } => 1000, // rough estimate for images
-                    ContentBlock::Document { data, .. } => data.len() / 4, // rough: base64 → chars
-                }).sum(),
+                MessageContent::Blocks(blocks) => blocks
+                    .iter()
+                    .map(|b| match b {
+                        ContentBlock::Text { text } => text.len(),
+                        ContentBlock::ImageUrl { .. } => 1000, // rough estimate for images
+                        ContentBlock::Document { data, .. } => data.len() / 4, // rough: base64 → chars
+                    })
+                    .sum(),
             };
-            let tc_len = m.tool_calls.as_ref().map(|tcs| {
-                tcs.iter().map(|tc| tc.function.arguments.len() + tc.function.name.len() + 20).sum::<usize>()
-            }).unwrap_or(0);
+            let tc_len = m
+                .tool_calls
+                .as_ref()
+                .map(|tcs| {
+                    tcs.iter()
+                        .map(|tc| tc.function.arguments.len() + tc.function.name.len() + 20)
+                        .sum::<usize>()
+                })
+                .unwrap_or(0);
             (text_len + tc_len) / 4 + 4 // +4 for role/overhead tokens
         };
 
@@ -183,7 +195,9 @@ impl SessionStore {
             let mut drop_tokens = running_tokens + total_msg_tokens;
 
             // Find the last user message index — we must never drop past it
-            let last_user_idx = messages.iter().rposition(|m| m.role == Role::User)
+            let last_user_idx = messages
+                .iter()
+                .rposition(|m| m.role == Role::User)
                 .unwrap_or(messages.len().saturating_sub(1));
 
             for (i, &t) in msg_tokens.iter().enumerate() {
@@ -205,8 +219,12 @@ impl SessionStore {
                 messages.insert(0, sys);
             }
 
-            log::info!("[engine] Context truncated: kept {} messages (~{} tokens, was ~{})",
-                messages.len(), drop_tokens, total_tokens);
+            log::info!(
+                "[engine] Context truncated: kept {} messages (~{} tokens, was ~{})",
+                messages.len(),
+                drop_tokens,
+                total_tokens
+            );
         }
 
         // ── Delete failed exchanges (VS Code pattern) ──────────────────
@@ -252,11 +270,19 @@ impl SessionStore {
         };
 
         let give_up_patterns: &[&str] = &[
-            "hitting a wall", "continue to struggle", "rather than continue",
-            "keep running into errors", "i'm unable to", "i am unable to",
-            "tool is broken", "tool isn't working", "consistently failing",
-            "keeps failing", "this approach isn't working",
-            "apologize for the difficulty", "apologize for the inconvenience",
+            "hitting a wall",
+            "continue to struggle",
+            "rather than continue",
+            "keep running into errors",
+            "i'm unable to",
+            "i am unable to",
+            "tool is broken",
+            "tool isn't working",
+            "consistently failing",
+            "keeps failing",
+            "this approach isn't working",
+            "apologize for the difficulty",
+            "apologize for the inconvenience",
         ];
 
         let mut indices_to_remove: HashSet<usize> = HashSet::new();
@@ -297,15 +323,26 @@ impl SessionStore {
 
         // ── Pass 2: find assistant give-up text responses ───────────────
         for (idx, msg) in messages.iter().enumerate() {
-            if msg.role != Role::Assistant { continue; }
-            if msg.tool_calls.as_ref().map(|tc| !tc.is_empty()).unwrap_or(false) { continue; }
+            if msg.role != Role::Assistant {
+                continue;
+            }
+            if msg
+                .tool_calls
+                .as_ref()
+                .map(|tc| !tc.is_empty())
+                .unwrap_or(false)
+            {
+                continue;
+            }
             let text = msg.content.as_text().to_lowercase();
             if give_up_patterns.iter().any(|p| text.contains(p)) {
                 indices_to_remove.insert(idx);
             }
         }
 
-        if indices_to_remove.is_empty() { return; }
+        if indices_to_remove.is_empty() {
+            return;
+        }
 
         // Remove in reverse order to preserve indices
         let mut sorted: Vec<usize> = indices_to_remove.into_iter().collect();
@@ -338,14 +375,20 @@ impl SessionStore {
         // ── Pass 1: strip leading orphan tool results ──────────────────
         // After truncation the first non-system messages might be tool results
         // whose parent assistant message was dropped.
-        let first_non_system = messages.iter().position(|m| m.role != Role::System).unwrap_or(0);
+        let first_non_system = messages
+            .iter()
+            .position(|m| m.role != Role::System)
+            .unwrap_or(0);
         let mut strip_end = first_non_system;
         while strip_end < messages.len() && messages[strip_end].role == Role::Tool {
             strip_end += 1;
         }
         if strip_end > first_non_system {
             let removed = strip_end - first_non_system;
-            log::warn!("[engine] Removing {} orphaned leading tool_result messages", removed);
+            log::warn!(
+                "[engine] Removing {} orphaned leading tool_result messages",
+                removed
+            );
             messages.drain(first_non_system..strip_end);
         }
 
@@ -353,7 +396,11 @@ impl SessionStore {
         let mut i = 0;
         while i < messages.len() {
             let has_tc = messages[i].role == Role::Assistant
-                && messages[i].tool_calls.as_ref().map(|tc| !tc.is_empty()).unwrap_or(false);
+                && messages[i]
+                    .tool_calls
+                    .as_ref()
+                    .map(|tc| !tc.is_empty())
+                    .unwrap_or(false);
 
             if !has_tc {
                 i += 1;

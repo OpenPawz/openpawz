@@ -24,7 +24,11 @@ pub(crate) fn resolve_token(symbol_or_address: &str) -> EngineResult<(String, u8
     Err(EngineError::Other(format!(
         "Unknown token '{}'. Use a known symbol ({}) or provide the ERC-20 contract address.",
         symbol_or_address,
-        KNOWN_TOKENS.iter().map(|(s, _, _)| *s).collect::<Vec<_>>().join(", ")
+        KNOWN_TOKENS
+            .iter()
+            .map(|(s, _, _)| *s)
+            .collect::<Vec<_>>()
+            .join(", ")
     )))
 }
 

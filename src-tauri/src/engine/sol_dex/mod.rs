@@ -15,20 +15,20 @@
 
 pub(crate) mod constants;
 pub(crate) mod helpers;
-pub(crate) mod rpc;
 pub(crate) mod pumpportal;
+pub(crate) mod rpc;
 pub(crate) mod transaction;
 
-pub mod wallet;
-pub mod portfolio;
 pub mod jupiter;
-pub mod transfer;
+pub mod portfolio;
 pub mod price;
+pub mod transfer;
+pub mod wallet;
 
 // ── Re-exports (preserve crate::engine::sol_dex::* API) ──────────────────────
 
-pub use wallet::execute_sol_wallet_create;
-pub use portfolio::{execute_sol_balance, execute_sol_portfolio, execute_sol_token_info};
 pub use jupiter::{execute_sol_quote, execute_sol_swap};
-pub use transfer::execute_sol_transfer;
+pub use portfolio::{execute_sol_balance, execute_sol_portfolio, execute_sol_token_info};
 pub use price::get_token_price_usd;
+pub use transfer::execute_sol_transfer;
+pub use wallet::execute_sol_wallet_create;

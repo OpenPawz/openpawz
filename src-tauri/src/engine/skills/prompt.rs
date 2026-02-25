@@ -2,41 +2,57 @@
 // Assembles skill instructions to inject into agent system prompts.
 // Includes built-in skills, TOML manifest skills, and community skills.
 
-use crate::engine::sessions::SessionStore;
 use super::builtins::builtin_skills;
+use super::community::get_community_skill_instructions;
+use super::status::get_skill_credentials;
 use super::toml::scan_toml_skills;
 use super::types::CredentialField;
-use super::status::get_skill_credentials;
-use super::community::get_community_skill_instructions;
 use crate::atoms::error::EngineResult;
+use crate::engine::sessions::SessionStore;
 
 /// Collect agent instructions from all enabled skills.
 /// Returns a combined string to be injected into the system prompt.
 /// - Prefers custom instructions over defaults (if user edited them).
 /// - For skills with credentials, injects actual decrypted values into placeholders.
 /// - `agent_id` filters community skills to only those assigned to this agent.
-pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> EngineResult<String> {
+pub fn get_enabled_skill_instructions(
+    store: &SessionStore,
+    agent_id: &str,
+) -> EngineResult<String> {
     let definitions = builtin_skills();
     let mut sections: Vec<String> = Vec::new();
 
     // ── Built-in skills ────────────────────────────────────────────────
     for def in &definitions {
         // Use explicit user choice if set, otherwise fall back to definition default
-        let enabled = store.get_skill_enabled_state(&def.id)?
+        let enabled = store
+            .get_skill_enabled_state(&def.id)?
             .unwrap_or(def.default_enabled);
-        if !enabled { continue; }
+        if !enabled {
+            continue;
+        }
 
         // Use custom instructions if set, otherwise fall back to defaults
-        let base_instructions = store.get_skill_custom_instructions(&def.id)?
+        let base_instructions = store
+            .get_skill_custom_instructions(&def.id)?
             .unwrap_or_else(|| def.agent_instructions.clone());
 
-        if base_instructions.is_empty() { continue; }
+        if base_instructions.is_empty() {
+            continue;
+        }
 
         // For skills with credentials, inject actual values into the instructions
         // UNLESS the skill has built-in tool_executor auth (credentials stay server-side)
         let hidden_credential_skills = ["coinbase", "dex"];
-        let instructions = if !def.required_credentials.is_empty() && !hidden_credential_skills.contains(&def.id.as_str()) {
-            inject_credentials_into_instructions(store, &def.id, &def.required_credentials, &base_instructions)
+        let instructions = if !def.required_credentials.is_empty()
+            && !hidden_credential_skills.contains(&def.id.as_str())
+        {
+            inject_credentials_into_instructions(
+                store,
+                &def.id,
+                &def.required_credentials,
+                &base_instructions,
+            )
         } else {
             base_instructions
         };
@@ -48,25 +64,38 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
     }
 
     // ── TOML manifest skills from ~/.paw/skills/ ───────────────────────
-    let builtin_ids: std::collections::HashSet<&str> = definitions.iter().map(|d| d.id.as_str()).collect();
+    let builtin_ids: std::collections::HashSet<&str> =
+        definitions.iter().map(|d| d.id.as_str()).collect();
     let toml_skills = scan_toml_skills();
 
     for entry in &toml_skills {
         let def = &entry.definition;
         // Skip collisions with built-ins
-        if builtin_ids.contains(def.id.as_str()) { continue; }
-        if !store.is_skill_enabled(&def.id).unwrap_or(false) { continue; }
+        if builtin_ids.contains(def.id.as_str()) {
+            continue;
+        }
+        if !store.is_skill_enabled(&def.id).unwrap_or(false) {
+            continue;
+        }
 
-        let base_instructions = store.get_skill_custom_instructions(&def.id)
+        let base_instructions = store
+            .get_skill_custom_instructions(&def.id)
             .ok()
             .flatten()
             .unwrap_or_else(|| def.agent_instructions.clone());
 
-        if base_instructions.is_empty() { continue; }
+        if base_instructions.is_empty() {
+            continue;
+        }
 
         // TOML skills always get credential injection (no hidden-credential exceptions)
         let instructions = if !def.required_credentials.is_empty() {
-            inject_credentials_into_instructions(store, &def.id, &def.required_credentials, &base_instructions)
+            inject_credentials_into_instructions(
+                store,
+                &def.id,
+                &def.required_credentials,
+                &base_instructions,
+            )
         } else {
             base_instructions
         };
@@ -80,7 +109,8 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
     // Also include enabled community skills scoped to this agent.
     // Community skills are treated as additional sections so they participate
     // in the same compression/budget logic as built-in + TOML skills.
-    let community_instructions = get_community_skill_instructions(store, agent_id).unwrap_or_default();
+    let community_instructions =
+        get_community_skill_instructions(store, agent_id).unwrap_or_default();
     if !community_instructions.is_empty() {
         // Parse community instructions into individual sections so they can
         // be individually compressed just like built-in skills.
@@ -166,15 +196,23 @@ fn compress_skill_sections(sections: &[String], community: &str, budget: usize) 
     let footer = "\n\n⚠️ Some skill instructions were compressed to save context. Use `soul_read` on the skill's documentation or `request_tools` to discover full tool schemas.\n";
     let overhead = header.len() + footer.len();
     // If community text is passed, it must fit inside the budget too
-    let community_reserve = if community.is_empty() { 0 } else { community.len().min(2000) + 2 };
+    let community_reserve = if community.is_empty() {
+        0
+    } else {
+        community.len().min(2000) + 2
+    };
     let section_budget = budget.saturating_sub(overhead + community_reserve);
 
     // Classify: sections with credentials are "priority" (they have actual API keys/URLs)
     let has_credentials = |s: &str| -> bool {
         let sl = s.to_lowercase();
-        sl.contains("api key") || sl.contains("api_key") || sl.contains("bearer ")
-            || sl.contains("token:") || sl.contains("credentials available")
-            || sl.contains("base url:") || sl.contains("endpoint:")
+        sl.contains("api key")
+            || sl.contains("api_key")
+            || sl.contains("bearer ")
+            || sl.contains("token:")
+            || sl.contains("credentials available")
+            || sl.contains("base url:")
+            || sl.contains("endpoint:")
     };
 
     let mut priority_sections: Vec<(usize, &String)> = Vec::new();
@@ -224,7 +262,8 @@ fn compress_skill_sections(sections: &[String], community: &str, budget: usize) 
     // Sort by original index so ordering is preserved
     output_parts.sort_by_key(|(idx, _)| *idx);
 
-    let joined: String = output_parts.into_iter()
+    let joined: String = output_parts
+        .into_iter()
         .map(|(_, s)| s)
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -272,7 +311,10 @@ fn compress_one_section(section: &str, max_chars: usize) -> String {
         body
     };
 
-    format!("{}{}\n[... truncated — use `request_tools` for full tool details]", header, truncated_body)
+    format!(
+        "{}{}\n[... truncated — use `request_tools` for full tool details]",
+        header, truncated_body
+    )
 }
 
 /// Inject decrypted credential values into instruction text.
@@ -286,11 +328,12 @@ fn inject_credentials_into_instructions(
 ) -> String {
     match get_skill_credentials(store, skill_id) {
         Ok(creds) if !creds.is_empty() => {
-            let cred_lines: Vec<String> = required_credentials.iter()
+            let cred_lines: Vec<String> = required_credentials
+                .iter()
                 .filter_map(|field| {
-                    creds.get(&field.key).map(|val| {
-                        format!("- {} = {}", field.key, val)
-                    })
+                    creds
+                        .get(&field.key)
+                        .map(|val| format!("- {} = {}", field.key, val))
                 })
                 .collect();
 

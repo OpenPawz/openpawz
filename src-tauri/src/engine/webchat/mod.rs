@@ -21,8 +21,11 @@ mod html;
 mod server;
 mod session;
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{debug, info, warn, error};
+use crate::atoms::error::{EngineError, EngineResult};
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use futures::stream::StreamExt;
+use futures::SinkExt;
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
@@ -30,9 +33,6 @@ use std::sync::Arc;
 use tauri::Emitter;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use futures::stream::StreamExt;
-use futures::SinkExt;
-use crate::atoms::error::{EngineResult, EngineError};
 
 // ── Web Chat Config ────────────────────────────────────────────────────
 
@@ -92,7 +92,9 @@ static MESSAGE_COUNT: AtomicI64 = AtomicI64::new(0);
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "webchat_config";
@@ -136,7 +138,10 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
     stop.store(false, Ordering::Relaxed);
     BRIDGE_RUNNING.store(true, Ordering::Relaxed);
 
-    info!("[webchat] Starting on {}:{}", config.bind_address, config.port);
+    info!(
+        "[webchat] Starting on {}:{}",
+        config.bind_address, config.port
+    );
 
     tauri::async_runtime::spawn(async move {
         if let Err(e) = server::run_server(app_handle, config).await {
@@ -179,8 +184,13 @@ async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(
     config: Arc<WebChatConfig>,
     username: String,
 ) -> EngineResult<()> {
-    let ws_stream = tokio_tungstenite::accept_async(stream).await
-        .map_err(|e| EngineError::Channel { channel: "webchat".into(), message: e.to_string() })?;
+    let ws_stream =
+        tokio_tungstenite::accept_async(stream)
+            .await
+            .map_err(|e| EngineError::Channel {
+                channel: "webchat".into(),
+                message: e.to_string(),
+            })?;
 
     let (mut ws_sender, mut ws_receiver) = ws_stream.split();
 
@@ -199,11 +209,14 @@ async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(
         let denial_str = denial_msg.to_string();
         // Save updated pending_users
         let _ = save_config(&app_handle, &current_config);
-        let _ = app_handle.emit("webchat-status", json!({
-            "kind": "pairing_request",
-            "username": &username,
-            "peer": peer.to_string(),
-        }));
+        let _ = app_handle.emit(
+            "webchat-status",
+            json!({
+                "kind": "pairing_request",
+                "username": &username,
+                "peer": peer.to_string(),
+            }),
+        );
 
         let msg = json!({ "type": "system", "text": denial_str });
         let _ = ws_sender.send(WsMessage::Text(msg.to_string())).await;
@@ -238,13 +251,20 @@ async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(
             WsMessage::Text(text) => {
                 let text = text.to_string();
                 // Parse incoming JSON: { "type": "message", "text": "hello" }
-                let incoming: serde_json::Value = serde_json::from_str(&text).unwrap_or(json!({"text": text}));
+                let incoming: serde_json::Value =
+                    serde_json::from_str(&text).unwrap_or(json!({"text": text}));
                 let user_text = incoming["text"].as_str().unwrap_or("").trim().to_string();
 
-                if user_text.is_empty() { continue; }
+                if user_text.is_empty() {
+                    continue;
+                }
 
                 MESSAGE_COUNT.fetch_add(1, Ordering::Relaxed);
-                debug!("[webchat] {} says: {}", username, &user_text[..user_text.len().min(80)]);
+                debug!(
+                    "[webchat] {} says: {}",
+                    username,
+                    &user_text[..user_text.len().min(80)]
+                );
 
                 // Send typing indicator
                 let typing = json!({ "type": "typing" });
@@ -259,14 +279,19 @@ async fn handle_websocket<S: AsyncRead + AsyncWrite + Unpin>(
                     &username,
                     &agent_id,
                     config.allow_dangerous_tools,
-                ).await;
+                )
+                .await;
 
                 let response = match reply {
                     Ok(text) => json!({ "type": "message", "text": text }),
                     Err(e) => json!({ "type": "error", "text": format!("Error: {}", e) }),
                 };
 
-                if ws_sender.send(WsMessage::Text(response.to_string())).await.is_err() {
+                if ws_sender
+                    .send(WsMessage::Text(response.to_string()))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
             }

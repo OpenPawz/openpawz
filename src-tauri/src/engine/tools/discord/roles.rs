@@ -3,9 +3,9 @@
 // Tools: discord_list_roles, discord_create_role, discord_delete_role,
 //        discord_assign_role, discord_remove_role
 
-use crate::atoms::types::*;
+use super::{authorized_client, discord_request, get_bot_token, resolve_server_id, DISCORD_API};
 use crate::atoms::error::EngineResult;
-use super::{DISCORD_API, get_bot_token, resolve_server_id, authorized_client, discord_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -15,7 +15,9 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "discord_list_roles".into(),
-                description: "List all roles in a Discord server with IDs, names, colors, and permissions.".into(),
+                description:
+                    "List all roles in a Discord server with IDs, names, colors, and permissions."
+                        .into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -99,11 +101,27 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "discord_list_roles"   => Some(exec_list(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_create_role"  => Some(exec_create(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_delete_role"  => Some(exec_delete(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_assign_role"  => Some(exec_assign(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_remove_role"  => Some(exec_remove(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_list_roles" => Some(exec_list(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_create_role" => Some(
+            exec_create(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "discord_delete_role" => Some(
+            exec_delete(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "discord_assign_role" => Some(
+            exec_assign(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "discord_remove_role" => Some(
+            exec_remove(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -124,11 +142,29 @@ async fn exec_list(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
         let name = role["name"].as_str().unwrap_or("?");
         let id = role["id"].as_str().unwrap_or("?");
         let color = role["color"].as_i64().unwrap_or(0);
-        let members = role["member_count"].as_i64().map(|n| format!(" ({} members)", n)).unwrap_or_default();
-        let hoist = if role["hoist"].as_bool().unwrap_or(false) { " [hoisted]" } else { "" };
-        let managed = if role["managed"].as_bool().unwrap_or(false) { " [managed]" } else { "" };
-        let color_hex = if color > 0 { format!(" #{:06X}", color) } else { String::new() };
-        lines.push(format!("• **{}** (id: {}){}{}{}{}", name, id, color_hex, hoist, managed, members));
+        let members = role["member_count"]
+            .as_i64()
+            .map(|n| format!(" ({} members)", n))
+            .unwrap_or_default();
+        let hoist = if role["hoist"].as_bool().unwrap_or(false) {
+            " [hoisted]"
+        } else {
+            ""
+        };
+        let managed = if role["managed"].as_bool().unwrap_or(false) {
+            " [managed]"
+        } else {
+            ""
+        };
+        let color_hex = if color > 0 {
+            format!(" #{:06X}", color)
+        } else {
+            String::new()
+        };
+        lines.push(format!(
+            "• **{}** (id: {}){}{}{}{}",
+            name, id, color_hex, hoist, managed, members
+        ));
     }
     Ok(lines.join("\n"))
 }
@@ -142,10 +178,18 @@ async fn exec_create(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
 
     let name = args["name"].as_str().ok_or("Missing 'name'")?;
     let mut body = json!({ "name": name });
-    if let Some(c) = args["color"].as_i64() { body["color"] = json!(c); }
-    if let Some(h) = args["hoist"].as_bool() { body["hoist"] = json!(h); }
-    if let Some(m) = args["mentionable"].as_bool() { body["mentionable"] = json!(m); }
-    if let Some(p) = args["permissions"].as_str() { body["permissions"] = json!(p); }
+    if let Some(c) = args["color"].as_i64() {
+        body["color"] = json!(c);
+    }
+    if let Some(h) = args["hoist"].as_bool() {
+        body["hoist"] = json!(h);
+    }
+    if let Some(m) = args["mentionable"].as_bool() {
+        body["mentionable"] = json!(m);
+    }
+    if let Some(p) = args["permissions"].as_str() {
+        body["permissions"] = json!(p);
+    }
 
     let url = format!("{}/guilds/{}/roles", DISCORD_API, server_id);
     let result = discord_request(&client, reqwest::Method::POST, &url, &auth, Some(&body)).await?;
@@ -179,10 +223,16 @@ async fn exec_assign(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let token = get_bot_token(app_handle)?;
     let (client, auth) = authorized_client(&token);
 
-    let url = format!("{}/guilds/{}/members/{}/roles/{}", DISCORD_API, server_id, user_id, role_id);
+    let url = format!(
+        "{}/guilds/{}/members/{}/roles/{}",
+        DISCORD_API, server_id, user_id, role_id
+    );
     discord_request(&client, reqwest::Method::PUT, &url, &auth, None).await?;
 
-    Ok(format!("Assigned role {} to user {} in guild {}", role_id, user_id, server_id))
+    Ok(format!(
+        "Assigned role {} to user {} in guild {}",
+        role_id, user_id, server_id
+    ))
 }
 
 // ── remove ─────────────────────────────────────────────────────────────
@@ -194,8 +244,14 @@ async fn exec_remove(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let token = get_bot_token(app_handle)?;
     let (client, auth) = authorized_client(&token);
 
-    let url = format!("{}/guilds/{}/members/{}/roles/{}", DISCORD_API, server_id, user_id, role_id);
+    let url = format!(
+        "{}/guilds/{}/members/{}/roles/{}",
+        DISCORD_API, server_id, user_id, role_id
+    );
     discord_request(&client, reqwest::Method::DELETE, &url, &auth, None).await?;
 
-    Ok(format!("Removed role {} from user {} in guild {}", role_id, user_id, server_id))
+    Ok(format!(
+        "Removed role {} from user {} in guild {}",
+        role_id, user_id, server_id
+    ))
 }

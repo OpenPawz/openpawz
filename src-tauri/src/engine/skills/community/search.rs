@@ -7,14 +7,13 @@ pub async fn search_community_skills(query: &str) -> EngineResult<Vec<Discovered
     let client = reqwest::Client::new();
 
     let encoded_query = query.replace(' ', "+");
-    let search_url = format!(
-        "https://skills.sh/api/search?q={}",
-        encoded_query
-    );
+    let search_url = format!("https://skills.sh/api/search?q={}", encoded_query);
 
-    let resp = client.get(&search_url)
+    let resp = client
+        .get(&search_url)
         .header("User-Agent", "Pawz/1.0")
-        .send().await?;
+        .send()
+        .await?;
 
     if !resp.status().is_success() {
         let status = resp.status();
@@ -25,8 +24,7 @@ pub async fn search_community_skills(query: &str) -> EngineResult<Vec<Discovered
     let data: serde_json::Value = resp.json().await?;
 
     let empty_vec = vec![];
-    let items = data["skills"].as_array()
-        .unwrap_or(&empty_vec);
+    let items = data["skills"].as_array().unwrap_or(&empty_vec);
 
     let mut skills = Vec::new();
 

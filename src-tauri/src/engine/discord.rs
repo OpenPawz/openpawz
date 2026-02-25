@@ -11,16 +11,16 @@
 //   - Optional pairing mode (first DM from unknown user → pending approval)
 //   - All communication goes through Discord's TLS gateway + REST API
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{info, warn, error};
+use crate::atoms::error::{EngineError, EngineResult};
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use futures::{SinkExt, StreamExt};
+use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
-use futures::{SinkExt, StreamExt};
-use crate::atoms::error::{EngineResult, EngineError};
 
 /// Maximum reconnect attempts before giving up entirely.
 const MAX_RECONNECT_ATTEMPTS: u32 = 8;
@@ -31,8 +31,8 @@ const MAX_RECONNECT_ATTEMPTS: u32 = 8;
 struct GatewayPayload {
     op: u8,
     d: Option<serde_json::Value>,
-    s: Option<u64>,         // sequence number
-    t: Option<String>,      // event name
+    s: Option<u64>,    // sequence number
+    t: Option<String>, // event name
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,7 +90,9 @@ pub struct DiscordConfig {
     pub server_id: Option<String>,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl Default for DiscordConfig {
     fn default() -> Self {
@@ -117,7 +119,9 @@ static BOT_USERNAME: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const DISCORD_GATEWAY_URL: &str = "wss://gateway.discord.gg/?v=10&encoding=json";
@@ -131,8 +135,8 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
         return Err("Discord bridge is already running".into());
     }
 
-    let mut config: DiscordConfig = channels::load_channel_config(&app_handle, CONFIG_KEY)
-        .unwrap_or_default();
+    let mut config: DiscordConfig =
+        channels::load_channel_config(&app_handle, CONFIG_KEY).unwrap_or_default();
 
     // ── Skill-credential sync ──────────────────────────────────────────
     // The skill vault is the source of truth for the bot token. Users
@@ -177,7 +181,9 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
             match run_gateway_loop(app_handle.clone(), live_config.clone()).await {
                 Ok(()) => break, // Clean shutdown
                 Err(e) => {
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
 
                     // ── Fatal error classification ─────────────────────────
                     // 4004 and 4014 are non-recoverable without user action.
@@ -186,38 +192,61 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
 
                     if is_fatal {
                         error!("[discord] Fatal: {} — stopping (user must fix config)", msg);
-                        let _ = app_handle.emit("discord-status", json!({
-                            "kind": "error",
-                            "message": msg,
-                        }));
+                        let _ = app_handle.emit(
+                            "discord-status",
+                            json!({
+                                "kind": "error",
+                                "message": msg,
+                            }),
+                        );
                         break;
                     }
 
                     reconnect_attempt += 1;
                     if reconnect_attempt > MAX_RECONNECT_ATTEMPTS {
-                        error!("[discord] Max reconnect attempts ({}) reached — giving up", MAX_RECONNECT_ATTEMPTS);
+                        error!(
+                            "[discord] Max reconnect attempts ({}) reached — giving up",
+                            MAX_RECONNECT_ATTEMPTS
+                        );
                         break;
                     }
 
                     error!("[discord] Bridge error: {} — reconnecting", e);
                     let delay = crate::engine::http::reconnect_delay(reconnect_attempt - 1).await;
-                    warn!("[discord] Reconnecting in {}ms (attempt {})", delay.as_millis(), reconnect_attempt);
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    warn!(
+                        "[discord] Reconnecting in {}ms (attempt {})",
+                        delay.as_millis(),
+                        reconnect_attempt
+                    );
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
 
                     // ── Re-read config on reconnect ────────────────────────
                     // The user may have updated the token while we were
                     // retrying.  Skill vault is source of truth.
-                    if let Ok(fresh) = channels::load_channel_config::<DiscordConfig>(&app_handle, CONFIG_KEY) {
+                    if let Ok(fresh) =
+                        channels::load_channel_config::<DiscordConfig>(&app_handle, CONFIG_KEY)
+                    {
                         live_config = fresh;
                     }
-                    if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
-                        if let Ok(creds) = crate::engine::skills::get_skill_credentials(&state.store, "discord") {
+                    if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>()
+                    {
+                        if let Ok(creds) =
+                            crate::engine::skills::get_skill_credentials(&state.store, "discord")
+                        {
                             if let Some(token) = creds.get("DISCORD_BOT_TOKEN") {
                                 if !token.is_empty() && *token != live_config.bot_token {
-                                    info!("[discord] Picked up updated token from skill credentials");
+                                    info!(
+                                        "[discord] Picked up updated token from skill credentials"
+                                    );
                                     live_config.bot_token = token.clone();
                                     live_config.enabled = true;
-                                    let _ = channels::save_channel_config(&app_handle, CONFIG_KEY, &live_config);
+                                    let _ = channels::save_channel_config(
+                                        &app_handle,
+                                        CONFIG_KEY,
+                                        &live_config,
+                                    );
                                 }
                             }
                         }
@@ -245,7 +274,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
-    let config: DiscordConfig = channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
+    let config: DiscordConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed),
@@ -266,30 +296,45 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
     let token = config.bot_token.clone();
 
     // Connect to Gateway
-    let (ws_stream, _) = connect_async(DISCORD_GATEWAY_URL)
-        .await
-        .map_err(|e| EngineError::Channel { channel: "discord".into(), message: e.to_string() })?;
+    let (ws_stream, _) =
+        connect_async(DISCORD_GATEWAY_URL)
+            .await
+            .map_err(|e| EngineError::Channel {
+                channel: "discord".into(),
+                message: e.to_string(),
+            })?;
 
     let (mut write, mut read) = ws_stream.split();
 
     // Read Hello (op 10) to get heartbeat interval
-    let hello = read.next().await
+    let hello = read
+        .next()
+        .await
         .ok_or("Gateway closed before Hello")?
-        .map_err(|e| EngineError::Channel { channel: "discord".into(), message: e.to_string() })?;
-    let hello_payload: GatewayPayload = serde_json::from_str(
-        hello.to_text().map_err(|e| EngineError::Channel { channel: "discord".into(), message: e.to_string() })?
-    )?;
+        .map_err(|e| EngineError::Channel {
+            channel: "discord".into(),
+            message: e.to_string(),
+        })?;
+    let hello_payload: GatewayPayload =
+        serde_json::from_str(hello.to_text().map_err(|e| EngineError::Channel {
+            channel: "discord".into(),
+            message: e.to_string(),
+        })?)?;
 
     if hello_payload.op != 10 {
         return Err(format!("Expected Hello (op 10), got op {}", hello_payload.op).into());
     }
 
-    let heartbeat_interval = hello_payload.d
+    let heartbeat_interval = hello_payload
+        .d
         .as_ref()
         .and_then(|d| d["heartbeat_interval"].as_u64())
         .unwrap_or(41250);
 
-    info!("[discord] Connected to gateway, heartbeat_interval={}ms", heartbeat_interval);
+    info!(
+        "[discord] Connected to gateway, heartbeat_interval={}ms",
+        heartbeat_interval
+    );
 
     // Send Identify (op 2)
     // Intents: GUILDS (1<<0) + GUILD_MESSAGES (1<<9) + DIRECT_MESSAGES (1<<12) + MESSAGE_CONTENT (1<<15)
@@ -314,9 +359,13 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
             }
         }
     });
-    write.send(WsMessage::Text(identify.to_string()))
+    write
+        .send(WsMessage::Text(identify.to_string()))
         .await
-        .map_err(|e| EngineError::Channel { channel: "discord".into(), message: e.to_string() })?;
+        .map_err(|e| EngineError::Channel {
+            channel: "discord".into(),
+            message: e.to_string(),
+        })?;
 
     // State
     let mut _sequence: Option<u64> = None;
@@ -336,7 +385,9 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
     let heartbeat_task = tauri::async_runtime::spawn(async move {
         loop {
             tokio::time::sleep(std::time::Duration::from_millis(heartbeat_interval_ms)).await;
-            if stop_hb.load(Ordering::Relaxed) { break; }
+            if stop_hb.load(Ordering::Relaxed) {
+                break;
+            }
 
             // Get latest sequence
             let seq = hb_rx.try_recv().ok().flatten();
@@ -351,7 +402,9 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
 
     // Main event loop
     while let Some(msg_result) = read.next().await {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         let msg = match msg_result {
             Ok(m) => m,
@@ -373,7 +426,9 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                         error!("[discord] Authentication failed (4004) — invalid bot token");
                         return Err(EngineError::Channel {
                             channel: "discord".into(),
-                            message: "Invalid bot token. Check your token at discord.com/developers.".into(),
+                            message:
+                                "Invalid bot token. Check your token at discord.com/developers."
+                                    .into(),
                         });
                     }
                     4014 => {
@@ -418,17 +473,23 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                     "READY" => {
                         if let Some(d) = &payload.d {
                             if let Ok(ready) = serde_json::from_value::<ReadyEvent>(d.clone()) {
-                                info!("[discord] Ready as {} ({})", ready.user.username, ready.user.id);
+                                info!(
+                                    "[discord] Ready as {} ({})",
+                                    ready.user.username, ready.user.id
+                                );
                                 let _ = BOT_USER_ID.set(ready.user.id.clone());
                                 let _ = BOT_USERNAME.set(ready.user.username.clone());
                                 _session_id_discord = Some(ready.session_id);
                                 _resume_url = Some(ready.resume_gateway_url);
 
-                                let _ = app_handle.emit("discord-status", json!({
-                                    "kind": "connected",
-                                    "bot_username": &ready.user.username,
-                                    "bot_id": &ready.user.id,
-                                }));
+                                let _ = app_handle.emit(
+                                    "discord-status",
+                                    json!({
+                                        "kind": "connected",
+                                        "bot_username": &ready.user.username,
+                                        "bot_id": &ready.user.id,
+                                    }),
+                                );
                             }
                         }
                     }
@@ -436,7 +497,9 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                         if let Some(d) = payload.d {
                             if let Ok(discord_msg) = serde_json::from_value::<DiscordMessage>(d) {
                                 // Skip bot messages (including own)
-                                if discord_msg.author.bot.unwrap_or(false) { continue; }
+                                if discord_msg.author.bot.unwrap_or(false) {
+                                    continue;
+                                }
                                 if discord_msg.content.is_empty() {
                                     info!("[discord] Ignoring empty content from {} (guild={:?}) — may need MESSAGE_CONTENT intent",
                                         discord_msg.author.username, discord_msg.guild_id);
@@ -444,34 +507,69 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                                 }
 
                                 let is_dm = discord_msg.guild_id.is_none();
-                                let is_mention = discord_msg.mentions.as_ref()
-                                    .map(|m| m.iter().any(|u| BOT_USER_ID.get().map(|id| id == &u.id).unwrap_or(false)))
+                                let is_mention = discord_msg
+                                    .mentions
+                                    .as_ref()
+                                    .map(|m| {
+                                        m.iter().any(|u| {
+                                            BOT_USER_ID.get().map(|id| id == &u.id).unwrap_or(false)
+                                        })
+                                    })
                                     .unwrap_or(false);
 
                                 // Only respond to DMs or @mentions in servers
-                                if !is_dm && !is_mention { continue; }
-                                if !is_dm && !current_config.respond_to_mentions { continue; }
+                                if !is_dm && !is_mention {
+                                    continue;
+                                }
+                                if !is_dm && !current_config.respond_to_mentions {
+                                    continue;
+                                }
 
                                 // Strip bot mention from message content
                                 let content = if is_mention {
-                                    let bot_id = BOT_USER_ID.get().map(|s| s.as_str()).unwrap_or("");
+                                    let bot_id =
+                                        BOT_USER_ID.get().map(|s| s.as_str()).unwrap_or("");
                                     let mention_pat = format!("<@{}>", bot_id);
-                                    discord_msg.content.replace(&mention_pat, "").trim().to_string()
+                                    discord_msg
+                                        .content
+                                        .replace(&mention_pat, "")
+                                        .trim()
+                                        .to_string()
                                 } else {
                                     discord_msg.content.clone()
                                 };
 
-                                if content.is_empty() { continue; }
+                                if content.is_empty() {
+                                    continue;
+                                }
 
                                 let user_id = discord_msg.author.id.clone();
                                 let username = discord_msg.author.username.clone();
-                                let display_name = discord_msg.author.global_name.clone().unwrap_or(username.clone());
+                                let display_name = discord_msg
+                                    .author
+                                    .global_name
+                                    .clone()
+                                    .unwrap_or(username.clone());
                                 let channel_id = discord_msg.channel_id.clone();
 
-                                info!("[discord] Message from {} ({}) in {}: {}",
-                                    username, user_id,
-                                    if is_dm { "DM".to_string() } else { format!("guild channel {}", channel_id) },
-                                    if content.len() > 80 { format!("{}...", &content[..content.floor_char_boundary(80)]) } else { content.clone() });
+                                info!(
+                                    "[discord] Message from {} ({}) in {}: {}",
+                                    username,
+                                    user_id,
+                                    if is_dm {
+                                        "DM".to_string()
+                                    } else {
+                                        format!("guild channel {}", channel_id)
+                                    },
+                                    if content.len() > 80 {
+                                        format!(
+                                            "{}...",
+                                            &content[..content.floor_char_boundary(80)]
+                                        )
+                                    } else {
+                                        content.clone()
+                                    }
+                                );
 
                                 // Access control (DMs only — mentions in servers bypass for now)
                                 if is_dm {
@@ -484,13 +582,26 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                                         &mut current_config.pending_users,
                                     ) {
                                         let denial_str = denial_msg.to_string();
-                                        let _ = channels::save_channel_config(&app_handle, CONFIG_KEY, &current_config);
-                                        let _ = app_handle.emit("discord-status", json!({
-                                            "kind": "pairing_request",
-                                            "user_id": &user_id,
-                                            "username": &username,
-                                        }));
-                                        let _ = send_message(&http_client, &token, &channel_id, &denial_str).await;
+                                        let _ = channels::save_channel_config(
+                                            &app_handle,
+                                            CONFIG_KEY,
+                                            &current_config,
+                                        );
+                                        let _ = app_handle.emit(
+                                            "discord-status",
+                                            json!({
+                                                "kind": "pairing_request",
+                                                "user_id": &user_id,
+                                                "username": &username,
+                                            }),
+                                        );
+                                        let _ = send_message(
+                                            &http_client,
+                                            &token,
+                                            &channel_id,
+                                            &denial_str,
+                                        )
+                                        .await;
                                         continue;
                                     }
                                 }
@@ -507,7 +618,8 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                                 let uid = user_id.clone();
                                 let cfg_agent = current_config.agent_id.clone();
                                 let cfg_dangerous = current_config.allow_dangerous_tools;
-                                let cfg_server_id = current_config.server_id.clone().unwrap_or_default();
+                                let cfg_server_id =
+                                    current_config.server_id.clone().unwrap_or_default();
 
                                 tauri::async_runtime::spawn(async move {
                                     // Send typing indicator
@@ -518,29 +630,55 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                                     // Build channel context with FULL Discord API reference
                                     // and actual credentials baked in. This goes into the
                                     // base system prompt and bypasses skill compression.
-                                    let server_id = if cfg_server_id.is_empty() { "<unknown — ask user>" } else { &cfg_server_id };
+                                    let server_id = if cfg_server_id.is_empty() {
+                                        "<unknown — ask user>"
+                                    } else {
+                                        &cfg_server_id
+                                    };
                                     let ctx = build_discord_agent_context(server_id, &cid);
 
-                                    info!("[discord] Routing message from {} to agent '{}'", uid, agent_id);
+                                    info!(
+                                        "[discord] Routing message from {} to agent '{}'",
+                                        uid, agent_id
+                                    );
                                     let response = channels::run_channel_agent(
-                                        &ah, "discord", &ctx, &content, &uid, agent_id,
+                                        &ah,
+                                        "discord",
+                                        &ctx,
+                                        &content,
+                                        &uid,
+                                        agent_id,
                                         cfg_dangerous,
-                                    ).await;
+                                    )
+                                    .await;
 
                                     match response {
                                         Ok(ref reply) if !reply.is_empty() => {
-                                            info!("[discord] Sending reply to {} ({} chars)", uid, reply.len());
+                                            info!(
+                                                "[discord] Sending reply to {} ({} chars)",
+                                                uid,
+                                                reply.len()
+                                            );
                                             for chunk in channels::split_message(reply, 1950) {
-                                                let _ = send_message(&http, &tok, &cid, &chunk).await;
+                                                let _ =
+                                                    send_message(&http, &tok, &cid, &chunk).await;
                                             }
                                         }
                                         Ok(_) => {
-                                            warn!("[discord] Agent returned empty reply for {}", uid);
+                                            warn!(
+                                                "[discord] Agent returned empty reply for {}",
+                                                uid
+                                            );
                                         }
                                         Err(e) => {
                                             error!("[discord] Agent error for {}: {}", uid, e);
-                                            let _ = send_message(&http, &tok, &cid,
-                                                &format!("⚠️ Error: {}", e)).await;
+                                            let _ = send_message(
+                                                &http,
+                                                &tok,
+                                                &cid,
+                                                &format!("⚠️ Error: {}", e),
+                                            )
+                                            .await;
                                         }
                                     }
                                 });
@@ -559,7 +697,11 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
             }
             // Invalid Session
             9 => {
-                let resumable = payload.d.as_ref().and_then(|d| d.as_bool()).unwrap_or(false);
+                let resumable = payload
+                    .d
+                    .as_ref()
+                    .and_then(|d| d.as_bool())
+                    .unwrap_or(false);
                 warn!("[discord] Invalid session (resumable={})", resumable);
                 return Err(EngineError::Channel {
                     channel: "discord".into(),
@@ -571,7 +713,9 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
 
         // Reload config periodically
         if last_config_reload.elapsed() > std::time::Duration::from_secs(30) {
-            if let Ok(fresh) = channels::load_channel_config::<DiscordConfig>(&app_handle, CONFIG_KEY) {
+            if let Ok(fresh) =
+                channels::load_channel_config::<DiscordConfig>(&app_handle, CONFIG_KEY)
+            {
                 current_config = fresh;
             }
             last_config_reload = std::time::Instant::now();
@@ -580,9 +724,12 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
 
     heartbeat_task.abort();
 
-    let _ = app_handle.emit("discord-status", json!({
-        "kind": "disconnected",
-    }));
+    let _ = app_handle.emit(
+        "discord-status",
+        json!({
+            "kind": "disconnected",
+        }),
+    );
 
     Ok(())
 }
@@ -594,7 +741,8 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
 // bypassing the skill compression system that truncates long instructions.
 
 fn build_discord_agent_context(server_id: &str, current_channel_id: &str) -> String {
-    format!(r#"You are chatting via Discord. Keep responses concise and conversational.
+    format!(
+        r#"You are chatting via Discord. Keep responses concise and conversational.
 Use Discord markdown (**bold**, *italic*, `code`, ```code blocks```, ||spoilers||).
 Max message length is 2000 characters.
 
@@ -627,16 +775,21 @@ async fn send_message(
     content: &str,
 ) -> EngineResult<()> {
     let url = format!("{}/channels/{}/messages", DISCORD_API, channel_id);
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .header("Authorization", format!("Bot {}", token))
         .json(&json!({ "content": content }))
-        .send().await;
+        .send()
+        .await;
 
     match resp {
         Ok(r) if !r.status().is_success() => {
             let status = r.status();
             let body = r.text().await.unwrap_or_default();
-            warn!("[discord] sendMessage {} failed: {} {}", channel_id, status, body);
+            warn!(
+                "[discord] sendMessage {} failed: {} {}",
+                channel_id, status, body
+            );
         }
         Err(e) => warn!("[discord] sendMessage failed: {}", e),
         _ => {}
@@ -644,15 +797,13 @@ async fn send_message(
     Ok(())
 }
 
-async fn send_typing(
-    client: &reqwest::Client,
-    token: &str,
-    channel_id: &str,
-) -> EngineResult<()> {
+async fn send_typing(client: &reqwest::Client, token: &str, channel_id: &str) -> EngineResult<()> {
     let url = format!("{}/channels/{}/typing", DISCORD_API, channel_id);
-    let _ = client.post(&url)
+    let _ = client
+        .post(&url)
         .header("Authorization", format!("Bot {}", token))
-        .send().await;
+        .send()
+        .await;
     Ok(())
 }
 

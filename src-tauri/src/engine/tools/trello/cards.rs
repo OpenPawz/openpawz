@@ -3,9 +3,9 @@
 // Tools: trello_get_cards, trello_create_card, trello_get_card, trello_update_card,
 //        trello_delete_card, trello_move_card, trello_add_comment, trello_search
 
-use crate::atoms::types::*;
+use super::{auth_url, get_credentials, trello_request};
 use crate::atoms::error::EngineResult;
-use super::{get_credentials, auth_url, trello_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -149,14 +149,42 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "trello_get_cards"   => Some(exec_get_cards(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_create_card" => Some(exec_create(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_get_card"    => Some(exec_get_card(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_update_card" => Some(exec_update(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_delete_card" => Some(exec_delete(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_move_card"   => Some(exec_move(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_add_comment" => Some(exec_comment(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_search"      => Some(exec_search(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_get_cards" => Some(
+            exec_get_cards(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_create_card" => Some(
+            exec_create(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_get_card" => Some(
+            exec_get_card(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_update_card" => Some(
+            exec_update(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_delete_card" => Some(
+            exec_delete(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_move_card" => Some(exec_move(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_add_comment" => Some(
+            exec_comment(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_search" => Some(
+            exec_search(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -182,13 +210,28 @@ async fn exec_get_cards(args: &Value, app_handle: &tauri::AppHandle) -> EngineRe
     for c in &cards {
         let name = c["name"].as_str().unwrap_or("?");
         let id = c["id"].as_str().unwrap_or("?");
-        let due = c["due"].as_str().map(|d| format!(" — due: {}", &d[..10.min(d.len())])).unwrap_or_default();
-        let done = if c["dueComplete"].as_bool().unwrap_or(false) { " ✓" } else { "" };
-        let labels: Vec<&str> = c["labels"].as_array()
+        let due = c["due"]
+            .as_str()
+            .map(|d| format!(" — due: {}", &d[..10.min(d.len())]))
+            .unwrap_or_default();
+        let done = if c["dueComplete"].as_bool().unwrap_or(false) {
+            " ✓"
+        } else {
+            ""
+        };
+        let labels: Vec<&str> = c["labels"]
+            .as_array()
             .map(|arr| arr.iter().filter_map(|l| l["name"].as_str()).collect())
             .unwrap_or_default();
-        let label_str = if labels.is_empty() { String::new() } else { format!(" [{}]", labels.join(", ")) };
-        lines.push(format!("• **{}**{}{}{} — `{}`", name, due, done, label_str, id));
+        let label_str = if labels.is_empty() {
+            String::new()
+        } else {
+            format!(" [{}]", labels.join(", "))
+        };
+        lines.push(format!(
+            "• **{}**{}{}{} — `{}`",
+            name, due, done, label_str, id
+        ));
     }
 
     Ok(lines.join("\n"))
@@ -205,9 +248,15 @@ async fn exec_create(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
         "idList": list_id,
         "name": name,
     });
-    if let Some(desc) = args["desc"].as_str() { body["desc"] = json!(desc); }
-    if let Some(due) = args["due"].as_str() { body["due"] = json!(due); }
-    if let Some(pos) = args["pos"].as_str() { body["pos"] = json!(pos); }
+    if let Some(desc) = args["desc"].as_str() {
+        body["desc"] = json!(desc);
+    }
+    if let Some(due) = args["due"].as_str() {
+        body["due"] = json!(due);
+    }
+    if let Some(pos) = args["pos"].as_str() {
+        body["pos"] = json!(pos);
+    }
     if let Some(labels) = args["label_ids"].as_array() {
         let ids: Vec<&str> = labels.iter().filter_map(|v| v.as_str()).collect();
         body["idLabels"] = json!(ids.join(","));
@@ -221,10 +270,16 @@ async fn exec_create(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let data = trello_request(reqwest::Method::POST, &url, Some(&body)).await?;
 
     let card_id = data["id"].as_str().unwrap_or("?");
-    let card_url = data["shortUrl"].as_str().or(data["url"].as_str()).unwrap_or("?");
+    let card_url = data["shortUrl"]
+        .as_str()
+        .or(data["url"].as_str())
+        .unwrap_or("?");
     info!("[trello] Created card: {} ({})", name, card_id);
 
-    Ok(format!("Created card **{}**\nID: `{}`\nURL: {}", name, card_id, card_url))
+    Ok(format!(
+        "Created card **{}**\nID: `{}`\nURL: {}",
+        name, card_id, card_url
+    ))
 }
 
 // ── get card details ───────────────────────────────────────────────────
@@ -241,7 +296,10 @@ async fn exec_get_card(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
 
     let name = data["name"].as_str().unwrap_or("?");
     let desc = data["desc"].as_str().unwrap_or("");
-    let card_url = data["shortUrl"].as_str().or(data["url"].as_str()).unwrap_or("?");
+    let card_url = data["shortUrl"]
+        .as_str()
+        .or(data["url"].as_str())
+        .unwrap_or("?");
 
     let mut lines = vec![
         format!("**Card: {}**", name),
@@ -251,7 +309,11 @@ async fn exec_get_card(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
         lines.push(format!("Description: {}", &desc[..desc.len().min(500)]));
     }
     if let Some(due) = data["due"].as_str() {
-        let done = if data["dueComplete"].as_bool().unwrap_or(false) { " ✓" } else { "" };
+        let done = if data["dueComplete"].as_bool().unwrap_or(false) {
+            " ✓"
+        } else {
+            ""
+        };
         lines.push(format!("Due: {}{}", &due[..10.min(due.len())], done));
     }
 
@@ -307,11 +369,21 @@ async fn exec_update(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let card_id = args["card_id"].as_str().ok_or("Missing 'card_id'")?;
 
     let mut body = json!({});
-    if let Some(name) = args["name"].as_str() { body["name"] = json!(name); }
-    if let Some(desc) = args["desc"].as_str() { body["desc"] = json!(desc); }
-    if let Some(due) = args["due"].as_str() { body["due"] = json!(due); }
-    if let Some(dc) = args["due_complete"].as_bool() { body["dueComplete"] = json!(dc); }
-    if let Some(closed) = args["closed"].as_bool() { body["closed"] = json!(closed); }
+    if let Some(name) = args["name"].as_str() {
+        body["name"] = json!(name);
+    }
+    if let Some(desc) = args["desc"].as_str() {
+        body["desc"] = json!(desc);
+    }
+    if let Some(due) = args["due"].as_str() {
+        body["due"] = json!(due);
+    }
+    if let Some(dc) = args["due_complete"].as_bool() {
+        body["dueComplete"] = json!(dc);
+    }
+    if let Some(closed) = args["closed"].as_bool() {
+        body["closed"] = json!(closed);
+    }
 
     let url = auth_url(&format!("/cards/{}", card_id), &key, &token);
     trello_request(reqwest::Method::PUT, &url, Some(&body)).await?;
@@ -340,8 +412,12 @@ async fn exec_move(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
     let list_id = args["list_id"].as_str().ok_or("Missing 'list_id'")?;
 
     let mut body = json!({ "idList": list_id });
-    if let Some(board_id) = args["board_id"].as_str() { body["idBoard"] = json!(board_id); }
-    if let Some(pos) = args["pos"].as_str() { body["pos"] = json!(pos); }
+    if let Some(board_id) = args["board_id"].as_str() {
+        body["idBoard"] = json!(board_id);
+    }
+    if let Some(pos) = args["pos"].as_str() {
+        body["pos"] = json!(pos);
+    }
 
     let url = auth_url(&format!("/cards/{}", card_id), &key, &token);
     trello_request(reqwest::Method::PUT, &url, Some(&body)).await?;
@@ -358,7 +434,11 @@ async fn exec_comment(args: &Value, app_handle: &tauri::AppHandle) -> EngineResu
     let text = args["text"].as_str().ok_or("Missing 'text'")?;
 
     let body = json!({ "text": text });
-    let url = auth_url(&format!("/cards/{}/actions/comments", card_id), &key, &token);
+    let url = auth_url(
+        &format!("/cards/{}/actions/comments", card_id),
+        &key,
+        &token,
+    );
     trello_request(reqwest::Method::POST, &url, Some(&body)).await?;
 
     Ok(format!("Comment added to card `{}`.", card_id))
@@ -371,7 +451,11 @@ async fn exec_search(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let query = args["query"].as_str().ok_or("Missing 'query'")?;
     let model_types = args["model_types"].as_str().unwrap_or("cards,boards");
 
-    let encoded_query = query.replace(' ', "%20").replace('&', "%26").replace('#', "%23").replace('?', "%3F");
+    let encoded_query = query
+        .replace(' ', "%20")
+        .replace('&', "%26")
+        .replace('#', "%23")
+        .replace('?', "%3F");
     let mut path = format!("/search?query={}&modelTypes={}", encoded_query, model_types);
 
     if let Some(board_ids) = args["board_ids"].as_array() {

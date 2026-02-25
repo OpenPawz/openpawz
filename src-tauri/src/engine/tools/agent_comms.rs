@@ -65,12 +65,17 @@ fn execute_send(
     app_handle: &tauri::AppHandle,
     agent_id: &str,
 ) -> Result<String, String> {
-    let to = args["to_agent"].as_str().ok_or_else(|| "missing 'to_agent'".to_string())?;
-    let content = args["content"].as_str().ok_or_else(|| "missing 'content'".to_string())?;
+    let to = args["to_agent"]
+        .as_str()
+        .ok_or_else(|| "missing 'to_agent'".to_string())?;
+    let content = args["content"]
+        .as_str()
+        .ok_or_else(|| "missing 'content'".to_string())?;
     let channel = args["channel"].as_str().unwrap_or("general");
     let metadata = args["metadata"].as_str().map(String::from);
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or_else(|| "Engine state not available".to_string())?;
 
     let msg = AgentMessage {
@@ -84,18 +89,29 @@ fn execute_send(
         created_at: chrono::Utc::now().to_rfc3339(),
     };
 
-    state.store.send_agent_message(&msg).map_err(|e| e.to_string())?;
+    state
+        .store
+        .send_agent_message(&msg)
+        .map_err(|e| e.to_string())?;
 
     info!(
         "[engine] agent_send_message: {} → {} on #{} ({} chars)",
-        agent_id, to, channel, content.len()
+        agent_id,
+        to,
+        channel,
+        content.len()
     );
 
-    app_handle.emit("agent-message", serde_json::json!({
-        "from": agent_id,
-        "to": to,
-        "channel": channel,
-    })).ok();
+    app_handle
+        .emit(
+            "agent-message",
+            serde_json::json!({
+                "from": agent_id,
+                "to": to,
+                "channel": channel,
+            }),
+        )
+        .ok();
 
     // Fire event-driven triggers for agent messages
     let event = crate::engine::events::EngineEvent::AgentMessage {
@@ -118,21 +134,30 @@ fn execute_read(
     agent_id: &str,
 ) -> Result<String, String> {
     // Strip leading '#' — models often write "#LaunchOps" but we store "LaunchOps"
-    let raw_channel = args["channel"].as_str().map(|c| c.strip_prefix('#').unwrap_or(c));
+    let raw_channel = args["channel"]
+        .as_str()
+        .map(|c| c.strip_prefix('#').unwrap_or(c));
     let channel: Option<&str> = raw_channel;
     let from_agent = args["from_agent"].as_str();
     let limit = args["limit"].as_i64().unwrap_or(20);
     let mark_read = args["mark_read"].as_bool().unwrap_or(true);
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or_else(|| "Engine state not available".to_string())?;
 
     // If a channel is specified, show ALL messages on that channel (squad board style)
     // Otherwise, show messages addressed to this agent (inbox style)
     let mut msgs = if let Some(ch) = channel {
-        state.store.get_channel_messages(ch, limit).map_err(|e| e.to_string())?
+        state
+            .store
+            .get_channel_messages(ch, limit)
+            .map_err(|e| e.to_string())?
     } else {
-        state.store.get_agent_messages(agent_id, None, limit).map_err(|e| e.to_string())?
+        state
+            .store
+            .get_agent_messages(agent_id, None, limit)
+            .map_err(|e| e.to_string())?
     };
 
     // Apply optional from_agent filter
@@ -141,7 +166,10 @@ fn execute_read(
     }
 
     if mark_read {
-        state.store.mark_agent_messages_read(agent_id).map_err(|e| e.to_string())?;
+        state
+            .store
+            .mark_agent_messages_read(agent_id)
+            .map_err(|e| e.to_string())?;
     }
 
     if msgs.is_empty() {

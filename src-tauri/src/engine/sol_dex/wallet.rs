@@ -1,10 +1,10 @@
 // Solana DEX — Wallet
 // pubkey_from_secret, execute_sol_wallet_create
 
-use std::collections::HashMap;
-use log::info;
 use super::rpc::rpc_call;
 use crate::atoms::error::{EngineError, EngineResult};
+use log::info;
+use std::collections::HashMap;
 
 /// Derive Solana public key (base58) from ed25519 secret key bytes
 #[allow(dead_code)]
@@ -44,15 +44,20 @@ pub async fn execute_sol_wallet_create(
     keypair_bytes[32..].copy_from_slice(public_key.as_bytes());
     let private_key_b58 = bs58::encode(&keypair_bytes).into_string();
 
-    let state = app_handle.try_state::<crate::engine::state::EngineState>()
+    let state = app_handle
+        .try_state::<crate::engine::state::EngineState>()
         .ok_or(EngineError::Other("Engine state not available".into()))?;
     let vault_key = crate::engine::skills::get_vault_key()?;
 
     let encrypted_key = crate::engine::skills::encrypt_credential(&private_key_b58, &vault_key);
-    state.store.set_skill_credential("solana_dex", "SOLANA_PRIVATE_KEY", &encrypted_key)?;
+    state
+        .store
+        .set_skill_credential("solana_dex", "SOLANA_PRIVATE_KEY", &encrypted_key)?;
 
     let encrypted_addr = crate::engine::skills::encrypt_credential(&address, &vault_key);
-    state.store.set_skill_credential("solana_dex", "SOLANA_WALLET_ADDRESS", &encrypted_addr)?;
+    state
+        .store
+        .set_skill_credential("solana_dex", "SOLANA_WALLET_ADDRESS", &encrypted_addr)?;
 
     info!("[sol_dex] Created new Solana wallet: {}", address);
 
@@ -60,7 +65,10 @@ pub async fn execute_sol_wallet_create(
     let network_info = if let Some(rpc_url) = creds.get("SOLANA_RPC_URL") {
         match rpc_call(rpc_url, "getVersion", serde_json::json!([])).await {
             Ok(version) => {
-                let ver = version.get("solana-core").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let ver = version
+                    .get("solana-core")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
                 format!("Solana Mainnet (node v{})", ver)
             }
             Err(_) => "Could not connect to RPC".into(),

@@ -10,16 +10,16 @@
 //   - Optional pairing mode
 //   - TLS encryption to server (enabled by default, port 6697)
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{debug, info, error, warn};
+use crate::atoms::error::{EngineError, EngineResult};
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, AsyncRead, AsyncWrite, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use crate::atoms::error::{EngineResult, EngineError};
 
 // ── IRC Config ─────────────────────────────────────────────────────────
 
@@ -75,7 +75,9 @@ static MESSAGE_COUNT: AtomicI64 = AtomicI64::new(0);
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "irc_config";
@@ -120,7 +122,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
-    let config: IrcConfig = channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
+    let config: IrcConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed),
@@ -143,34 +146,44 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
     let stop = get_stop_signal();
     let addr = format!("{}:{}", config.server, config.port);
 
-    let tcp = TcpStream::connect(&addr).await
+    let tcp = TcpStream::connect(&addr)
+        .await
         .map_err(|e| format!("TCP connect to {} failed: {}", addr, e))?;
 
     // Wrap with TLS if enabled
-    let stream: Box<dyn IrcStream> = if config.tls {
-        info!("[irc] Upgrading to TLS for {}", addr);
+    let stream: Box<dyn IrcStream> =
+        if config.tls {
+            info!("[irc] Upgrading to TLS for {}", addr);
 
-        let mut root_store = rustls::RootCertStore::empty();
-        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+            let mut root_store = rustls::RootCertStore::empty();
+            root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
-        let tls_config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
+            let tls_config = rustls::ClientConfig::builder()
+                .with_root_certificates(root_store)
+                .with_no_client_auth();
 
-        let connector = tokio_rustls::TlsConnector::from(Arc::new(tls_config));
+            let connector = tokio_rustls::TlsConnector::from(Arc::new(tls_config));
 
-        let server_name = rustls::pki_types::ServerName::try_from(config.server.clone())
-            .map_err(|e| EngineError::Channel { channel: "irc".into(), message: format!("Invalid server name: {}", e) })?;
+            let server_name = rustls::pki_types::ServerName::try_from(config.server.clone())
+                .map_err(|e| EngineError::Channel {
+                    channel: "irc".into(),
+                    message: format!("Invalid server name: {}", e),
+                })?;
 
-        let tls_stream = connector.connect(server_name, tcp).await
-            .map_err(|e| format!("TLS handshake with {} failed: {}", addr, e))?;
+            let tls_stream = connector
+                .connect(server_name, tcp)
+                .await
+                .map_err(|e| format!("TLS handshake with {} failed: {}", addr, e))?;
 
-        info!("[irc] TLS handshake complete for {}", addr);
-        Box::new(tls_stream)
-    } else {
-        warn!("[irc] Connecting WITHOUT TLS to {} — credentials will be sent in plaintext!", addr);
-        Box::new(tcp)
-    };
+            info!("[irc] TLS handshake complete for {}", addr);
+            Box::new(tls_stream)
+        } else {
+            warn!(
+                "[irc] Connecting WITHOUT TLS to {} — credentials will be sent in plaintext!",
+                addr
+            );
+            Box::new(tcp)
+        };
 
     let (reader, writer) = tokio::io::split(stream);
     let mut lines = BufReader::new(reader).lines();
@@ -197,10 +210,14 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
     let mut last_config_reload = std::time::Instant::now();
 
     while let Ok(Some(line)) = lines.next_line().await {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         let line = line.trim_end().to_string();
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
 
         // Handle PING
         if line.starts_with("PING") {
@@ -218,11 +235,14 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
             registered = true;
             info!("[irc] Registered as {}", config.nick);
 
-            let _ = app_handle.emit("irc-status", json!({
-                "kind": "connected",
-                "nick": &config.nick,
-                "server": &config.server,
-            }));
+            let _ = app_handle.emit(
+                "irc-status",
+                json!({
+                    "kind": "connected",
+                    "nick": &config.nick,
+                    "server": &config.server,
+                }),
+            );
 
             // Join configured channels
             for ch in &config.channels_to_join {
@@ -235,11 +255,15 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
         // Handle PRIVMSG
         if parsed.command == "PRIVMSG" {
             let sender_nick = parsed.prefix_nick().unwrap_or_default();
-            if sender_nick == config.nick { continue; } // Skip own messages
+            if sender_nick == config.nick {
+                continue;
+            } // Skip own messages
 
             let target = parsed.params.first().map(|s| s.as_str()).unwrap_or("");
             let text = parsed.trailing.clone().unwrap_or_default();
-            if text.is_empty() { continue; }
+            if text.is_empty() {
+                continue;
+            }
 
             let is_dm = target == config.nick; // DM = target is our nick
             let is_channel = target.starts_with('#') || target.starts_with('&');
@@ -248,7 +272,9 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
             if is_channel {
                 let addressed = text.starts_with(&format!("{}:", config.nick))
                     || text.starts_with(&format!("{},", config.nick));
-                if !current_config.respond_in_channels && !addressed { continue; }
+                if !current_config.respond_in_channels && !addressed {
+                    continue;
+                }
             }
 
             // Strip nick prefix if addressed
@@ -271,10 +297,20 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
                 text.clone()
             };
 
-            if content.is_empty() { continue; }
+            if content.is_empty() {
+                continue;
+            }
 
-            debug!("[irc] {} from {}: {}", if is_dm { "DM" } else { "Channel msg" },
-                sender_nick, if content.len() > 50 { format!("{}...", &content[..content.floor_char_boundary(50)]) } else { content.clone() });
+            debug!(
+                "[irc] {} from {}: {}",
+                if is_dm { "DM" } else { "Channel msg" },
+                sender_nick,
+                if content.len() > 50 {
+                    format!("{}...", &content[..content.floor_char_boundary(50)])
+                } else {
+                    content.clone()
+                }
+            );
 
             // Access control (DMs only)
             if is_dm {
@@ -287,14 +323,21 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
                     &mut current_config.pending_users,
                 ) {
                     let _ = channels::save_channel_config(&app_handle, CONFIG_KEY, &current_config);
-                    let _ = app_handle.emit("irc-status", json!({
-                        "kind": "pairing_request",
-                        "user_id": &sender_nick,
-                        "username": &sender_nick,
-                    }));
+                    let _ = app_handle.emit(
+                        "irc-status",
+                        json!({
+                            "kind": "pairing_request",
+                            "user_id": &sender_nick,
+                            "username": &sender_nick,
+                        }),
+                    );
                     let reply_target = if is_dm { &sender_nick } else { target };
                     let mut w = write_handle.lock().await;
-                    let _ = w.write_all(format!("PRIVMSG {} :{}\r\n", reply_target, denial_msg).as_bytes()).await;
+                    let _ = w
+                        .write_all(
+                            format!("PRIVMSG {} :{}\r\n", reply_target, denial_msg).as_bytes(),
+                        )
+                        .await;
                     continue;
                 }
             }
@@ -308,9 +351,15 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
                        IRC messages should ideally be under 400 characters.";
 
             let response = channels::run_channel_agent(
-                &app_handle, "irc", ctx, &content, &sender_nick, agent_id,
+                &app_handle,
+                "irc",
+                ctx,
+                &content,
+                &sender_nick,
+                agent_id,
                 current_config.allow_dangerous_tools,
-            ).await;
+            )
+            .await;
 
             let reply_target = if is_dm { sender_nick.as_str() } else { target };
 
@@ -322,9 +371,12 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
                         for line in chunk.lines() {
                             if !line.trim().is_empty() {
                                 let mut w = write_handle.lock().await;
-                                let _ = w.write_all(
-                                    format!("PRIVMSG {} :{}\r\n", reply_target, line).as_bytes()
-                                ).await;
+                                let _ = w
+                                    .write_all(
+                                        format!("PRIVMSG {} :{}\r\n", reply_target, line)
+                                            .as_bytes(),
+                                    )
+                                    .await;
                             }
                         }
                     }
@@ -332,9 +384,11 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
                 Err(e) => {
                     error!("[irc] Agent error for {}: {}", sender_nick, e);
                     let mut w = write_handle.lock().await;
-                    let _ = w.write_all(
-                        format!("PRIVMSG {} :⚠️ Error: {}\r\n", reply_target, e).as_bytes()
-                    ).await;
+                    let _ = w
+                        .write_all(
+                            format!("PRIVMSG {} :⚠️ Error: {}\r\n", reply_target, e).as_bytes(),
+                        )
+                        .await;
                 }
                 _ => {}
             }
@@ -349,9 +403,12 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
         }
     }
 
-    let _ = app_handle.emit("irc-status", json!({
-        "kind": "disconnected",
-    }));
+    let _ = app_handle.emit(
+        "irc-status",
+        json!({
+            "kind": "disconnected",
+        }),
+    );
 
     Ok(())
 }
@@ -367,9 +424,9 @@ struct IrcParsed {
 
 impl IrcParsed {
     fn prefix_nick(&self) -> Option<String> {
-        self.prefix.as_ref().map(|p| {
-            p.split('!').next().unwrap_or(p).to_string()
-        })
+        self.prefix
+            .as_ref()
+            .map(|p| p.split('!').next().unwrap_or(p).to_string())
     }
 }
 
@@ -395,7 +452,12 @@ fn parse_irc_line(line: &str) -> IrcParsed {
     let command = parts.first().unwrap_or(&"").to_string();
     let params: Vec<String> = parts[1..].iter().map(|s| s.to_string()).collect();
 
-    IrcParsed { prefix, command, params, trailing }
+    IrcParsed {
+        prefix,
+        command,
+        params,
+        trailing,
+    }
 }
 
 // ── Config Persistence ─────────────────────────────────────────────────

@@ -9,14 +9,14 @@
 //   messages      — handle_inbound_message
 //   bridge        — statics, start_bridge, stop_bridge, get_status, run_whatsapp_bridge
 
+pub mod bridge;
 pub mod config;
 pub(crate) mod docker;
 pub(crate) mod evolution_api;
-pub(crate) mod webhook;
 pub(crate) mod messages;
-pub mod bridge;
+pub(crate) mod webhook;
 
 // ── Re-exports (preserve crate::engine::whatsapp::* API) ─────────────
 
-pub use config::{WhatsAppConfig, load_config, save_config, approve_user, deny_user, remove_user};
-pub use bridge::{start_bridge, stop_bridge, get_status};
+pub use bridge::{get_status, start_bridge, stop_bridge};
+pub use config::{approve_user, deny_user, load_config, remove_user, save_config, WhatsAppConfig};

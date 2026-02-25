@@ -11,16 +11,16 @@
 //   - Optional pairing mode
 //   - All communication goes through Twitch's TLS IRC gateway
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{debug, info, warn, error};
+use crate::atoms::error::{EngineError, EngineResult};
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use futures::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
-use futures::{SinkExt, StreamExt};
-use crate::atoms::error::{EngineResult, EngineError};
 
 // ── Twitch Config ──────────────────────────────────────────────────────
 
@@ -71,7 +71,9 @@ static MESSAGE_COUNT: AtomicI64 = AtomicI64::new(0);
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "twitch_config";
@@ -102,11 +104,15 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
 
     tauri::async_runtime::spawn(async move {
         loop {
-            if get_stop_signal().load(Ordering::Relaxed) { break; }
+            if get_stop_signal().load(Ordering::Relaxed) {
+                break;
+            }
             if let Err(e) = run_ws_loop(&app_handle, &config).await {
                 error!("[twitch] WebSocket error: {}", e);
             }
-            if get_stop_signal().load(Ordering::Relaxed) { break; }
+            if get_stop_signal().load(Ordering::Relaxed) {
+                break;
+            }
             warn!("[twitch] Reconnecting in 5s...");
             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
         }
@@ -125,7 +131,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
-    let config: TwitchConfig = channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
+    let config: TwitchConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed),
@@ -145,8 +152,10 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
 
     // Twitch IRC over WebSocket endpoint
     let url = "wss://irc-ws.chat.twitch.tv:443";
-    let (ws_stream, _) = connect_async(url).await
-        .map_err(|e| EngineError::Channel { channel: "twitch".into(), message: e.to_string() })?;
+    let (ws_stream, _) = connect_async(url).await.map_err(|e| EngineError::Channel {
+        channel: "twitch".into(),
+        message: e.to_string(),
+    })?;
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
 
     // Authenticate
@@ -157,22 +166,36 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
     };
     let nick = config.bot_username.to_lowercase();
 
-    ws_tx.send(WsMessage::Text(format!("PASS {}", token))).await
-        .map_err(|e| EngineError::Channel { channel: "twitch".into(), message: e.to_string() })?;
-    ws_tx.send(WsMessage::Text(format!("NICK {}", nick))).await
-        .map_err(|e| EngineError::Channel { channel: "twitch".into(), message: e.to_string() })?;
+    ws_tx
+        .send(WsMessage::Text(format!("PASS {}", token)))
+        .await
+        .map_err(|e| EngineError::Channel {
+            channel: "twitch".into(),
+            message: e.to_string(),
+        })?;
+    ws_tx
+        .send(WsMessage::Text(format!("NICK {}", nick)))
+        .await
+        .map_err(|e| EngineError::Channel {
+            channel: "twitch".into(),
+            message: e.to_string(),
+        })?;
 
     // Request tags capability for user display names etc
-    ws_tx.send(WsMessage::Text("CAP REQ :twitch.tv/tags twitch.tv/commands".into())).await
-        .map_err(|e| EngineError::Channel { channel: "twitch".into(), message: e.to_string() })?;
+    ws_tx
+        .send(WsMessage::Text(
+            "CAP REQ :twitch.tv/tags twitch.tv/commands".into(),
+        ))
+        .await
+        .map_err(|e| EngineError::Channel {
+            channel: "twitch".into(),
+            message: e.to_string(),
+        })?;
 
     // Wait for successful auth (001/376)
     let mut authed = false;
     for _ in 0..30 {
-        let msg = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            ws_rx.next()
-        ).await;
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(10), ws_rx.next()).await;
 
         match msg {
             Ok(Some(Ok(WsMessage::Text(t)))) => {
@@ -189,7 +212,9 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
                         let _ = ws_tx.send(WsMessage::Text(pong)).await;
                     }
                 }
-                if authed { break; }
+                if authed {
+                    break;
+                }
             }
             _ => continue,
         }
@@ -202,23 +227,37 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
 
     // Join channels
     for ch in &config.channels_to_join {
-        let channel = if ch.starts_with('#') { ch.clone() } else { format!("#{}", ch) };
-        ws_tx.send(WsMessage::Text(format!("JOIN {}", channel))).await
-            .map_err(|e| EngineError::Channel { channel: "twitch".into(), message: e.to_string() })?;
+        let channel = if ch.starts_with('#') {
+            ch.clone()
+        } else {
+            format!("#{}", ch)
+        };
+        ws_tx
+            .send(WsMessage::Text(format!("JOIN {}", channel)))
+            .await
+            .map_err(|e| EngineError::Channel {
+                channel: "twitch".into(),
+                message: e.to_string(),
+            })?;
         info!("[twitch] Joined {}", channel);
     }
 
-    let _ = app_handle.emit("twitch-status", json!({
-        "kind": "connected",
-        "username": &nick,
-    }));
+    let _ = app_handle.emit(
+        "twitch-status",
+        json!({
+            "kind": "connected",
+            "username": &nick,
+        }),
+    );
 
     let mut current_config = config.clone();
     let mut last_config_reload = std::time::Instant::now();
 
     // Message loop
     loop {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         let msg = tokio::select! {
             msg = ws_rx.next() => msg,
@@ -256,7 +295,9 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
                 ("", line)
             };
 
-            if !rest.contains("PRIVMSG") { continue; }
+            if !rest.contains("PRIVMSG") {
+                continue;
+            }
 
             // Extract sender nick from :nick!user@host
             let sender = if let Some(stripped) = rest.strip_prefix(':') {
@@ -264,7 +305,9 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
             } else {
                 ""
             };
-            if sender.is_empty() || sender.to_lowercase() == nick { continue; }
+            if sender.is_empty() || sender.to_lowercase() == nick {
+                continue;
+            }
 
             // Extract channel and message
             let privmsg_idx = match rest.find("PRIVMSG") {
@@ -277,18 +320,21 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
                 None => continue,
             };
 
-            if msg_content.is_empty() { continue; }
+            if msg_content.is_empty() {
+                continue;
+            }
 
             // Extract display name from tags
-            let display_name = parse_tag(tags, "display-name")
-                .unwrap_or(sender.to_string());
+            let display_name = parse_tag(tags, "display-name").unwrap_or(sender.to_string());
 
             // Check if bot is mentioned
             let mention = format!("@{}", nick);
             let is_mentioned = msg_content.to_lowercase().contains(&mention);
 
             // If require_mention is on, only respond to mentions
-            if current_config.require_mention && !is_mentioned { continue; }
+            if current_config.require_mention && !is_mentioned {
+                continue;
+            }
 
             // Strip mention from content
             let content = msg_content
@@ -296,11 +342,20 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
                 .replace(&format!("@{}", config.bot_username), "")
                 .trim()
                 .to_string();
-            if content.is_empty() { continue; }
+            if content.is_empty() {
+                continue;
+            }
 
-            debug!("[twitch] {} in {}: {}",
-                display_name, channel,
-                if content.len() > 50 { format!("{}...", crate::engine::types::truncate_utf8(&content, 50)) } else { content.clone() });
+            debug!(
+                "[twitch] {} in {}: {}",
+                display_name,
+                channel,
+                if content.len() > 50 {
+                    format!("{}...", crate::engine::types::truncate_utf8(&content, 50))
+                } else {
+                    content.clone()
+                }
+            );
 
             // Access control
             let sender_lower = sender.to_lowercase();
@@ -313,11 +368,14 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
                 &mut current_config.pending_users,
             ) {
                 let _ = channels::save_channel_config(app_handle, CONFIG_KEY, &current_config);
-                let _ = app_handle.emit("twitch-status", json!({
-                    "kind": "pairing_request",
-                    "user_id": &sender_lower,
-                    "username": &display_name,
-                }));
+                let _ = app_handle.emit(
+                    "twitch-status",
+                    json!({
+                        "kind": "pairing_request",
+                        "user_id": &sender_lower,
+                        "username": &display_name,
+                    }),
+                );
                 // Don't send denial in Twitch chat (too public)
                 continue;
             }
@@ -330,9 +388,15 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
                        Twitch users expect quick, concise responses.";
 
             let response = channels::run_channel_agent(
-                app_handle, "twitch", ctx, &content, &sender_lower, agent_id,
+                app_handle,
+                "twitch",
+                ctx,
+                &content,
+                &sender_lower,
+                agent_id,
                 current_config.allow_dangerous_tools,
-            ).await;
+            )
+            .await;
 
             match response {
                 Ok(reply) if !reply.is_empty() => {
@@ -355,16 +419,20 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
 
         // Reload config periodically
         if last_config_reload.elapsed() > std::time::Duration::from_secs(30) {
-            if let Ok(fresh) = channels::load_channel_config::<TwitchConfig>(app_handle, CONFIG_KEY) {
+            if let Ok(fresh) = channels::load_channel_config::<TwitchConfig>(app_handle, CONFIG_KEY)
+            {
                 current_config = fresh;
             }
             last_config_reload = std::time::Instant::now();
         }
     }
 
-    let _ = app_handle.emit("twitch-status", json!({
-        "kind": "disconnected",
-    }));
+    let _ = app_handle.emit(
+        "twitch-status",
+        json!({
+            "kind": "disconnected",
+        }),
+    );
 
     Ok(())
 }

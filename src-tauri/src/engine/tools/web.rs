@@ -84,10 +84,26 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "web_search"     => Some(crate::engine::web::execute_web_search(args).await.map_err(|e| e.to_string())),
-        "web_read"       => Some(crate::engine::web::execute_web_read(args).await.map_err(|e| e.to_string())),
-        "web_screenshot" => Some(crate::engine::web::execute_web_screenshot(args, app_handle).await.map_err(|e| e.to_string())),
-        "web_browse"     => Some(crate::engine::web::execute_web_browse(args, app_handle).await.map_err(|e| e.to_string())),
+        "web_search" => Some(
+            crate::engine::web::execute_web_search(args)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "web_read" => Some(
+            crate::engine::web::execute_web_read(args)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "web_screenshot" => Some(
+            crate::engine::web::execute_web_screenshot(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "web_browse" => Some(
+            crate::engine::web::execute_web_browse(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }

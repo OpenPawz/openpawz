@@ -18,10 +18,10 @@ use super::rpc::{
 };
 use super::tokens::resolve_for_swap;
 use super::tx::sign_eip1559_transaction;
+use crate::atoms::error::{EngineError, EngineResult};
+use log::info;
 use std::collections::HashMap;
 use std::time::Duration;
-use log::info;
-use crate::atoms::error::{EngineResult, EngineError};
 
 /// Get a swap quote from Uniswap V3 Quoter.
 pub async fn execute_dex_quote(
@@ -29,14 +29,21 @@ pub async fn execute_dex_quote(
     creds: &HashMap<String, String>,
 ) -> EngineResult<String> {
     let rpc_url = creds.get("DEX_RPC_URL").ok_or("Missing DEX_RPC_URL")?;
-    let token_in_sym = args["token_in"].as_str().ok_or("dex_quote: missing 'token_in'")?;
-    let token_out_sym = args["token_out"].as_str().ok_or("dex_quote: missing 'token_out'")?;
-    let amount = args["amount"].as_str().ok_or("dex_quote: missing 'amount'")?;
+    let token_in_sym = args["token_in"]
+        .as_str()
+        .ok_or("dex_quote: missing 'token_in'")?;
+    let token_out_sym = args["token_out"]
+        .as_str()
+        .ok_or("dex_quote: missing 'token_out'")?;
+    let amount = args["amount"]
+        .as_str()
+        .ok_or("dex_quote: missing 'amount'")?;
 
     let (token_in_addr, token_in_dec, _is_eth) = resolve_for_swap(token_in_sym)?;
     let (token_out_addr, token_out_dec, _) = resolve_for_swap(token_out_sym)?;
 
-    let fee_tier = args.get("fee_tier")
+    let fee_tier = args
+        .get("fee_tier")
         .and_then(|v| v.as_u64())
         .unwrap_or(DEFAULT_FEE_TIER) as u32;
 
@@ -69,7 +76,6 @@ pub async fn execute_dex_quote(
                 );
                 let multi_calldata = encode_quote_exact_input(&path, &amount_u256);
                 eth_call(rpc_url, UNISWAP_QUOTER_V2, &multi_calldata).await
-
             }
             Err(e) => Err(e),
         }
@@ -79,10 +85,15 @@ pub async fn execute_dex_quote(
     // amountOut is the first 32 bytes
     let result_bytes = hex_decode(&result)?;
     if result_bytes.len() < 32 {
-        return Err(format!("Unexpected quoter response length: {} bytes", result_bytes.len()).into());
+        return Err(format!(
+            "Unexpected quoter response length: {} bytes",
+            result_bytes.len()
+        )
+        .into());
     }
 
-    let amount_out_bytes: [u8; 32] = result_bytes[..32].try_into()
+    let amount_out_bytes: [u8; 32] = result_bytes[..32]
+        .try_into()
         .map_err(|_| "Failed to parse 32-byte amount from quoter response")?;
     let amount_out_hex = hex_encode(&amount_out_bytes);
     let amount_out = raw_to_amount(&amount_out_hex, token_out_dec)?;
@@ -92,16 +103,25 @@ pub async fn execute_dex_quote(
     let out_f64: f64 = amount_out.parse().unwrap_or(0.0);
     let price = if in_f64 > 0.0 { out_f64 / in_f64 } else { 0.0 };
 
-    let slippage_bps = args.get("slippage_bps")
+    let slippage_bps = args
+        .get("slippage_bps")
         .and_then(|v| v.as_u64())
         .unwrap_or(DEFAULT_SLIPPAGE_BPS);
 
     let min_out = out_f64 * (10000.0 - slippage_bps as f64) / 10000.0;
 
     let route_info = if used_multihop {
-        format!("Route: {} → WETH → {} (multi-hop)", token_in_sym.to_uppercase(), token_out_sym.to_uppercase())
+        format!(
+            "Route: {} → WETH → {} (multi-hop)",
+            token_in_sym.to_uppercase(),
+            token_out_sym.to_uppercase()
+        )
     } else {
-        format!("Route: {} → {} (direct)", token_in_sym.to_uppercase(), token_out_sym.to_uppercase())
+        format!(
+            "Route: {} → {} (direct)",
+            token_in_sym.to_uppercase(),
+            token_out_sym.to_uppercase()
+        )
     };
 
     Ok(format!(
@@ -124,23 +144,39 @@ pub async fn execute_dex_swap(
     creds: &HashMap<String, String>,
 ) -> EngineResult<String> {
     let rpc_url = creds.get("DEX_RPC_URL").ok_or("Missing DEX_RPC_URL")?;
-    let wallet_address = creds.get("DEX_WALLET_ADDRESS").ok_or("No wallet. Use dex_wallet_create first.")?;
+    let wallet_address = creds
+        .get("DEX_WALLET_ADDRESS")
+        .ok_or("No wallet. Use dex_wallet_create first.")?;
     let private_key_hex = creds.get("DEX_PRIVATE_KEY").ok_or("Missing private key")?;
 
-    let token_in_sym = args["token_in"].as_str().ok_or("dex_swap: missing 'token_in'")?;
-    let token_out_sym = args["token_out"].as_str().ok_or("dex_swap: missing 'token_out'")?;
-    let amount = args["amount"].as_str().ok_or("dex_swap: missing 'amount'")?;
+    let token_in_sym = args["token_in"]
+        .as_str()
+        .ok_or("dex_swap: missing 'token_in'")?;
+    let token_out_sym = args["token_out"]
+        .as_str()
+        .ok_or("dex_swap: missing 'token_out'")?;
+    let amount = args["amount"]
+        .as_str()
+        .ok_or("dex_swap: missing 'amount'")?;
     let _reason = args["reason"].as_str().unwrap_or("swap");
 
-    let slippage_bps = args.get("slippage_bps")
+    let slippage_bps = args
+        .get("slippage_bps")
         .and_then(|v| v.as_u64())
         .unwrap_or(DEFAULT_SLIPPAGE_BPS);
 
     if slippage_bps > MAX_SLIPPAGE_BPS {
-        return Err(format!("Slippage {}bps exceeds maximum allowed {}bps ({}%)", slippage_bps, MAX_SLIPPAGE_BPS, MAX_SLIPPAGE_BPS as f64 / 100.0).into());
+        return Err(format!(
+            "Slippage {}bps exceeds maximum allowed {}bps ({}%)",
+            slippage_bps,
+            MAX_SLIPPAGE_BPS,
+            MAX_SLIPPAGE_BPS as f64 / 100.0
+        )
+        .into());
     }
 
-    let fee_tier = args.get("fee_tier")
+    let fee_tier = args
+        .get("fee_tier")
         .and_then(|v| v.as_u64())
         .unwrap_or(DEFAULT_FEE_TIER) as u32;
 
@@ -154,7 +190,10 @@ pub async fn execute_dex_swap(
     let token_out_bytes = parse_address(&token_out_addr)?;
     let wallet_bytes = parse_address(wallet_address)?;
 
-    info!("[dex] Swap: {} {} → {} (wallet: {})", amount, token_in_sym, token_out_sym, wallet_address);
+    info!(
+        "[dex] Swap: {} {} → {} (wallet: {})",
+        amount, token_in_sym, token_out_sym, wallet_address
+    );
 
     // Step 1: Get quote for minimum output calculation — try single-hop, fall back to multi-hop via WETH
     let weth_bytes = parse_address(WETH_ADDRESS)?;
@@ -169,9 +208,13 @@ pub async fn execute_dex_swap(
         match eth_call(rpc_url, UNISWAP_QUOTER_V2, &single_calldata).await {
             Ok(r) => {
                 let qb = hex_decode(&r)?;
-                if qb.len() < 32 { return Err("Invalid quoter response".into()); }
-                qb[..32].try_into().map_err(|_| "Quoter response byte conversion failed")?
-            },
+                if qb.len() < 32 {
+                    return Err("Invalid quoter response".into());
+                }
+                qb[..32]
+                    .try_into()
+                    .map_err(|_| "Quoter response byte conversion failed")?
+            }
             Err(_) if token_in_bytes != weth_bytes && token_out_bytes != weth_bytes => {
                 info!("[dex] Single-hop quote failed, trying multi-hop through WETH");
                 use_multihop = true;
@@ -182,18 +225,27 @@ pub async fn execute_dex_swap(
                 let multi_calldata = encode_quote_exact_input(&path, &amount_u256);
                 let r = eth_call(rpc_url, UNISWAP_QUOTER_V2, &multi_calldata).await?;
                 let qb = hex_decode(&r)?;
-                if qb.len() < 32 { return Err("Invalid quoter response".into()); }
-                qb[..32].try_into().map_err(|_| "Quoter response byte conversion failed")?
-            },
+                if qb.len() < 32 {
+                    return Err("Invalid quoter response".into());
+                }
+                qb[..32]
+                    .try_into()
+                    .map_err(|_| "Quoter response byte conversion failed")?
+            }
             Err(e) => return Err(e),
         }
     };
 
     // Apply slippage to get minimum output
     let expected_out_hex = hex_encode(&expected_out);
-    let expected_out_f64: f64 = raw_to_amount(&expected_out_hex, token_out_dec)?.parse().unwrap_or(0.0);
+    let expected_out_f64: f64 = raw_to_amount(&expected_out_hex, token_out_dec)?
+        .parse()
+        .unwrap_or(0.0);
     let min_out_f64 = expected_out_f64 * (10000.0 - slippage_bps as f64) / 10000.0;
-    let min_out_raw = amount_to_raw(&format!("{:.width$}", min_out_f64, width = token_out_dec as usize), token_out_dec)?;
+    let min_out_raw = amount_to_raw(
+        &format!("{:.width$}", min_out_f64, width = token_out_dec as usize),
+        token_out_dec,
+    )?;
     let min_out_u256 = parse_u256_decimal(&min_out_raw)?;
 
     // Step 2: If not ETH, check and set token approval
@@ -206,7 +258,8 @@ pub async fn execute_dex_swap(
         // Check if allowance is sufficient
         let mut needs_approval = true;
         if allowance_bytes.len() >= 32 {
-            let allowance_slice: [u8; 32] = allowance_bytes[..32].try_into()
+            let allowance_slice: [u8; 32] = allowance_bytes[..32]
+                .try_into()
                 .map_err(|_| "Failed to parse allowance bytes")?;
             needs_approval = allowance_slice < amount_u256;
         }
@@ -223,14 +276,28 @@ pub async fn execute_dex_swap(
             let chain_id = eth_chain_id(rpc_url).await?;
             let nonce = eth_get_transaction_count(rpc_url, wallet_address).await?;
             let (priority_fee, max_fee) = get_gas_fees(rpc_url).await?;
-            let gas = eth_estimate_gas(rpc_url, wallet_address, &token_in_addr, &approve_data, "0x0").await?;
+            let gas = eth_estimate_gas(
+                rpc_url,
+                wallet_address,
+                &token_in_addr,
+                &approve_data,
+                "0x0",
+            )
+            .await?;
 
             let mut token_in_addr_bytes = [0u8; 20];
             token_in_addr_bytes.copy_from_slice(&hex_decode(&token_in_addr)?[..20]);
 
             let signed_approve = sign_eip1559_transaction(
-                chain_id, nonce, priority_fee, max_fee, gas,
-                &token_in_addr_bytes, &[0u8; 32], &approve_data, &signing_key,
+                chain_id,
+                nonce,
+                priority_fee,
+                max_fee,
+                gas,
+                &token_in_addr_bytes,
+                &[0u8; 32],
+                &approve_data,
+                &signing_key,
             )?;
 
             let approve_hash = eth_send_raw_transaction(rpc_url, &signed_approve).await?;
@@ -239,15 +306,21 @@ pub async fn execute_dex_swap(
             // Wait for approval to be mined (poll for up to 60 seconds)
             for _ in 0..30 {
                 tokio::time::sleep(Duration::from_secs(2)).await;
-                if let Ok(Some(receipt)) = eth_get_transaction_receipt(rpc_url, &approve_hash).await {
-                    let status = receipt.get("status")
+                if let Ok(Some(receipt)) = eth_get_transaction_receipt(rpc_url, &approve_hash).await
+                {
+                    let status = receipt
+                        .get("status")
                         .and_then(|v| v.as_str())
                         .unwrap_or("0x0");
                     if status == "0x1" {
                         info!("[dex] Token approval confirmed");
                         break;
                     } else {
-                        return Err(format!("Token approval transaction failed (reverted). Tx: {}", approve_hash).into());
+                        return Err(format!(
+                            "Token approval transaction failed (reverted). Tx: {}",
+                            approve_hash
+                        )
+                        .into());
                     }
                 }
             }
@@ -260,12 +333,7 @@ pub async fn execute_dex_swap(
             &[&token_in_bytes, &weth_bytes, &token_out_bytes],
             &[fee_tier, fee_tier],
         );
-        encode_exact_input(
-            &path,
-            &wallet_bytes,
-            &amount_u256,
-            &min_out_u256,
-        )
+        encode_exact_input(&path, &wallet_bytes, &amount_u256, &min_out_u256)
     } else {
         encode_exact_input_single(
             &token_in_bytes,
@@ -287,15 +355,33 @@ pub async fn execute_dex_swap(
 
     // Value is the ETH amount if swapping from ETH, otherwise 0
     let value = if is_eth_in { amount_u256 } else { [0u8; 32] };
-    let value_hex = if is_eth_in { u256_to_quantity_hex(&value) } else { "0x0".into() };
+    let value_hex = if is_eth_in {
+        u256_to_quantity_hex(&value)
+    } else {
+        "0x0".into()
+    };
 
     let router_bytes = parse_address(UNISWAP_SWAP_ROUTER_02)?;
-    let gas = eth_estimate_gas(rpc_url, wallet_address, UNISWAP_SWAP_ROUTER_02, &swap_data, &value_hex).await
-        .unwrap_or(300_000); // fallback gas limit for swaps
+    let gas = eth_estimate_gas(
+        rpc_url,
+        wallet_address,
+        UNISWAP_SWAP_ROUTER_02,
+        &swap_data,
+        &value_hex,
+    )
+    .await
+    .unwrap_or(300_000); // fallback gas limit for swaps
 
     let signed_tx = sign_eip1559_transaction(
-        chain_id, nonce, priority_fee, max_fee, gas,
-        &router_bytes, &value, &swap_data, &signing_key,
+        chain_id,
+        nonce,
+        priority_fee,
+        max_fee,
+        gas,
+        &router_bytes,
+        &value,
+        &swap_data,
+        &signing_key,
     )?;
 
     // Step 4: Broadcast
@@ -309,7 +395,8 @@ pub async fn execute_dex_swap(
         tokio::time::sleep(Duration::from_secs(2)).await;
         match eth_get_transaction_receipt(rpc_url, &tx_hash).await {
             Ok(Some(receipt)) => {
-                let status = receipt.get("status")
+                let status = receipt
+                    .get("status")
                     .and_then(|v| v.as_str())
                     .unwrap_or("0x0");
                 if status == "0x1" {
@@ -327,7 +414,8 @@ pub async fn execute_dex_swap(
 
     let network = explorer_tx_url(chain_id);
 
-    let expected_out_display = raw_to_amount(&expected_out_hex, token_out_dec).unwrap_or("?".into());
+    let expected_out_display =
+        raw_to_amount(&expected_out_hex, token_out_dec).unwrap_or("?".into());
 
     Ok(format!(
         "{} Swap {}\n\n{} {} → ~{} {}\nSlippage tolerance: {}%\nTransaction: {}{}\nStatus: {}\n\n{}",

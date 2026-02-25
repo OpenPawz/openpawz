@@ -3,8 +3,8 @@
 // All serde-deserializable structs for `pawz-skill.toml` manifest files,
 // plus the `TomlSkillEntry` output struct used by the rest of the codebase.
 
-use serde::Deserialize;
 use crate::engine::skills::types::SkillDefinition;
+use serde::Deserialize;
 
 // ── Manifest Structs ───────────────────────────────────────────────────────
 

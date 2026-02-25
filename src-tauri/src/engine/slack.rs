@@ -11,16 +11,16 @@
 //   - Optional pairing mode
 //   - All communication through Slack's TLS API
 
-use crate::engine::channels::{self, PendingUser, ChannelStatus};
-use log::{debug, info, warn, error};
+use crate::atoms::error::{EngineError, EngineResult};
+use crate::engine::channels::{self, ChannelStatus, PendingUser};
+use futures::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::Arc;
 use tauri::Emitter;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
-use futures::{SinkExt, StreamExt};
-use crate::atoms::error::{EngineResult, EngineError};
 
 // ── Slack Config ───────────────────────────────────────────────────────
 
@@ -45,7 +45,9 @@ pub struct SlackConfig {
     pub allow_dangerous_tools: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl Default for SlackConfig {
     fn default() -> Self {
@@ -71,7 +73,9 @@ static BOT_USER_ID: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 static STOP_SIGNAL: std::sync::OnceLock<Arc<AtomicBool>> = std::sync::OnceLock::new();
 
 fn get_stop_signal() -> Arc<AtomicBool> {
-    STOP_SIGNAL.get_or_init(|| Arc::new(AtomicBool::new(false))).clone()
+    STOP_SIGNAL
+        .get_or_init(|| Arc::new(AtomicBool::new(false)))
+        .clone()
 }
 
 const CONFIG_KEY: &str = "slack_config";
@@ -103,12 +107,20 @@ pub fn start_bridge(app_handle: tauri::AppHandle) -> EngineResult<()> {
             match run_socket_mode(app_handle.clone(), config.clone()).await {
                 Ok(()) => break, // Clean shutdown
                 Err(e) => {
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                     error!("[slack] Bridge error: {} — reconnecting", e);
                     let delay = crate::engine::http::reconnect_delay(reconnect_attempt).await;
-                    warn!("[slack] Reconnecting in {}ms (attempt {})", delay.as_millis(), reconnect_attempt + 1);
+                    warn!(
+                        "[slack] Reconnecting in {}ms (attempt {})",
+                        delay.as_millis(),
+                        reconnect_attempt + 1
+                    );
                     reconnect_attempt += 1;
-                    if get_stop_signal().load(Ordering::Relaxed) { break; }
+                    if get_stop_signal().load(Ordering::Relaxed) {
+                        break;
+                    }
                 }
             }
         }
@@ -127,7 +139,8 @@ pub fn stop_bridge() {
 }
 
 pub fn get_status(app_handle: &tauri::AppHandle) -> ChannelStatus {
-    let config: SlackConfig = channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
+    let config: SlackConfig =
+        channels::load_channel_config(app_handle, CONFIG_KEY).unwrap_or_default();
     ChannelStatus {
         running: BRIDGE_RUNNING.load(Ordering::Relaxed),
         connected: BRIDGE_RUNNING.load(Ordering::Relaxed),
@@ -147,12 +160,18 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
     let http_client = reqwest::Client::new();
 
     // Get bot user ID via auth.test
-    let auth_resp = http_client.post("https://slack.com/api/auth.test")
+    let auth_resp = http_client
+        .post("https://slack.com/api/auth.test")
         .header("Authorization", format!("Bearer {}", config.bot_token))
-        .send().await?;
+        .send()
+        .await?;
     let auth_json: serde_json::Value = auth_resp.json().await?;
     if !auth_json["ok"].as_bool().unwrap_or(false) {
-        return Err(format!("auth.test error: {}", auth_json["error"].as_str().unwrap_or("unknown")).into());
+        return Err(format!(
+            "auth.test error: {}",
+            auth_json["error"].as_str().unwrap_or("unknown")
+        )
+        .into());
     }
     let bot_user_id = auth_json["user_id"].as_str().unwrap_or("").to_string();
     let _ = BOT_USER_ID.set(bot_user_id.clone());
@@ -163,14 +182,20 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
 
     let (ws_stream, _) = connect_async(&ws_url)
         .await
-        .map_err(|e| EngineError::Channel { channel: "slack".into(), message: e.to_string() })?;
+        .map_err(|e| EngineError::Channel {
+            channel: "slack".into(),
+            message: e.to_string(),
+        })?;
 
     let (mut write, mut read) = ws_stream.split();
 
-    let _ = app_handle.emit("slack-status", json!({
-        "kind": "connected",
-        "bot_id": &bot_user_id,
-    }));
+    let _ = app_handle.emit(
+        "slack-status",
+        json!({
+            "kind": "connected",
+            "bot_id": &bot_user_id,
+        }),
+    );
 
     info!("[slack] Socket Mode connected");
 
@@ -178,7 +203,9 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
     let mut last_config_reload = std::time::Instant::now();
 
     while let Some(msg_result) = read.next().await {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         let msg = match msg_result {
             Ok(m) => m,
@@ -190,7 +217,10 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
 
         let text = match msg {
             WsMessage::Text(t) => t,
-            WsMessage::Close(_) => { info!("[slack] WS closed"); break; }
+            WsMessage::Close(_) => {
+                info!("[slack] WS closed");
+                break;
+            }
             WsMessage::Ping(data) => {
                 let _ = write.send(WsMessage::Pong(data)).await;
                 continue;
@@ -220,23 +250,35 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
 
             if inner_type == "message" || inner_type == "app_mention" {
                 // Skip bot messages, subtypes (edits, joins, etc.)
-                if event["bot_id"].is_string() { continue; }
-                if event["subtype"].is_string() { continue; }
+                if event["bot_id"].is_string() {
+                    continue;
+                }
+                if event["subtype"].is_string() {
+                    continue;
+                }
 
                 let user_id = event["user"].as_str().unwrap_or("").to_string();
                 let text_content = event["text"].as_str().unwrap_or("").to_string();
                 let channel_id = event["channel"].as_str().unwrap_or("").to_string();
                 let channel_type = event["channel_type"].as_str().unwrap_or("");
 
-                if text_content.is_empty() || user_id.is_empty() { continue; }
-                if user_id == bot_user_id { continue; } // Skip own messages
+                if text_content.is_empty() || user_id.is_empty() {
+                    continue;
+                }
+                if user_id == bot_user_id {
+                    continue;
+                } // Skip own messages
 
                 let is_dm = channel_type == "im";
                 let is_mention = inner_type == "app_mention";
 
                 // In channels, only respond to mentions
-                if !is_dm && !is_mention { continue; }
-                if !is_dm && !current_config.respond_to_mentions { continue; }
+                if !is_dm && !is_mention {
+                    continue;
+                }
+                if !is_dm && !current_config.respond_to_mentions {
+                    continue;
+                }
 
                 // Strip bot mention from text
                 let content = {
@@ -244,10 +286,20 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
                     text_content.replace(&mention_pat, "").trim().to_string()
                 };
 
-                if content.is_empty() { continue; }
+                if content.is_empty() {
+                    continue;
+                }
 
-                debug!("[slack] Message from {} in {}: {}", user_id, channel_id,
-                    if content.len() > 50 { format!("{}...", &content[..content.floor_char_boundary(50)]) } else { content.clone() });
+                debug!(
+                    "[slack] Message from {} in {}: {}",
+                    user_id,
+                    channel_id,
+                    if content.len() > 50 {
+                        format!("{}...", &content[..content.floor_char_boundary(50)])
+                    } else {
+                        content.clone()
+                    }
+                );
 
                 // Access control (DMs)
                 if is_dm {
@@ -260,12 +312,22 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
                         &mut current_config.pending_users,
                     ) {
                         let denial_str = denial_msg.to_string();
-                        let _ = channels::save_channel_config(&app_handle, CONFIG_KEY, &current_config);
-                        let _ = app_handle.emit("slack-status", json!({
-                            "kind": "pairing_request",
-                            "user_id": &user_id,
-                        }));
-                        let _ = slack_send_message(&http_client, &config.bot_token, &channel_id, &denial_str).await;
+                        let _ =
+                            channels::save_channel_config(&app_handle, CONFIG_KEY, &current_config);
+                        let _ = app_handle.emit(
+                            "slack-status",
+                            json!({
+                                "kind": "pairing_request",
+                                "user_id": &user_id,
+                            }),
+                        );
+                        let _ = slack_send_message(
+                            &http_client,
+                            &config.bot_token,
+                            &channel_id,
+                            &denial_str,
+                        )
+                        .await;
                         continue;
                     }
                 }
@@ -279,40 +341,64 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
                            Keep responses concise and workplace-appropriate.";
 
                 let response = channels::run_channel_agent(
-                    &app_handle, "slack", ctx, &content, &user_id, agent_id,
+                    &app_handle,
+                    "slack",
+                    ctx,
+                    &content,
+                    &user_id,
+                    agent_id,
                     current_config.allow_dangerous_tools,
-                ).await;
+                )
+                .await;
 
                 match response {
                     Ok(reply) if !reply.is_empty() => {
                         // Slack has a 40000 char limit per message (effectively unlimited)
-                        let _ = slack_send_message(&http_client, &config.bot_token, &channel_id, &reply).await;
+                        let _ = slack_send_message(
+                            &http_client,
+                            &config.bot_token,
+                            &channel_id,
+                            &reply,
+                        )
+                        .await;
                     }
                     Err(e) => {
                         error!("[slack] Agent error for {}: {}", user_id, e);
-                        let _ = slack_send_message(&http_client, &config.bot_token, &channel_id,
-                            &format!(":warning: Error: {}", e)).await;
+                        let _ = slack_send_message(
+                            &http_client,
+                            &config.bot_token,
+                            &channel_id,
+                            &format!(":warning: Error: {}", e),
+                        )
+                        .await;
                     }
                     _ => {}
                 }
             }
         } else if event_type == "disconnect" {
-            info!("[slack] Disconnect event received, reason: {}", envelope["reason"].as_str().unwrap_or("?"));
+            info!(
+                "[slack] Disconnect event received, reason: {}",
+                envelope["reason"].as_str().unwrap_or("?")
+            );
             break;
         }
 
         // Reload config
         if last_config_reload.elapsed() > std::time::Duration::from_secs(30) {
-            if let Ok(fresh) = channels::load_channel_config::<SlackConfig>(&app_handle, CONFIG_KEY) {
+            if let Ok(fresh) = channels::load_channel_config::<SlackConfig>(&app_handle, CONFIG_KEY)
+            {
                 current_config = fresh;
             }
             last_config_reload = std::time::Instant::now();
         }
     }
 
-    let _ = app_handle.emit("slack-status", json!({
-        "kind": "disconnected",
-    }));
+    let _ = app_handle.emit(
+        "slack-status",
+        json!({
+            "kind": "disconnected",
+        }),
+    );
 
     Ok(())
 }
@@ -320,18 +406,25 @@ async fn run_socket_mode(app_handle: tauri::AppHandle, config: SlackConfig) -> E
 // ── Slack API Helpers ──────────────────────────────────────────────────
 
 async fn get_socket_mode_url(client: &reqwest::Client, app_token: &str) -> EngineResult<String> {
-    let resp = client.post("https://slack.com/api/apps.connections.open")
+    let resp = client
+        .post("https://slack.com/api/apps.connections.open")
         .header("Authorization", format!("Bearer {}", app_token))
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .send().await?;
+        .send()
+        .await?;
 
     let body: serde_json::Value = resp.json().await?;
 
     if !body["ok"].as_bool().unwrap_or(false) {
-        return Err(format!("connections.open error: {}", body["error"].as_str().unwrap_or("unknown")).into());
+        return Err(format!(
+            "connections.open error: {}",
+            body["error"].as_str().unwrap_or("unknown")
+        )
+        .into());
     }
 
-    body["url"].as_str()
+    body["url"]
+        .as_str()
         .map(|s| s.to_string())
         .ok_or("No URL returned from connections.open".into())
 }
@@ -342,19 +435,24 @@ async fn slack_send_message(
     channel: &str,
     text: &str,
 ) -> EngineResult<()> {
-    let resp = client.post("https://slack.com/api/chat.postMessage")
+    let resp = client
+        .post("https://slack.com/api/chat.postMessage")
         .header("Authorization", format!("Bearer {}", bot_token))
         .json(&json!({
             "channel": channel,
             "text": text,
         }))
-        .send().await;
+        .send()
+        .await;
 
     match resp {
         Ok(r) => {
             let body: serde_json::Value = r.json().await.unwrap_or_default();
             if !body["ok"].as_bool().unwrap_or(false) {
-                warn!("[slack] chat.postMessage error: {}", body["error"].as_str().unwrap_or("unknown"));
+                warn!(
+                    "[slack] chat.postMessage error: {}",
+                    body["error"].as_str().unwrap_or("unknown")
+                );
             }
         }
         Err(e) => warn!("[slack] chat.postMessage failed: {}", e),

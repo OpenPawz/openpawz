@@ -5,8 +5,8 @@ use super::constants::{chain_name, KNOWN_TOKENS};
 use super::primitives::{parse_address, raw_to_amount};
 use super::rpc::{eth_call, eth_chain_id, eth_get_balance};
 use super::tokens::resolve_token;
-use std::collections::HashMap;
 use crate::atoms::error::EngineResult;
+use std::collections::HashMap;
 
 /// Check ETH and ERC-20 token balances for a single token or all known tokens.
 pub async fn execute_dex_balance(
@@ -14,7 +14,9 @@ pub async fn execute_dex_balance(
     creds: &HashMap<String, String>,
 ) -> EngineResult<String> {
     let rpc_url = creds.get("DEX_RPC_URL").ok_or("Missing DEX_RPC_URL. Configure your RPC endpoint (Infura/Alchemy) in Skills → DEX Trading.")?;
-    let wallet_address = creds.get("DEX_WALLET_ADDRESS").ok_or("No wallet found. Use dex_wallet_create first.")?;
+    let wallet_address = creds
+        .get("DEX_WALLET_ADDRESS")
+        .ok_or("No wallet found. Use dex_wallet_create first.")?;
 
     // Optional: specific token to check
     let token = args.get("token").and_then(|v| v.as_str());
@@ -40,7 +42,9 @@ pub async fn execute_dex_balance(
         // Check common tokens
         let wallet_bytes = parse_address(wallet_address)?;
         for (sym, addr, dec) in KNOWN_TOKENS {
-            if *sym == "ETH" { continue; }
+            if *sym == "ETH" {
+                continue;
+            }
             let calldata = encode_balance_of(&wallet_bytes);
             if let Ok(result) = eth_call(rpc_url, addr, &calldata).await {
                 if let Ok(balance) = raw_to_amount(&result, *dec) {
@@ -61,7 +65,9 @@ pub async fn execute_dex_portfolio(
     creds: &HashMap<String, String>,
 ) -> EngineResult<String> {
     let rpc_url = creds.get("DEX_RPC_URL").ok_or("Missing DEX_RPC_URL")?;
-    let wallet_address = creds.get("DEX_WALLET_ADDRESS").ok_or("No wallet. Use dex_wallet_create first.")?;
+    let wallet_address = creds
+        .get("DEX_WALLET_ADDRESS")
+        .ok_or("No wallet. Use dex_wallet_create first.")?;
 
     let wallet_bytes = parse_address(wallet_address)?;
 
@@ -75,7 +81,9 @@ pub async fn execute_dex_portfolio(
     // Check all known tokens
     let mut has_tokens = false;
     for (sym, addr, dec) in KNOWN_TOKENS {
-        if *sym == "ETH" { continue; }
+        if *sym == "ETH" {
+            continue;
+        }
         let calldata = encode_balance_of(&wallet_bytes);
         if let Ok(result) = eth_call(rpc_url, addr, &calldata).await {
             if let Ok(balance) = raw_to_amount(&result, *dec) {

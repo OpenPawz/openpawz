@@ -6,10 +6,10 @@
 use super::types::{JsonRpcRequest, JsonRpcResponse};
 use log::{debug, error, info, warn};
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::{mpsc, oneshot, Mutex};
-use std::sync::Arc;
 
 /// A running stdio transport — owns the child process and message routing.
 pub struct StdioTransport {
@@ -44,12 +44,9 @@ impl StdioTransport {
             cmd.env(k, v);
         }
 
-        let mut child = cmd.spawn().map_err(|e| {
-            format!(
-                "Failed to spawn MCP server `{}`: {}",
-                command, e
-            )
-        })?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| format!("Failed to spawn MCP server `{}`: {}", command, e))?;
 
         let stdin = child.stdin.take().ok_or("Failed to open stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to open stdout")?;
@@ -201,8 +198,7 @@ impl StdioTransport {
             "method": method,
             "params": params.unwrap_or(serde_json::json!({})),
         });
-        let body =
-            serde_json::to_vec(&notif).map_err(|e| format!("Serialize error: {}", e))?;
+        let body = serde_json::to_vec(&notif).map_err(|e| format!("Serialize error: {}", e))?;
         self.writer_tx
             .send(body)
             .await
@@ -225,7 +221,7 @@ impl StdioTransport {
         let mut guard = self.child.lock().await;
         if let Some(ref mut child) = *guard {
             match child.try_wait() {
-                Ok(None) => true,  // still running
+                Ok(None) => true, // still running
                 Ok(Some(_)) => false,
                 Err(_) => false,
             }
@@ -312,8 +308,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_read_message_with_extra_headers() {
-        let data =
-            b"Content-Length: 2\r\nContent-Type: application/json\r\n\r\n{}";
+        let data = b"Content-Length: 2\r\nContent-Type: application/json\r\n\r\n{}";
         let mut reader = BufReader::new(&data[..]);
         let result = read_message(&mut reader).await.unwrap().unwrap();
         assert_eq!(result, b"{}");

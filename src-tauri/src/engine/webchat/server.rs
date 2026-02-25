@@ -3,20 +3,20 @@
 // TCP/TLS listener, HTTP routing, auth endpoint, and stream utilities.
 
 use super::html::build_chat_html;
-use super::session::{create_session, validate_session, extract_cookie};
-use super::{WebChatConfig, handle_websocket, get_stop_signal};
+use super::session::{create_session, extract_cookie, validate_session};
+use super::{get_stop_signal, handle_websocket, WebChatConfig};
 
+use crate::atoms::error::EngineResult;
 use log::{info, warn};
 use serde_json::json;
 use std::io::BufReader as StdBufReader;
 use std::pin::Pin;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use tauri::Emitter;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt, ReadBuf};
 use tokio::net::TcpListener;
-use crate::atoms::error::EngineResult;
 
 // ── Prefixed Stream (replays buffered bytes then delegates) ────────────
 
@@ -28,7 +28,11 @@ pub(crate) struct PrefixedStream<S> {
 
 impl<S> PrefixedStream<S> {
     pub fn new(prefix: Vec<u8>, inner: S) -> Self {
-        Self { prefix, pos: 0, inner }
+        Self {
+            prefix,
+            pos: 0,
+            inner,
+        }
     }
 }
 
@@ -51,7 +55,11 @@ impl<S: AsyncRead + Unpin> AsyncRead for PrefixedStream<S> {
 }
 
 impl<S: AsyncWrite + Unpin> AsyncWrite for PrefixedStream<S> {
-    fn poll_write(self: Pin<&mut Self>, cx: &mut Context<'_>, buf: &[u8]) -> Poll<std::io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
         Pin::new(&mut self.get_mut().inner).poll_write(cx, buf)
     }
     fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
@@ -68,19 +76,21 @@ pub(crate) trait ChatStream: AsyncRead + AsyncWrite + Unpin + Send {}
 impl<T: AsyncRead + AsyncWrite + Unpin + Send> ChatStream for T {}
 
 /// Build a TLS acceptor from PEM cert+key files, or `None` if not configured.
-pub(crate) fn build_tls_acceptor(config: &WebChatConfig) -> EngineResult<Option<tokio_rustls::TlsAcceptor>> {
+pub(crate) fn build_tls_acceptor(
+    config: &WebChatConfig,
+) -> EngineResult<Option<tokio_rustls::TlsAcceptor>> {
     let (Some(cert_path), Some(key_path)) = (&config.tls_cert_path, &config.tls_key_path) else {
         return Ok(None);
     };
 
-    let cert_file = std::fs::File::open(cert_path)
-        .map_err(|e| format!("Open TLS cert {cert_path}: {e}"))?;
+    let cert_file =
+        std::fs::File::open(cert_path).map_err(|e| format!("Open TLS cert {cert_path}: {e}"))?;
     let certs: Vec<_> = rustls_pemfile::certs(&mut StdBufReader::new(cert_file))
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| format!("Parse TLS cert: {e}"))?;
 
-    let key_file = std::fs::File::open(key_path)
-        .map_err(|e| format!("Open TLS key {key_path}: {e}"))?;
+    let key_file =
+        std::fs::File::open(key_path).map_err(|e| format!("Open TLS key {key_path}: {e}"))?;
     let key = rustls_pemfile::private_key(&mut StdBufReader::new(key_file))
         .map_err(|e| format!("Parse TLS key: {e}"))?
         .ok_or_else(|| "No private key found in PEM file".to_string())?;
@@ -95,41 +105,58 @@ pub(crate) fn build_tls_acceptor(config: &WebChatConfig) -> EngineResult<Option<
 
 // ── Server Core ────────────────────────────────────────────────────────
 
-pub(crate) async fn run_server(app_handle: tauri::AppHandle, config: WebChatConfig) -> EngineResult<()> {
+pub(crate) async fn run_server(
+    app_handle: tauri::AppHandle,
+    config: WebChatConfig,
+) -> EngineResult<()> {
     let stop = get_stop_signal();
     let addr = format!("{}:{}", config.bind_address, config.port);
 
-    let listener = TcpListener::bind(&addr).await
+    let listener = TcpListener::bind(&addr)
+        .await
         .map_err(|e| format!("Bind {}:{} failed: {}", config.bind_address, config.port, e))?;
 
     // Build optional TLS acceptor
     let tls_acceptor = build_tls_acceptor(&config)?;
 
-    if config.bind_address != "127.0.0.1" && config.bind_address != "localhost" && tls_acceptor.is_none() {
-        warn!("[webchat] Binding to {} without TLS — credentials sent in plaintext over the network", config.bind_address);
+    if config.bind_address != "127.0.0.1"
+        && config.bind_address != "localhost"
+        && tls_acceptor.is_none()
+    {
+        warn!(
+            "[webchat] Binding to {} without TLS — credentials sent in plaintext over the network",
+            config.bind_address
+        );
     }
 
-    let scheme = if tls_acceptor.is_some() { "https" } else { "http" };
+    let scheme = if tls_acceptor.is_some() {
+        "https"
+    } else {
+        "http"
+    };
     info!("[webchat] Listening on {}://{}", scheme, addr);
 
-    let _ = app_handle.emit("webchat-status", json!({
-        "kind": "connected",
-        "address": &addr,
-        "title": &config.page_title,
-        "tls": tls_acceptor.is_some(),
-    }));
+    let _ = app_handle.emit(
+        "webchat-status",
+        json!({
+            "kind": "connected",
+            "address": &addr,
+            "title": &config.page_title,
+            "tls": tls_acceptor.is_some(),
+        }),
+    );
 
     let config = Arc::new(config);
     let tls_acceptor = tls_acceptor.map(Arc::new);
 
     loop {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         // Accept with timeout so we can check stop signal
-        let accept = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
-            listener.accept()
-        ).await;
+        let accept =
+            tokio::time::timeout(std::time::Duration::from_secs(1), listener.accept()).await;
 
         match accept {
             Ok(Ok((tcp_stream, peer))) => {
@@ -177,14 +204,19 @@ async fn handle_connection(
 ) -> EngineResult<()> {
     // Read the HTTP request (consumed — PrefixedStream replays it for WS)
     let mut buf = vec![0u8; 8192];
-    let n = stream.read(&mut buf).await.map_err(|e| format!("Read: {e}"))?;
-    if n == 0 { return Ok(()); }
+    let n = stream
+        .read(&mut buf)
+        .await
+        .map_err(|e| format!("Read: {e}"))?;
+    if n == 0 {
+        return Ok(());
+    }
     buf.truncate(n);
 
     let request_str = String::from_utf8_lossy(&buf);
     let first_line = request_str.lines().next().unwrap_or("");
-    let is_websocket = request_str.contains("Upgrade: websocket")
-        || request_str.contains("upgrade: websocket");
+    let is_websocket =
+        request_str.contains("Upgrade: websocket") || request_str.contains("upgrade: websocket");
 
     if is_websocket && first_line.contains("/ws") {
         // Validate session cookie (token is never in the URL)
@@ -198,7 +230,10 @@ async fn handle_connection(
             }
         };
 
-        info!("[webchat] WebSocket connection from {} ({})", peer, username);
+        info!(
+            "[webchat] WebSocket connection from {} ({})",
+            peer, username
+        );
 
         // Replay the buffered bytes so tungstenite can read the HTTP upgrade
         let prefixed = PrefixedStream::new(buf, stream);
@@ -231,7 +266,9 @@ async fn handle_auth(
 
     if token != config.access_token || name.is_empty() {
         let resp = "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: close\r\n\r\n{\"error\":\"access denied\"}";
-        stream.write_all(resp.as_bytes()).await
+        stream
+            .write_all(resp.as_bytes())
+            .await
             .map_err(|e| format!("Write auth 403: {e}"))?;
         return Ok(());
     }
@@ -249,24 +286,25 @@ async fn handle_auth(
         cookie, resp_body.len(), resp_body
     );
 
-    stream.write_all(response.as_bytes()).await
+    stream
+        .write_all(response.as_bytes())
+        .await
         .map_err(|e| format!("Write auth 200: {e}"))?;
     Ok(())
 }
 
 // ── HTML Chat Page ─────────────────────────────────────────────────────
 
-async fn serve_html(
-    mut stream: Box<dyn ChatStream>,
-    config: &WebChatConfig,
-) -> EngineResult<()> {
+async fn serve_html(mut stream: Box<dyn ChatStream>, config: &WebChatConfig) -> EngineResult<()> {
     let html = build_chat_html(&config.page_title);
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
         html.len(), html
     );
 
-    stream.write_all(response.as_bytes()).await
+    stream
+        .write_all(response.as_bytes())
+        .await
         .map_err(|e| format!("Write HTML: {e}"))?;
 
     Ok(())

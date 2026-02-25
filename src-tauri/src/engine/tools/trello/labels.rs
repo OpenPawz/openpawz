@@ -3,9 +3,9 @@
 // Tools: trello_get_labels, trello_create_label, trello_update_label, trello_delete_label,
 //        trello_add_label, trello_remove_label
 
-use crate::atoms::types::*;
+use super::{auth_url, get_credentials, trello_request};
 use crate::atoms::error::EngineResult;
-use super::{get_credentials, auth_url, trello_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -110,12 +110,28 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "trello_get_labels"    => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_create_label"  => Some(exec_create(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_update_label"  => Some(exec_update(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_delete_label"  => Some(exec_delete(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_add_label"     => Some(exec_add(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_remove_label"  => Some(exec_remove(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_get_labels" => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_create_label" => Some(
+            exec_create(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_update_label" => Some(
+            exec_update(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_delete_label" => Some(
+            exec_delete(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_add_label" => Some(exec_add(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_remove_label" => Some(
+            exec_remove(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -175,8 +191,12 @@ async fn exec_update(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let label_id = args["label_id"].as_str().ok_or("Missing 'label_id'")?;
 
     let mut body = json!({});
-    if let Some(name) = args["name"].as_str() { body["name"] = json!(name); }
-    if let Some(color) = args["color"].as_str() { body["color"] = json!(color); }
+    if let Some(name) = args["name"].as_str() {
+        body["name"] = json!(name);
+    }
+    if let Some(color) = args["color"].as_str() {
+        body["color"] = json!(color);
+    }
 
     let url = auth_url(&format!("/labels/{}", label_id), &key, &token);
     trello_request(reqwest::Method::PUT, &url, Some(&body)).await?;
@@ -217,8 +237,15 @@ async fn exec_remove(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let card_id = args["card_id"].as_str().ok_or("Missing 'card_id'")?;
     let label_id = args["label_id"].as_str().ok_or("Missing 'label_id'")?;
 
-    let url = auth_url(&format!("/cards/{}/idLabels/{}", card_id, label_id), &key, &token);
+    let url = auth_url(
+        &format!("/cards/{}/idLabels/{}", card_id, label_id),
+        &key,
+        &token,
+    );
     trello_request(reqwest::Method::DELETE, &url, None).await?;
 
-    Ok(format!("Label `{}` removed from card `{}`.", label_id, card_id))
+    Ok(format!(
+        "Label `{}` removed from card `{}`.",
+        label_id, card_id
+    ))
 }

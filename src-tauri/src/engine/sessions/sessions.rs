@@ -1,13 +1,19 @@
-use rusqlite::params;
-use log::info;
-use crate::engine::types::Session;
-use crate::atoms::error::EngineResult;
 use super::SessionStore;
+use crate::atoms::error::EngineResult;
+use crate::engine::types::Session;
+use log::info;
+use rusqlite::params;
 
 impl SessionStore {
     // ── Session CRUD ───────────────────────────────────────────────────
 
-    pub fn create_session(&self, id: &str, model: &str, system_prompt: Option<&str>, agent_id: Option<&str>) -> EngineResult<Session> {
+    pub fn create_session(
+        &self,
+        id: &str,
+        model: &str,
+        system_prompt: Option<&str>,
+        agent_id: Option<&str>,
+    ) -> EngineResult<Session> {
         let conn = self.conn.lock();
 
         conn.execute(
@@ -32,10 +38,16 @@ impl SessionStore {
     }
 
     /// List sessions, optionally filtered by agent_id.
-    pub fn list_sessions_filtered(&self, limit: i64, agent_id: Option<&str>) -> EngineResult<Vec<Session>> {
+    pub fn list_sessions_filtered(
+        &self,
+        limit: i64,
+        agent_id: Option<&str>,
+    ) -> EngineResult<Vec<Session>> {
         let conn = self.conn.lock();
 
-        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(aid) = agent_id {
+        let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = if let Some(aid) =
+            agent_id
+        {
             (
                 "SELECT id, label, model, system_prompt, created_at, updated_at, message_count, agent_id \
                  FROM sessions WHERE agent_id = ?1 ORDER BY updated_at DESC LIMIT ?2".to_string(),
@@ -50,22 +62,24 @@ impl SessionStore {
         };
 
         let mut stmt = conn.prepare(&sql)?;
-        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|b| b.as_ref()).collect();
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> =
+            params_vec.iter().map(|b| b.as_ref()).collect();
 
-        let sessions = stmt.query_map(param_refs.as_slice(), |row| {
-            Ok(Session {
-                id: row.get(0)?,
-                label: row.get(1)?,
-                model: row.get(2)?,
-                system_prompt: row.get(3)?,
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-                message_count: row.get(6)?,
-                agent_id: row.get(7)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let sessions = stmt
+            .query_map(param_refs.as_slice(), |row| {
+                Ok(Session {
+                    id: row.get(0)?,
+                    label: row.get(1)?,
+                    model: row.get(2)?,
+                    system_prompt: row.get(3)?,
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                    message_count: row.get(6)?,
+                    agent_id: row.get(7)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
 
         Ok(sessions)
     }
@@ -117,7 +131,10 @@ impl SessionStore {
     /// Clear all messages for a session but keep the session itself.
     pub fn clear_messages(&self, session_id: &str) -> EngineResult<()> {
         let conn = self.conn.lock();
-        conn.execute("DELETE FROM messages WHERE session_id = ?1", params![session_id])?;
+        conn.execute(
+            "DELETE FROM messages WHERE session_id = ?1",
+            params![session_id],
+        )?;
         conn.execute(
             "UPDATE sessions SET message_count = 0, updated_at = datetime('now') WHERE id = ?1",
             params![session_id],
@@ -129,7 +146,11 @@ impl SessionStore {
     /// Bulk-delete sessions with 0 messages that are older than `max_age_secs`.
     /// Skips the `exclude_id` session (the user's current session).
     /// Returns the number of sessions deleted.
-    pub fn cleanup_empty_sessions(&self, max_age_secs: i64, exclude_id: Option<&str>) -> EngineResult<usize> {
+    pub fn cleanup_empty_sessions(
+        &self,
+        max_age_secs: i64,
+        exclude_id: Option<&str>,
+    ) -> EngineResult<usize> {
         let conn = self.conn.lock();
         let deleted = if let Some(eid) = exclude_id {
             conn.execute(
@@ -147,7 +168,10 @@ impl SessionStore {
         }?;
 
         if deleted > 0 {
-            info!("[engine] Cleaned up {} empty session(s) older than {}s", deleted, max_age_secs);
+            info!(
+                "[engine] Cleaned up {} empty session(s) older than {}s",
+                deleted, max_age_secs
+            );
         }
         Ok(deleted)
     }
@@ -190,7 +214,10 @@ impl SessionStore {
         )?;
 
         if deleted > 0 {
-            info!("[engine] Pruned {} old messages from session {} (kept {})", deleted, session_id, keep);
+            info!(
+                "[engine] Pruned {} old messages from session {} (kept {})",
+                deleted, session_id, keep
+            );
         }
 
         Ok(deleted)

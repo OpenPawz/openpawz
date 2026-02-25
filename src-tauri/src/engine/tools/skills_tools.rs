@@ -1,12 +1,12 @@
 // Paw Agent Engine — Community skill tools
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
-use crate::engine::state::EngineState;
 use crate::engine::skills;
+use crate::engine::state::EngineState;
 use log::info;
 use tauri::Emitter;
 use tauri::Manager;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
@@ -63,9 +63,15 @@ pub async fn execute(
     agent_id: &str,
 ) -> Option<Result<String, String>> {
     Some(match name {
-        "skill_search"  => execute_skill_search(args, app_handle).await.map_err(|e| e.to_string()),
-        "skill_install" => execute_skill_install(args, app_handle, agent_id).await.map_err(|e| e.to_string()),
-        "skill_list"    => execute_skill_list(app_handle, agent_id).await.map_err(|e| e.to_string()),
+        "skill_search" => execute_skill_search(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "skill_install" => execute_skill_install(args, app_handle, agent_id)
+            .await
+            .map_err(|e| e.to_string()),
+        "skill_list" => execute_skill_list(app_handle, agent_id)
+            .await
+            .map_err(|e| e.to_string()),
         _ => return None,
     })
 }
@@ -102,7 +108,8 @@ async fn execute_skill_search(
         output.push_str(&format!(
             "{}. **{}** ({})\n   {}\n   Source: `{}`\n   {}\n\n",
             i + 1,
-            result.name, result.id,
+            result.name,
+            result.id,
             result.description,
             result.source,
             format_installs(result.installs),
@@ -117,17 +124,26 @@ async fn execute_skill_install(
     app_handle: &tauri::AppHandle,
     agent_id: &str,
 ) -> EngineResult<String> {
-    let source = args["source"].as_str().ok_or("Missing 'source' parameter")?;
+    let source = args["source"]
+        .as_str()
+        .ok_or("Missing 'source' parameter")?;
     let path = args["path"].as_str().unwrap_or("");
 
-    info!("[engine] skill_install tool: source={}, path={}, agent_id={}", source, path, agent_id);
+    info!(
+        "[engine] skill_install tool: source={}, path={}, agent_id={}",
+        source, path, agent_id
+    );
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let skill = skills::install_community_skill(&state.store, source, path, Some(agent_id)).await?;
 
-    let _ = app_handle.emit("community-skill-installed", serde_json::json!({ "skill_id": skill.id }));
+    let _ = app_handle.emit(
+        "community-skill-installed",
+        serde_json::json!({ "skill_id": skill.id }),
+    );
 
     Ok(format!(
         "Successfully installed skill **{}** (id: `{}`)\n\n\
@@ -135,23 +151,28 @@ async fn execute_skill_install(
         - Description: {}\n\
         - Assigned to agent: {}\n\n\
         The skill is now available in your tool list.",
-        skill.name, skill.id, source,
-        if skill.description.is_empty() { "(no description)" } else { &skill.description },
+        skill.name,
+        skill.id,
+        source,
+        if skill.description.is_empty() {
+            "(no description)"
+        } else {
+            &skill.description
+        },
         agent_id,
     ))
 }
 
-async fn execute_skill_list(
-    app_handle: &tauri::AppHandle,
-    agent_id: &str,
-) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+async fn execute_skill_list(app_handle: &tauri::AppHandle, agent_id: &str) -> EngineResult<String> {
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let all_skills = state.store.list_community_skills()?;
-    let my_skills: Vec<_> = all_skills.iter().filter(|s| {
-        s.agent_ids.is_empty() || s.agent_ids.contains(&agent_id.to_string())
-    }).collect();
+    let my_skills: Vec<_> = all_skills
+        .iter()
+        .filter(|s| s.agent_ids.is_empty() || s.agent_ids.contains(&agent_id.to_string()))
+        .collect();
 
     if my_skills.is_empty() {
         return Ok(format!(
@@ -170,8 +191,15 @@ async fn execute_skill_list(
         };
         output.push_str(&format!(
             "{}. **{}** [{}]\n   ID: `{}`\n   {}\n   Scope: {}\n\n",
-            i + 1, skill.name, status, skill.id,
-            if skill.description.is_empty() { "(no description)" } else { &skill.description },
+            i + 1,
+            skill.name,
+            status,
+            skill.id,
+            if skill.description.is_empty() {
+                "(no description)"
+            } else {
+                &skill.description
+            },
             scope,
         ));
     }

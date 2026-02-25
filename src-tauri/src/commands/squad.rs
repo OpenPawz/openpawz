@@ -6,37 +6,29 @@ use log::info;
 use tauri::State;
 
 #[tauri::command]
-pub fn engine_squads_list(
-    state: State<'_, EngineState>,
-) -> Result<Vec<Squad>, String> {
+pub fn engine_squads_list(state: State<'_, EngineState>) -> Result<Vec<Squad>, String> {
     state.store.list_squads().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn engine_squad_create(
-    state: State<'_, EngineState>,
-    squad: Squad,
-) -> Result<(), String> {
+pub fn engine_squad_create(state: State<'_, EngineState>, squad: Squad) -> Result<(), String> {
     info!("[engine] Creating squad: {} ({})", squad.name, squad.id);
     state.store.create_squad(&squad).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn engine_squad_update(
-    state: State<'_, EngineState>,
-    squad: Squad,
-) -> Result<(), String> {
+pub fn engine_squad_update(state: State<'_, EngineState>, squad: Squad) -> Result<(), String> {
     info!("[engine] Updating squad: {}", squad.id);
     state.store.update_squad(&squad).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn engine_squad_delete(
-    state: State<'_, EngineState>,
-    squad_id: String,
-) -> Result<(), String> {
+pub fn engine_squad_delete(state: State<'_, EngineState>, squad_id: String) -> Result<(), String> {
     info!("[engine] Deleting squad: {}", squad_id);
-    state.store.delete_squad(&squad_id).map_err(|e| e.to_string())
+    state
+        .store
+        .delete_squad(&squad_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -46,7 +38,10 @@ pub fn engine_squad_add_member(
     member: SquadMember,
 ) -> Result<(), String> {
     info!("[engine] Adding {} to squad {}", member.agent_id, squad_id);
-    state.store.add_squad_member(&squad_id, &member).map_err(|e| e.to_string())
+    state
+        .store
+        .add_squad_member(&squad_id, &member)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -56,7 +51,10 @@ pub fn engine_squad_remove_member(
     agent_id: String,
 ) -> Result<(), String> {
     info!("[engine] Removing {} from squad {}", agent_id, squad_id);
-    state.store.remove_squad_member(&squad_id, &agent_id).map_err(|e| e.to_string())
+    state
+        .store
+        .remove_squad_member(&squad_id, &agent_id)
+        .map_err(|e| e.to_string())
 }
 
 /// Fetch agent-to-agent messages, optionally filtered by channel.
@@ -73,9 +71,15 @@ pub fn engine_agent_messages(
     // Otherwise return messages TO this agent (inbox view).
     if let Some(ref ch) = channel {
         let clean = ch.strip_prefix('#').unwrap_or(ch);
-        state.store.get_channel_messages(clean, lim).map_err(|e| e.to_string())
+        state
+            .store
+            .get_channel_messages(clean, lim)
+            .map_err(|e| e.to_string())
     } else {
-        state.store.get_agent_messages(&agent_id, None, lim).map_err(|e| e.to_string())
+        state
+            .store
+            .get_agent_messages(&agent_id, None, lim)
+            .map_err(|e| e.to_string())
     }
 }
 
@@ -89,9 +93,10 @@ mod tests {
             name: "Test Squad".into(),
             goal: "Unit test coverage".into(),
             status: "active".into(),
-            members: vec![
-                SquadMember { agent_id: "a1".into(), role: "coordinator".into() },
-            ],
+            members: vec![SquadMember {
+                agent_id: "a1".into(),
+                role: "coordinator".into(),
+            }],
             created_at: String::new(),
             updated_at: String::new(),
         }
@@ -110,7 +115,10 @@ mod tests {
 
     #[test]
     fn squad_member_clone() {
-        let m = SquadMember { agent_id: "x".into(), role: "member".into() };
+        let m = SquadMember {
+            agent_id: "x".into(),
+            role: "member".into(),
+        };
         let m2 = m.clone();
         assert_eq!(m.agent_id, m2.agent_id);
         assert_eq!(m.role, m2.role);

@@ -6,8 +6,8 @@
 //
 // All commands are 1-3 lines: extract, delegate to SessionStore, return.
 
-use tauri::State;
 use log::info;
+use tauri::State;
 
 use crate::commands::state::EngineState;
 use crate::engine::types::*;
@@ -67,10 +67,7 @@ pub fn engine_create_agent(
 
 /// Delete a standalone agent by agent_id.
 #[tauri::command]
-pub fn engine_delete_agent(
-    state: State<'_, EngineState>,
-    agent_id: String,
-) -> Result<(), String> {
+pub fn engine_delete_agent(state: State<'_, EngineState>, agent_id: String) -> Result<(), String> {
     state.store.delete_agent("_standalone", &agent_id)?;
     info!("[engine] Deleted standalone agent: {}", agent_id);
     Ok(())
@@ -84,7 +81,10 @@ pub fn engine_agent_file_list(
     agent_id: Option<String>,
 ) -> Result<Vec<AgentFile>, String> {
     let aid = agent_id.unwrap_or_else(|| "default".into());
-    state.store.list_agent_files(&aid).map_err(|e| e.to_string())
+    state
+        .store
+        .list_agent_files(&aid)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -94,7 +94,10 @@ pub fn engine_agent_file_get(
     file_name: String,
 ) -> Result<Option<AgentFile>, String> {
     let aid = agent_id.unwrap_or_else(|| "default".into());
-    state.store.get_agent_file(&aid, &file_name).map_err(|e| e.to_string())
+    state
+        .store
+        .get_agent_file(&aid, &file_name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -111,7 +114,10 @@ pub fn engine_agent_file_set(
         file_name,
         content.len()
     );
-    state.store.set_agent_file(&aid, &file_name, &content).map_err(|e| e.to_string())
+    state
+        .store
+        .set_agent_file(&aid, &file_name, &content)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -121,5 +127,8 @@ pub fn engine_agent_file_delete(
     file_name: String,
 ) -> Result<(), String> {
     let aid = agent_id.unwrap_or_else(|| "default".into());
-    state.store.delete_agent_file(&aid, &file_name).map_err(|e| e.to_string())
+    state
+        .store
+        .delete_agent_file(&aid, &file_name)
+        .map_err(|e| e.to_string())
 }

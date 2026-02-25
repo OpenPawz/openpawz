@@ -2,8 +2,8 @@
 // Resolves which agent should handle messages from a given channel.
 // Config is stored in the engine's config store (engine_config table).
 
-use crate::engine::sessions::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::sessions::SessionStore;
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -30,7 +30,9 @@ pub struct RoutingRule {
     pub enabled: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoutingConfig {
@@ -42,7 +44,9 @@ pub struct RoutingConfig {
     pub default_agent_id: String,
 }
 
-fn default_agent() -> String { "default".into() }
+fn default_agent() -> String {
+    "default".into()
+}
 
 impl Default for RoutingConfig {
     fn default() -> Self {
@@ -66,9 +70,7 @@ const CONFIG_KEY: &str = "channel_routing";
 
 pub fn load_routing_config(store: &Arc<SessionStore>) -> RoutingConfig {
     match store.get_config(CONFIG_KEY) {
-        Ok(Some(json)) => {
-            serde_json::from_str(&json).unwrap_or_default()
-        }
+        Ok(Some(json)) => serde_json::from_str(&json).unwrap_or_default(),
         _ => RoutingConfig::default(),
     }
 }

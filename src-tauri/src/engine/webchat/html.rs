@@ -4,7 +4,8 @@
 
 /// Build the complete HTML page for the chat interface.
 pub fn build_chat_html(title: &str) -> String {
-    format!(r##"<!DOCTYPE html>
+    format!(
+        r##"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -131,5 +132,7 @@ document.getElementById("tokenInput").addEventListener("keydown",(e)=>{{
 }});
 </script>
 </body>
-</html>"##, title=title)
+</html>"##,
+        title = title
+    )
 }

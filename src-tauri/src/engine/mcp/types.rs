@@ -270,8 +270,7 @@ mod tests {
 
     #[test]
     fn test_tool_call_result_text() {
-        let json =
-            r#"{"content":[{"type":"text","text":"Hello world"}],"isError":false}"#;
+        let json = r#"{"content":[{"type":"text","text":"Hello world"}],"isError":false}"#;
         let result: ToolCallResult = serde_json::from_str(json).unwrap();
         assert!(!result.is_error);
         assert_eq!(result.content.len(), 1);

@@ -8,8 +8,8 @@ use serde::Serialize;
 #[tauri::command]
 pub fn keyring_has_password(account_name: String, email: String) -> Result<bool, String> {
     let service = format!("paw-mail-{}", account_name);
-    let entry = keyring::Entry::new(&service, &email)
-        .map_err(|e| format!("Keyring init failed: {}", e))?;
+    let entry =
+        keyring::Entry::new(&service, &email).map_err(|e| format!("Keyring init failed: {}", e))?;
     match entry.get_password() {
         Ok(_) => Ok(true),
         Err(keyring::Error::NoEntry) => Ok(false),
@@ -21,11 +21,14 @@ pub fn keyring_has_password(account_name: String, email: String) -> Result<bool,
 #[tauri::command]
 pub fn keyring_delete_password(account_name: String, email: String) -> Result<bool, String> {
     let service = format!("paw-mail-{}", account_name);
-    let entry = keyring::Entry::new(&service, &email)
-        .map_err(|e| format!("Keyring init failed: {}", e))?;
+    let entry =
+        keyring::Entry::new(&service, &email).map_err(|e| format!("Keyring init failed: {}", e))?;
     match entry.delete_credential() {
         Ok(()) => {
-            info!("Deleted keychain entry for '{}' (service={})", email, service);
+            info!(
+                "Deleted keychain entry for '{}' (service={})",
+                email, service
+            );
             Ok(true)
         }
         Err(keyring::Error::NoEntry) => Ok(false),
@@ -38,11 +41,10 @@ pub fn keyring_delete_password(account_name: String, email: String) -> Result<bo
 /// return the same key.
 #[tauri::command]
 pub fn get_db_encryption_key() -> Result<String, String> {
-    let entry = keyring::Entry::new(DB_KEY_SERVICE, DB_KEY_USER)
-        .map_err(|e| {
-            error!("[keychain] Failed to initialise keyring entry: {}", e);
-            format!("Keyring init failed: {}", e)
-        })?;
+    let entry = keyring::Entry::new(DB_KEY_SERVICE, DB_KEY_USER).map_err(|e| {
+        error!("[keychain] Failed to initialise keyring entry: {}", e);
+        format!("Keyring init failed: {}", e)
+    })?;
     match entry.get_password() {
         Ok(key) => {
             info!("Retrieved DB encryption key from OS keychain");
@@ -53,11 +55,10 @@ pub fn get_db_encryption_key() -> Result<String, String> {
             let key: String = (0..32)
                 .map(|_| format!("{:02x}", rand::thread_rng().gen::<u8>()))
                 .collect();
-            entry.set_password(&key)
-                .map_err(|e| {
-                    error!("[keychain] Failed to store DB encryption key: {}", e);
-                    format!("Failed to store DB key: {}", e)
-                })?;
+            entry.set_password(&key).map_err(|e| {
+                error!("[keychain] Failed to store DB encryption key: {}", e);
+                format!("Failed to store DB key: {}", e)
+            })?;
             info!("Generated and stored new DB encryption key in OS keychain");
             Ok(key)
         }
@@ -97,8 +98,8 @@ pub struct KeychainHealth {
 #[tauri::command]
 pub fn check_keychain_health() -> KeychainHealth {
     // Test DB encryption key access
-    let db_key_result = keyring::Entry::new(DB_KEY_SERVICE, DB_KEY_USER)
-        .and_then(|e| e.get_password().map(|_| ()));
+    let db_key_result =
+        keyring::Entry::new(DB_KEY_SERVICE, DB_KEY_USER).and_then(|e| e.get_password().map(|_| ()));
     let db_key_ok = match &db_key_result {
         Ok(()) => true,
         Err(keyring::Error::NoEntry) => true, // No entry yet is fine — will be created on first use
@@ -121,7 +122,10 @@ pub fn check_keychain_health() -> KeychainHealth {
             None,
         ),
         (true, false) => {
-            let err_msg = format!("Skill vault keychain error: {:?}", vault_result.unwrap_err());
+            let err_msg = format!(
+                "Skill vault keychain error: {:?}",
+                vault_result.unwrap_err()
+            );
             error!("[keychain] {}", err_msg);
             (
                 "degraded".to_string(),
@@ -151,7 +155,13 @@ pub fn check_keychain_health() -> KeychainHealth {
         }
     };
 
-    KeychainHealth { status, db_key_ok, vault_key_ok, message, error }
+    KeychainHealth {
+        status,
+        db_key_ok,
+        vault_key_ok,
+        message,
+        error,
+    }
 }
 
 /// Fetch weather data via wttr.in (bypasses the browser CSP for the frontend).

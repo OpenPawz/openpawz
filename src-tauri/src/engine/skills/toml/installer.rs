@@ -3,9 +3,9 @@
 // Filesystem operations for managing TOML skill directories under
 // `~/.paw/skills/{id}/`. Validates content and checks for path traversal.
 
-use std::path::PathBuf;
-use super::scanner::skills_dir;
 use super::parser::{parse_manifest, validate_manifest};
+use super::scanner::skills_dir;
+use std::path::PathBuf;
 
 /// Install a TOML skill by writing a manifest to `~/.paw/skills/{id}/pawz-skill.toml`.
 pub fn install_toml_skill(skill_id: &str, toml_content: &str) -> Result<PathBuf, String> {
@@ -64,16 +64,17 @@ pub fn uninstall_toml_skill(skill_id: &str) -> Result<(), String> {
     let skill_dir = dir.join(skill_id);
 
     if !skill_dir.exists() {
-        return Err(format!("Skill directory does not exist: {}", skill_dir.display()));
+        return Err(format!(
+            "Skill directory does not exist: {}",
+            skill_dir.display()
+        ));
     }
 
     // Extra safety: confirm the directory is inside ~/.paw/skills/
     let canonical = skill_dir
         .canonicalize()
         .map_err(|e| format!("Failed to resolve path: {}", e))?;
-    let canonical_base = dir
-        .canonicalize()
-        .unwrap_or_else(|_| dir.clone());
+    let canonical_base = dir.canonicalize().unwrap_or_else(|_| dir.clone());
     if !canonical.starts_with(&canonical_base) {
         return Err("Path traversal detected — aborting".to_string());
     }
@@ -81,6 +82,10 @@ pub fn uninstall_toml_skill(skill_id: &str) -> Result<(), String> {
     std::fs::remove_dir_all(&skill_dir)
         .map_err(|e| format!("Failed to remove {}: {}", skill_dir.display(), e))?;
 
-    log::info!("[toml-loader] Uninstalled TOML skill '{}' from {}", skill_id, skill_dir.display());
+    log::info!(
+        "[toml-loader] Uninstalled TOML skill '{}' from {}",
+        skill_id,
+        skill_dir.display()
+    );
     Ok(())
 }

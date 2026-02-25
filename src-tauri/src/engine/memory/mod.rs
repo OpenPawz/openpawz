@@ -14,12 +14,12 @@ pub mod ollama;
 
 // Re-export public API at the module level
 pub use embedding::EmbeddingClient;
-pub use ollama::{OllamaReadyStatus, ensure_ollama_ready, is_ollama_init_done};
+pub use ollama::{ensure_ollama_ready, is_ollama_init_done, OllamaReadyStatus};
 
-use crate::engine::sessions::{SessionStore, f32_vec_to_bytes};
-use crate::engine::types::*;
 use crate::atoms::error::EngineResult;
-use log::{info, warn, error};
+use crate::engine::sessions::{f32_vec_to_bytes, SessionStore};
+use crate::engine::types::*;
+use log::{error, info, warn};
 
 // ── Store ──────────────────────────────────────────────────────────────
 
@@ -39,11 +39,19 @@ pub async fn store_memory(
     let embedding_bytes = if let Some(client) = embedding_client {
         match client.embed(content).await {
             Ok(vec) => {
-                info!("[memory] ✓ Embedded {} dims for memory {}", vec.len(), &id[..8]);
+                info!(
+                    "[memory] ✓ Embedded {} dims for memory {}",
+                    vec.len(),
+                    &id[..8]
+                );
                 Some(f32_vec_to_bytes(&vec))
             }
             Err(e) => {
-                error!("[memory] ✗ Embedding failed for memory {} — storing without vector: {}", &id[..8], e);
+                error!(
+                    "[memory] ✗ Embedding failed for memory {} — storing without vector: {}",
+                    &id[..8],
+                    e
+                );
                 None
             }
         }
@@ -52,9 +60,22 @@ pub async fn store_memory(
         None
     };
 
-    store.store_memory(&id, content, category, importance, embedding_bytes.as_deref(), agent_id)?;
-    info!("[memory] Stored memory {} cat={} imp={} agent={:?} has_embedding={}",
-        &id[..8], category, importance, agent_id, embedding_bytes.is_some());
+    store.store_memory(
+        &id,
+        content,
+        category,
+        importance,
+        embedding_bytes.as_deref(),
+        agent_id,
+    )?;
+    info!(
+        "[memory] Stored memory {} cat={} imp={} agent={:?} has_embedding={}",
+        &id[..8],
+        category,
+        importance,
+        agent_id,
+        embedding_bytes.is_some()
+    );
     Ok(id)
 }
 
@@ -83,13 +104,23 @@ pub async fn store_memory_dedup(
             let preview = &content[..content.floor_char_boundary(80)];
             info!(
                 "[memory] Skipping near-duplicate {} memory (overlap > {:.0}%): {}",
-                category, DEDUP_OVERLAP_THRESHOLD * 100.0, preview
+                category,
+                DEDUP_OVERLAP_THRESHOLD * 100.0,
+                preview
             );
             return Ok(None);
         }
     }
 
-    let id = store_memory(store, content, category, importance, embedding_client, agent_id).await?;
+    let id = store_memory(
+        store,
+        content,
+        category,
+        importance,
+        embedding_client,
+        agent_id,
+    )
+    .await?;
     Ok(Some(id))
 }
 
@@ -97,11 +128,13 @@ pub async fn store_memory_dedup(
 /// Returns a value between 0.0 (no overlap) and 1.0 (identical word sets).
 /// Exported for use by the dedup logic in commands/chat.rs.
 pub fn content_overlap(a: &str, b: &str) -> f64 {
-    let words_a: std::collections::HashSet<&str> = a.split_whitespace()
+    let words_a: std::collections::HashSet<&str> = a
+        .split_whitespace()
         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
         .filter(|w| w.len() > 2)
         .collect();
-    let words_b: std::collections::HashSet<&str> = b.split_whitespace()
+    let words_b: std::collections::HashSet<&str> = b
+        .split_whitespace()
         .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
         .filter(|w| w.len() > 2)
         .collect();
@@ -110,7 +143,11 @@ pub fn content_overlap(a: &str, b: &str) -> f64 {
     }
     let intersection = words_a.intersection(&words_b).count() as f64;
     let union = words_a.union(&words_b).count() as f64;
-    if union < 1.0 { 0.0 } else { intersection / union }
+    if union < 1.0 {
+        0.0
+    } else {
+        intersection / union
+    }
 }
 
 // ── Search (hybrid BM25 + vector + temporal decay + MMR) ───────────────
@@ -143,11 +180,18 @@ pub async fn search_memories(
     // ── Step 1: BM25 full-text search ──────────────────────────────
     let bm25_results = match store.search_memories_bm25(truncated_query, fetch_limit, agent_id) {
         Ok(r) => {
-            info!("[memory] BM25 search: {} results for '{}'", r.len(), query_preview);
+            info!(
+                "[memory] BM25 search: {} results for '{}'",
+                r.len(),
+                query_preview
+            );
             r
         }
         Err(e) => {
-            warn!("[memory] BM25 search failed: {} — continuing with vector only", e);
+            warn!(
+                "[memory] BM25 search failed: {} — continuing with vector only",
+                e
+            );
             Vec::new()
         }
     };
@@ -158,12 +202,22 @@ pub async fn search_memories(
     if let Some(client) = embedding_client {
         match client.embed(truncated_query).await {
             Ok(query_vec) => {
-                info!("[memory] Query embedded ({} dims), searching...", query_vec.len());
-                match store.search_memories_by_embedding(&query_vec, fetch_limit, threshold, agent_id) {
+                info!(
+                    "[memory] Query embedded ({} dims), searching...",
+                    query_vec.len()
+                );
+                match store.search_memories_by_embedding(
+                    &query_vec,
+                    fetch_limit,
+                    threshold,
+                    agent_id,
+                ) {
                     Ok(results) => {
-                        info!("[memory] Vector search: {} results (top score: {:.3})",
+                        info!(
+                            "[memory] Vector search: {} results (top score: {:.3})",
                             results.len(),
-                            results.first().and_then(|r| r.score).unwrap_or(0.0));
+                            results.first().and_then(|r| r.score).unwrap_or(0.0)
+                        );
                         vector_results = results;
                     }
                     Err(e) => warn!("[memory] Vector search failed: {}", e),
@@ -183,7 +237,11 @@ pub async fn search_memories(
         // Final fallback: keyword LIKE search
         info!("[memory] No BM25/vector results, falling back to keyword search");
         let results = store.search_memories_keyword(truncated_query, limit)?;
-        info!("[memory] Keyword fallback: {} results for '{}'", results.len(), query_preview);
+        info!(
+            "[memory] Keyword fallback: {} results for '{}'",
+            results.len(),
+            query_preview
+        );
         return Ok(results);
     }
 
@@ -196,15 +254,23 @@ pub async fn search_memories(
         mmr_rerank(&merged, limit, 0.7) // lambda=0.7 (70% relevance, 30% diversity)
     } else {
         merged.sort_by(|a, b| {
-            b.score.unwrap_or(0.0).partial_cmp(&a.score.unwrap_or(0.0))
+            b.score
+                .unwrap_or(0.0)
+                .partial_cmp(&a.score.unwrap_or(0.0))
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         merged.truncate(limit);
         merged
     };
 
-    info!("[memory] Hybrid search: returning {} results for '{}' (BM25={}, vector={}, merged={})",
-        final_results.len(), query_preview, bm25_results.len(), vector_results.len(), merged_count);
+    info!(
+        "[memory] Hybrid search: returning {} results for '{}' (BM25={}, vector={}, merged={})",
+        final_results.len(),
+        query_preview,
+        bm25_results.len(),
+        vector_results.len(),
+        merged_count
+    );
 
     Ok(final_results)
 }
@@ -226,7 +292,11 @@ fn merge_search_results(
     // Normalize BM25 scores to [0,1]
     let bm25_max = bm25.iter().filter_map(|m| m.score).fold(0.0f64, f64::max);
     let bm25_min = bm25.iter().filter_map(|m| m.score).fold(f64::MAX, f64::min);
-    let bm25_range = if (bm25_max - bm25_min).abs() < 1e-12 { 1.0 } else { bm25_max - bm25_min };
+    let bm25_range = if (bm25_max - bm25_min).abs() < 1e-12 {
+        1.0
+    } else {
+        bm25_max - bm25_min
+    };
 
     for mem in bm25 {
         let normalized = mem.score.map(|s| (s - bm25_min) / bm25_range);
@@ -243,12 +313,15 @@ fn merge_search_results(
     }
 
     // Combine scores
-    score_map.into_values().map(|(bm25_score, vec_score, mut mem)| {
-        let b = bm25_score.unwrap_or(0.0) * bm25_weight;
-        let v = vec_score.unwrap_or(0.0) * vector_weight;
-        mem.score = Some(b + v);
-        mem
-    }).collect()
+    score_map
+        .into_values()
+        .map(|(bm25_score, vec_score, mut mem)| {
+            let b = bm25_score.unwrap_or(0.0) * bm25_weight;
+            let v = vec_score.unwrap_or(0.0) * vector_weight;
+            mem.score = Some(b + v);
+            mem
+        })
+        .collect()
 }
 
 /// Apply temporal decay: boost newer memories, penalize old ones.
@@ -259,7 +332,9 @@ fn apply_temporal_decay(memories: &mut [Memory]) {
     let decay_constant = (2.0f64).ln() / half_life_days;
 
     for mem in memories.iter_mut() {
-        if let Ok(created) = chrono::NaiveDateTime::parse_from_str(&mem.created_at, "%Y-%m-%d %H:%M:%S") {
+        if let Ok(created) =
+            chrono::NaiveDateTime::parse_from_str(&mem.created_at, "%Y-%m-%d %H:%M:%S")
+        {
             let created_utc = created.and_utc();
             let age_days = (now - created_utc).num_hours() as f64 / 24.0;
             let decay_factor = (-decay_constant * age_days).exp();
@@ -283,7 +358,9 @@ fn mmr_rerank(candidates: &[Memory], k: usize, lambda: f64) -> Vec<Memory> {
 
     // Pick the highest-scored item first
     remaining.sort_by(|a, b| {
-        b.score.unwrap_or(0.0).partial_cmp(&a.score.unwrap_or(0.0))
+        b.score
+            .unwrap_or(0.0)
+            .partial_cmp(&a.score.unwrap_or(0.0))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
 
@@ -299,7 +376,8 @@ fn mmr_rerank(candidates: &[Memory], k: usize, lambda: f64) -> Vec<Memory> {
 
         for (i, candidate) in remaining.iter().enumerate() {
             let relevance = candidate.score.unwrap_or(0.0);
-            let max_similarity = selected.iter()
+            let max_similarity = selected
+                .iter()
                 .map(|s| content_similarity(&candidate.content, &s.content))
                 .fold(0.0f64, f64::max);
 
@@ -337,7 +415,10 @@ pub async fn backfill_embeddings(
         return Ok((0, 0));
     }
 
-    info!("[memory] Backfill: embedding {} memories...", memories.len());
+    info!(
+        "[memory] Backfill: embedding {} memories...",
+        memories.len()
+    );
     let mut success = 0usize;
     let mut fail = 0usize;
 
@@ -346,21 +427,32 @@ pub async fn backfill_embeddings(
             Ok(vec) => {
                 let bytes = f32_vec_to_bytes(&vec);
                 if let Err(e) = store.update_memory_embedding(&mem.id, &bytes) {
-                    warn!("[memory] Backfill: failed to update {} — {}", &mem.id[..8], e);
+                    warn!(
+                        "[memory] Backfill: failed to update {} — {}",
+                        &mem.id[..8],
+                        e
+                    );
                     fail += 1;
                 } else {
                     success += 1;
                 }
             }
             Err(e) => {
-                warn!("[memory] Backfill: embed failed for {} — {}", &mem.id[..8], e);
+                warn!(
+                    "[memory] Backfill: embed failed for {} — {}",
+                    &mem.id[..8],
+                    e
+                );
                 fail += 1;
             }
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
 
-    info!("[memory] Backfill complete: {} succeeded, {} failed", success, fail);
+    info!(
+        "[memory] Backfill complete: {} succeeded, {} failed",
+        success, fail
+    );
     Ok((success, fail))
 }
 
@@ -369,15 +461,28 @@ pub async fn backfill_embeddings(
 /// Auto-capture: extract memorable facts from an assistant response.
 /// Uses a simple heuristic approach — no LLM call needed.
 /// Returns content strings suitable for memory storage.
-pub fn extract_memorable_facts(user_message: &str, assistant_response: &str) -> Vec<(String, String)> {
+pub fn extract_memorable_facts(
+    user_message: &str,
+    assistant_response: &str,
+) -> Vec<(String, String)> {
     let mut facts: Vec<(String, String)> = Vec::new();
     let user_lower = user_message.to_lowercase();
 
     // User preference patterns
     let preference_patterns = [
-        "i like ", "i love ", "i prefer ", "i use ", "i work with ",
-        "my favorite ", "my name is ", "i'm ", "i am ", "i live ",
-        "my job ", "i work at ", "i work as ",
+        "i like ",
+        "i love ",
+        "i prefer ",
+        "i use ",
+        "i work with ",
+        "my favorite ",
+        "my name is ",
+        "i'm ",
+        "i am ",
+        "i live ",
+        "my job ",
+        "i work at ",
+        "i work as ",
     ];
     for pattern in &preference_patterns {
         if user_lower.contains(pattern) {
@@ -388,8 +493,14 @@ pub fn extract_memorable_facts(user_message: &str, assistant_response: &str) -> 
 
     // Factual statements about the user's environment
     let fact_patterns = [
-        "my project ", "my repo ", "my app ", "the codebase ",
-        "we use ", "our stack ", "our team ", "the database ",
+        "my project ",
+        "my repo ",
+        "my app ",
+        "the codebase ",
+        "we use ",
+        "our stack ",
+        "our team ",
+        "the database ",
     ];
     for pattern in &fact_patterns {
         if user_lower.contains(pattern) {
@@ -400,8 +511,13 @@ pub fn extract_memorable_facts(user_message: &str, assistant_response: &str) -> 
 
     // Instructions: "always...", "never...", "remember that..."
     let instruction_patterns = [
-        "always ", "never ", "remember that ", "remember to ",
-        "don't forget ", "make sure to ", "keep in mind ",
+        "always ",
+        "never ",
+        "remember that ",
+        "remember to ",
+        "don't forget ",
+        "make sure to ",
+        "keep in mind ",
     ];
     for pattern in &instruction_patterns {
         if user_lower.contains(pattern) {
@@ -415,16 +531,27 @@ pub fn extract_memorable_facts(user_message: &str, assistant_response: &str) -> 
     if assistant_response.len() > 100 {
         let resp_lower = assistant_response.to_lowercase();
         let assistant_fact_patterns = [
-            "i found that ", "i discovered ", "the issue is ", "the problem is ",
-            "the solution is ", "i've set up ", "i configured ", "i created ",
-            "the root cause ", "i installed ", "i fixed ",
+            "i found that ",
+            "i discovered ",
+            "the issue is ",
+            "the problem is ",
+            "the solution is ",
+            "i've set up ",
+            "i configured ",
+            "i created ",
+            "the root cause ",
+            "i installed ",
+            "i fixed ",
         ];
         for pattern in &assistant_fact_patterns {
             if resp_lower.contains(pattern) {
                 // Store a condensed version (first 300 chars) to avoid bloat
                 // Use floor_char_boundary to avoid panicking on multi-byte chars
                 let condensed = if assistant_response.len() > 300 {
-                    format!("Agent finding: {}…", &assistant_response[..assistant_response.floor_char_boundary(300)])
+                    format!(
+                        "Agent finding: {}…",
+                        &assistant_response[..assistant_response.floor_char_boundary(300)]
+                    )
                 } else {
                     format!("Agent finding: {}", assistant_response)
                 };

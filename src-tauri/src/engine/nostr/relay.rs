@@ -3,17 +3,17 @@
 // Connects to a single Nostr relay, subscribes to mentions and DMs,
 // handles incoming events, and publishes signed replies.
 
-use super::crypto::{sign_event, build_reply_event, nip04_encrypt, nip04_decrypt};
-use super::{NostrConfig, get_stop_signal, MESSAGE_COUNT};
+use super::crypto::{build_reply_event, nip04_decrypt, nip04_encrypt, sign_event};
+use super::{get_stop_signal, NostrConfig, MESSAGE_COUNT};
 
+use crate::atoms::error::{EngineError, EngineResult};
 use crate::engine::channels;
-use log::{debug, info, warn, error};
+use futures::{SinkExt, StreamExt};
+use log::{debug, error, info, warn};
 use serde_json::json;
 use std::sync::atomic::Ordering;
 use tauri::Emitter;
 use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
-use futures::{SinkExt, StreamExt};
-use crate::atoms::error::{EngineResult, EngineError};
 
 // ── Single Relay WebSocket Loop ────────────────────────────────────────
 
@@ -26,16 +26,20 @@ pub(crate) async fn run_relay_loop(
 ) -> EngineResult<()> {
     let stop = get_stop_signal();
 
-    let (ws_stream, _) = connect_async(relay_url).await
+    let (ws_stream, _) = connect_async(relay_url)
+        .await
         .map_err(|e| format!("WS connect to {}: {}", relay_url, e))?;
     let (mut ws_tx, mut ws_rx) = ws_stream.split();
 
     info!("[nostr] Connected to relay {}", relay_url);
 
-    let _ = app_handle.emit("nostr-status", json!({
-        "kind": "connected",
-        "relay": relay_url,
-    }));
+    let _ = app_handle.emit(
+        "nostr-status",
+        json!({
+            "kind": "connected",
+            "relay": relay_url,
+        }),
+    );
 
     // Subscribe to events mentioning our pubkey (NIP-01)
     // kind 1 = text notes, kind 4 = encrypted DMs (NIP-04)
@@ -45,15 +49,22 @@ pub(crate) async fn run_relay_loop(
         "kinds": [1, 4],
         "since": chrono::Utc::now().timestamp() - 10, // Only new events
     }]);
-    ws_tx.send(WsMessage::Text(req.to_string())).await
-        .map_err(|e| EngineError::Channel { channel: "nostr".into(), message: e.to_string() })?;
+    ws_tx
+        .send(WsMessage::Text(req.to_string()))
+        .await
+        .map_err(|e| EngineError::Channel {
+            channel: "nostr".into(),
+            message: e.to_string(),
+        })?;
 
     let mut current_config = config.clone();
     let mut last_config_reload = std::time::Instant::now();
     let mut seen_events: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     loop {
-        if stop.load(Ordering::Relaxed) { break; }
+        if stop.load(Ordering::Relaxed) {
+            break;
+        }
 
         let msg = tokio::select! {
             msg = ws_rx.next() => msg,
@@ -80,20 +91,28 @@ pub(crate) async fn run_relay_loop(
             Err(_) => continue,
         };
 
-        if arr.is_empty() { continue; }
+        if arr.is_empty() {
+            continue;
+        }
 
         let msg_type = arr[0].as_str().unwrap_or("");
 
         match msg_type {
             "EVENT" => {
-                if arr.len() < 3 { continue; }
+                if arr.len() < 3 {
+                    continue;
+                }
                 let event = &arr[2];
 
                 let event_id = event["id"].as_str().unwrap_or("").to_string();
-                if event_id.is_empty() { continue; }
+                if event_id.is_empty() {
+                    continue;
+                }
 
                 // Dedup
-                if seen_events.contains(&event_id) { continue; }
+                if seen_events.contains(&event_id) {
+                    continue;
+                }
                 seen_events.insert(event_id.clone());
                 // Limit dedup set size
                 if seen_events.len() > 10000 {
@@ -101,34 +120,52 @@ pub(crate) async fn run_relay_loop(
                 }
 
                 let kind = event["kind"].as_u64().unwrap_or(0);
-                if kind != 1 && kind != 4 { continue; }
+                if kind != 1 && kind != 4 {
+                    continue;
+                }
 
                 let sender_pk = event["pubkey"].as_str().unwrap_or("").to_string();
-                if sender_pk == pubkey_hex { continue; } // Skip own events
+                if sender_pk == pubkey_hex {
+                    continue;
+                } // Skip own events
 
                 let raw_content = event["content"].as_str().unwrap_or("").to_string();
-                if raw_content.is_empty() { continue; }
+                if raw_content.is_empty() {
+                    continue;
+                }
 
                 // Decrypt kind-4 DMs (NIP-04), pass through kind-1 text notes
                 let (content, is_dm) = if kind == 4 {
                     match nip04_decrypt(secret_key, &sender_pk, &raw_content) {
                         Ok(pt) => (pt, true),
                         Err(e) => {
-                            warn!("[nostr] Failed to decrypt DM from {}...{}: {}",
+                            warn!(
+                                "[nostr] Failed to decrypt DM from {}...{}: {}",
                                 &sender_pk[..sender_pk.len().min(8)],
-                                &sender_pk[sender_pk.len().saturating_sub(4)..], e);
+                                &sender_pk[sender_pk.len().saturating_sub(4)..],
+                                e
+                            );
                             continue;
                         }
                     }
                 } else {
                     (raw_content, false)
                 };
-                if content.is_empty() { continue; }
+                if content.is_empty() {
+                    continue;
+                }
 
-                debug!("[nostr] {} from {}...{}: {}",
+                debug!(
+                    "[nostr] {} from {}...{}: {}",
                     if is_dm { "DM" } else { "Event" },
-                    &sender_pk[..8], &sender_pk[sender_pk.len()-4..],
-                    if content.len() > 50 { format!("{}...", &content[..content.floor_char_boundary(50)]) } else { content.clone() });
+                    &sender_pk[..8],
+                    &sender_pk[sender_pk.len() - 4..],
+                    if content.len() > 50 {
+                        format!("{}...", &content[..content.floor_char_boundary(50)])
+                    } else {
+                        content.clone()
+                    }
+                );
 
                 // Access control
                 if let Err(_denial_msg) = channels::check_access(
@@ -139,11 +176,18 @@ pub(crate) async fn run_relay_loop(
                     &current_config.allowed_users,
                     &mut current_config.pending_users,
                 ) {
-                    let _ = channels::save_channel_config(app_handle, super::CONFIG_KEY, &current_config);
-                    let _ = app_handle.emit("nostr-status", json!({
-                        "kind": "pairing_request",
-                        "pubkey": &sender_pk,
-                    }));
+                    let _ = channels::save_channel_config(
+                        app_handle,
+                        super::CONFIG_KEY,
+                        &current_config,
+                    );
+                    let _ = app_handle.emit(
+                        "nostr-status",
+                        json!({
+                            "kind": "pairing_request",
+                            "pubkey": &sender_pk,
+                        }),
+                    );
                     // Don't reply to denied users on public Nostr
                     continue;
                 }
@@ -162,9 +206,15 @@ pub(crate) async fn run_relay_loop(
                 };
 
                 let response = channels::run_channel_agent(
-                    app_handle, "nostr", ctx, &content, &sender_pk, agent_id,
+                    app_handle,
+                    "nostr",
+                    ctx,
+                    &content,
+                    &sender_pk,
+                    agent_id,
                     current_config.allow_dangerous_tools,
-                ).await;
+                )
+                .await;
 
                 match response {
                     Ok(reply) if !reply.is_empty() => {
@@ -176,7 +226,10 @@ pub(crate) async fn run_relay_loop(
                                     match sign_event(secret_key, pubkey_hex, 4, &tags, &encrypted) {
                                         Ok(dm_event) => {
                                             let publish = json!(["EVENT", dm_event]);
-                                            if let Err(e) = ws_tx.send(WsMessage::Text(publish.to_string())).await {
+                                            if let Err(e) = ws_tx
+                                                .send(WsMessage::Text(publish.to_string()))
+                                                .await
+                                            {
                                                 warn!("[nostr] Failed to send DM: {}", e);
                                             }
                                         }
@@ -187,10 +240,14 @@ pub(crate) async fn run_relay_loop(
                             }
                         } else {
                             // Public reply (kind-1)
-                            match build_reply_event(secret_key, pubkey_hex, &reply, &event_id, &sender_pk) {
+                            match build_reply_event(
+                                secret_key, pubkey_hex, &reply, &event_id, &sender_pk,
+                            ) {
                                 Ok(reply_event) => {
                                     let publish = json!(["EVENT", reply_event]);
-                                    if let Err(e) = ws_tx.send(WsMessage::Text(publish.to_string())).await {
+                                    if let Err(e) =
+                                        ws_tx.send(WsMessage::Text(publish.to_string())).await
+                                    {
                                         warn!("[nostr] Failed to publish reply: {}", e);
                                     }
                                 }
@@ -199,7 +256,12 @@ pub(crate) async fn run_relay_loop(
                         }
                     }
                     Err(e) => {
-                        error!("[nostr] Agent error for {}...{}: {}", &sender_pk[..8], &sender_pk[sender_pk.len()-4..], e);
+                        error!(
+                            "[nostr] Agent error for {}...{}: {}",
+                            &sender_pk[..8],
+                            &sender_pk[sender_pk.len() - 4..],
+                            e
+                        );
                     }
                     _ => {}
                 }
@@ -224,17 +286,22 @@ pub(crate) async fn run_relay_loop(
 
         // Reload config
         if last_config_reload.elapsed() > std::time::Duration::from_secs(30) {
-            if let Ok(fresh) = channels::load_channel_config::<NostrConfig>(app_handle, super::CONFIG_KEY) {
+            if let Ok(fresh) =
+                channels::load_channel_config::<NostrConfig>(app_handle, super::CONFIG_KEY)
+            {
                 current_config = fresh;
             }
             last_config_reload = std::time::Instant::now();
         }
     }
 
-    let _ = app_handle.emit("nostr-status", json!({
-        "kind": "disconnected",
-        "relay": relay_url,
-    }));
+    let _ = app_handle.emit(
+        "nostr-status",
+        json!({
+            "kind": "disconnected",
+            "relay": relay_url,
+        }),
+    );
 
     Ok(())
 }

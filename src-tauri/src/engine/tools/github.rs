@@ -1,10 +1,10 @@
 // Paw Agent Engine — GitHub tool
 // github_api
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
 use log::info;
 use std::time::Duration;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![ToolDefinition {
@@ -30,26 +30,41 @@ pub async fn execute(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
-    if name != "github_api" { return None; }
+    if name != "github_api" {
+        return None;
+    }
     let creds = match super::get_skill_creds("github", app_handle) {
         Ok(c) => c,
         Err(e) => return Some(Err(e.to_string())),
     };
-    Some(execute_github_api(args, &creds).await.map_err(|e| e.to_string()))
+    Some(
+        execute_github_api(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+    )
 }
 
 async fn execute_github_api(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let endpoint = args["endpoint"].as_str().ok_or("github_api: missing 'endpoint'")?;
+    let endpoint = args["endpoint"]
+        .as_str()
+        .ok_or("github_api: missing 'endpoint'")?;
     let method = args["method"].as_str().unwrap_or("GET");
     let token = creds.get("GITHUB_TOKEN").ok_or("Missing GITHUB_TOKEN")?;
 
     let url = if endpoint.starts_with("https://") {
         endpoint.to_string()
     } else {
-        format!("https://api.github.com{}", if endpoint.starts_with('/') { endpoint.to_string() } else { format!("/{}", endpoint) })
+        format!(
+            "https://api.github.com{}",
+            if endpoint.starts_with('/') {
+                endpoint.to_string()
+            } else {
+                format!("/{}", endpoint)
+            }
+        )
     };
 
     info!("[skill:github] {} {}", method, url);
@@ -59,11 +74,11 @@ async fn execute_github_api(
         .build()?;
 
     let mut request = match method.to_uppercase().as_str() {
-        "POST"   => client.post(&url),
-        "PUT"    => client.put(&url),
-        "PATCH"  => client.patch(&url),
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "PATCH" => client.patch(&url),
         "DELETE" => client.delete(&url),
-        _        => client.get(&url),
+        _ => client.get(&url),
     };
 
     request = request
@@ -83,10 +98,17 @@ async fn execute_github_api(
     let body = resp.text().await?;
 
     let truncated = if body.len() > 30_000 {
-        format!("{}...\n[truncated, {} total bytes]", &body[..30_000], body.len())
+        format!(
+            "{}...\n[truncated, {} total bytes]",
+            &body[..30_000],
+            body.len()
+        )
     } else {
         body
     };
 
-    Ok(format!("GitHub API {} {} → {}\n\n{}", method, endpoint, status, truncated))
+    Ok(format!(
+        "GitHub API {} {} → {}\n\n{}",
+        method, endpoint, status, truncated
+    ))
 }

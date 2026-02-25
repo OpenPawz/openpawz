@@ -2,9 +2,9 @@
 //
 // Tools: discord_list_members, discord_get_member, discord_kick, discord_ban, discord_unban
 
-use crate::atoms::types::*;
+use super::{authorized_client, discord_request, get_bot_token, resolve_server_id, DISCORD_API};
 use crate::atoms::error::EngineResult;
-use super::{DISCORD_API, get_bot_token, resolve_server_id, authorized_client, discord_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -97,11 +97,17 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "discord_list_members" => Some(exec_list(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_get_member"   => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_kick"         => Some(exec_kick(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_ban"          => Some(exec_ban(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_unban"        => Some(exec_unban(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_list_members" => {
+            Some(exec_list(args, app_handle).await.map_err(|e| e.to_string()))
+        }
+        "discord_get_member" => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_kick" => Some(exec_kick(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_ban" => Some(exec_ban(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_unban" => Some(
+            exec_unban(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -114,7 +120,10 @@ async fn exec_list(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
     let (client, auth) = authorized_client(&token);
 
     let limit = args["limit"].as_i64().unwrap_or(100).clamp(1, 1000);
-    let mut url = format!("{}/guilds/{}/members?limit={}", DISCORD_API, server_id, limit);
+    let mut url = format!(
+        "{}/guilds/{}/members?limit={}",
+        DISCORD_API, server_id, limit
+    );
     if let Some(after) = args["after"].as_str() {
         url.push_str(&format!("&after={}", after));
     }
@@ -127,14 +136,32 @@ async fn exec_list(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
         let user = &m["user"];
         let username = user["username"].as_str().unwrap_or("?");
         let user_id = user["id"].as_str().unwrap_or("?");
-        let nick = m["nick"].as_str().map(|n| format!(" ({})", n)).unwrap_or_default();
-        let bot = if user["bot"].as_bool().unwrap_or(false) { " 🤖" } else { "" };
-        let roles: Vec<&str> = m["roles"].as_array()
+        let nick = m["nick"]
+            .as_str()
+            .map(|n| format!(" ({})", n))
+            .unwrap_or_default();
+        let bot = if user["bot"].as_bool().unwrap_or(false) {
+            " 🤖"
+        } else {
+            ""
+        };
+        let roles: Vec<&str> = m["roles"]
+            .as_array()
             .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
             .unwrap_or_default();
-        let role_str = if roles.is_empty() { String::new() } else { format!(" | roles: {}", roles.join(", ")) };
-        let joined = m["joined_at"].as_str().map(|j| format!(" | joined: {}", &j[..j.len().min(10)])).unwrap_or_default();
-        lines.push(format!("• **{}**{}{} (id: {}){}{}", username, nick, bot, user_id, role_str, joined));
+        let role_str = if roles.is_empty() {
+            String::new()
+        } else {
+            format!(" | roles: {}", roles.join(", "))
+        };
+        let joined = m["joined_at"]
+            .as_str()
+            .map(|j| format!(" | joined: {}", &j[..j.len().min(10)]))
+            .unwrap_or_default();
+        lines.push(format!(
+            "• **{}**{}{} (id: {}){}{}",
+            username, nick, bot, user_id, role_str, joined
+        ));
     }
     Ok(lines.join("\n"))
 }
@@ -154,9 +181,14 @@ async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
     let username = user["username"].as_str().unwrap_or("?");
     let discriminator = user["discriminator"].as_str().unwrap_or("0");
     let nick = data["nick"].as_str().unwrap_or("(none)");
-    let bot = if user["bot"].as_bool().unwrap_or(false) { "Yes" } else { "No" };
+    let bot = if user["bot"].as_bool().unwrap_or(false) {
+        "Yes"
+    } else {
+        "No"
+    };
     let joined = data["joined_at"].as_str().unwrap_or("?");
-    let roles: Vec<&str> = data["roles"].as_array()
+    let roles: Vec<&str> = data["roles"]
+        .as_array()
         .map(|r| r.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
     let avatar = user["avatar"].as_str().unwrap_or("(none)");
@@ -169,8 +201,17 @@ async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
         • Joined: {}\n\
         • Roles: {}\n\
         • Avatar: {}",
-        username, discriminator, user_id, nick, bot, joined,
-        if roles.is_empty() { "(none)".to_string() } else { roles.join(", ") },
+        username,
+        discriminator,
+        user_id,
+        nick,
+        bot,
+        joined,
+        if roles.is_empty() {
+            "(none)".to_string()
+        } else {
+            roles.join(", ")
+        },
         avatar
     ))
 }
@@ -185,7 +226,8 @@ async fn exec_kick(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
 
     let url = format!("{}/guilds/{}/members/{}", DISCORD_API, server_id, user_id);
     // Add audit log reason as header
-    let mut req = client.delete(&url)
+    let mut req = client
+        .delete(&url)
         .header("Authorization", &auth)
         .header("Content-Type", "application/json");
     if let Some(reason) = args["reason"].as_str() {
@@ -217,7 +259,8 @@ async fn exec_ban(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
     }
 
     let url = format!("{}/guilds/{}/bans/{}", DISCORD_API, server_id, user_id);
-    let mut req = client.put(&url)
+    let mut req = client
+        .put(&url)
         .header("Authorization", &auth)
         .header("Content-Type", "application/json")
         .json(&body);
@@ -246,6 +289,12 @@ async fn exec_unban(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult
     let url = format!("{}/guilds/{}/bans/{}", DISCORD_API, server_id, user_id);
     discord_request(&client, reqwest::Method::DELETE, &url, &auth, None).await?;
 
-    info!("[discord] Unbanned user {} from guild {}", user_id, server_id);
-    Ok(format!("Unbanned user {} from server {}", user_id, server_id))
+    info!(
+        "[discord] Unbanned user {} from guild {}",
+        user_id, server_id
+    );
+    Ok(format!(
+        "Unbanned user {} from server {}",
+        user_id, server_id
+    ))
 }

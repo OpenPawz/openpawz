@@ -1,7 +1,7 @@
-use rusqlite::params;
-use crate::engine::types::{Project, ProjectAgent, ProjectMessage};
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::types::{Project, ProjectAgent, ProjectMessage};
+use rusqlite::params;
 
 impl ProjectAgent {
     /// Map columns starting at `offset` → ProjectAgent.
@@ -33,20 +33,21 @@ impl SessionStore {
             "SELECT id, title, goal, status, boss_agent, created_at, updated_at FROM projects ORDER BY updated_at DESC"
         )?;
 
-        let projects = stmt.query_map([], |row| {
-            Ok(Project {
-                id: row.get(0)?,
-                title: row.get(1)?,
-                goal: row.get(2)?,
-                status: row.get(3)?,
-                boss_agent: row.get(4)?,
-                agents: vec![],
-                created_at: row.get(5)?,
-                updated_at: row.get(6)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect::<Vec<_>>();
+        let projects = stmt
+            .query_map([], |row| {
+                Ok(Project {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    goal: row.get(2)?,
+                    status: row.get(3)?,
+                    boss_agent: row.get(4)?,
+                    agents: vec![],
+                    created_at: row.get(5)?,
+                    updated_at: row.get(6)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
 
         // Load agents for each project (inline to avoid double-locking self.conn)
         let mut result = Vec::new();
@@ -54,7 +55,8 @@ impl SessionStore {
             let mut agent_stmt = conn.prepare(
                 "SELECT agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents WHERE project_id=?1"
             )?;
-            p.agents = agent_stmt.query_map(params![p.id], |row| ProjectAgent::from_row_at(row, 0))?
+            p.agents = agent_stmt
+                .query_map(params![p.id], |row| ProjectAgent::from_row_at(row, 0))?
                 .filter_map(|r| r.ok())
                 .collect();
             result.push(p);
@@ -86,9 +88,16 @@ impl SessionStore {
         Ok(())
     }
 
-    pub fn set_project_agents(&self, project_id: &str, agents: &[ProjectAgent]) -> EngineResult<()> {
+    pub fn set_project_agents(
+        &self,
+        project_id: &str,
+        agents: &[ProjectAgent],
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
-        conn.execute("DELETE FROM project_agents WHERE project_id=?1", params![project_id])?;
+        conn.execute(
+            "DELETE FROM project_agents WHERE project_id=?1",
+            params![project_id],
+        )?;
         for a in agents {
             let caps_json = serde_json::to_string(&a.capabilities).unwrap_or_default();
             conn.execute(
@@ -114,13 +123,20 @@ impl SessionStore {
         let mut stmt = conn.prepare(
             "SELECT agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents WHERE project_id=?1"
         )?;
-        let agents = stmt.query_map(params![project_id], |row| ProjectAgent::from_row_at(row, 0))?
+        let agents = stmt
+            .query_map(params![project_id], |row| ProjectAgent::from_row_at(row, 0))?
             .filter_map(|r| r.ok())
             .collect();
         Ok(agents)
     }
 
-    pub fn update_project_agent_status(&self, project_id: &str, agent_id: &str, status: &str, current_task: Option<&str>) -> EngineResult<()> {
+    pub fn update_project_agent_status(
+        &self,
+        project_id: &str,
+        agent_id: &str,
+        status: &str,
+        current_task: Option<&str>,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         conn.execute(
             "UPDATE project_agents SET status=?3, current_task=?4 WHERE project_id=?1 AND agent_id=?2",
@@ -157,13 +173,14 @@ impl SessionStore {
         let mut stmt = conn.prepare(
             "SELECT project_id, agent_id, role, specialty, status, current_task, model, system_prompt, capabilities FROM project_agents WHERE agent_id IS NOT NULL AND agent_id != '' ORDER BY agent_id"
         )?;
-        let agents = stmt.query_map([], |row| {
-            let project_id: String = row.get(0)?;
-            let agent = ProjectAgent::from_row_at(row, 1)?;
-            Ok((project_id, agent))
-        })?
-        .filter_map(|r| r.ok())
-        .collect();
+        let agents = stmt
+            .query_map([], |row| {
+                let project_id: String = row.get(0)?;
+                let agent = ProjectAgent::from_row_at(row, 1)?;
+                Ok((project_id, agent))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
         Ok(agents)
     }
 
@@ -178,25 +195,30 @@ impl SessionStore {
         Ok(())
     }
 
-    pub fn get_project_messages(&self, project_id: &str, limit: i64) -> EngineResult<Vec<ProjectMessage>> {
+    pub fn get_project_messages(
+        &self,
+        project_id: &str,
+        limit: i64,
+    ) -> EngineResult<Vec<ProjectMessage>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, project_id, from_agent, to_agent, kind, content, metadata, created_at FROM project_messages WHERE project_id=?1 ORDER BY created_at DESC LIMIT ?2"
         )?;
-        let msgs = stmt.query_map(params![project_id, limit], |row| {
-            Ok(ProjectMessage {
-                id: row.get(0)?,
-                project_id: row.get(1)?,
-                from_agent: row.get(2)?,
-                to_agent: row.get(3)?,
-                kind: row.get(4)?,
-                content: row.get(5)?,
-                metadata: row.get(6)?,
-                created_at: row.get(7)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect::<Vec<_>>();
+        let msgs = stmt
+            .query_map(params![project_id, limit], |row| {
+                Ok(ProjectMessage {
+                    id: row.get(0)?,
+                    project_id: row.get(1)?,
+                    from_agent: row.get(2)?,
+                    to_agent: row.get(3)?,
+                    kind: row.get(4)?,
+                    content: row.get(5)?,
+                    metadata: row.get(6)?,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
 
         // Return in chronological order
         let mut result = msgs;

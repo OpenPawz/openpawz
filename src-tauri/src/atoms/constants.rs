@@ -8,7 +8,7 @@
 // The keychain entry is keyed on (service, user) — changing either value
 // would cause existing keys to become unreachable. Treat as stable identifiers.
 pub(crate) const DB_KEY_SERVICE: &str = "paw-db-encryption";
-pub(crate) const DB_KEY_USER: &str    = "paw-db-key";
+pub(crate) const DB_KEY_USER: &str = "paw-db-key";
 
 // ── Cron task execution cost-control limits ────────────────────────────────
 // Used by `run_cron_heartbeat()` in engine/commands.rs.
@@ -18,7 +18,7 @@ pub(crate) const DB_KEY_USER: &str    = "paw-db-key";
 // This is the #1 driver of runaway API costs in unattended execution.
 // We prune old messages before each run and cap tool rounds.
 pub(crate) const CRON_SESSION_KEEP_MESSAGES: i64 = 20; // keep ~2-3 runs of context
-pub(crate) const CRON_MAX_TOOL_ROUNDS: u32        = 10; // prevent runaway tool loops
+pub(crate) const CRON_MAX_TOOL_ROUNDS: u32 = 10; // prevent runaway tool loops
 
 // ── Chat session message retention ─────────────────────────────────────
 // After each chat turn, prune the session if it exceeds this many stored
@@ -29,6 +29,6 @@ pub(crate) const CHAT_SESSION_MAX_MESSAGES: i64 = 200;
 // ── Startup housekeeping ───────────────────────────────────────────────
 // Sessions older than this with 0 messages are purged on startup.
 pub(crate) const STARTUP_EMPTY_SESSION_MAX_AGE_SECS: i64 = 3600; // 1 hour
-// Sessions with no activity for this long have their messages pruned to
-// CHAT_SESSION_MAX_MESSAGES on startup.
+                                                                 // Sessions with no activity for this long have their messages pruned to
+                                                                 // CHAT_SESSION_MAX_MESSAGES on startup.
 pub(crate) const STARTUP_STALE_SESSION_MAX_AGE_DAYS: i64 = 30;

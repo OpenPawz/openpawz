@@ -15,28 +15,28 @@
 //   projects       — project CRUD, project agents, message bus
 //   embedding      — bytes_to_f32_vec, f32_vec_to_bytes, cosine_similarity
 
+use crate::atoms::error::EngineResult;
 use log::info;
+use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::path::PathBuf;
-use parking_lot::Mutex;
-use crate::atoms::error::EngineResult;
 
-#[allow(clippy::module_inception)]
-mod sessions;
-mod messages;
-mod config;
-mod trades;
-mod positions;
 mod agent_files;
+mod agent_messages;
+mod config;
+pub(crate) mod embedding;
 mod memories;
-mod tasks;
+mod messages;
+mod positions;
 mod projects;
 mod schema;
-pub(crate) mod embedding;
+#[allow(clippy::module_inception)]
+mod sessions;
 mod skill_outputs;
 mod skill_storage;
-mod agent_messages;
 mod squads;
+mod tasks;
+mod trades;
 
 // ── Re-exports (preserve crate::engine::sessions::* API) ─────────────────────
 
@@ -71,7 +71,9 @@ impl SessionStore {
 
         schema::run_migrations(&conn)?;
 
-        Ok(SessionStore { conn: Mutex::new(conn) })
+        Ok(SessionStore {
+            conn: Mutex::new(conn),
+        })
     }
 }
 

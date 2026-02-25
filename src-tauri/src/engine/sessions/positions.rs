@@ -1,8 +1,8 @@
-use log::info;
-use rusqlite::params;
-use crate::engine::types::Position;
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::types::Position;
+use log::info;
+use rusqlite::params;
 
 impl SessionStore {
     // ── Positions (Stop-Loss / Take-Profit) ────────────────────────────
@@ -27,8 +27,15 @@ impl SessionStore {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?7, ?8, 'open', ?4, ?9)",
             params![id, mint, symbol, entry_price_usd, entry_sol, amount, stop_loss_pct, take_profit_pct, agent_id],
         )?;
-        info!("[positions] Opened position {} for {} ({}) — entry ${:.6}, SL {:.0}%, TP {:.0}x",
-            id, symbol, &mint[..std::cmp::min(8, mint.len())], entry_price_usd, stop_loss_pct * 100.0, take_profit_pct);
+        info!(
+            "[positions] Opened position {} for {} ({}) — entry ${:.6}, SL {:.0}%, TP {:.0}x",
+            id,
+            symbol,
+            &mint[..std::cmp::min(8, mint.len())],
+            entry_price_usd,
+            stop_loss_pct * 100.0,
+            take_profit_pct
+        );
         Ok(id)
     }
 
@@ -79,7 +86,12 @@ impl SessionStore {
     }
 
     /// Close a position (stop-loss hit, take-profit hit, or manual).
-    pub fn close_position(&self, id: &str, status: &str, close_tx: Option<&str>) -> EngineResult<()> {
+    pub fn close_position(
+        &self,
+        id: &str,
+        status: &str,
+        close_tx: Option<&str>,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         conn.execute(
             "UPDATE positions SET status = ?1, closed_at = datetime('now'), close_tx = ?2 WHERE id = ?3",
@@ -99,7 +111,12 @@ impl SessionStore {
     }
 
     /// Update stop-loss and take-profit percentages for a position.
-    pub fn update_position_targets(&self, id: &str, stop_loss_pct: f64, take_profit_pct: f64) -> EngineResult<()> {
+    pub fn update_position_targets(
+        &self,
+        id: &str,
+        stop_loss_pct: f64,
+        take_profit_pct: f64,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         conn.execute(
             "UPDATE positions SET stop_loss_pct = ?1, take_profit_pct = ?2 WHERE id = ?3",

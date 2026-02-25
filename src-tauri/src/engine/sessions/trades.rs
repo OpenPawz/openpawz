@@ -1,7 +1,7 @@
-use chrono::Utc;
-use rusqlite::params;
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use chrono::Utc;
+use rusqlite::params;
 
 impl SessionStore {
     // ── Trade History ──────────────────────────────────────────────────
@@ -125,7 +125,9 @@ impl SessionStore {
             let mut stmt = conn.prepare(
                 "SELECT DISTINCT product_id FROM trade_history WHERE trade_type = 'dex_swap' AND product_id IS NOT NULL AND created_at >= ?1"
             ).unwrap();
-            let rows = stmt.query_map(params![&today_start], |row| row.get::<_, String>(0)).unwrap();
+            let rows = stmt
+                .query_map(params![&today_start], |row| row.get::<_, String>(0))
+                .unwrap();
             rows.filter_map(|r| r.ok()).collect()
         };
 

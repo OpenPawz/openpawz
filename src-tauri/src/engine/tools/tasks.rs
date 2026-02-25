@@ -1,11 +1,11 @@
 // Paw Agent Engine — Task management tools
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
 use crate::engine::state::EngineState;
 use log::info;
 use tauri::Emitter;
 use tauri::Manager;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
@@ -74,9 +74,15 @@ pub async fn execute(
     _agent_id: &str,
 ) -> Option<Result<String, String>> {
     Some(match name {
-        "create_task"  => execute_create_task(args, app_handle).await.map_err(|e| e.to_string()),
-        "list_tasks"   => execute_list_tasks(args, app_handle).await.map_err(|e| e.to_string()),
-        "manage_task"  => execute_manage_task(args, app_handle).await.map_err(|e| e.to_string()),
+        "create_task" => execute_create_task(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "list_tasks" => execute_list_tasks(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "manage_task" => execute_manage_task(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
         _ => return None,
     })
 }
@@ -85,27 +91,40 @@ async fn execute_create_task(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let title = args["title"].as_str().ok_or("create_task: missing 'title'")?;
-    let description = args["description"].as_str().ok_or("create_task: missing 'description'")?;
+    let title = args["title"]
+        .as_str()
+        .ok_or("create_task: missing 'title'")?;
+    let description = args["description"]
+        .as_str()
+        .ok_or("create_task: missing 'description'")?;
     let priority = args["priority"].as_str().unwrap_or("medium").to_string();
     let agent_id = args["agent_id"].as_str().unwrap_or("default").to_string();
     let cron_schedule = args["cron_schedule"].as_str().map(String::from);
     let event_trigger = args["event_trigger"].as_str().map(String::from);
     let persistent = args["persistent"].as_bool().unwrap_or(false);
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
     let cron_enabled = cron_schedule.is_some() || persistent;
-    let next_run_at = if cron_enabled { Some(now.clone()) } else { None };
+    let next_run_at = if cron_enabled {
+        Some(now.clone())
+    } else {
+        None
+    };
 
     let task = crate::engine::types::Task {
         id: id.clone(),
         title: title.to_string(),
         description: description.to_string(),
-        status: if cron_enabled { "assigned".into() } else { "inbox".into() },
+        status: if cron_enabled {
+            "assigned".into()
+        } else {
+            "inbox".into()
+        },
         priority: priority.clone(),
         assigned_agent: Some(agent_id.clone()),
         assigned_agents: vec![crate::engine::types::TaskAgent {
@@ -127,22 +146,38 @@ async fn execute_create_task(
     state.store.create_task(&task)?;
 
     let aid = uuid::Uuid::new_v4().to_string();
-    state.store.add_task_activity(&aid, &id, "created", None,
-        &format!("Task created via chat: {}", title)).ok();
+    state
+        .store
+        .add_task_activity(
+            &aid,
+            &id,
+            "created",
+            None,
+            &format!("Task created via chat: {}", title),
+        )
+        .ok();
 
-    info!("[engine] create_task tool: '{}' agent={} cron={:?} event={:?} persistent={}",
-        title, agent_id, cron_schedule, event_trigger, persistent);
-    app_handle.emit("task-updated", serde_json::json!({ "task_id": id })).ok();
+    info!(
+        "[engine] create_task tool: '{}' agent={} cron={:?} event={:?} persistent={}",
+        title, agent_id, cron_schedule, event_trigger, persistent
+    );
+    app_handle
+        .emit("task-updated", serde_json::json!({ "task_id": id }))
+        .ok();
 
     let mut schedule_info = String::new();
     if let Some(ref s) = cron_schedule {
         schedule_info.push_str(&format!("\n- **Schedule**: {} (runs automatically)", s));
     }
     if let Some(ref e) = event_trigger {
-        schedule_info.push_str(&format!("\n- **Event trigger**: {} (fires on matching events)", e));
+        schedule_info.push_str(&format!(
+            "\n- **Event trigger**: {} (fires on matching events)",
+            e
+        ));
     }
     if persistent {
-        schedule_info.push_str("\n- **Mode**: Persistent (re-runs continuously after each completion)");
+        schedule_info
+            .push_str("\n- **Mode**: Persistent (re-runs continuously after each completion)");
     }
     if schedule_info.is_empty() {
         schedule_info = "\n- **Type**: One-shot task (run manually from Tasks board)".into();
@@ -162,7 +197,8 @@ async fn execute_list_tasks(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let status_filter = args["status_filter"].as_str();
@@ -170,12 +206,17 @@ async fn execute_list_tasks(
 
     let tasks = state.store.list_tasks()?;
 
-    let filtered: Vec<_> = tasks.into_iter()
+    let filtered: Vec<_> = tasks
+        .into_iter()
         .filter(|t| {
             if let Some(sf) = status_filter {
-                if t.status != sf { return false; }
+                if t.status != sf {
+                    return false;
+                }
             }
-            if cron_only && t.cron_schedule.is_none() { return false; }
+            if cron_only && t.cron_schedule.is_none() {
+                return false;
+            }
             true
         })
         .collect();
@@ -191,7 +232,11 @@ async fn execute_list_tasks(
         let agent = t.assigned_agent.as_deref().unwrap_or("unassigned");
         let next = t.next_run_at.as_deref().unwrap_or("-");
         let trigger = t.event_trigger.as_deref().unwrap_or("none");
-        let mode = if t.persistent { "persistent" } else { "standard" };
+        let mode = if t.persistent {
+            "persistent"
+        } else {
+            "standard"
+        };
         output.push_str(&format!(
             "---\n**{}** (ID: `{}`)\n- Status: {} | Priority: {} | Mode: {}\n- Agent: {} | Schedule: {} ({})\n- Event trigger: {} | Next run: {}\n- Description: {}\n\n",
             t.title, t.id, t.status, t.priority, mode, agent, schedule, enabled, trigger, next,
@@ -206,17 +251,25 @@ async fn execute_manage_task(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let task_id = args["task_id"].as_str().ok_or("manage_task: missing 'task_id'")?.to_string();
-    let action = args["action"].as_str().ok_or("manage_task: missing 'action'")?;
+    let task_id = args["task_id"]
+        .as_str()
+        .ok_or("manage_task: missing 'task_id'")?
+        .to_string();
+    let action = args["action"]
+        .as_str()
+        .ok_or("manage_task: missing 'action'")?;
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     match action {
         "delete" => {
             state.store.delete_task(&task_id)?;
             info!("[engine] manage_task: deleted {}", task_id);
-            app_handle.emit("task-updated", serde_json::json!({ "task_id": task_id })).ok();
+            app_handle
+                .emit("task-updated", serde_json::json!({ "task_id": task_id }))
+                .ok();
             Ok(format!("Task {} deleted.", task_id))
         }
         "run_now" => {
@@ -227,9 +280,19 @@ async fn execute_manage_task(
                 task.status = "assigned".to_string();
                 state.store.update_task(&task)?;
                 let aid = uuid::Uuid::new_v4().to_string();
-                state.store.add_task_activity(&aid, &task_id, "cron_triggered", None,
-                    "Manually triggered via chat — will run on next heartbeat cycle").ok();
-                app_handle.emit("task-updated", serde_json::json!({ "task_id": task_id })).ok();
+                state
+                    .store
+                    .add_task_activity(
+                        &aid,
+                        &task_id,
+                        "cron_triggered",
+                        None,
+                        "Manually triggered via chat — will run on next heartbeat cycle",
+                    )
+                    .ok();
+                app_handle
+                    .emit("task-updated", serde_json::json!({ "task_id": task_id }))
+                    .ok();
                 Ok(format!("Task '{}' queued for immediate execution. It will run within the next 60-second heartbeat cycle.", task.title))
             } else {
                 Err(format!("Task not found: {}", task_id).into())
@@ -240,7 +303,9 @@ async fn execute_manage_task(
             if let Some(mut task) = tasks.into_iter().find(|t| t.id == task_id) {
                 task.cron_enabled = false;
                 state.store.update_task(&task)?;
-                app_handle.emit("task-updated", serde_json::json!({ "task_id": task_id })).ok();
+                app_handle
+                    .emit("task-updated", serde_json::json!({ "task_id": task_id }))
+                    .ok();
                 Ok(format!("Automation '{}' paused.", task.title))
             } else {
                 Err(format!("Task not found: {}", task_id).into())
@@ -254,8 +319,13 @@ async fn execute_manage_task(
                     task.next_run_at = Some(chrono::Utc::now().to_rfc3339());
                 }
                 state.store.update_task(&task)?;
-                app_handle.emit("task-updated", serde_json::json!({ "task_id": task_id })).ok();
-                Ok(format!("Automation '{}' enabled. Will run on next heartbeat.", task.title))
+                app_handle
+                    .emit("task-updated", serde_json::json!({ "task_id": task_id }))
+                    .ok();
+                Ok(format!(
+                    "Automation '{}' enabled. Will run on next heartbeat.",
+                    task.title
+                ))
             } else {
                 Err(format!("Task not found: {}", task_id).into())
             }
@@ -263,10 +333,18 @@ async fn execute_manage_task(
         "update" => {
             let tasks = state.store.list_tasks()?;
             if let Some(mut task) = tasks.into_iter().find(|t| t.id == task_id) {
-                if let Some(t) = args["title"].as_str()       { task.title = t.to_string(); }
-                if let Some(d) = args["description"].as_str() { task.description = d.to_string(); }
-                if let Some(p) = args["priority"].as_str()    { task.priority = p.to_string(); }
-                if let Some(s) = args["status"].as_str()      { task.status = s.to_string(); }
+                if let Some(t) = args["title"].as_str() {
+                    task.title = t.to_string();
+                }
+                if let Some(d) = args["description"].as_str() {
+                    task.description = d.to_string();
+                }
+                if let Some(p) = args["priority"].as_str() {
+                    task.priority = p.to_string();
+                }
+                if let Some(s) = args["status"].as_str() {
+                    task.status = s.to_string();
+                }
                 if let Some(s) = args["cron_schedule"].as_str() {
                     task.cron_schedule = Some(s.to_string());
                     task.cron_enabled = true;
@@ -281,12 +359,18 @@ async fn execute_manage_task(
                 }
                 task.updated_at = chrono::Utc::now().to_rfc3339();
                 state.store.update_task(&task)?;
-                app_handle.emit("task-updated", serde_json::json!({ "task_id": task_id })).ok();
+                app_handle
+                    .emit("task-updated", serde_json::json!({ "task_id": task_id }))
+                    .ok();
                 Ok(format!("Task '{}' updated.", task.title))
             } else {
                 Err(format!("Task not found: {}", task_id).into())
             }
         }
-        _ => Err(format!("Unknown action: {}. Use: update, delete, run_now, pause, enable", action).into()),
+        _ => Err(format!(
+            "Unknown action: {}. Use: update, delete, run_now, pause, enable",
+            action
+        )
+        .into()),
     }
 }

@@ -23,10 +23,21 @@ fn get_sessions() -> &'static parking_lot::Mutex<HashMap<String, Session>> {
 /// Also prunes expired sessions (> 24 h).
 pub(crate) fn create_session(username: String) -> String {
     let session_id = uuid::Uuid::new_v4().to_string();
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    get_sessions().lock().insert(session_id.clone(), Session { username, created_at: now });
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    get_sessions().lock().insert(
+        session_id.clone(),
+        Session {
+            username,
+            created_at: now,
+        },
+    );
     // Prune expired sessions (> 24 h)
-    get_sessions().lock().retain(|_, s| now.saturating_sub(s.created_at) < 86_400);
+    get_sessions()
+        .lock()
+        .retain(|_, s| now.saturating_sub(s.created_at) < 86_400);
     session_id
 }
 
@@ -34,8 +45,13 @@ pub(crate) fn create_session(username: String) -> String {
 pub(crate) fn validate_session(session_id: &str) -> Option<String> {
     let sessions = get_sessions().lock();
     let s = sessions.get(session_id)?;
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs();
-    if now.saturating_sub(s.created_at) > 86_400 { return None; }
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    if now.saturating_sub(s.created_at) > 86_400 {
+        return None;
+    }
     Some(s.username.clone())
 }
 

@@ -51,14 +51,13 @@ pub async fn fetch_pawzhub_registry() -> EngineResult<Vec<PawzHubEntry>> {
     if !resp.status().is_success() {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        return Err(
-            format!("PawzHub registry returned HTTP {}: {}", status, body).into(),
-        );
+        return Err(format!("PawzHub registry returned HTTP {}: {}", status, body).into());
     }
 
-    let entries: Vec<PawzHubEntry> = resp.json().await.map_err(|e| {
-        format!("Failed to parse PawzHub registry: {}", e)
-    })?;
+    let entries: Vec<PawzHubEntry> = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse PawzHub registry: {}", e))?;
 
     log::info!("[pawzhub] Fetched registry with {} entries", entries.len());
     Ok(entries)
@@ -99,10 +98,7 @@ pub async fn browse_pawzhub_category(category: &str) -> EngineResult<Vec<PawzHub
 
 /// Fetch a `pawz-skill.toml` manifest from a PawzHub skill's source repo.
 /// Looks at `skills/{skill_id}/pawz-skill.toml` in the source repo.
-pub async fn fetch_pawzhub_toml(
-    source_repo: &str,
-    skill_id: &str,
-) -> EngineResult<String> {
+pub async fn fetch_pawzhub_toml(source_repo: &str, skill_id: &str) -> EngineResult<String> {
     let client = reqwest::Client::new();
 
     // Try main branch first, then master
@@ -122,7 +118,9 @@ pub async fn fetch_pawzhub_toml(
             let toml = resp.text().await?;
             log::info!(
                 "[pawzhub] Fetched pawz-skill.toml for '{}' from {} ({})",
-                skill_id, source_repo, branch
+                skill_id,
+                source_repo,
+                branch
             );
             return Ok(toml);
         }
@@ -131,7 +129,8 @@ pub async fn fetch_pawzhub_toml(
     Err(format!(
         "Could not find pawz-skill.toml for '{}' in {}",
         skill_id, source_repo
-    ).into())
+    )
+    .into())
 }
 
 #[cfg(test)]

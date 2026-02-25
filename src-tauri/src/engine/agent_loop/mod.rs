@@ -2,18 +2,18 @@
 // The core orchestration loop: send to model → tool calls → execute → repeat.
 // This is the core agent loop that drives Pawz AI interactions.
 
-mod trading;
 mod helpers;
+mod trading;
 
-use crate::engine::types::*;
+use crate::atoms::error::EngineResult;
 use crate::engine::providers::AnyProvider;
+use crate::engine::state::{DailyTokenTracker, PendingApprovals};
 use crate::engine::tools;
-use crate::engine::state::{PendingApprovals, DailyTokenTracker};
+use crate::engine::types::*;
 use log::{info, warn};
 use std::time::Duration;
 use tauri::Emitter;
 use trading::check_trading_auto_approve;
-use crate::atoms::error::EngineResult;
 
 /// Run a complete agent turn: send messages to the model, execute tool calls,
 /// and repeat until the model produces a final text response or max rounds hit.
@@ -41,13 +41,14 @@ pub async fn run_agent_turn(
 ) -> EngineResult<String> {
     let mut round = 0;
     let mut final_text = String::new();
-    let mut last_input_tokens: u64 = 0;   // Only the LAST round's input (= actual context size)
-    let mut total_output_tokens: u64 = 0;  // Sum of all rounds' output tokens
+    let mut last_input_tokens: u64 = 0; // Only the LAST round's input (= actual context size)
+    let mut total_output_tokens: u64 = 0; // Sum of all rounds' output tokens
 
     // Circuit breaker: track consecutive failures per tool name.
     // After 2 consecutive failures of the same tool, inject a system nudge
     // telling the model to stop retrying and use a different approach.
-    let mut tool_fail_counter: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    let mut tool_fail_counter: std::collections::HashMap<String, u32> =
+        std::collections::HashMap::new();
     const MAX_CONSECUTIVE_TOOL_FAILS: u32 = 3;
 
     loop {
@@ -59,26 +60,35 @@ pub async fn run_agent_turn(
         // processed next by the request queue handler.
         if let Some(ys) = yield_signal {
             if ys.is_yield_requested() {
-                warn!("[engine] Yield requested — wrapping up agent turn at round {}", round);
+                warn!(
+                    "[engine] Yield requested — wrapping up agent turn at round {}",
+                    round
+                );
                 if final_text.is_empty() {
                     final_text = "I was wrapping up to handle your new message. \
                         My previous work may be incomplete."
                         .to_string();
                 }
-                let _ = app_handle.emit("engine-event", EngineEvent::Complete {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    text: final_text.clone(),
-                    tool_calls_count: 0,
-                    usage: None,
-                    model: None,
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::Complete {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: final_text.clone(),
+                        tool_calls_count: 0,
+                        usage: None,
+                        model: None,
+                    },
+                );
                 return Ok(final_text);
             }
         }
 
         if round > max_rounds {
-            warn!("[engine] Max tool rounds ({}) reached, stopping", max_rounds);
+            warn!(
+                "[engine] Max tool rounds ({}) reached, stopping",
+                max_rounds
+            );
             if final_text.is_empty() {
                 final_text = format!(
                     "I completed {} tool-call rounds but ran out of steps before I could \
@@ -87,19 +97,25 @@ pub async fn run_agent_turn(
                     max_rounds, max_rounds
                 );
                 // Emit the fallback text so the frontend shows *something*
-                let _ = app_handle.emit("engine-event", EngineEvent::Complete {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    text: final_text.clone(),
-                    tool_calls_count: 0,
-                    usage: None,
-                    model: None,
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::Complete {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: final_text.clone(),
+                        tool_calls_count: 0,
+                        usage: None,
+                        model: None,
+                    },
+                );
             }
             return Ok(final_text);
         }
 
-        info!("[engine] Agent round {}/{} session={} run={}", round, max_rounds, session_id, run_id);
+        info!(
+            "[engine] Agent round {}/{} session={} run={}",
+            round, max_rounds, session_id, run_id
+        );
 
         // ── Budget check: stop before making the API call if over daily limit
         if daily_budget_usd > 0.0 {
@@ -111,22 +127,30 @@ pub async fn run_agent_turn(
                         spent, daily_budget_usd
                     );
                     warn!("[engine] {}", msg);
-                    let _ = app_handle.emit("engine-event", EngineEvent::Error {
-                        session_id: session_id.to_string(),
-                        run_id: run_id.to_string(),
-                        message: msg.clone(),
-                    });
+                    let _ = app_handle.emit(
+                        "engine-event",
+                        EngineEvent::Error {
+                            session_id: session_id.to_string(),
+                            run_id: run_id.to_string(),
+                            message: msg.clone(),
+                        },
+                    );
                     return Err(msg.into());
                 }
             }
         }
 
         // ── 1. Call the AI model ──────────────────────────────────────
-        let chunks = provider.chat_stream(messages, tools, model, temperature, thinking_level).await?;
+        let chunks = provider
+            .chat_stream(messages, tools, model, temperature, thinking_level)
+            .await?;
 
         // ── 2. Assemble the response from chunks ──────────────────────
         let mut text_accum = String::new();
-        let mut tool_call_map: std::collections::HashMap<usize, (String, String, String, Option<String>, Vec<ThoughtPart>)> = std::collections::HashMap::new();
+        let mut tool_call_map: std::collections::HashMap<
+            usize,
+            (String, String, String, Option<String>, Vec<ThoughtPart>),
+        > = std::collections::HashMap::new();
         // (id, name, arguments, thought_signature, thought_parts)
         let mut has_tool_calls = false;
         let mut _finished = false;
@@ -140,27 +164,40 @@ pub async fn run_agent_turn(
                 text_accum.push_str(dt);
 
                 // Emit streaming delta to frontend
-                let _ = app_handle.emit("engine-event", EngineEvent::Delta {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    text: dt.clone(),
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::Delta {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: dt.clone(),
+                    },
+                );
             }
 
             // Emit thinking/reasoning text to frontend
             if let Some(tt) = &chunk.thinking_text {
-                let _ = app_handle.emit("engine-event", EngineEvent::ThinkingDelta {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    text: tt.clone(),
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::ThinkingDelta {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: tt.clone(),
+                    },
+                );
             }
 
             // Accumulate tool call deltas
             for tc_delta in &chunk.tool_calls {
                 has_tool_calls = true;
-                let entry = tool_call_map.entry(tc_delta.index)
-                    .or_insert_with(|| (String::new(), String::new(), String::new(), None, Vec::new()));
+                let entry = tool_call_map.entry(tc_delta.index).or_insert_with(|| {
+                    (
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        None,
+                        Vec::new(),
+                    )
+                });
 
                 if let Some(id) = &tc_delta.id {
                     entry.0 = id.clone();
@@ -180,8 +217,15 @@ pub async fn run_agent_turn(
             if !chunk.thought_parts.is_empty() {
                 // Attach to the first tool call index
                 let first_idx = chunk.tool_calls.first().map(|tc| tc.index).unwrap_or(0);
-                let entry = tool_call_map.entry(first_idx)
-                    .or_insert_with(|| (String::new(), String::new(), String::new(), None, Vec::new()));
+                let entry = tool_call_map.entry(first_idx).or_insert_with(|| {
+                    (
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        None,
+                        Vec::new(),
+                    )
+                });
                 entry.4.extend(chunk.thought_parts.clone());
             }
 
@@ -201,11 +245,13 @@ pub async fn run_agent_turn(
         }
 
         // Gather cache token usage from all chunks for accurate cost tracking
-        let round_cache_read: u64 = chunks.iter()
+        let round_cache_read: u64 = chunks
+            .iter()
             .filter_map(|c| c.usage.as_ref())
             .map(|u| u.cache_read_tokens)
             .sum();
-        let round_cache_create: u64 = chunks.iter()
+        let round_cache_create: u64 = chunks
+            .iter()
             .filter_map(|c| c.usage.as_ref())
             .map(|u| u.cache_creation_tokens)
             .sum();
@@ -213,11 +259,18 @@ pub async fn run_agent_turn(
         // ── Record this round's token usage against the daily budget tracker
         if let Some(tracker) = daily_tokens {
             let round_input = last_input_tokens;
-            let round_output = chunks.iter()
+            let round_output = chunks
+                .iter()
                 .filter_map(|c| c.usage.as_ref())
                 .map(|u| u.output_tokens)
                 .sum::<u64>();
-            tracker.record(model, round_input, round_output, round_cache_read, round_cache_create);
+            tracker.record(
+                model,
+                round_input,
+                round_output,
+                round_cache_read,
+                round_cache_create,
+            );
             let (total_in, total_out, est_usd) = tracker.estimated_spend_usd();
             if round == 1 || round % 5 == 0 {
                 info!("[engine] Daily spend: ~${:.2} ({} in / {} out tokens today, cache read={} create={})",
@@ -232,11 +285,14 @@ pub async fn run_agent_turn(
                         pct, est_usd, daily_budget_usd
                     );
                     warn!("[engine] {}", msg);
-                    let _ = app_handle.emit("engine-event", EngineEvent::Error {
-                        session_id: session_id.to_string(),
-                        run_id: run_id.to_string(),
-                        message: msg,
-                    });
+                    let _ = app_handle.emit(
+                        "engine-event",
+                        EngineEvent::Error {
+                            session_id: session_id.to_string(),
+                            run_id: run_id.to_string(),
+                            message: msg,
+                        },
+                    );
                 }
             }
         }
@@ -257,7 +313,10 @@ pub async fn run_agent_turn(
 
             // Persistent empty → fallback message
             if final_text.is_empty() {
-                warn!("[engine] Model returned empty response (0 chars, 0 tool calls) at round {}", round);
+                warn!(
+                    "[engine] Model returned empty response (0 chars, 0 tool calls) at round {}",
+                    round
+                );
                 final_text = helpers::empty_response_fallback();
             }
 
@@ -282,14 +341,17 @@ pub async fn run_agent_turn(
             } else {
                 None
             };
-            let _ = app_handle.emit("engine-event", EngineEvent::Complete {
-                session_id: session_id.to_string(),
-                run_id: run_id.to_string(),
-                text: final_text.clone(),
-                tool_calls_count: 0,
-                usage,
-                model: confirmed_model.clone(),
-            });
+            let _ = app_handle.emit(
+                "engine-event",
+                EngineEvent::Complete {
+                    session_id: session_id.to_string(),
+                    run_id: run_id.to_string(),
+                    text: final_text.clone(),
+                    tool_calls_count: 0,
+                    usage,
+                    model: confirmed_model.clone(),
+                },
+            );
 
             return Ok(final_text);
         }
@@ -339,51 +401,98 @@ pub async fn run_agent_turn(
             // require user approval for dangerous, side-effect-heavy, or financial tools.
             let auto_approved_tools: &[&str] = &[
                 // ── Read-only / informational ──
-                "fetch", "read_file", "list_directory",
-                "soul_read", "soul_list", "memory_search", "self_info",
-                "web_search", "web_read", "web_screenshot", "web_browse",
-                "list_tasks", "email_read", "slack_read", "telegram_read",
+                "fetch",
+                "read_file",
+                "list_directory",
+                "soul_read",
+                "soul_list",
+                "memory_search",
+                "self_info",
+                "web_search",
+                "web_read",
+                "web_screenshot",
+                "web_browse",
+                "list_tasks",
+                "email_read",
+                "slack_read",
+                "telegram_read",
                 // ── Agent memory / profile ──
-                "soul_write", "memory_store", "update_profile",
+                "soul_write",
+                "memory_store",
+                "update_profile",
                 // ── Task management ──
-                "create_task", "manage_task",
+                "create_task",
+                "manage_task",
                 // ── Google Workspace: read-only (list, read, search) ──
-                "google_gmail_list", "google_gmail_read",
+                "google_gmail_list",
+                "google_gmail_read",
                 "google_calendar_list",
-                "google_drive_list", "google_drive_read",
+                "google_drive_list",
+                "google_drive_read",
                 "google_sheets_read",
                 // ── Google Workspace: write (create docs, upload, share, send) ──
-                "google_docs_create", "google_drive_upload", "google_drive_share",
-                "google_gmail_send", "google_calendar_create",
-                "google_sheets_append", "google_api",
+                "google_docs_create",
+                "google_drive_upload",
+                "google_drive_share",
+                "google_gmail_send",
+                "google_calendar_create",
+                "google_sheets_append",
+                "google_api",
                 // ── Trading: read-only (balances, quotes, portfolio, info) ──
-                "sol_balance", "sol_quote", "sol_portfolio", "sol_token_info",
-                "dex_balance", "dex_quote", "dex_portfolio", "dex_token_info",
-                "dex_check_token", "dex_search_token", "dex_watch_wallet",
-                "dex_whale_transfers", "dex_top_traders", "dex_trending",
-                "coinbase_prices", "coinbase_balance",
+                "sol_balance",
+                "sol_quote",
+                "sol_portfolio",
+                "sol_token_info",
+                "dex_balance",
+                "dex_quote",
+                "dex_portfolio",
+                "dex_token_info",
+                "dex_check_token",
+                "dex_search_token",
+                "dex_watch_wallet",
+                "dex_whale_transfers",
+                "dex_top_traders",
+                "dex_trending",
+                "coinbase_prices",
+                "coinbase_balance",
                 // ── Media ──
                 "image_generate",
                 // ── Agent Management (read/assign skills) ──
-                "agent_list", "agent_skills", "agent_skill_assign",
+                "agent_list",
+                "agent_skills",
+                "agent_skill_assign",
                 // ── Community Skills (safe: only fetch/install/list) ──
-                "skill_search", "skill_install", "skill_list",
+                "skill_search",
+                "skill_install",
+                "skill_list",
                 // ── Inter-agent comms (safe: only sends/reads msgs between agents) ──
-                "agent_send_message", "agent_read_messages",
+                "agent_send_message",
+                "agent_read_messages",
                 // ── Squads (safe: team management) ──
-                "create_squad", "list_squads", "manage_squad", "squad_broadcast",
+                "create_squad",
+                "list_squads",
+                "manage_squad",
+                "squad_broadcast",
                 // ── Tool RAG (safe: only searches tool index, loads tools) ──
                 "request_tools",
             ];
 
             // Trading write tools check the policy-based approval function
             let trading_write_tools = [
-                "sol_swap", "sol_transfer", "sol_wallet_create",
-                "dex_swap", "dex_transfer", "dex_wallet_create",
-                "coinbase_trade", "coinbase_transfer", "coinbase_wallet_create",
+                "sol_swap",
+                "sol_transfer",
+                "sol_wallet_create",
+                "dex_swap",
+                "dex_transfer",
+                "dex_wallet_create",
+                "coinbase_trade",
+                "coinbase_transfer",
+                "coinbase_wallet_create",
             ];
 
-            let skip_hil = if auto_approve_all || auto_approved_tools.contains(&tc.function.name.as_str()) {
+            let skip_hil = if auto_approve_all
+                || auto_approved_tools.contains(&tc.function.name.as_str())
+            {
                 true
             } else if trading_write_tools.contains(&tc.function.name.as_str()) {
                 check_trading_auto_approve(&tc.function.name, &tc.function.arguments, app_handle)
@@ -394,14 +503,20 @@ pub async fn run_agent_turn(
             let approved = if skip_hil {
                 // Distinguish agent-level auto-approve from safe-tool auto-approve in logs
                 if auto_approve_all && !auto_approved_tools.contains(&tc.function.name.as_str()) {
-                    info!("[engine] Tool auto-approved (agent policy): {}", tc.function.name);
+                    info!(
+                        "[engine] Tool auto-approved (agent policy): {}",
+                        tc.function.name
+                    );
                     // Emit audit event so frontend can track agent-policy approvals
-                    let _ = app_handle.emit("engine-event", EngineEvent::ToolAutoApproved {
-                        session_id: session_id.to_string(),
-                        run_id: run_id.to_string(),
-                        tool_name: tc.function.name.clone(),
-                        tool_call_id: tc.id.clone(),
-                    });
+                    let _ = app_handle.emit(
+                        "engine-event",
+                        EngineEvent::ToolAutoApproved {
+                            session_id: session_id.to_string(),
+                            run_id: run_id.to_string(),
+                            tool_name: tc.function.name.clone(),
+                            tool_call_id: tc.id.clone(),
+                        },
+                    );
                 } else {
                     info!("[engine] Auto-approved safe tool: {}", tc.function.name);
                 }
@@ -416,11 +531,14 @@ pub async fn run_agent_turn(
                 }
 
                 // Emit tool request event — frontend will show approval modal
-                let _ = app_handle.emit("engine-event", EngineEvent::ToolRequest {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    tool_call: tc.clone(),
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::ToolRequest {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        tool_call: tc.clone(),
+                    },
+                );
 
                 // Wait for user approval (with timeout)
                 let timeout_duration = Duration::from_secs(tool_timeout_secs);
@@ -431,7 +549,10 @@ pub async fn run_agent_turn(
                         false
                     }
                     Err(_) => {
-                        warn!("[engine] Approval timeout ({}s) for tool {}", tool_timeout_secs, tc.function.name);
+                        warn!(
+                            "[engine] Approval timeout ({}s) for tool {}",
+                            tool_timeout_secs, tc.function.name
+                        );
                         // Clean up the pending entry
                         let mut map = pending_approvals.lock();
                         map.remove(&tc.id);
@@ -441,16 +562,22 @@ pub async fn run_agent_turn(
             };
 
             if !approved {
-                info!("[engine] Tool DENIED by user: {} id={}", tc.function.name, tc.id);
+                info!(
+                    "[engine] Tool DENIED by user: {} id={}",
+                    tc.function.name, tc.id
+                );
 
                 // Emit denial as tool result
-                let _ = app_handle.emit("engine-event", EngineEvent::ToolResultEvent {
-                    session_id: session_id.to_string(),
-                    run_id: run_id.to_string(),
-                    tool_call_id: tc.id.clone(),
-                    output: "Tool execution denied by user.".into(),
-                    success: false,
-                });
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::ToolResultEvent {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        tool_call_id: tc.id.clone(),
+                        output: "Tool execution denied by user.".into(),
+                        success: false,
+                    },
+                );
 
                 // Add denial to message history so the model knows
                 messages.push(Message {
@@ -466,17 +593,24 @@ pub async fn run_agent_turn(
             // Execute the tool (pass agent_id so tools know which agent is calling)
             let result = tools::execute_tool(tc, app_handle, agent_id).await;
 
-            info!("[engine] Tool result: {} success={} output_len={}",
-                tc.function.name, result.success, result.output.len());
+            info!(
+                "[engine] Tool result: {} success={} output_len={}",
+                tc.function.name,
+                result.success,
+                result.output.len()
+            );
 
             // Emit tool result event
-            let _ = app_handle.emit("engine-event", EngineEvent::ToolResultEvent {
-                session_id: session_id.to_string(),
-                run_id: run_id.to_string(),
-                tool_call_id: tc.id.clone(),
-                output: result.output.clone(),
-                success: result.success,
-            });
+            let _ = app_handle.emit(
+                "engine-event",
+                EngineEvent::ToolResultEvent {
+                    session_id: session_id.to_string(),
+                    run_id: run_id.to_string(),
+                    tool_call_id: tc.id.clone(),
+                    output: result.output.clone(),
+                    success: result.success,
+                },
+            );
 
             // Add tool result to message history
             messages.push(Message {
@@ -489,7 +623,9 @@ pub async fn run_agent_turn(
 
             // ── Circuit breaker: track consecutive failures per tool ──
             if !result.success {
-                let count = tool_fail_counter.entry(tc.function.name.clone()).or_insert(0);
+                let count = tool_fail_counter
+                    .entry(tc.function.name.clone())
+                    .or_insert(0);
                 *count += 1;
                 if *count >= MAX_CONSECUTIVE_TOOL_FAILS {
                     warn!(
@@ -524,7 +660,10 @@ pub async fn run_agent_turn(
         helpers::truncate_mid_loop(app_handle, messages);
 
         // ── 8. Loop: send tool results back to model ──────────────────
-        info!("[engine] {} tool calls executed, feeding results back to model", tc_count);
+        info!(
+            "[engine] {} tool calls executed, feeding results back to model",
+            tc_count
+        );
 
         // NOTE: Do NOT emit Complete here — only emit Complete when the model
         // produces a final text response (no more tool calls). Intermediate

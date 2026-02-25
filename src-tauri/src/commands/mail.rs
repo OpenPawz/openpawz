@@ -1,8 +1,8 @@
 // commands/mail.rs — Himalaya email bridge commands.
 
-use std::process::Command;
-use std::fs;
 use log::info;
+use std::fs;
+use std::process::Command;
 
 /// Set restrictive file permissions (owner-only read/write) on Unix.
 #[cfg(unix)]
@@ -37,15 +37,18 @@ pub fn write_himalaya_config(
     let config_dir = home.join(".config/himalaya");
     let config_path = config_dir.join("config.toml");
 
-    fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("Failed to create config dir: {}", e))?;
+    fs::create_dir_all(&config_dir).map_err(|e| format!("Failed to create config dir: {}", e))?;
 
     let keyring_service = format!("paw-mail-{}", account_name);
     let entry = keyring::Entry::new(&keyring_service, &email)
         .map_err(|e| format!("Keyring init failed: {}", e))?;
-    entry.set_password(&password)
+    entry
+        .set_password(&password)
         .map_err(|e| format!("Failed to store password in keychain: {}", e))?;
-    info!("Stored password for '{}' in OS keychain (service={})", email, keyring_service);
+    info!(
+        "Stored password for '{}' in OS keychain (service={})",
+        email, keyring_service
+    );
 
     let display = display_name.unwrap_or_else(|| email.clone());
     let account_toml = format!(
@@ -102,7 +105,9 @@ message.send.backend.auth.cmd = "security find-generic-password -s '{service}' -
                 .map_err(|e| format!("Failed to write config: {}", e))?;
         } else {
             let mut content = existing;
-            if !content.ends_with('\n') { content.push('\n'); }
+            if !content.ends_with('\n') {
+                content.push('\n');
+            }
             content.push('\n');
             content.push_str(&account_toml);
             fs::write(&config_path, content.trim_end())
@@ -114,7 +119,10 @@ message.send.backend.auth.cmd = "security find-generic-password -s '{service}' -
     }
 
     set_owner_only_permissions(&config_path)?;
-    info!("Wrote himalaya config for account '{}' at {:?} (mode 600, password in keychain)", account_name, config_path);
+    info!(
+        "Wrote himalaya config for account '{}' at {:?} (mode 600, password in keychain)",
+        account_name, config_path
+    );
     Ok(true)
 }
 
@@ -126,25 +134,29 @@ pub fn read_himalaya_config() -> Result<String, String> {
     if !config_path.exists() {
         return Ok(String::new());
     }
-    let raw = fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
+    let raw =
+        fs::read_to_string(&config_path).map_err(|e| format!("Failed to read config: {}", e))?;
 
-    let redacted = raw.lines().map(|line| {
-        let trimmed = line.trim();
-        if trimmed.starts_with("backend.auth.raw")
-            || trimmed.starts_with("message.send.backend.auth.raw")
-            || trimmed.starts_with("backend.auth.cmd")
-            || trimmed.starts_with("message.send.backend.auth.cmd")
-        {
-            if let Some(eq) = line.find('=') {
-                format!("{} \"[stored in OS keychain]\"", &line[..eq+1])
+    let redacted = raw
+        .lines()
+        .map(|line| {
+            let trimmed = line.trim();
+            if trimmed.starts_with("backend.auth.raw")
+                || trimmed.starts_with("message.send.backend.auth.raw")
+                || trimmed.starts_with("backend.auth.cmd")
+                || trimmed.starts_with("message.send.backend.auth.cmd")
+            {
+                if let Some(eq) = line.find('=') {
+                    format!("{} \"[stored in OS keychain]\"", &line[..eq + 1])
+                } else {
+                    line.to_string()
+                }
             } else {
                 line.to_string()
             }
-        } else {
-            line.to_string()
-        }
-    }).collect::<Vec<_>>().join("\n");
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
 
     Ok(redacted)
 }
@@ -161,15 +173,23 @@ pub fn remove_himalaya_account(account_name: String) -> Result<bool, String> {
             if let Some(start) = raw.find(&marker) {
                 let section = &raw[start..];
                 for line in section.lines().skip(1) {
-                    if line.trim().starts_with("[accounts.") { break; }
+                    if line.trim().starts_with("[accounts.") {
+                        break;
+                    }
                     if line.trim().starts_with("email") {
                         if let Some(eq) = line.find('=') {
-                            let email = line[eq+1..].trim().trim_matches('"').to_string();
+                            let email = line[eq + 1..].trim().trim_matches('"').to_string();
                             let service = format!("paw-mail-{}", account_name);
                             if let Ok(entry) = keyring::Entry::new(&service, &email) {
                                 match entry.delete_credential() {
-                                    Ok(()) => info!("Deleted keychain entry for '{}' (service={})", email, service),
-                                    Err(e) => info!("Keychain delete for '{}': {} (may not exist)", email, e),
+                                    Ok(()) => info!(
+                                        "Deleted keychain entry for '{}' (service={})",
+                                        email, service
+                                    ),
+                                    Err(e) => info!(
+                                        "Keychain delete for '{}': {} (may not exist)",
+                                        email, e
+                                    ),
                                 }
                             }
                         }
@@ -180,10 +200,12 @@ pub fn remove_himalaya_account(account_name: String) -> Result<bool, String> {
         }
     }
 
-    if !config_path.exists() { return Ok(false); }
+    if !config_path.exists() {
+        return Ok(false);
+    }
 
-    let existing = fs::read_to_string(&config_path)
-        .map_err(|e| format!("Failed to read config: {}", e))?;
+    let existing =
+        fs::read_to_string(&config_path).map_err(|e| format!("Failed to read config: {}", e))?;
 
     let marker = format!("[accounts.{}]", account_name);
     if let Some(start) = existing.find(&marker) {
@@ -201,8 +223,7 @@ pub fn remove_himalaya_account(account_name: String) -> Result<bool, String> {
         }
         let final_content = new_content.trim().to_string();
         if final_content.is_empty() {
-            fs::remove_file(&config_path)
-                .map_err(|e| format!("Failed to remove config: {}", e))?;
+            fs::remove_file(&config_path).map_err(|e| format!("Failed to remove config: {}", e))?;
         } else {
             fs::write(&config_path, final_content)
                 .map_err(|e| format!("Failed to write config: {}", e))?;
@@ -216,14 +237,25 @@ pub fn remove_himalaya_account(account_name: String) -> Result<bool, String> {
 
 /// Fetch emails from an IMAP account via himalaya CLI.
 #[tauri::command]
-pub fn fetch_emails(account: Option<String>, folder: Option<String>, page_size: Option<u32>) -> Result<String, String> {
+pub fn fetch_emails(
+    account: Option<String>,
+    folder: Option<String>,
+    page_size: Option<u32>,
+) -> Result<String, String> {
     let mut cmd = Command::new("himalaya");
     cmd.arg("envelope").arg("list");
-    if let Some(acct) = account { cmd.arg("--account").arg(acct); }
-    if let Some(f) = folder { cmd.arg("--folder").arg(f); }
-    cmd.arg("--page-size").arg(page_size.unwrap_or(50).to_string());
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    if let Some(f) = folder {
+        cmd.arg("--folder").arg(f);
+    }
+    cmd.arg("--page-size")
+        .arg(page_size.unwrap_or(50).to_string());
     cmd.arg("--output").arg("json");
-    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run himalaya: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("himalaya failed: {}", stderr));
@@ -233,13 +265,23 @@ pub fn fetch_emails(account: Option<String>, folder: Option<String>, page_size: 
 
 /// Fetch a single email's full content via himalaya CLI.
 #[tauri::command]
-pub fn fetch_email_content(account: Option<String>, folder: Option<String>, id: String) -> Result<String, String> {
+pub fn fetch_email_content(
+    account: Option<String>,
+    folder: Option<String>,
+    id: String,
+) -> Result<String, String> {
     let mut cmd = Command::new("himalaya");
     cmd.arg("message").arg("read");
-    if let Some(acct) = account { cmd.arg("--account").arg(acct); }
-    if let Some(f) = folder { cmd.arg("--folder").arg(f); }
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
+    if let Some(f) = folder {
+        cmd.arg("--folder").arg(f);
+    }
     cmd.arg(&id);
-    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run himalaya: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("himalaya failed: {}", stderr));
@@ -249,18 +291,31 @@ pub fn fetch_email_content(account: Option<String>, folder: Option<String>, id: 
 
 /// Send an email via himalaya CLI.
 #[tauri::command]
-pub fn send_email(account: Option<String>, to: String, subject: String, body: String) -> Result<(), String> {
+pub fn send_email(
+    account: Option<String>,
+    to: String,
+    subject: String,
+    body: String,
+) -> Result<(), String> {
     let mut cmd = Command::new("himalaya");
     cmd.arg("template").arg("send");
-    if let Some(acct) = account { cmd.arg("--account").arg(acct); }
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
     let email_template = format!("To: {}\nSubject: {}\n\n{}", to, subject, body);
     cmd.stdin(std::process::Stdio::piped());
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn himalaya: {}", e))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn himalaya: {}", e))?;
     if let Some(mut stdin) = child.stdin.take() {
         use std::io::Write;
-        stdin.write_all(email_template.as_bytes()).map_err(|e| format!("Failed to write: {}", e))?;
+        stdin
+            .write_all(email_template.as_bytes())
+            .map_err(|e| format!("Failed to write: {}", e))?;
     }
-    let output = child.wait_with_output().map_err(|e| format!("Failed to wait: {}", e))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         if !stderr.contains("Folder doesn't exist") {
@@ -275,9 +330,13 @@ pub fn send_email(account: Option<String>, to: String, subject: String, body: St
 pub fn list_mail_folders(account: Option<String>) -> Result<String, String> {
     let mut cmd = Command::new("himalaya");
     cmd.arg("folder").arg("list");
-    if let Some(acct) = account { cmd.arg("--account").arg(acct); }
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
     cmd.arg("--output").arg("json");
-    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run himalaya: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("himalaya failed: {}", stderr));
@@ -290,9 +349,13 @@ pub fn list_mail_folders(account: Option<String>) -> Result<String, String> {
 pub fn move_email(account: Option<String>, id: String, folder: String) -> Result<(), String> {
     let mut cmd = Command::new("himalaya");
     cmd.arg("message").arg("move");
-    if let Some(acct) = account { cmd.arg("--account").arg(acct); }
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
     cmd.arg(&id).arg(&folder);
-    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run himalaya: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("himalaya failed: {}", stderr));
@@ -305,9 +368,13 @@ pub fn move_email(account: Option<String>, id: String, folder: String) -> Result
 pub fn delete_email(account: Option<String>, id: String) -> Result<(), String> {
     let mut cmd = Command::new("himalaya");
     cmd.arg("message").arg("delete");
-    if let Some(acct) = account { cmd.arg("--account").arg(acct); }
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
     cmd.arg(&id);
-    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run himalaya: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("himalaya failed: {}", stderr));
@@ -317,12 +384,21 @@ pub fn delete_email(account: Option<String>, id: String) -> Result<(), String> {
 
 /// Set/remove a flag on an email via himalaya CLI.
 #[tauri::command]
-pub fn set_email_flag(account: Option<String>, id: String, flag: String, add: bool) -> Result<(), String> {
+pub fn set_email_flag(
+    account: Option<String>,
+    id: String,
+    flag: String,
+    add: bool,
+) -> Result<(), String> {
     let mut cmd = Command::new("himalaya");
     cmd.arg("flag").arg(if add { "add" } else { "remove" });
-    if let Some(acct) = account { cmd.arg("--account").arg(acct); }
+    if let Some(acct) = account {
+        cmd.arg("--account").arg(acct);
+    }
     cmd.arg(&id).arg("--flag").arg(&flag);
-    let output = cmd.output().map_err(|e| format!("Failed to run himalaya: {}", e))?;
+    let output = cmd
+        .output()
+        .map_err(|e| format!("Failed to run himalaya: {}", e))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!("himalaya failed: {}", stderr));

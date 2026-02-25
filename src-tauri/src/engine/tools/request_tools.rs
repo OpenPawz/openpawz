@@ -8,42 +8,40 @@
 // into every request. The agent sees a compact skill domain summary and
 // calls request_tools when it needs specific capabilities.
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
 use crate::engine::state::EngineState;
 use crate::engine::tool_index;
 use log::info;
 use tauri::Manager;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
-    vec![
-        ToolDefinition {
-            tool_type: "function".into(),
-            function: FunctionDefinition {
-                name: "request_tools".into(),
-                description: "Load tools from your skill library. You have many capabilities \
+    vec![ToolDefinition {
+        tool_type: "function".into(),
+        function: FunctionDefinition {
+            name: "request_tools".into(),
+            description: "Load tools from your skill library. You have many capabilities \
                     but they're not all loaded at once. Describe what you need \
                     (e.g., 'send an email', 'trade crypto on solana', 'create a squad') \
                     and the relevant tools will be loaded for your next action. You can also \
                     request a specific domain: 'email', 'trading', 'web', 'squads', etc."
-                    .into(),
-                parameters: serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "query": {
-                            "type": "string",
-                            "description": "What you need to do — describe the task or name the skill domain. Examples: 'send email to user', 'crypto trading', 'agent squad management', 'web browsing and screenshots'"
-                        },
-                        "domain": {
-                            "type": "string",
-                            "description": "Optional: request all tools from a specific domain directly. One of: system, filesystem, web, identity, memory, agents, communication, squads, tasks, skills, dashboard, storage, email, messaging, github, integrations, trading"
-                        }
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "What you need to do — describe the task or name the skill domain. Examples: 'send email to user', 'crypto trading', 'agent squad management', 'web browsing and screenshots'"
                     },
-                    "required": ["query"]
-                }),
-            },
+                    "domain": {
+                        "type": "string",
+                        "description": "Optional: request all tools from a specific domain directly. One of: system, filesystem, web, identity, memory, agents, communication, squads, tasks, skills, dashboard, storage, email, messaging, github, integrations, trading"
+                    }
+                },
+                "required": ["query"]
+            }),
         },
-    ]
+    }]
 }
 
 pub async fn execute(
@@ -53,7 +51,11 @@ pub async fn execute(
     agent_id: &str,
 ) -> Option<Result<String, String>> {
     match name {
-        "request_tools" => Some(execute_request_tools(args, app_handle, agent_id).await.map_err(|e| e.to_string())),
+        "request_tools" => Some(
+            execute_request_tools(args, app_handle, agent_id)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -101,7 +103,8 @@ async fn execute_request_tools(
             }
         }
 
-        let tool_names: Vec<String> = domain_tools.iter()
+        let tool_names: Vec<String> = domain_tools
+            .iter()
             .map(|t| format!("  • **{}** — {}", t.function.name, t.function.description))
             .collect();
 
@@ -117,7 +120,7 @@ async fn execute_request_tools(
     // ── Semantic search for the best matching tools ────────────────────────
     let emb_client = state.embedding_client().ok_or(
         "Embedding client not configured — cannot search tool index. \
-        Try requesting a specific domain instead (e.g., domain='email')."
+        Try requesting a specific domain instead (e.g., domain='email').",
     )?;
 
     // Ensure the tool index is built
@@ -155,12 +158,14 @@ async fn execute_request_tools(
         }
     }
 
-    let tool_names: Vec<String> = results.iter()
+    let tool_names: Vec<String> = results
+        .iter()
         .map(|t| format!("  • **{}** — {}", t.function.name, t.function.description))
         .collect();
 
     // Filter out core tools from the result list (they're already loaded)
-    let non_core: Vec<&ToolDefinition> = results.iter()
+    let non_core: Vec<&ToolDefinition> = results
+        .iter()
         .filter(|t| !tool_index::CORE_TOOLS.contains(&t.function.name.as_str()))
         .collect();
 

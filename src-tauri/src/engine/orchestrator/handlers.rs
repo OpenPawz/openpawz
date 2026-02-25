@@ -4,8 +4,8 @@
 // project_complete, create_sub_agent.
 // Worker tool handler: report_progress (execute_worker_tool).
 
-use crate::engine::types::*;
 use crate::engine::sessions::SessionStore;
+use crate::engine::types::*;
 use log::error;
 use tauri::Emitter;
 
@@ -29,15 +29,25 @@ pub async fn execute_boss_tool(
     project_id: &str,
 ) -> Option<Result<String, String>> {
     let name = &tool_call.function.name;
-    let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments)
-        .unwrap_or(serde_json::json!({}));
+    let args: serde_json::Value =
+        serde_json::from_str(&tool_call.function.arguments).unwrap_or(serde_json::json!({}));
 
     match name.as_str() {
-        "delegate_task" => Some(handle_delegate_task(&args, app_handle, project_id).map_err(|e| e.to_string())),
-        "check_agent_status" => Some(handle_check_agent_status(app_handle, project_id).map_err(|e| e.to_string())),
-        "send_agent_message" => Some(handle_send_agent_message(&args, app_handle, project_id).map_err(|e| e.to_string())),
-        "project_complete" => Some(handle_project_complete(&args, app_handle, project_id).map_err(|e| e.to_string())),
-        "create_sub_agent" => Some(handle_create_sub_agent(&args, app_handle, project_id).map_err(|e| e.to_string())),
+        "delegate_task" => {
+            Some(handle_delegate_task(&args, app_handle, project_id).map_err(|e| e.to_string()))
+        }
+        "check_agent_status" => {
+            Some(handle_check_agent_status(app_handle, project_id).map_err(|e| e.to_string()))
+        }
+        "send_agent_message" => Some(
+            handle_send_agent_message(&args, app_handle, project_id).map_err(|e| e.to_string()),
+        ),
+        "project_complete" => {
+            Some(handle_project_complete(&args, app_handle, project_id).map_err(|e| e.to_string()))
+        }
+        "create_sub_agent" => {
+            Some(handle_create_sub_agent(&args, app_handle, project_id).map_err(|e| e.to_string()))
+        }
         _ => None,
     }
 }
@@ -53,8 +63,8 @@ pub async fn execute_worker_tool(
     agent_id: &str,
 ) -> Option<Result<String, String>> {
     let name = &tool_call.function.name;
-    let args: serde_json::Value = serde_json::from_str(&tool_call.function.arguments)
-        .unwrap_or(serde_json::json!({}));
+    let args: serde_json::Value =
+        serde_json::from_str(&tool_call.function.arguments).unwrap_or(serde_json::json!({}));
 
     match name.as_str() {
         "report_progress" => {
@@ -69,7 +79,9 @@ pub async fn execute_worker_tool(
                     "error" | "blocked" => "error",
                     _ => "working",
                 };
-                store.update_project_agent_status(project_id, agent_id, db_status, Some(&message)).ok();
+                store
+                    .update_project_agent_status(project_id, agent_id, db_status, Some(&message))
+                    .ok();
 
                 let mut content = message.clone();
                 if !output.is_empty() {
@@ -89,13 +101,18 @@ pub async fn execute_worker_tool(
                 store.add_project_message(&msg).ok();
             }
 
-            app_handle.emit("project-event", serde_json::json!({
-                "kind": "progress",
-                "project_id": project_id,
-                "agent_id": agent_id,
-                "status": status,
-                "message": message,
-            })).ok();
+            app_handle
+                .emit(
+                    "project-event",
+                    serde_json::json!({
+                        "kind": "progress",
+                        "project_id": project_id,
+                        "agent_id": agent_id,
+                        "status": status,
+                        "message": message,
+                    }),
+                )
+                .ok();
 
             Some(Ok("Progress reported to boss agent.".into()))
         }
@@ -127,19 +144,30 @@ fn handle_delegate_task(
             to_agent: Some(agent_id.clone()),
             kind: "delegation".into(),
             content: task_desc.clone(),
-            metadata: if context.is_empty() { None } else { Some(serde_json::json!({"context": context}).to_string()) },
+            metadata: if context.is_empty() {
+                None
+            } else {
+                Some(serde_json::json!({"context": context}).to_string())
+            },
             created_at: chrono::Utc::now().to_rfc3339(),
         };
         store.add_project_message(&msg).ok();
-        store.update_project_agent_status(project_id, &agent_id, "working", Some(&task_desc)).ok();
+        store
+            .update_project_agent_status(project_id, &agent_id, "working", Some(&task_desc))
+            .ok();
     }
 
-    app_handle.emit("project-event", serde_json::json!({
-        "kind": "delegation",
-        "project_id": project_id,
-        "agent_id": agent_id,
-        "task": task_desc,
-    })).ok();
+    app_handle
+        .emit(
+            "project-event",
+            serde_json::json!({
+                "kind": "delegation",
+                "project_id": project_id,
+                "agent_id": agent_id,
+                "task": task_desc,
+            }),
+        )
+        .ok();
 
     let app = app_handle.clone();
     let pid = project_id.to_string();
@@ -151,7 +179,9 @@ fn handle_delegate_task(
         if let Err(e) = run_sub_agent(&app, &pid, &aid, &task, &ctx).await {
             error!("[orchestrator] Sub-agent {} failed: {}", aid, e);
             if let Some(store) = get_store(&app) {
-                store.update_project_agent_status(&pid, &aid, "error", Some(&e.to_string())).ok();
+                store
+                    .update_project_agent_status(&pid, &aid, "error", Some(&e.to_string()))
+                    .ok();
                 let msg = ProjectMessage {
                     id: uuid::Uuid::new_v4().to_string(),
                     project_id: pid.clone(),
@@ -167,7 +197,10 @@ fn handle_delegate_task(
         }
     });
 
-    Ok(format!("Task delegated to agent '{}'. They are now working on: {}", agent_id, task_desc))
+    Ok(format!(
+        "Task delegated to agent '{}'. They are now working on: {}",
+        agent_id, task_desc
+    ))
 }
 
 fn handle_check_agent_status(
@@ -176,34 +209,42 @@ fn handle_check_agent_status(
 ) -> EngineResult<String> {
     let store = get_store(app_handle);
     match store {
-        Some(store) => {
-            match store.get_project_agents(project_id) {
-                Ok(agents) => {
-                    let msgs = store.get_project_messages(project_id, 20).unwrap_or_default();
-                    let mut status_lines: Vec<String> = Vec::new();
+        Some(store) => match store.get_project_agents(project_id) {
+            Ok(agents) => {
+                let msgs = store
+                    .get_project_messages(project_id, 20)
+                    .unwrap_or_default();
+                let mut status_lines: Vec<String> = Vec::new();
 
-                    for a in &agents {
-                        let recent: Vec<&ProjectMessage> = msgs.iter()
-                            .filter(|m| m.from_agent == a.agent_id)
-                            .collect();
-                        let last_msg = recent.last()
-                            .map(|m| format!(" | Last: [{}] {}", m.kind, &m.content[..m.content.len().min(100)]))
-                            .unwrap_or_default();
+                for a in &agents {
+                    let recent: Vec<&ProjectMessage> =
+                        msgs.iter().filter(|m| m.from_agent == a.agent_id).collect();
+                    let last_msg = recent
+                        .last()
+                        .map(|m| {
+                            format!(
+                                " | Last: [{}] {}",
+                                m.kind,
+                                &m.content[..m.content.len().min(100)]
+                            )
+                        })
+                        .unwrap_or_default();
 
-                        status_lines.push(format!(
-                            "- {} ({}): status={}, task={}{}",
-                            a.agent_id, a.specialty, a.status,
-                            a.current_task.as_deref().unwrap_or("none"),
-                            last_msg
-                        ));
-                    }
-
-                    Ok(format!("Agent Status:\n{}", status_lines.join("\n")))
+                    status_lines.push(format!(
+                        "- {} ({}): status={}, task={}{}",
+                        a.agent_id,
+                        a.specialty,
+                        a.status,
+                        a.current_task.as_deref().unwrap_or("none"),
+                        last_msg
+                    ));
                 }
-                Err(e) => Err(e)
+
+                Ok(format!("Agent Status:\n{}", status_lines.join("\n")))
             }
-        }
-        None => Err("Could not access engine store".into())
+            Err(e) => Err(e),
+        },
+        None => Err("Could not access engine store".into()),
     }
 }
 
@@ -234,13 +275,18 @@ fn handle_send_agent_message(
         store.add_project_message(&msg).ok();
     }
 
-    app_handle.emit("project-event", serde_json::json!({
-        "kind": "message",
-        "project_id": project_id,
-        "from": "boss",
-        "to": to,
-        "content": message,
-    })).ok();
+    app_handle
+        .emit(
+            "project-event",
+            serde_json::json!({
+                "kind": "message",
+                "project_id": project_id,
+                "from": "boss",
+                "to": to,
+                "content": message,
+            }),
+        )
+        .ok();
 
     Ok(format!("Message sent to {}", to))
 }
@@ -275,14 +321,22 @@ fn handle_project_complete(
         store.add_project_message(&msg).ok();
     }
 
-    app_handle.emit("project-event", serde_json::json!({
-        "kind": "project_complete",
-        "project_id": project_id,
-        "status": status,
-        "summary": summary,
-    })).ok();
+    app_handle
+        .emit(
+            "project-event",
+            serde_json::json!({
+                "kind": "project_complete",
+                "project_id": project_id,
+                "status": status,
+                "summary": summary,
+            }),
+        )
+        .ok();
 
-    Ok(format!("Project marked as {}. Summary: {}", status, summary))
+    Ok(format!(
+        "Project marked as {}. Summary: {}",
+        status, summary
+    ))
 }
 
 fn handle_create_sub_agent(
@@ -294,10 +348,18 @@ fn handle_create_sub_agent(
     let role = args["role"].as_str().unwrap_or("worker").to_string();
     let specialty = args["specialty"].as_str().unwrap_or("general").to_string();
     let system_prompt = args["system_prompt"].as_str().unwrap_or("").to_string();
-    let capabilities: Vec<String> = args["capabilities"].as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+    let capabilities: Vec<String> = args["capabilities"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
-    let model = args["model"].as_str().map(|s| s.to_string()).filter(|s| !s.is_empty());
+    let model = args["model"]
+        .as_str()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty());
 
     if name.is_empty() {
         return Err("create_sub_agent requires a 'name' argument".into());
@@ -306,9 +368,16 @@ fn handle_create_sub_agent(
         return Err("create_sub_agent requires a 'system_prompt' argument".into());
     }
 
-    let agent_id = name.to_lowercase()
+    let agent_id = name
+        .to_lowercase()
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect::<String>();
 
     let store = get_store(app_handle);
@@ -316,7 +385,9 @@ fn handle_create_sub_agent(
         Some(store) => {
             if let Ok(existing) = store.get_project_agents(project_id) {
                 if existing.iter().any(|a| a.agent_id == agent_id) {
-                    return Err(format!("Agent '{}' already exists in this project", agent_id).into());
+                    return Err(
+                        format!("Agent '{}' already exists in this project", agent_id).into(),
+                    );
                 }
             }
 
@@ -337,7 +408,9 @@ fn handle_create_sub_agent(
                         "# {}\n\n## Identity\nAgent ID: {}\nRole: {}\nSpecialty: {}\n\n## Personality & Instructions\n{}\n",
                         name, agent_id, role, specialty, system_prompt
                     );
-                    store.set_agent_file(&agent_id, "IDENTITY.md", &identity_content).ok();
+                    store
+                        .set_agent_file(&agent_id, "IDENTITY.md", &identity_content)
+                        .ok();
 
                     let msg = ProjectMessage {
                         id: uuid::Uuid::new_v4().to_string(),
@@ -345,32 +418,43 @@ fn handle_create_sub_agent(
                         from_agent: "boss".into(),
                         to_agent: Some(agent_id.clone()),
                         kind: "message".into(),
-                        content: format!("Created new agent '{}' (role={}, specialty={})", agent_id, role, specialty),
-                        metadata: Some(serde_json::json!({
-                            "action": "create_sub_agent",
-                            "capabilities": capabilities,
-                            "model": model,
-                        }).to_string()),
+                        content: format!(
+                            "Created new agent '{}' (role={}, specialty={})",
+                            agent_id, role, specialty
+                        ),
+                        metadata: Some(
+                            serde_json::json!({
+                                "action": "create_sub_agent",
+                                "capabilities": capabilities,
+                                "model": model,
+                            })
+                            .to_string(),
+                        ),
                         created_at: chrono::Utc::now().to_rfc3339(),
                     };
                     store.add_project_message(&msg).ok();
 
-                    app_handle.emit("project-event", serde_json::json!({
-                        "kind": "agent_created",
-                        "project_id": project_id,
-                        "agent_id": agent_id,
-                        "role": role,
-                        "specialty": specialty,
-                    })).ok();
+                    app_handle
+                        .emit(
+                            "project-event",
+                            serde_json::json!({
+                                "kind": "agent_created",
+                                "project_id": project_id,
+                                "agent_id": agent_id,
+                                "role": role,
+                                "specialty": specialty,
+                            }),
+                        )
+                        .ok();
 
                     Ok(format!(
                         "Successfully created sub-agent '{}' (role={}, specialty={}). You can now delegate tasks to this agent using delegate_task with agent_id='{}'.",
                         agent_id, role, specialty, agent_id
                     ))
                 }
-                Err(e) => Err(e)
+                Err(e) => Err(e),
             }
         }
-        None => Err("Could not access engine store".into())
+        None => Err("Could not access engine store".into()),
     }
 }

@@ -103,7 +103,9 @@ mod tests {
     #[test]
     fn test_set_and_get() {
         let store = test_store();
-        store.skill_store_set("s1", "api_url", "https://example.com").unwrap();
+        store
+            .skill_store_set("s1", "api_url", "https://example.com")
+            .unwrap();
         let val = store.skill_store_get("s1", "api_url").unwrap();
         assert_eq!(val, Some("https://example.com".to_string()));
     }
@@ -160,7 +162,13 @@ mod tests {
         let store = test_store();
         store.skill_store_set("s1", "k1", "v1").unwrap();
         store.skill_store_set("s2", "k1", "v2").unwrap();
-        assert_eq!(store.skill_store_get("s1", "k1").unwrap(), Some("v1".to_string()));
-        assert_eq!(store.skill_store_get("s2", "k1").unwrap(), Some("v2".to_string()));
+        assert_eq!(
+            store.skill_store_get("s1", "k1").unwrap(),
+            Some("v1".to_string())
+        );
+        assert_eq!(
+            store.skill_store_get("s2", "k1").unwrap(),
+            Some("v2".to_string())
+        );
     }
 }

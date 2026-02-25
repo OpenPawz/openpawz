@@ -3,9 +3,9 @@
 // TOML manifest commands (Phase F.1) + MCP server sharing (Phase F.3).
 
 use crate::commands::state::EngineState;
-use crate::engine::skills;
 use crate::engine::channels;
 use crate::engine::mcp::types::{McpServerConfig, McpTransport};
+use crate::engine::skills;
 use log::info;
 use tauri::State;
 
@@ -23,7 +23,10 @@ pub fn engine_skill_set_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     info!("[engine] Skill {} → enabled={}", skill_id, enabled);
-    state.store.set_skill_enabled(&skill_id, enabled).map_err(|e| e.to_string())
+    state
+        .store
+        .set_skill_enabled(&skill_id, enabled)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -35,8 +38,16 @@ pub fn engine_skill_set_credential(
 ) -> Result<(), String> {
     let vault_key = skills::get_vault_key()?;
     let encrypted = skills::encrypt_credential(&value, &vault_key);
-    info!("[engine] Setting credential {}:{} ({} chars)", skill_id, key, value.len());
-    state.store.set_skill_credential(&skill_id, &key, &encrypted).map_err(|e| e.to_string())
+    info!(
+        "[engine] Setting credential {}:{} ({} chars)",
+        skill_id,
+        key,
+        value.len()
+    );
+    state
+        .store
+        .set_skill_credential(&skill_id, &key, &encrypted)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -46,7 +57,10 @@ pub fn engine_skill_delete_credential(
     key: String,
 ) -> Result<(), String> {
     info!("[engine] Deleting credential {}:{}", skill_id, key);
-    state.store.delete_skill_credential(&skill_id, &key).map_err(|e| e.to_string())
+    state
+        .store
+        .delete_skill_credential(&skill_id, &key)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -56,7 +70,10 @@ pub fn engine_skill_revoke_all(
 ) -> Result<(), String> {
     info!("[engine] Revoking all credentials for skill {}", skill_id);
     state.store.delete_all_skill_credentials(&skill_id)?;
-    state.store.set_skill_enabled(&skill_id, false).map_err(|e| e.to_string())
+    state
+        .store
+        .set_skill_enabled(&skill_id, false)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -64,7 +81,10 @@ pub fn engine_skill_get_instructions(
     state: State<'_, EngineState>,
     skill_id: String,
 ) -> Result<Option<String>, String> {
-    state.store.get_skill_custom_instructions(&skill_id).map_err(|e| e.to_string())
+    state
+        .store
+        .get_skill_custom_instructions(&skill_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -73,8 +93,15 @@ pub fn engine_skill_set_instructions(
     skill_id: String,
     instructions: String,
 ) -> Result<(), String> {
-    info!("[engine] Setting custom instructions for skill {} ({} chars)", skill_id, instructions.len());
-    state.store.set_skill_custom_instructions(&skill_id, &instructions).map_err(|e| e.to_string())
+    info!(
+        "[engine] Setting custom instructions for skill {} ({} chars)",
+        skill_id,
+        instructions.len()
+    );
+    state
+        .store
+        .set_skill_custom_instructions(&skill_id, &instructions)
+        .map_err(|e| e.to_string())
 }
 
 // ── Community Skills (skills.sh) ───────────────────────────────────────
@@ -83,7 +110,10 @@ pub fn engine_skill_set_instructions(
 pub fn engine_community_skills_list(
     state: State<'_, EngineState>,
 ) -> Result<Vec<skills::CommunitySkill>, String> {
-    state.store.list_community_skills().map_err(|e| e.to_string())
+    state
+        .store
+        .list_community_skills()
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -95,7 +125,8 @@ pub async fn engine_community_skills_browse(
 
     // Mark which ones are already installed
     let installed = state.store.list_community_skills()?;
-    let installed_ids: std::collections::HashSet<String> = installed.iter().map(|s| s.id.clone()).collect();
+    let installed_ids: std::collections::HashSet<String> =
+        installed.iter().map(|s| s.id.clone()).collect();
     for skill in &mut discovered {
         skill.installed = installed_ids.contains(&skill.id);
     }
@@ -112,7 +143,8 @@ pub async fn engine_community_skills_search(
 
     // Mark which ones are already installed
     let installed = state.store.list_community_skills()?;
-    let installed_ids: std::collections::HashSet<String> = installed.iter().map(|s| s.id.clone()).collect();
+    let installed_ids: std::collections::HashSet<String> =
+        installed.iter().map(|s| s.id.clone()).collect();
     for skill in &mut discovered {
         skill.installed = installed_ids.contains(&skill.id);
     }
@@ -126,8 +158,13 @@ pub async fn engine_community_skill_install(
     skill_path: String,
     state: State<'_, EngineState>,
 ) -> Result<skills::CommunitySkill, String> {
-    info!("[engine] Installing community skill from {} path {} (UI — all agents)", source, skill_path);
-    skills::install_community_skill(&state.store, &source, &skill_path, None).await.map_err(|e| e.to_string())
+    info!(
+        "[engine] Installing community skill from {} path {} (UI — all agents)",
+        source, skill_path
+    );
+    skills::install_community_skill(&state.store, &source, &skill_path, None)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -136,7 +173,10 @@ pub fn engine_community_skill_remove(
     skill_id: String,
 ) -> Result<(), String> {
     info!("[engine] Removing community skill: {}", skill_id);
-    state.store.remove_community_skill(&skill_id).map_err(|e| e.to_string())
+    state
+        .store
+        .remove_community_skill(&skill_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -145,8 +185,14 @@ pub fn engine_community_skill_set_enabled(
     skill_id: String,
     enabled: bool,
 ) -> Result<(), String> {
-    info!("[engine] Community skill {} → enabled={}", skill_id, enabled);
-    state.store.set_community_skill_enabled(&skill_id, enabled).map_err(|e| e.to_string())
+    info!(
+        "[engine] Community skill {} → enabled={}",
+        skill_id, enabled
+    );
+    state
+        .store
+        .set_community_skill_enabled(&skill_id, enabled)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -155,8 +201,14 @@ pub fn engine_community_skill_set_agents(
     skill_id: String,
     agent_ids: Vec<String>,
 ) -> Result<(), String> {
-    info!("[engine] Community skill {} → agent_ids={:?}", skill_id, agent_ids);
-    state.store.set_community_skill_agents(&skill_id, &agent_ids).map_err(|e| e.to_string())
+    info!(
+        "[engine] Community skill {} → agent_ids={:?}",
+        skill_id, agent_ids
+    );
+    state
+        .store
+        .set_community_skill_agents(&skill_id, &agent_ids)
+        .map_err(|e| e.to_string())
 }
 
 // ── TOML Manifest Skills (Phase F.1) + MCP Sharing (Phase F.3) ─────
@@ -186,7 +238,10 @@ pub async fn engine_toml_skill_install(
     // 2. If manifest has [mcp], auto-register the MCP server
     if let Ok(manifest) = skills::parse_manifest(&toml_content) {
         if let Some(mcp) = &manifest.mcp {
-            info!("[engine] Skill '{}' declares MCP server — auto-registering", skill_id);
+            info!(
+                "[engine] Skill '{}' declares MCP server — auto-registering",
+                skill_id
+            );
 
             // Build env: manifest env + decrypted credentials
             let mut env = mcp.env.clone();
@@ -221,14 +276,22 @@ pub async fn engine_toml_skill_install(
                 servers.push(config.clone());
             }
             if let Err(e) = channels::save_channel_config(&app_handle, MCP_CONFIG_KEY, &servers) {
-                log::warn!("[engine] Failed to persist MCP config for skill '{}': {}", skill_id, e);
+                log::warn!(
+                    "[engine] Failed to persist MCP config for skill '{}': {}",
+                    skill_id,
+                    e
+                );
             }
 
             // Connect the MCP server
             let mut reg = state.mcp_registry.lock().await;
             if let Err(e) = reg.connect(config).await {
                 // Non-fatal: skill is installed, MCP connection can be retried
-                log::warn!("[engine] MCP server for skill '{}' failed to connect: {}", skill_id, e);
+                log::warn!(
+                    "[engine] MCP server for skill '{}' failed to connect: {}",
+                    skill_id,
+                    e
+                );
             }
         }
     }
@@ -259,9 +322,15 @@ pub async fn engine_toml_skill_uninstall(
     let before = servers.len();
     servers.retain(|s| s.id != mcp_id);
     if servers.len() < before {
-        info!("[engine] Removed MCP server '{}' for skill '{}'", mcp_id, skill_id);
+        info!(
+            "[engine] Removed MCP server '{}' for skill '{}'",
+            mcp_id, skill_id
+        );
         if let Err(e) = channels::save_channel_config(&app_handle, MCP_CONFIG_KEY, &servers) {
-            log::warn!("[engine] Failed to update MCP config after uninstall: {}", e);
+            log::warn!(
+                "[engine] Failed to update MCP config after uninstall: {}",
+                e
+            );
         }
     }
 
@@ -273,15 +342,17 @@ pub async fn engine_toml_skill_uninstall(
 
 /// Search the PawzHub registry by query. Returns all entries if query is empty.
 #[tauri::command]
-pub async fn engine_pawzhub_search(
-    query: String,
-) -> Result<Vec<skills::PawzHubEntry>, String> {
+pub async fn engine_pawzhub_search(query: String) -> Result<Vec<skills::PawzHubEntry>, String> {
     info!("[engine] PawzHub search: '{}'", query);
-    let mut entries = skills::search_pawzhub(&query).await.map_err(|e| e.to_string())?;
+    let mut entries = skills::search_pawzhub(&query)
+        .await
+        .map_err(|e| e.to_string())?;
 
     // Mark installed entries
-    let installed_ids: std::collections::HashSet<String> =
-        skills::scan_toml_skills().into_iter().map(|s| s.definition.id).collect();
+    let installed_ids: std::collections::HashSet<String> = skills::scan_toml_skills()
+        .into_iter()
+        .map(|s| s.definition.id)
+        .collect();
     for entry in &mut entries {
         entry.installed = installed_ids.contains(&entry.id);
     }
@@ -291,14 +362,16 @@ pub async fn engine_pawzhub_search(
 
 /// Browse PawzHub by category.
 #[tauri::command]
-pub async fn engine_pawzhub_browse(
-    category: String,
-) -> Result<Vec<skills::PawzHubEntry>, String> {
+pub async fn engine_pawzhub_browse(category: String) -> Result<Vec<skills::PawzHubEntry>, String> {
     info!("[engine] PawzHub browse category: '{}'", category);
-    let mut entries = skills::browse_pawzhub_category(&category).await.map_err(|e| e.to_string())?;
+    let mut entries = skills::browse_pawzhub_category(&category)
+        .await
+        .map_err(|e| e.to_string())?;
 
-    let installed_ids: std::collections::HashSet<String> =
-        skills::scan_toml_skills().into_iter().map(|s| s.definition.id).collect();
+    let installed_ids: std::collections::HashSet<String> = skills::scan_toml_skills()
+        .into_iter()
+        .map(|s| s.definition.id)
+        .collect();
     for entry in &mut entries {
         entry.installed = installed_ids.contains(&entry.id);
     }
@@ -314,7 +387,10 @@ pub async fn engine_pawzhub_install(
     skill_id: String,
     source_repo: String,
 ) -> Result<String, String> {
-    info!("[engine] PawzHub install: '{}' from {}", skill_id, source_repo);
+    info!(
+        "[engine] PawzHub install: '{}' from {}",
+        skill_id, source_repo
+    );
 
     // Fetch the TOML manifest from GitHub
     let toml_content = skills::fetch_pawzhub_toml(&source_repo, &skill_id)
@@ -336,10 +412,7 @@ pub fn engine_list_skill_outputs(
 ) -> Result<Vec<crate::engine::sessions::SkillOutput>, String> {
     state
         .store
-        .list_skill_outputs(
-            skill_id.as_deref(),
-            agent_id.as_deref(),
-        )
+        .list_skill_outputs(skill_id.as_deref(), agent_id.as_deref())
         .map_err(|e| e.to_string())
 }
 
@@ -349,7 +422,10 @@ pub fn engine_skill_store_list(
     state: State<'_, EngineState>,
     skill_id: String,
 ) -> Result<Vec<crate::engine::sessions::SkillStorageItem>, String> {
-    state.store.skill_store_list(&skill_id).map_err(|e| e.to_string())
+    state
+        .store
+        .skill_store_list(&skill_id)
+        .map_err(|e| e.to_string())
 }
 
 // ── Google OAuth2 ──────────────────────────────────────────────────────
@@ -357,9 +433,7 @@ pub fn engine_skill_store_list(
 /// Start Google OAuth2 flow: opens browser, waits for consent, stores tokens.
 /// Returns the connected email address.
 #[tauri::command]
-pub async fn engine_google_oauth_connect(
-    app_handle: tauri::AppHandle,
-) -> Result<String, String> {
+pub async fn engine_google_oauth_connect(app_handle: tauri::AppHandle) -> Result<String, String> {
     info!("[engine] Starting Google OAuth2 connect flow");
     crate::engine::tools::google_oauth::run_oauth_flow(&app_handle)
         .await
@@ -368,19 +442,16 @@ pub async fn engine_google_oauth_connect(
 
 /// Check if Google OAuth2 is connected. Returns email or null.
 #[tauri::command]
-pub fn engine_google_oauth_status(
-    app_handle: tauri::AppHandle,
-) -> Result<Option<String>, String> {
-    Ok(crate::engine::tools::google_oauth::get_connection_status(&app_handle))
+pub fn engine_google_oauth_status(app_handle: tauri::AppHandle) -> Result<Option<String>, String> {
+    Ok(crate::engine::tools::google_oauth::get_connection_status(
+        &app_handle,
+    ))
 }
 
 /// Disconnect Google OAuth2 — remove stored tokens.
 #[tauri::command]
-pub fn engine_google_oauth_disconnect(
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
-    crate::engine::tools::google_oauth::disconnect(&app_handle)
-        .map_err(|e| e.to_string())
+pub fn engine_google_oauth_disconnect(app_handle: tauri::AppHandle) -> Result<(), String> {
+    crate::engine::tools::google_oauth::disconnect(&app_handle).map_err(|e| e.to_string())
 }
 
 /// Whether the build ships with bundled Google OAuth credentials.
@@ -441,23 +512,32 @@ pub fn engine_skill_bulk_enable(
     skill_ids: Vec<String>,
     enabled: bool,
 ) -> Result<(), String> {
-    info!("[engine] Bulk {} {} skills", if enabled { "enabling" } else { "disabling" }, skill_ids.len());
-    state.store.bulk_set_skills_enabled(&skill_ids, enabled).map_err(|e| e.to_string())
+    info!(
+        "[engine] Bulk {} {} skills",
+        if enabled { "enabling" } else { "disabling" },
+        skill_ids.len()
+    );
+    state
+        .store
+        .bulk_set_skills_enabled(&skill_ids, enabled)
+        .map_err(|e| e.to_string())
 }
 
 /// Check if the initial onboarding setup wizard has been completed.
 #[tauri::command]
-pub fn engine_is_onboarding_complete(
-    state: State<'_, EngineState>,
-) -> Result<bool, String> {
-    state.store.is_onboarding_complete().map_err(|e| e.to_string())
+pub fn engine_is_onboarding_complete(state: State<'_, EngineState>) -> Result<bool, String> {
+    state
+        .store
+        .is_onboarding_complete()
+        .map_err(|e| e.to_string())
 }
 
 /// Mark the onboarding setup wizard as complete.
 #[tauri::command]
-pub fn engine_set_onboarding_complete(
-    state: State<'_, EngineState>,
-) -> Result<(), String> {
+pub fn engine_set_onboarding_complete(state: State<'_, EngineState>) -> Result<(), String> {
     info!("[engine] Onboarding marked complete");
-    state.store.set_onboarding_complete().map_err(|e| e.to_string())
+    state
+        .store
+        .set_onboarding_complete()
+        .map_err(|e| e.to_string())
 }

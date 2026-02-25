@@ -2,9 +2,9 @@
 //
 // Tools: trello_get_lists, trello_create_list, trello_update_list, trello_archive_list
 
-use crate::atoms::types::*;
+use super::{auth_url, get_credentials, trello_request};
 use crate::atoms::error::EngineResult;
-use super::{get_credentials, auth_url, trello_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -14,7 +14,9 @@ pub fn definitions() -> Vec<ToolDefinition> {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "trello_get_lists".into(),
-                description: "Get all lists on a Trello board. Returns list names, IDs, and positions.".into(),
+                description:
+                    "Get all lists on a Trello board. Returns list names, IDs, and positions."
+                        .into(),
                 parameters: json!({
                     "type": "object",
                     "properties": {
@@ -81,10 +83,22 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "trello_get_lists"    => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_create_list"  => Some(exec_create(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_update_list"  => Some(exec_update(args, app_handle).await.map_err(|e| e.to_string())),
-        "trello_archive_list" => Some(exec_archive(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_get_lists" => Some(exec_get(args, app_handle).await.map_err(|e| e.to_string())),
+        "trello_create_list" => Some(
+            exec_create(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_update_list" => Some(
+            exec_update(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "trello_archive_list" => Some(
+            exec_archive(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -97,8 +111,12 @@ async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
     let filter = args["filter"].as_str().unwrap_or("open");
 
     let url = auth_url(
-        &format!("/boards/{}/lists?filter={}&fields=name,id,closed,pos", board_id, filter),
-        &key, &token,
+        &format!(
+            "/boards/{}/lists?filter={}&fields=name,id,closed,pos",
+            board_id, filter
+        ),
+        &key,
+        &token,
     );
     let data = trello_request(reqwest::Method::GET, &url, None).await?;
     let lists: Vec<Value> = serde_json::from_value(data).unwrap_or_default();
@@ -111,7 +129,11 @@ async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
     for l in &lists {
         let name = l["name"].as_str().unwrap_or("?");
         let id = l["id"].as_str().unwrap_or("?");
-        let status = if l["closed"].as_bool().unwrap_or(false) { " [archived]" } else { "" };
+        let status = if l["closed"].as_bool().unwrap_or(false) {
+            " [archived]"
+        } else {
+            ""
+        };
         lines.push(format!("• **{}**{} — `{}`", name, status, id));
     }
 
@@ -149,8 +171,12 @@ async fn exec_update(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let list_id = args["list_id"].as_str().ok_or("Missing 'list_id'")?;
 
     let mut body = json!({});
-    if let Some(name) = args["name"].as_str() { body["name"] = json!(name); }
-    if let Some(pos) = args["pos"].as_str() { body["pos"] = json!(pos); }
+    if let Some(name) = args["name"].as_str() {
+        body["name"] = json!(name);
+    }
+    if let Some(pos) = args["pos"].as_str() {
+        body["pos"] = json!(pos);
+    }
 
     let url = auth_url(&format!("/lists/{}", list_id), &key, &token);
     trello_request(reqwest::Method::PUT, &url, Some(&body)).await?;

@@ -4,8 +4,8 @@ use super::constants::chain_name;
 use super::primitives::{address_from_pubkey, hex_encode};
 use super::rpc::eth_chain_id;
 use crate::atoms::error::{EngineError, EngineResult};
-use std::collections::HashMap;
 use log::info;
+use std::collections::HashMap;
 
 /// Create a new Ethereum wallet and store the private key in the vault.
 pub async fn execute_dex_wallet_create(
@@ -14,8 +14,9 @@ pub async fn execute_dex_wallet_create(
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
     if creds.contains_key("DEX_PRIVATE_KEY") && creds.contains_key("DEX_WALLET_ADDRESS") {
-        let addr = creds.get("DEX_WALLET_ADDRESS")
-            .ok_or(EngineError::Other("DEX_WALLET_ADDRESS not found in credentials".into()))?;
+        let addr = creds.get("DEX_WALLET_ADDRESS").ok_or(EngineError::Other(
+            "DEX_WALLET_ADDRESS not found in credentials".into(),
+        ))?;
         return Ok(format!(
             "Wallet already exists!\n\nAddress: {}\n\nTo create a new wallet, first remove the existing credentials in Skills → DEX Trading.",
             addr
@@ -35,15 +36,20 @@ pub async fn execute_dex_wallet_create(
     let private_key_hex = hex_encode(&signing_key.to_bytes());
 
     use tauri::Manager;
-    let state = app_handle.try_state::<crate::engine::state::EngineState>()
+    let state = app_handle
+        .try_state::<crate::engine::state::EngineState>()
         .ok_or(EngineError::Other("Engine state not available".into()))?;
     let vault_key = crate::engine::skills::get_vault_key()?;
 
     let encrypted_key = crate::engine::skills::encrypt_credential(&private_key_hex, &vault_key);
-    state.store.set_skill_credential("dex", "DEX_PRIVATE_KEY", &encrypted_key)?;
+    state
+        .store
+        .set_skill_credential("dex", "DEX_PRIVATE_KEY", &encrypted_key)?;
 
     let encrypted_addr = crate::engine::skills::encrypt_credential(&address, &vault_key);
-    state.store.set_skill_credential("dex", "DEX_WALLET_ADDRESS", &encrypted_addr)?;
+    state
+        .store
+        .set_skill_credential("dex", "DEX_WALLET_ADDRESS", &encrypted_addr)?;
 
     info!("[dex] Created new wallet: {}", address);
 

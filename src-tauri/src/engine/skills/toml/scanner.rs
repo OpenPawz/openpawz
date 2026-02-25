@@ -3,9 +3,9 @@
 // Scans `~/.paw/skills/*/pawz-skill.toml` and loads valid manifests.
 // Invalid or corrupt files are logged and skipped — never crash on bad input.
 
-use std::path::{Path, PathBuf};
+use super::parser::{manifest_to_definition, parse_manifest, validate_manifest};
 use super::types::TomlSkillEntry;
-use super::parser::{parse_manifest, validate_manifest, manifest_to_definition};
+use std::path::{Path, PathBuf};
 
 // ── Path helpers ───────────────────────────────────────────────────────────
 
@@ -28,7 +28,10 @@ pub fn scan_toml_skills() -> Vec<TomlSkillEntry> {
     };
 
     if !dir.exists() {
-        log::debug!("[toml-loader] Skills directory does not exist: {}", dir.display());
+        log::debug!(
+            "[toml-loader] Skills directory does not exist: {}",
+            dir.display()
+        );
         return Vec::new();
     }
 
@@ -73,7 +76,11 @@ pub fn scan_toml_skills() -> Vec<TomlSkillEntry> {
         }
     }
 
-    log::info!("[toml-loader] Scanned {} TOML skills from {}", skills.len(), dir.display());
+    log::info!(
+        "[toml-loader] Scanned {} TOML skills from {}",
+        skills.len(),
+        dir.display()
+    );
     skills
 }
 
@@ -99,8 +106,16 @@ pub fn load_manifest_from_path(path: &Path) -> Result<TomlSkillEntry, String> {
         has_mcp: manifest.mcp.is_some(),
         has_widget: manifest.widget.is_some(),
         has_view: manifest.view.is_some(),
-        view_label: manifest.view.as_ref().map(|v| v.label.clone()).unwrap_or_default(),
-        view_icon: manifest.view.as_ref().map(|v| v.icon.clone()).unwrap_or_default(),
+        view_label: manifest
+            .view
+            .as_ref()
+            .map(|v| v.label.clone())
+            .unwrap_or_default(),
+        view_icon: manifest
+            .view
+            .as_ref()
+            .map(|v| v.icon.clone())
+            .unwrap_or_default(),
     })
 }
 

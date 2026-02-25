@@ -4,9 +4,9 @@
 // Storage format: "aes:" + base64(nonce || ciphertext || tag)
 // Legacy XOR-encrypted values (no prefix) are auto-migrated on read.
 
-use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use crate::atoms::error::{EngineError, EngineResult};
 use aes_gcm::aead::Aead;
-use crate::atoms::error::{EngineResult, EngineError};
+use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
 use log::{error, info, warn};
 
 const VAULT_KEYRING_SERVICE: &str = "paw-skill-vault";
@@ -17,36 +17,38 @@ const AES_PREFIX: &str = "aes:";
 
 /// Get or create the vault encryption key from the OS keychain.
 pub fn get_vault_key() -> EngineResult<Vec<u8>> {
-    let entry = keyring::Entry::new(VAULT_KEYRING_SERVICE, VAULT_KEYRING_USER)
-        .map_err(|e| {
-            error!("[vault] Keyring init failed — OS keychain unavailable: {}", e);
-            format!("Keyring init failed: {}", e)
-        })?;
+    let entry = keyring::Entry::new(VAULT_KEYRING_SERVICE, VAULT_KEYRING_USER).map_err(|e| {
+        error!(
+            "[vault] Keyring init failed — OS keychain unavailable: {}",
+            e
+        );
+        format!("Keyring init failed: {}", e)
+    })?;
 
     match entry.get_password() {
-        Ok(key_b64) => {
-            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
-                .map_err(|e| {
-                    error!("[vault] Failed to decode stored vault key: {}", e);
-                    EngineError::Other(format!("Failed to decode vault key: {}", e))
-                })
-        }
+        Ok(key_b64) => base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
+            .map_err(|e| {
+                error!("[vault] Failed to decode stored vault key: {}", e);
+                EngineError::Other(format!("Failed to decode vault key: {}", e))
+            }),
         Err(keyring::Error::NoEntry) => {
             // Generate a new random key
             use rand::Rng;
             let mut key = vec![0u8; 32];
             rand::thread_rng().fill(&mut key[..]);
             let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &key);
-            entry.set_password(&key_b64)
-                .map_err(|e| {
-                    error!("[vault] Failed to store vault key in keychain: {}", e);
-                    format!("Failed to store vault key in keychain: {}", e)
-                })?;
+            entry.set_password(&key_b64).map_err(|e| {
+                error!("[vault] Failed to store vault key in keychain: {}", e);
+                format!("Failed to store vault key in keychain: {}", e)
+            })?;
             info!("[vault] Created new vault encryption key in OS keychain");
             Ok(key)
         }
         Err(e) => {
-            error!("[vault] OS keychain error — credential storage blocked: {}", e);
+            error!(
+                "[vault] OS keychain error — credential storage blocked: {}",
+                e
+            );
             Err(EngineError::Keyring(e.to_string()))
         }
     }
@@ -55,8 +57,7 @@ pub fn get_vault_key() -> EngineResult<Vec<u8>> {
 /// Encrypt a plaintext credential value using AES-256-GCM.
 /// Returns "aes:" + base64(nonce || ciphertext_with_tag).
 pub fn encrypt_credential(plaintext: &str, key: &[u8]) -> String {
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .expect("AES-256-GCM key must be 32 bytes");
+    let cipher = Aes256Gcm::new_from_slice(key).expect("AES-256-GCM key must be 32 bytes");
 
     // Generate a random 12-byte nonce
     let mut nonce_bytes = [0u8; 12];
@@ -64,7 +65,8 @@ pub fn encrypt_credential(plaintext: &str, key: &[u8]) -> String {
     rand::thread_rng().fill(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
-    let ciphertext = cipher.encrypt(nonce, plaintext.as_bytes())
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext.as_bytes())
         .expect("AES-256-GCM encryption should not fail");
 
     // Pack: nonce (12) || ciphertext+tag
@@ -101,23 +103,27 @@ fn decrypt_aes_gcm(encoded: &str, key: &[u8]) -> EngineResult<String> {
     let (nonce_bytes, ciphertext) = packed.split_at(12);
     let nonce = Nonce::from_slice(nonce_bytes);
 
-    let cipher = Aes256Gcm::new_from_slice(key)
-        .map_err(|_| "Invalid key length (expected 32 bytes)")?;
+    let cipher =
+        Aes256Gcm::new_from_slice(key).map_err(|_| "Invalid key length (expected 32 bytes)")?;
 
-    let plaintext = cipher.decrypt(nonce, ciphertext)
+    let plaintext = cipher
+        .decrypt(nonce, ciphertext)
         .map_err(|_| "Decryption failed — wrong key or corrupted data")?;
 
-    String::from_utf8(plaintext)
-        .map_err(|e| EngineError::Other(e.to_string()))
+    String::from_utf8(plaintext).map_err(|e| EngineError::Other(e.to_string()))
 }
 
 /// Legacy XOR decryption for backward compatibility.
 fn decrypt_xor_legacy(encrypted_b64: &str, key: &[u8]) -> EngineResult<String> {
-    let encrypted = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encrypted_b64)
-        .map_err(|e| EngineError::Other(e.to_string()))?;
-    let decrypted: Vec<u8> = encrypted.iter().enumerate().map(|(i, b)| b ^ key[i % key.len()]).collect();
-    String::from_utf8(decrypted)
-        .map_err(|e| EngineError::Other(e.to_string()))
+    let encrypted =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, encrypted_b64)
+            .map_err(|e| EngineError::Other(e.to_string()))?;
+    let decrypted: Vec<u8> = encrypted
+        .iter()
+        .enumerate()
+        .map(|(i, b)| b ^ key[i % key.len()])
+        .collect();
+    String::from_utf8(decrypted).map_err(|e| EngineError::Other(e.to_string()))
 }
 
 /// Check if a stored value is using legacy XOR encryption (needs migration).
@@ -198,12 +204,16 @@ mod tests {
         let encrypted = encrypt_credential("sensitive-data", &key);
         // Flip a byte in the base64-encoded ciphertext
         let payload = &encrypted[AES_PREFIX.len()..];
-        let mut raw = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, payload).unwrap();
+        let mut raw =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, payload).unwrap();
         if let Some(byte) = raw.last_mut() {
             *byte ^= 0xFF;
         }
-        let tampered = format!("{}{}", AES_PREFIX,
-            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &raw));
+        let tampered = format!(
+            "{}{}",
+            AES_PREFIX,
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &raw)
+        );
         assert!(decrypt_credential(&tampered, &key).is_err());
     }
 
@@ -222,10 +232,13 @@ mod tests {
         // Simulate a legacy XOR-encrypted value (no "aes:" prefix)
         let plaintext = "old-api-key-from-before-migration";
         let bytes = plaintext.as_bytes();
-        let xor_encrypted: Vec<u8> = bytes.iter().enumerate()
+        let xor_encrypted: Vec<u8> = bytes
+            .iter()
+            .enumerate()
             .map(|(i, b)| b ^ key[i % key.len()])
             .collect();
-        let legacy_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &xor_encrypted);
+        let legacy_b64 =
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &xor_encrypted);
 
         // Should still decrypt via legacy path
         assert!(is_legacy_encrypted(&legacy_b64));
@@ -235,8 +248,8 @@ mod tests {
 
     #[test]
     fn is_legacy_detects_correctly() {
-        assert!(is_legacy_encrypted("c29tZV9iYXNlNjQ="));        // No prefix
-        assert!(!is_legacy_encrypted("aes:c29tZV9iYXNlNjQ="));   // Has prefix
+        assert!(is_legacy_encrypted("c29tZV9iYXNlNjQ=")); // No prefix
+        assert!(!is_legacy_encrypted("aes:c29tZV9iYXNlNjQ=")); // Has prefix
     }
 
     #[test]

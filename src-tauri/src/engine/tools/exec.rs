@@ -1,12 +1,12 @@
 // Paw Agent Engine — exec tool
 // Execute shell commands on the user's machine.
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
-use crate::engine::state::EngineState;
 use crate::engine::sandbox;
+use crate::engine::state::EngineState;
 use log::{info, warn};
 use tauri::Manager;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![ToolDefinition {
@@ -39,20 +39,35 @@ pub async fn execute(
     agent_id: &str,
 ) -> Option<Result<String, String>> {
     match name {
-        "exec" => Some(execute_exec(args, app_handle, agent_id).await.map_err(|e| e.to_string())),
+        "exec" => Some(
+            execute_exec(args, app_handle, agent_id)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
 
-async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, agent_id: &str) -> EngineResult<String> {
-    let command = args["command"].as_str()
+async fn execute_exec(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+    agent_id: &str,
+) -> EngineResult<String> {
+    let command = args["command"]
+        .as_str()
         .ok_or("exec: missing 'command' argument")?;
 
     info!("[engine] exec: {}", &command[..command.len().min(200)]);
 
     // Block installing packages that duplicate built-in skill tools
     let cmd_lower = command.to_lowercase();
-    let blocked_packages = ["cdp-sdk", "coinbase-sdk", "coinbase-advanced-py", "cbpro", "coinbase"];
+    let blocked_packages = [
+        "cdp-sdk",
+        "coinbase-sdk",
+        "coinbase-advanced-py",
+        "cbpro",
+        "coinbase",
+    ];
     if cmd_lower.contains("pip") || cmd_lower.contains("npm") {
         for pkg in &blocked_packages {
             if cmd_lower.contains(pkg) {
@@ -61,7 +76,8 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, a
                      coinbase_balance, coinbase_prices, coinbase_trade, coinbase_transfer. \
                      Call those tools directly.",
                     pkg
-                ).into());
+                )
+                .into());
             }
         }
     }
@@ -73,11 +89,17 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, a
     };
 
     if sandbox_config.enabled {
-        info!("[engine] exec: routing through sandbox (image={})", sandbox_config.image);
+        info!(
+            "[engine] exec: routing through sandbox (image={})",
+            sandbox_config.image
+        );
         match sandbox::run_in_sandbox(command, &sandbox_config).await {
             Ok(result) => return Ok(sandbox::format_sandbox_result(&result)),
             Err(e) => {
-                warn!("[engine] Sandbox execution failed, falling back to host: {}", e);
+                warn!(
+                    "[engine] Sandbox execution failed, falling back to host: {}",
+                    e
+                );
                 // Fall through to host execution
             }
         }
@@ -90,8 +112,8 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, a
     let timeout_secs = args["timeout"].as_u64().unwrap_or(120).min(600);
 
     // Run via sh -c (Unix) or cmd /C (Windows) with timeout
-    use tokio::process::Command as TokioCommand;
     use std::time::Duration;
+    use tokio::process::Command as TokioCommand;
 
     let child = if cfg!(target_os = "windows") {
         TokioCommand::new("cmd")
@@ -107,14 +129,20 @@ async fn execute_exec(args: &serde_json::Value, app_handle: &tauri::AppHandle, a
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-    }.map_err(|e| crate::atoms::error::EngineError::Other(format!("Failed to spawn process: {}", e)))?;
+    }
+    .map_err(|e| {
+        crate::atoms::error::EngineError::Other(format!("Failed to spawn process: {}", e))
+    })?;
 
-    let output = match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await {
-        Ok(result) => result,
-        Err(_) => {
-            return Err(format!("exec: command timed out after {}s", timeout_secs).into());
-        }
-    };
+    let output =
+        match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output())
+            .await
+        {
+            Ok(result) => result,
+            Err(_) => {
+                return Err(format!("exec: command timed out after {}s", timeout_secs).into());
+            }
+        };
 
     match output {
         Ok(out) => {

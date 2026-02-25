@@ -2,16 +2,18 @@
 
 use super::abi::{encode_balance_of, encode_transfer};
 use super::constants::explorer_tx_url;
-use super::primitives::{amount_to_raw, hex_decode, parse_address, parse_u256_decimal, raw_to_amount};
+use super::primitives::{
+    amount_to_raw, hex_decode, parse_address, parse_u256_decimal, raw_to_amount,
+};
 use super::rpc::{
-    eth_chain_id, eth_estimate_gas, eth_get_balance, eth_call, eth_get_transaction_count,
+    eth_call, eth_chain_id, eth_estimate_gas, eth_get_balance, eth_get_transaction_count,
     eth_get_transaction_receipt, eth_send_raw_transaction, get_gas_fees,
 };
 use super::tokens::resolve_token;
 use super::tx::sign_eip1559_transaction;
+use crate::atoms::error::{EngineError, EngineResult};
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::atoms::error::{EngineResult, EngineError};
 
 /// Transfer ETH or ERC-20 tokens to an external address.
 /// For ETH: simple value transfer (21000 gas, no calldata).
@@ -21,12 +23,20 @@ pub async fn execute_dex_transfer(
     creds: &HashMap<String, String>,
 ) -> EngineResult<String> {
     let rpc_url = creds.get("DEX_RPC_URL").ok_or("Missing DEX_RPC_URL")?;
-    let wallet_address = creds.get("DEX_WALLET_ADDRESS").ok_or("No wallet. Use dex_wallet_create first.")?;
+    let wallet_address = creds
+        .get("DEX_WALLET_ADDRESS")
+        .ok_or("No wallet. Use dex_wallet_create first.")?;
     let private_key_hex = creds.get("DEX_PRIVATE_KEY").ok_or("Missing private key")?;
 
-    let currency = args["currency"].as_str().ok_or("dex_transfer: missing 'currency'")?;
-    let amount_str = args["amount"].as_str().ok_or("dex_transfer: missing 'amount'")?;
-    let to_address = args["to_address"].as_str().ok_or("dex_transfer: missing 'to_address'")?;
+    let currency = args["currency"]
+        .as_str()
+        .ok_or("dex_transfer: missing 'currency'")?;
+    let amount_str = args["amount"]
+        .as_str()
+        .ok_or("dex_transfer: missing 'amount'")?;
+    let to_address = args["to_address"]
+        .as_str()
+        .ok_or("dex_transfer: missing 'to_address'")?;
     let _reason = args["reason"].as_str().unwrap_or("transfer");
 
     // Validate recipient address
@@ -54,17 +64,29 @@ pub async fn execute_dex_transfer(
         let balance_bytes = hex_decode(&balance_hex)?;
         let mut balance_u256 = [0u8; 32];
         let offset = 32usize.saturating_sub(balance_bytes.len());
-        balance_u256[offset..].copy_from_slice(&balance_bytes[..std::cmp::min(balance_bytes.len(), 32)]);
+        balance_u256[offset..]
+            .copy_from_slice(&balance_bytes[..std::cmp::min(balance_bytes.len(), 32)]);
         if balance_u256 < value_u256 {
             let bal_display = raw_to_amount(&balance_hex, decimals).unwrap_or("?".into());
-            return Err(format!("Insufficient ETH balance. Have: {} ETH, need: {} ETH", bal_display, amount_str).into());
+            return Err(format!(
+                "Insufficient ETH balance. Have: {} ETH, need: {} ETH",
+                bal_display, amount_str
+            )
+            .into());
         }
 
         // ETH transfer: 21000 gas, empty data
         let gas = 21_000u64;
         let signed_tx = sign_eip1559_transaction(
-            chain_id, nonce, priority_fee, max_fee, gas,
-            &to_bytes, &value_u256, &[], &signing_key,
+            chain_id,
+            nonce,
+            priority_fee,
+            max_fee,
+            gas,
+            &to_bytes,
+            &value_u256,
+            &[],
+            &signing_key,
         )?;
         eth_send_raw_transaction(rpc_url, &signed_tx).await?
     } else {
@@ -83,7 +105,11 @@ pub async fn execute_dex_transfer(
         balance_u256[offset..].copy_from_slice(&bal_bytes[..std::cmp::min(bal_bytes.len(), 32)]);
         if balance_u256 < amount_u256 {
             let bal_display = raw_to_amount(&bal_result, decimals).unwrap_or("?".into());
-            return Err(format!("Insufficient {} balance. Have: {}, need: {}", currency_upper, bal_display, amount_str).into());
+            return Err(format!(
+                "Insufficient {} balance. Have: {}, need: {}",
+                currency_upper, bal_display, amount_str
+            )
+            .into());
         }
 
         // Check ETH balance for gas
@@ -91,7 +117,8 @@ pub async fn execute_dex_transfer(
         let eth_balance_bytes = hex_decode(&eth_balance_hex)?;
         let mut eth_balance = [0u8; 32];
         let eth_off = 32usize.saturating_sub(eth_balance_bytes.len());
-        eth_balance[eth_off..].copy_from_slice(&eth_balance_bytes[..std::cmp::min(eth_balance_bytes.len(), 32)]);
+        eth_balance[eth_off..]
+            .copy_from_slice(&eth_balance_bytes[..std::cmp::min(eth_balance_bytes.len(), 32)]);
         if eth_balance == [0u8; 32] {
             return Err("No ETH for gas fees. Deposit ETH to your wallet first.".into());
         }
@@ -104,12 +131,20 @@ pub async fn execute_dex_transfer(
         let token_addr_raw = hex_decode(&token_addr)?;
         token_addr_bytes.copy_from_slice(&token_addr_raw[..20]);
 
-        let gas = eth_estimate_gas(rpc_url, wallet_address, &token_addr, &transfer_data, "0x0").await
+        let gas = eth_estimate_gas(rpc_url, wallet_address, &token_addr, &transfer_data, "0x0")
+            .await
             .unwrap_or(65_000);
 
         let signed_tx = sign_eip1559_transaction(
-            chain_id, nonce, priority_fee, max_fee, gas,
-            &token_addr_bytes, &[0u8; 32], &transfer_data, &signing_key,
+            chain_id,
+            nonce,
+            priority_fee,
+            max_fee,
+            gas,
+            &token_addr_bytes,
+            &[0u8; 32],
+            &transfer_data,
+            &signing_key,
         )?;
         eth_send_raw_transaction(rpc_url, &signed_tx).await?
     };
@@ -121,9 +156,16 @@ pub async fn execute_dex_transfer(
         tokio::time::sleep(Duration::from_secs(2)).await;
         match eth_get_transaction_receipt(rpc_url, &tx_hash).await {
             Ok(Some(receipt)) => {
-                let status = receipt.get("status").and_then(|v| v.as_str()).unwrap_or("0x0");
-                if status == "0x1" { confirmed = true; final_status = "confirmed"; }
-                else { final_status = "reverted"; }
+                let status = receipt
+                    .get("status")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("0x0");
+                if status == "0x1" {
+                    confirmed = true;
+                    final_status = "confirmed";
+                } else {
+                    final_status = "reverted";
+                }
                 break;
             }
             _ => continue,
@@ -136,8 +178,11 @@ pub async fn execute_dex_transfer(
         "{} Transfer {}\n\n{} {} → {}\nTx: {}{}\nStatus: {}",
         if confirmed { "✅" } else { "⚠️" },
         if confirmed { "Confirmed" } else { "Submitted" },
-        amount_str, currency_upper,
+        amount_str,
+        currency_upper,
         to_address,
-        network, tx_hash, final_status,
+        network,
+        tx_hash,
+        final_status,
     ))
 }

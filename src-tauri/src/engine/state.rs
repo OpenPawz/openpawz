@@ -2,19 +2,19 @@
 // Canonical home for EngineState and related types.
 // commands/state.rs re-exports everything from here for backward compatibility.
 
-use crate::engine::types::*;
-use crate::engine::sessions::SessionStore;
 use crate::engine::memory::EmbeddingClient;
+use crate::engine::sessions::SessionStore;
 use crate::engine::tool_index::ToolIndex;
+use crate::engine::types::*;
 
 use crate::engine::mcp::McpRegistry;
 
-use log::info;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use parking_lot::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use crate::atoms::error::EngineResult;
+use log::info;
+use parking_lot::Mutex;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 
 /// Pending tool approvals: maps tool_call_id → oneshot sender.
 /// The agent loop registers a sender before emitting ToolRequest,
@@ -83,10 +83,13 @@ impl DailyTokenTracker {
         self.maybe_reset();
         self.input_tokens.fetch_add(input, Ordering::Relaxed);
         self.output_tokens.fetch_add(output, Ordering::Relaxed);
-        self.cache_read_tokens.fetch_add(cache_read, Ordering::Relaxed);
-        self.cache_create_tokens.fetch_add(cache_create, Ordering::Relaxed);
+        self.cache_read_tokens
+            .fetch_add(cache_read, Ordering::Relaxed);
+        self.cache_create_tokens
+            .fetch_add(cache_create, Ordering::Relaxed);
         // Calculate cost for this round using per-model pricing
-        let cost = crate::engine::types::estimate_cost_usd(model, input, output, cache_read, cache_create);
+        let cost =
+            crate::engine::types::estimate_cost_usd(model, input, output, cache_read, cache_create);
         let micro = (cost * 1_000_000.0) as u64;
         self.cost_microdollars.fetch_add(micro, Ordering::Relaxed);
         *self.last_model.lock() = model.to_string();
@@ -105,13 +108,19 @@ impl DailyTokenTracker {
     /// Check if today's spend exceeds the budget.  Returns Some(spend_usd) if over budget.
     pub fn check_budget(&self, budget_usd: f64) -> Option<f64> {
         let (_, _, usd) = self.estimated_spend_usd();
-        if usd >= budget_usd { Some(usd) } else { None }
+        if usd >= budget_usd {
+            Some(usd)
+        } else {
+            None
+        }
     }
 
     /// Check budget warning thresholds (50%, 75%, 90%).
     /// Returns the threshold percentage if a NEW warning should be emitted.
     pub fn check_budget_warning(&self, budget_usd: f64) -> Option<u8> {
-        if budget_usd <= 0.0 { return None; }
+        if budget_usd <= 0.0 {
+            return None;
+        }
         let (_, _, usd) = self.estimated_spend_usd();
         let pct = (usd / budget_usd * 100.0) as u8;
         let thresholds = [90u8, 75, 50]; // check highest first
@@ -203,28 +212,74 @@ pub fn normalize_model_name(model: &str) -> &str {
 /// First checks if the model's default_model matches any provider exactly,
 /// then matches by model prefix (claude→Anthropic, gemini→Google, gpt→OpenAI)
 /// and by base URL or provider ID for OpenAI-compatible providers.
-pub fn resolve_provider_for_model(model: &str, providers: &[ProviderConfig]) -> Option<ProviderConfig> {
+pub fn resolve_provider_for_model(
+    model: &str,
+    providers: &[ProviderConfig],
+) -> Option<ProviderConfig> {
     let model = normalize_model_name(model);
     // 1. Exact match: a provider whose default_model matches exactly
-    if let Some(p) = providers.iter().find(|p| p.default_model.as_deref() == Some(model)) {
+    if let Some(p) = providers
+        .iter()
+        .find(|p| p.default_model.as_deref() == Some(model))
+    {
         return Some(p.clone());
     }
 
     // 2. Match by model name prefix → well-known provider kind
     if model.starts_with("claude") || model.starts_with("anthropic") {
-        providers.iter().find(|p| p.kind == ProviderKind::Anthropic).cloned()
+        providers
+            .iter()
+            .find(|p| p.kind == ProviderKind::Anthropic)
+            .cloned()
     } else if model.starts_with("gemini") || model.starts_with("google") {
-        providers.iter().find(|p| p.kind == ProviderKind::Google).cloned()
-    } else if model.starts_with("gpt") || model.starts_with("o1") || model.starts_with("o3") || model.starts_with("o4") {
-        providers.iter().find(|p| p.kind == ProviderKind::OpenAI).cloned()
+        providers
+            .iter()
+            .find(|p| p.kind == ProviderKind::Google)
+            .cloned()
+    } else if model.starts_with("gpt")
+        || model.starts_with("o1")
+        || model.starts_with("o3")
+        || model.starts_with("o4")
+    {
+        providers
+            .iter()
+            .find(|p| p.kind == ProviderKind::OpenAI)
+            .cloned()
     } else if model.starts_with("moonshot") || model.starts_with("kimi") {
-        providers.iter().find(|p| p.id == "moonshot" || p.base_url.as_deref().is_some_and(|u| u.contains("moonshot"))).cloned()
+        providers
+            .iter()
+            .find(|p| {
+                p.id == "moonshot"
+                    || p.base_url
+                        .as_deref()
+                        .is_some_and(|u| u.contains("moonshot"))
+            })
+            .cloned()
     } else if model.starts_with("deepseek") {
-        providers.iter().find(|p| p.id == "deepseek" || p.base_url.as_deref().is_some_and(|u| u.contains("deepseek"))).cloned()
+        providers
+            .iter()
+            .find(|p| {
+                p.id == "deepseek"
+                    || p.base_url
+                        .as_deref()
+                        .is_some_and(|u| u.contains("deepseek"))
+            })
+            .cloned()
     } else if model.starts_with("grok") {
-        providers.iter().find(|p| p.id == "xai" || p.base_url.as_deref().is_some_and(|u| u.contains("x.ai"))).cloned()
-    } else if model.starts_with("mistral") || model.starts_with("codestral") || model.starts_with("pixtral") {
-        providers.iter().find(|p| p.id == "mistral" || p.base_url.as_deref().is_some_and(|u| u.contains("mistral"))).cloned()
+        providers
+            .iter()
+            .find(|p| p.id == "xai" || p.base_url.as_deref().is_some_and(|u| u.contains("x.ai")))
+            .cloned()
+    } else if model.starts_with("mistral")
+        || model.starts_with("codestral")
+        || model.starts_with("pixtral")
+    {
+        providers
+            .iter()
+            .find(|p| {
+                p.id == "mistral" || p.base_url.as_deref().is_some_and(|u| u.contains("mistral"))
+            })
+            .cloned()
     } else {
         None
     }
@@ -273,9 +328,7 @@ impl EngineState {
 
         // Load config from DB or use defaults
         let mut config = match store.get_config("engine_config") {
-            Ok(Some(json)) => {
-                serde_json::from_str::<EngineConfig>(&json).unwrap_or_default()
-            }
+            Ok(Some(json)) => serde_json::from_str::<EngineConfig>(&json).unwrap_or_default(),
             _ => EngineConfig::default(),
         };
 
@@ -301,9 +354,7 @@ impl EngineState {
 
         // Load memory config from DB or use defaults
         let memory_config = match store.get_config("memory_config") {
-            Ok(Some(json)) => {
-                serde_json::from_str::<MemoryConfig>(&json).unwrap_or_default()
-            }
+            Ok(Some(json)) => serde_json::from_str::<MemoryConfig>(&json).unwrap_or_default(),
             _ => MemoryConfig::default(),
         };
 

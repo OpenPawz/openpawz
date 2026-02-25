@@ -16,9 +16,9 @@
 //
 // Token savings: ~5,000-8,500 tokens per request (25% of a 32K context window).
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::ToolDefinition;
 use crate::engine::memory::EmbeddingClient;
-use crate::atoms::error::EngineResult;
 use log::{info, warn};
 use std::collections::{HashMap, HashSet};
 
@@ -59,7 +59,9 @@ fn tool_domain(name: &str) -> &'static str {
     match name {
         // System & Files
         "exec" => "system",
-        "read_file" | "write_file" | "append_file" | "delete_file" | "list_directory" => "filesystem",
+        "read_file" | "write_file" | "append_file" | "delete_file" | "list_directory" => {
+            "filesystem"
+        }
 
         // Web & Research
         "fetch" => "web",
@@ -88,7 +90,9 @@ fn tool_domain(name: &str) -> &'static str {
 
         // Dashboard & Storage
         "skill_output" | "delete_skill_output" => "dashboard",
-        "skill_store_set" | "skill_store_get" | "skill_store_list" | "skill_store_delete" => "storage",
+        "skill_store_set" | "skill_store_get" | "skill_store_list" | "skill_store_delete" => {
+            "storage"
+        }
 
         // Email
         "email_send" | "email_read" => "email",
@@ -113,8 +117,11 @@ fn tool_domain(name: &str) -> &'static str {
         "rest_api_call" | "webhook_send" | "image_generate" => "integrations",
 
         // Trading — Coinbase
-        "coinbase_prices" | "coinbase_balance" | "coinbase_wallet_create"
-        | "coinbase_trade" | "coinbase_transfer" => "coinbase",
+        "coinbase_prices"
+        | "coinbase_balance"
+        | "coinbase_wallet_create"
+        | "coinbase_trade"
+        | "coinbase_transfer" => "coinbase",
 
         // Trading — DEX
         n if n.starts_with("dex_") => "dex",
@@ -137,28 +144,96 @@ fn tool_domain(name: &str) -> &'static str {
 pub fn domain_summaries() -> Vec<(&'static str, &'static str, &'static str)> {
     // (domain_id, icon, description)
     vec![
-        ("system",        "terminal",     "Execute shell commands"),
-        ("filesystem",    "folder",       "Read, write, delete, list files in your workspace"),
-        ("web",           "language",     "Search the web, browse pages, take screenshots, fetch URLs"),
-        ("identity",      "person",       "Read/update your soul files and profile"),
-        ("memory",        "psychology",   "Store and search long-term memories"),
-        ("agents",        "group",        "Create and manage AI agents, assign skills"),
-        ("communication", "chat",         "Send/read messages between agents"),
-        ("squads",        "groups",       "Create agent teams, broadcast to squad members"),
-        ("tasks",         "task_alt",     "Create tasks, manage automations, set cron schedules"),
-        ("skills",        "extension",    "Search, install, and list community skills"),
-        ("dashboard",     "dashboard",    "Push data to the Today dashboard widgets"),
-        ("storage",       "storage",      "Persistent key-value storage for extensions"),
-        ("email",         "mail",         "Send and read emails via IMAP/SMTP"),
-        ("google",        "mail",         "Google Workspace — Gmail, Calendar, Drive, Sheets, Docs"),
-        ("messaging",     "forum",        "Slack and Telegram messaging"),
-        ("discord",       "forum",        "Discord server management — list, create, and organize channels; send messages"),
-        ("trello",        "view_kanban",  "Trello project management — boards, lists, cards, labels, checklists"),
-        ("github",        "code",         "GitHub API calls (issues, PRs, repos)"),
-        ("integrations",  "api",          "REST APIs, webhooks, image generation"),
-        ("coinbase",      "trending_up",  "Coinbase exchange — prices, balances, trades, transfers"),
-        ("dex",           "trending_up",  "DEX/Uniswap — swaps, quotes, whale tracking, trending tokens"),
-        ("solana",        "trending_up",  "Solana/Jupiter — swaps, quotes, token info, portfolio"),
+        ("system", "terminal", "Execute shell commands"),
+        (
+            "filesystem",
+            "folder",
+            "Read, write, delete, list files in your workspace",
+        ),
+        (
+            "web",
+            "language",
+            "Search the web, browse pages, take screenshots, fetch URLs",
+        ),
+        (
+            "identity",
+            "person",
+            "Read/update your soul files and profile",
+        ),
+        (
+            "memory",
+            "psychology",
+            "Store and search long-term memories",
+        ),
+        (
+            "agents",
+            "group",
+            "Create and manage AI agents, assign skills",
+        ),
+        ("communication", "chat", "Send/read messages between agents"),
+        (
+            "squads",
+            "groups",
+            "Create agent teams, broadcast to squad members",
+        ),
+        (
+            "tasks",
+            "task_alt",
+            "Create tasks, manage automations, set cron schedules",
+        ),
+        (
+            "skills",
+            "extension",
+            "Search, install, and list community skills",
+        ),
+        (
+            "dashboard",
+            "dashboard",
+            "Push data to the Today dashboard widgets",
+        ),
+        (
+            "storage",
+            "storage",
+            "Persistent key-value storage for extensions",
+        ),
+        ("email", "mail", "Send and read emails via IMAP/SMTP"),
+        (
+            "google",
+            "mail",
+            "Google Workspace — Gmail, Calendar, Drive, Sheets, Docs",
+        ),
+        ("messaging", "forum", "Slack and Telegram messaging"),
+        (
+            "discord",
+            "forum",
+            "Discord server management — list, create, and organize channels; send messages",
+        ),
+        (
+            "trello",
+            "view_kanban",
+            "Trello project management — boards, lists, cards, labels, checklists",
+        ),
+        ("github", "code", "GitHub API calls (issues, PRs, repos)"),
+        (
+            "integrations",
+            "api",
+            "REST APIs, webhooks, image generation",
+        ),
+        (
+            "coinbase",
+            "trending_up",
+            "Coinbase exchange — prices, balances, trades, transfers",
+        ),
+        (
+            "dex",
+            "trending_up",
+            "DEX/Uniswap — swaps, quotes, whale tracking, trending tokens",
+        ),
+        (
+            "solana",
+            "trending_up",
+            "Solana/Jupiter — swaps, quotes, token info, portfolio",
+        ),
     ]
 }
 
@@ -181,7 +256,10 @@ impl ToolIndex {
     /// Called once on startup (or lazily on first request_tools call).
     /// Uses the existing Ollama embedding client (~50ms per tool, ~4s total).
     pub async fn build(&mut self, all_tools: &[ToolDefinition], client: &EmbeddingClient) {
-        info!("[tool-index] Building tool index for {} definitions...", all_tools.len());
+        info!(
+            "[tool-index] Building tool index for {} definitions...",
+            all_tools.len()
+        );
         self.tools.clear();
 
         let mut success = 0;
@@ -199,7 +277,10 @@ impl ToolIndex {
                     success += 1;
                 }
                 Err(e) => {
-                    warn!("[tool-index] Failed to embed tool '{}': {}", tool.function.name, e);
+                    warn!(
+                        "[tool-index] Failed to embed tool '{}': {}",
+                        tool.function.name, e
+                    );
                     // Still add the tool without embedding — it can be found by name or domain
                     self.tools.push(IndexedTool {
                         definition: tool.clone(),
@@ -214,7 +295,9 @@ impl ToolIndex {
         self.ready = true;
         info!(
             "[tool-index] Index built: {} tools ({} embedded, {} unembedded)",
-            self.tools.len(), success, failed
+            self.tools.len(),
+            success,
+            failed
         );
     }
 
@@ -242,7 +325,10 @@ impl ToolIndex {
         let query_vec = client.embed(query).await?;
 
         // Score every tool by cosine similarity
-        let mut scored: Vec<(usize, f64)> = self.tools.iter().enumerate()
+        let mut scored: Vec<(usize, f64)> = self
+            .tools
+            .iter()
+            .enumerate()
             .filter(|(_, t)| !t.embedding.is_empty())
             .map(|(i, t)| {
                 let sim = cosine_similarity(&query_vec, &t.embedding);
@@ -285,7 +371,9 @@ impl ToolIndex {
                 }
                 // Track per-domain stats for expansion decision
                 let best = domain_best_score.entry(tool.domain.clone()).or_insert(0.0);
-                if *score > *best { *best = *score; }
+                if *score > *best {
+                    *best = *score;
+                }
                 *domain_hit_count.entry(tool.domain.clone()).or_insert(0) += 1;
             }
         }
@@ -334,7 +422,8 @@ impl ToolIndex {
 
     /// Get all tools in a specific domain.
     pub fn get_domain_tools(&self, domain: &str) -> Vec<ToolDefinition> {
-        self.tools.iter()
+        self.tools
+            .iter()
             .filter(|t| t.domain == domain)
             .map(|t| t.definition.clone())
             .collect()
@@ -348,7 +437,9 @@ impl ToolIndex {
     /// Check if the index contains a tool by name.
     #[allow(dead_code)]
     pub fn has_tool(&self, name: &str) -> bool {
-        self.tools.iter().any(|t| t.definition.function.name == name)
+        self.tools
+            .iter()
+            .any(|t| t.definition.function.name == name)
     }
 }
 
@@ -368,5 +459,9 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
         mag_b += y * y;
     }
     let denom = mag_a.sqrt() * mag_b.sqrt();
-    if denom == 0.0 { 0.0 } else { dot / denom }
+    if denom == 0.0 {
+        0.0
+    } else {
+        dot / denom
+    }
 }

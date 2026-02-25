@@ -1,12 +1,12 @@
 // Paw Agent Engine — Memory tools
 // memory_store, memory_search
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
-use crate::engine::state::EngineState;
 use crate::engine::memory;
+use crate::engine::state::EngineState;
 use log::info;
 use tauri::Manager;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
@@ -53,35 +53,83 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "memory_store"  => Some(execute_memory_store(args, app_handle).await.map_err(|e| e.to_string())),
-        "memory_search" => Some(execute_memory_search(args, app_handle).await.map_err(|e| e.to_string())),
+        "memory_store" => Some(
+            execute_memory_store(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "memory_search" => Some(
+            execute_memory_search(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
 
-async fn execute_memory_store(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let content = args["content"].as_str().ok_or("memory_store: missing 'content' argument")?;
+async fn execute_memory_store(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
+    let content = args["content"]
+        .as_str()
+        .ok_or("memory_store: missing 'content' argument")?;
     let category = args["category"].as_str().unwrap_or("general");
-    info!("[engine] memory_store: category={} len={}", category, content.len());
-    let state = app_handle.try_state::<EngineState>().ok_or("Engine state not available")?;
+    info!(
+        "[engine] memory_store: category={} len={}",
+        category,
+        content.len()
+    );
+    let state = app_handle
+        .try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
     let emb_client = state.embedding_client();
-    let id = memory::store_memory(&state.store, content, category, 5, emb_client.as_ref(), None).await?;
-    Ok(format!("Memory stored (id: {}). Use memory_search to recall it in future sessions.", &id[..8]))
+    let id = memory::store_memory(
+        &state.store,
+        content,
+        category,
+        5,
+        emb_client.as_ref(),
+        None,
+    )
+    .await?;
+    Ok(format!(
+        "Memory stored (id: {}). Use memory_search to recall it in future sessions.",
+        &id[..8]
+    ))
 }
 
-async fn execute_memory_search(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let query = args["query"].as_str().ok_or("memory_search: missing 'query' argument")?;
+async fn execute_memory_search(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
+    let query = args["query"]
+        .as_str()
+        .ok_or("memory_search: missing 'query' argument")?;
     let limit = args["limit"].as_u64().unwrap_or(5) as usize;
-    info!("[engine] memory_search: query='{}' limit={}", &query[..query.len().min(100)], limit);
-    let state = app_handle.try_state::<EngineState>().ok_or("Engine state not available")?;
+    info!(
+        "[engine] memory_search: query='{}' limit={}",
+        &query[..query.len().min(100)],
+        limit
+    );
+    let state = app_handle
+        .try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
     let emb_client = state.embedding_client();
-    let results = memory::search_memories(&state.store, query, limit, 0.1, emb_client.as_ref(), None).await?;
+    let results =
+        memory::search_memories(&state.store, query, limit, 0.1, emb_client.as_ref(), None).await?;
     if results.is_empty() {
         return Ok("No relevant memories found.".into());
     }
     let mut output = format!("Found {} relevant memories:\n\n", results.len());
     for (i, mem) in results.iter().enumerate() {
-        output.push_str(&format!("{}. [{}] {} (score: {:.2})\n", i + 1, mem.category, mem.content, mem.score.unwrap_or(0.0)));
+        output.push_str(&format!(
+            "{}. [{}] {} (score: {:.2})\n",
+            i + 1,
+            mem.category,
+            mem.content,
+            mem.score.unwrap_or(0.0)
+        ));
     }
     Ok(output)
 }

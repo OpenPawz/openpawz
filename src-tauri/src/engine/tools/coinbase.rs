@@ -1,9 +1,9 @@
 // Paw Agent Engine — Coinbase CDP tools
 // Includes full CDP JWT signing (Ed25519 raw/PEM, ES256) and all coinbase_* executors.
 
+use crate::atoms::error::{EngineError, EngineResult};
 use crate::atoms::types::*;
 use crate::engine::state::EngineState;
-use crate::atoms::error::{EngineResult, EngineError};
 use log::{info, warn};
 use std::time::Duration;
 use tauri::Manager;
@@ -102,19 +102,33 @@ pub async fn execute(
     };
     let state = app_handle.state::<EngineState>();
     Some(match name {
-        "coinbase_prices"        => execute_coinbase_prices(args, &creds).await.map_err(|e| e.to_string()),
-        "coinbase_balance"       => execute_coinbase_balance(args, &creds).await.map_err(|e| e.to_string()),
-        "coinbase_wallet_create" => execute_coinbase_wallet_create(args, &creds).await.map_err(|e| e.to_string()),
+        "coinbase_prices" => execute_coinbase_prices(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "coinbase_balance" => execute_coinbase_balance(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "coinbase_wallet_create" => execute_coinbase_wallet_create(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
         "coinbase_trade" => {
             let result = execute_coinbase_trade(args, &creds).await;
             if result.is_ok() {
                 let _ = state.store.insert_trade(
-                    "trade", args["side"].as_str(), args["product_id"].as_str(),
-                    None, args["amount"].as_str().unwrap_or("0"),
-                    args["order_type"].as_str(), None, "completed",
-                    args["amount"].as_str(), None,
+                    "trade",
+                    args["side"].as_str(),
+                    args["product_id"].as_str(),
+                    None,
+                    args["amount"].as_str().unwrap_or("0"),
+                    args["order_type"].as_str(),
+                    None,
+                    "completed",
+                    args["amount"].as_str(),
+                    None,
                     args["reason"].as_str().unwrap_or(""),
-                    None, None, result.as_ref().ok().map(|s| s.as_str()),
+                    None,
+                    None,
+                    result.as_ref().ok().map(|s| s.as_str()),
                 );
             }
             result.map_err(|e| e.to_string())
@@ -123,12 +137,20 @@ pub async fn execute(
             let result = execute_coinbase_transfer(args, &creds).await;
             if result.is_ok() {
                 let _ = state.store.insert_trade(
-                    "transfer", Some("send"), None,
-                    args["currency"].as_str(), args["amount"].as_str().unwrap_or("0"),
-                    None, None, "completed", None,
+                    "transfer",
+                    Some("send"),
+                    None,
+                    args["currency"].as_str(),
+                    args["amount"].as_str().unwrap_or("0"),
+                    None,
+                    None,
+                    "completed",
+                    None,
                     args["to_address"].as_str(),
                     args["reason"].as_str().unwrap_or(""),
-                    None, None, result.as_ref().ok().map(|s| s.as_str()),
+                    None,
+                    None,
+                    result.as_ref().ok().map(|s| s.as_str()),
                 );
             }
             result.map_err(|e| e.to_string())
@@ -172,7 +194,10 @@ fn build_cdp_jwt(
         KeyType::Es256Pem => "ES256",
     };
 
-    info!("[skill:coinbase] JWT: alg={}, key_type={:?}, uri={}", alg, key_type, uri);
+    info!(
+        "[skill:coinbase] JWT: alg={}, key_type={:?}, uri={}",
+        alg, key_type, uri
+    );
 
     let header = serde_json::json!({
         "alg": alg,
@@ -189,17 +214,17 @@ fn build_cdp_jwt(
         "uri": uri
     });
 
-    let b64_header = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(serde_json::to_string(&header)?);
-    let b64_payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
-        .encode(serde_json::to_string(&payload)?);
+    let b64_header =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_string(&header)?);
+    let b64_payload =
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(serde_json::to_string(&payload)?);
 
     let signing_input = format!("{}.{}", b64_header, b64_payload);
 
     let b64_sig = match key_type {
         KeyType::Ed25519Raw => sign_ed25519_raw(&secret_clean, signing_input.as_bytes())?,
         KeyType::Ed25519Pem => sign_ed25519_pem(&secret_clean, signing_input.as_bytes())?,
-        KeyType::Es256Pem   => sign_es256(&secret_clean, signing_input.as_bytes())?,
+        KeyType::Es256Pem => sign_es256(&secret_clean, signing_input.as_bytes())?,
     };
 
     Ok(format!("{}.{}", signing_input, b64_sig))
@@ -227,15 +252,18 @@ fn detect_key_type(secret: &str) -> KeyType {
 }
 
 fn sign_ed25519_raw(secret_b64: &str, message: &[u8]) -> EngineResult<String> {
-    use ed25519_dalek::Signer;
     use base64::Engine as _;
+    use ed25519_dalek::Signer;
 
     let key_bytes = base64::engine::general_purpose::STANDARD
         .decode(secret_b64.trim())
         .or_else(|_| base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(secret_b64.trim()))
         .map_err(|e| EngineError::Other(e.to_string()))?;
 
-    info!("[skill:coinbase] Ed25519 raw key decoded to {} bytes", key_bytes.len());
+    info!(
+        "[skill:coinbase] Ed25519 raw key decoded to {} bytes",
+        key_bytes.len()
+    );
 
     let signing_key = match key_bytes.len() {
         32 => {
@@ -263,9 +291,9 @@ fn sign_ed25519_raw(secret_b64: &str, message: &[u8]) -> EngineResult<String> {
 }
 
 fn sign_ed25519_pem(pem: &str, message: &[u8]) -> EngineResult<String> {
+    use base64::Engine as _;
     use ed25519_dalek::pkcs8::DecodePrivateKey;
     use ed25519_dalek::Signer;
-    use base64::Engine as _;
 
     let signing_key = ed25519_dalek::SigningKey::from_pkcs8_pem(pem)
         .map_err(|e| EngineError::Other(e.to_string()))?;
@@ -274,14 +302,15 @@ fn sign_ed25519_pem(pem: &str, message: &[u8]) -> EngineResult<String> {
 }
 
 fn sign_es256(pem: &str, message: &[u8]) -> EngineResult<String> {
-    use p256::ecdsa::SigningKey;
-    use p256::ecdsa::signature::Signer;
     use base64::Engine as _;
+    use p256::ecdsa::signature::Signer;
+    use p256::ecdsa::SigningKey;
 
     let signing_key = {
         use p256::pkcs8::DecodePrivateKey;
         SigningKey::from_pkcs8_pem(pem)
-    }.or_else(|_| {
+    }
+    .or_else(|_| {
         use p256::elliptic_curve::SecretKey;
         let secret_key = SecretKey::<p256::NistP256>::from_sec1_pem(pem)
             .map_err(|e| EngineError::Other(e.to_string()))?;
@@ -298,8 +327,12 @@ async fn cdp_request(
     path: &str,
     body: Option<&serde_json::Value>,
 ) -> EngineResult<serde_json::Value> {
-    let key_name = creds.get("CDP_API_KEY_NAME").ok_or("Missing CDP_API_KEY_NAME")?;
-    let key_secret = creds.get("CDP_API_KEY_SECRET").ok_or("Missing CDP_API_KEY_SECRET")?;
+    let key_name = creds
+        .get("CDP_API_KEY_NAME")
+        .ok_or("Missing CDP_API_KEY_NAME")?;
+    let key_secret = creds
+        .get("CDP_API_KEY_SECRET")
+        .ok_or("Missing CDP_API_KEY_SECRET")?;
 
     let host = "api.coinbase.com";
     let jwt_path = path.split('?').next().unwrap_or(path);
@@ -308,10 +341,10 @@ async fn cdp_request(
     let url = format!("https://{}{}", host, path);
     let client = reqwest::Client::new();
     let mut req = match method {
-        "POST"   => client.post(&url),
-        "PUT"    => client.put(&url),
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
         "DELETE" => client.delete(&url),
-        _        => client.get(&url),
+        _ => client.get(&url),
     };
 
     req = req
@@ -328,13 +361,30 @@ async fn cdp_request(
     let text = resp.text().await?;
 
     if !status.is_success() {
-        warn!("[skill:coinbase] API error {} on {} {}: {}", status, method, path, &text[..text.len().min(500)]);
-        return Err(format!("Coinbase API error (HTTP {}): {}", status.as_u16(), &text[..text.len().min(500)]).into());
+        warn!(
+            "[skill:coinbase] API error {} on {} {}: {}",
+            status,
+            method,
+            path,
+            &text[..text.len().min(500)]
+        );
+        return Err(format!(
+            "Coinbase API error (HTTP {}): {}",
+            status.as_u16(),
+            &text[..text.len().min(500)]
+        )
+        .into());
     }
 
     info!("[skill:coinbase] {} {} -> {}", method, path, status);
 
-    serde_json::from_str(&text).map_err(|e| EngineError::Other(format!("Parse Coinbase response: {} — raw: {}", e, &text[..text.len().min(300)])))
+    serde_json::from_str(&text).map_err(|e| {
+        EngineError::Other(format!(
+            "Parse Coinbase response: {} — raw: {}",
+            e,
+            &text[..text.len().min(300)]
+        ))
+    })
 }
 
 // ── coinbase_prices ──
@@ -343,8 +393,13 @@ async fn execute_coinbase_prices(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let symbols_str = args["symbols"].as_str().ok_or("coinbase_prices: missing 'symbols'")?;
-    let symbols: Vec<String> = symbols_str.split(',').map(|s| s.trim().to_uppercase().to_string()).collect();
+    let symbols_str = args["symbols"]
+        .as_str()
+        .ok_or("coinbase_prices: missing 'symbols'")?;
+    let symbols: Vec<String> = symbols_str
+        .split(',')
+        .map(|s| s.trim().to_uppercase().to_string())
+        .collect();
 
     info!("[skill:coinbase] Fetching prices for: {}", symbols_str);
 
@@ -374,7 +429,9 @@ async fn execute_coinbase_balance(
     info!("[skill:coinbase] Fetching account balances");
 
     let data = cdp_request(creds, "GET", "/api/v3/brokerage/accounts?limit=250", None).await?;
-    let accounts = data["accounts"].as_array().ok_or("Unexpected response format — no 'accounts' array")?;
+    let accounts = data["accounts"]
+        .as_array()
+        .ok_or("Unexpected response format — no 'accounts' array")?;
 
     let mut lines = Vec::new();
     for acct in accounts {
@@ -385,14 +442,21 @@ async fn execute_coinbase_balance(
         let hold_f: f64 = hold.parse().unwrap_or(0.0);
         let total = avail_f + hold_f;
 
-        if total == 0.0 && filter_currency.is_none() { continue; }
+        if total == 0.0 && filter_currency.is_none() {
+            continue;
+        }
         if let Some(ref fc) = filter_currency {
-            if currency.to_uppercase() != *fc { continue; }
+            if currency.to_uppercase() != *fc {
+                continue;
+            }
         }
 
         let name = acct["name"].as_str().unwrap_or(currency);
         if hold_f > 0.0 {
-            lines.push(format!("  {} ({}): {} available + {} hold", name, currency, available, hold));
+            lines.push(format!(
+                "  {} ({}): {} available + {} hold",
+                name, currency, available, hold
+            ));
         } else {
             lines.push(format!("  {} ({}): {}", name, currency, available));
         }
@@ -411,7 +475,9 @@ async fn execute_coinbase_wallet_create(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let name = args["name"].as_str().ok_or("coinbase_wallet_create: missing 'name'")?;
+    let name = args["name"]
+        .as_str()
+        .ok_or("coinbase_wallet_create: missing 'name'")?;
     info!("[skill:coinbase] Creating wallet: {}", name);
 
     let body = serde_json::json!({ "name": name });
@@ -421,7 +487,10 @@ async fn execute_coinbase_wallet_create(
     let created_name = portfolio["name"].as_str().unwrap_or(name);
     let ptype = portfolio["type"].as_str().unwrap_or("DEFAULT");
 
-    Ok(format!("Portfolio created!\n  Name: {}\n  ID: {}\n  Type: {}", created_name, id, ptype))
+    Ok(format!(
+        "Portfolio created!\n  Name: {}\n  ID: {}\n  Type: {}",
+        created_name, id, ptype
+    ))
 }
 
 // ── coinbase_trade ──
@@ -430,14 +499,23 @@ async fn execute_coinbase_trade(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let side = args["side"].as_str().ok_or("coinbase_trade: missing 'side'")?;
-    let product_id = args["product_id"].as_str().ok_or("coinbase_trade: missing 'product_id'")?;
-    let amount = args["amount"].as_str().ok_or("coinbase_trade: missing 'amount'")?;
+    let side = args["side"]
+        .as_str()
+        .ok_or("coinbase_trade: missing 'side'")?;
+    let product_id = args["product_id"]
+        .as_str()
+        .ok_or("coinbase_trade: missing 'product_id'")?;
+    let amount = args["amount"]
+        .as_str()
+        .ok_or("coinbase_trade: missing 'amount'")?;
     let order_type = args["order_type"].as_str().unwrap_or("market");
     let limit_price = args["limit_price"].as_str();
     let reason = args["reason"].as_str().unwrap_or("No reason provided");
 
-    info!("[skill:coinbase] Trade {} {} {} ({}). Reason: {}", side, amount, product_id, order_type, reason);
+    info!(
+        "[skill:coinbase] Trade {} {} {} ({}). Reason: {}",
+        side, amount, product_id, order_type, reason
+    );
 
     let order_configuration = if order_type == "limit" {
         let price = limit_price.ok_or("coinbase_trade: limit orders require 'limit_price'")?;
@@ -458,7 +536,8 @@ async fn execute_coinbase_trade(
     let data = cdp_request(creds, "POST", "/api/v3/brokerage/orders", Some(&body)).await?;
 
     let success = data["success"].as_bool().unwrap_or(false);
-    let order_id = data["success_response"]["order_id"].as_str()
+    let order_id = data["success_response"]["order_id"]
+        .as_str()
         .or_else(|| data["order_id"].as_str())
         .unwrap_or("?");
 
@@ -468,10 +547,16 @@ async fn execute_coinbase_trade(
             side, product_id, amount, order_type, order_id, reason
         ))
     } else {
-        let err_msg = data["error_response"]["message"].as_str()
+        let err_msg = data["error_response"]["message"]
+            .as_str()
             .or_else(|| data["message"].as_str())
             .unwrap_or("Unknown error");
-        Err(format!("Trade failed: {} — Full response: {}", err_msg, serde_json::to_string_pretty(&data).unwrap_or_default()).into())
+        Err(format!(
+            "Trade failed: {} — Full response: {}",
+            err_msg,
+            serde_json::to_string_pretty(&data).unwrap_or_default()
+        )
+        .into())
     }
 }
 
@@ -481,27 +566,54 @@ async fn execute_coinbase_transfer(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let currency = args["currency"].as_str().ok_or("coinbase_transfer: missing 'currency'")?;
-    let amount = args["amount"].as_str().ok_or("coinbase_transfer: missing 'amount'")?;
-    let to_address = args["to_address"].as_str().ok_or("coinbase_transfer: missing 'to_address'")?;
+    let currency = args["currency"]
+        .as_str()
+        .ok_or("coinbase_transfer: missing 'currency'")?;
+    let amount = args["amount"]
+        .as_str()
+        .ok_or("coinbase_transfer: missing 'amount'")?;
+    let to_address = args["to_address"]
+        .as_str()
+        .ok_or("coinbase_transfer: missing 'to_address'")?;
     let network = args["network"].as_str();
     let reason = args["reason"].as_str().unwrap_or("No reason provided");
 
-    info!("[skill:coinbase] Transfer {} {} to {} (reason: {})", amount, currency, &to_address[..to_address.len().min(12)], reason);
+    info!(
+        "[skill:coinbase] Transfer {} {} to {} (reason: {})",
+        amount,
+        currency,
+        &to_address[..to_address.len().min(12)],
+        reason
+    );
 
-    let accounts_data = cdp_request(creds, "GET", "/api/v3/brokerage/accounts?limit=250", None).await?;
-    let accounts = accounts_data["accounts"].as_array().ok_or("Cannot list accounts")?;
+    let accounts_data =
+        cdp_request(creds, "GET", "/api/v3/brokerage/accounts?limit=250", None).await?;
+    let accounts = accounts_data["accounts"]
+        .as_array()
+        .ok_or("Cannot list accounts")?;
 
-    let account = accounts.iter()
-        .find(|a| a["currency"].as_str().unwrap_or("").eq_ignore_ascii_case(currency))
+    let account = accounts
+        .iter()
+        .find(|a| {
+            a["currency"]
+                .as_str()
+                .unwrap_or("")
+                .eq_ignore_ascii_case(currency)
+        })
         .ok_or(format!("No account found for currency: {}", currency))?;
 
     let account_uuid = account["uuid"].as_str().ok_or("Account missing UUID")?;
-    let available = account["available_balance"]["value"].as_str().unwrap_or("0");
+    let available = account["available_balance"]["value"]
+        .as_str()
+        .unwrap_or("0");
     let avail_f: f64 = available.parse().unwrap_or(0.0);
     let amount_f: f64 = amount.parse().unwrap_or(0.0);
     if amount_f > avail_f {
-        return Err(format!("Insufficient {} balance: {} available, {} requested", currency, available, amount).into());
+        return Err(format!(
+            "Insufficient {} balance: {} available, {} requested",
+            currency, available, amount
+        )
+        .into());
     }
 
     let send_path = format!("/v2/accounts/{}/transactions", account_uuid);

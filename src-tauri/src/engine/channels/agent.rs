@@ -3,16 +3,18 @@
 // Routes user messages through the agent loop and returns text responses.
 // This is the shared core that every channel bridge calls after receiving a message.
 
-use crate::engine::types::*;
-use crate::engine::providers::AnyProvider;
-use crate::engine::agent_loop;
-use crate::engine::memory;
-use crate::engine::injection;
-use crate::engine::chat as chat_org;
-use crate::engine::state::{EngineState, PendingApprovals, normalize_model_name, resolve_provider_for_model};
-use log::{info, warn, error};
-use tauri::Manager;
 use crate::atoms::error::EngineResult;
+use crate::engine::agent_loop;
+use crate::engine::chat as chat_org;
+use crate::engine::injection;
+use crate::engine::memory;
+use crate::engine::providers::AnyProvider;
+use crate::engine::state::{
+    normalize_model_name, resolve_provider_for_model, EngineState, PendingApprovals,
+};
+use crate::engine::types::*;
+use log::{error, info, warn};
+use tauri::Manager;
 
 /// Run a user message through the agent loop and return the text response.
 /// This is the shared core that every channel bridge calls after receiving a message.
@@ -31,7 +33,8 @@ pub async fn run_channel_agent(
     agent_id: &str,
     allow_dangerous_tools: bool,
 ) -> EngineResult<String> {
-    let engine_state = app_handle.try_state::<EngineState>()
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
     // ── Prompt injection scan ──────────────────────────────────────
@@ -40,7 +43,10 @@ pub async fn run_channel_agent(
         injection::log_injection_detected(channel_prefix, user_id, &scan);
         // Block critical injections
         if scan.severity == Some(injection::InjectionSeverity::Critical) {
-            warn!("[{}] Blocked critical injection from user {}", channel_prefix, user_id);
+            warn!(
+                "[{}] Blocked critical injection from user {}",
+                channel_prefix, user_id
+            );
             return Ok("⚠️ Your message was blocked by the security scanner. If this is a mistake, please rephrase.".into());
         }
     }
@@ -59,63 +65,94 @@ pub async fn run_channel_agent(
         // Use "channel" role — falls through to the default model since there's
         // no channel-specific override in model routing. Users can add one in
         // agent_models if they want a specific model for a specific agent.
-        let model = normalize_model_name(
-            &cfg.model_routing.resolve(agent_id, "channel", "", &default_model)
-        ).to_string();
+        let model = normalize_model_name(&cfg.model_routing.resolve(
+            agent_id,
+            "channel",
+            "",
+            &default_model,
+        ))
+        .to_string();
         let provider = resolve_provider_for_model(&model, &cfg.providers)
             .or_else(|| {
-                cfg.default_provider.as_ref()
+                cfg.default_provider
+                    .as_ref()
                     .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned())
             })
             .or_else(|| cfg.providers.first().cloned())
             .ok_or("No AI provider configured")?;
 
         let sp = cfg.default_system_prompt.clone();
-        info!("[{}] Resolved model for agent '{}': {} (default: {})", channel_prefix, agent_id, model, default_model);
-        (provider, model, sp, cfg.max_tool_rounds, cfg.tool_timeout_secs)
+        info!(
+            "[{}] Resolved model for agent '{}': {} (default: {})",
+            channel_prefix, agent_id, model, default_model
+        );
+        (
+            provider,
+            model,
+            sp,
+            cfg.max_tool_rounds,
+            cfg.tool_timeout_secs,
+        )
     };
 
     // Ensure session exists
-    let session_exists = engine_state.store.get_session(&session_id)
+    let session_exists = engine_state
+        .store
+        .get_session(&session_id)
         .map(|opt| opt.is_some())
         .unwrap_or(false);
     if !session_exists {
-        engine_state.store.create_session(&session_id, &model, system_prompt.as_deref(), Some(agent_id))?;
+        engine_state.store.create_session(
+            &session_id,
+            &model,
+            system_prompt.as_deref(),
+            Some(agent_id),
+        )?;
     } else {
         // Check if the previous conversation is poisoned by:
         // 1. Failed tool-call loops (all tool calls, no useful text)
         // 2. Accumulated error patterns from empty responses / fallbacks
         // 3. Malformed tool calls or model confusion
         // In any of these cases, clear the session to start fresh.
-        let recent = engine_state.store.load_conversation(
-            &session_id, None, Some(2_000), Some(agent_id),
-        ).unwrap_or_default();
+        let recent = engine_state
+            .store
+            .load_conversation(&session_id, None, Some(2_000), Some(agent_id))
+            .unwrap_or_default();
 
         let should_clear = if recent.len() >= 4 {
             let last_msgs: Vec<&Message> = recent.iter().rev().take(6).collect();
             // Detect tool-call spam: all recent messages are tool/system with no user-visible text
             let all_tool_spam = last_msgs.iter().all(|m| {
-                m.role == Role::Tool || m.role == Role::System ||
-                (m.role == Role::Assistant && m.tool_calls.is_some())
+                m.role == Role::Tool
+                    || m.role == Role::System
+                    || (m.role == Role::Assistant && m.tool_calls.is_some())
             });
             // Detect error / empty-response accumulation across recent history
-            let error_count = last_msgs.iter().filter(|m| {
-                if m.role != Role::Assistant { return false; }
-                let text = m.content.as_text_ref();
-                text.contains("wasn't able to generate") ||
-                text.contains("empty response") ||
-                text.contains("[MALFORMED_TOOL_CALL]") ||
-                text.contains("start a new session") ||
-                text.contains("content filter was triggered") ||
-                (text.len() < 30 && text.trim().is_empty())
-            }).count();
+            let error_count = last_msgs
+                .iter()
+                .filter(|m| {
+                    if m.role != Role::Assistant {
+                        return false;
+                    }
+                    let text = m.content.as_text_ref();
+                    text.contains("wasn't able to generate")
+                        || text.contains("empty response")
+                        || text.contains("[MALFORMED_TOOL_CALL]")
+                        || text.contains("start a new session")
+                        || text.contains("content filter was triggered")
+                        || (text.len() < 30 && text.trim().is_empty())
+                })
+                .count();
             all_tool_spam || error_count >= 2
         } else {
             false
         };
 
         if should_clear {
-            info!("[{}] Session {} appears poisoned. Clearing history for fresh start.", channel_prefix, session_id);
+            info!(
+                "[{}] Session {} appears poisoned. Clearing history for fresh start.",
+                channel_prefix, session_id
+            );
             let _ = engine_state.store.clear_messages(&session_id);
         }
     }
@@ -137,9 +174,17 @@ pub async fn run_channel_agent(
     // We do NOT load compose_agent_context() here — it includes ALL agent files
     // (IDENTITY, SOUL, USER, AGENTS, TOOLS, custom files) which can add ~10K chars
     // of irrelevant context about other agents, coding tools, etc.
-    let core_context = engine_state.store.compose_core_context(agent_id).unwrap_or(None);
+    let core_context = engine_state
+        .store
+        .compose_core_context(agent_id)
+        .unwrap_or(None);
     if let Some(ref cc) = core_context {
-        info!("[{}] Core soul context loaded ({} chars) for agent '{}'", channel_prefix, cc.len(), agent_id);
+        info!(
+            "[{}] Core soul context loaded ({} chars) for agent '{}'",
+            channel_prefix,
+            cc.len(),
+            agent_id
+        );
     }
 
     // Skip memory recall for channel bridges. Memory recall adds latency
@@ -178,7 +223,11 @@ pub async fn run_channel_agent(
             cfg.user_timezone.clone()
         };
         parts.push(chat_org::build_runtime_context(
-            &model, &provider_name, &session_id, agent_id, &user_tz,
+            &model,
+            &provider_name,
+            &session_id,
+            agent_id,
+            &user_tz,
         ));
 
         // 5. Channel-bridge conversation discipline
@@ -193,7 +242,12 @@ pub async fn run_channel_agent(
         );
 
         let prompt = parts.join("\n\n---\n\n");
-        info!("[{}] System prompt: {} chars for agent '{}'", channel_prefix, prompt.len(), agent_id);
+        info!(
+            "[{}] System prompt: {} chars for agent '{}'",
+            channel_prefix,
+            prompt.len(),
+            agent_id
+        );
         Some(prompt)
     };
 
@@ -229,24 +283,48 @@ pub async fn run_channel_agent(
         // Add all discord tools
         all_builtins.extend(crate::engine::tools::discord::definitions());
         let whitelist = [
-            "fetch", "memory_store", "memory_search", "self_info",
+            "fetch",
+            "memory_store",
+            "memory_search",
+            "self_info",
             // channels
-            "discord_setup_channels", "discord_list_channels", "discord_delete_channels", "discord_edit_channel",
+            "discord_setup_channels",
+            "discord_list_channels",
+            "discord_delete_channels",
+            "discord_edit_channel",
             // messages
-            "discord_send_message", "discord_edit_message", "discord_delete_messages",
-            "discord_get_messages", "discord_pin_message", "discord_unpin_message", "discord_react",
+            "discord_send_message",
+            "discord_edit_message",
+            "discord_delete_messages",
+            "discord_get_messages",
+            "discord_pin_message",
+            "discord_unpin_message",
+            "discord_react",
             // roles
-            "discord_list_roles", "discord_create_role", "discord_delete_role",
-            "discord_assign_role", "discord_remove_role",
+            "discord_list_roles",
+            "discord_create_role",
+            "discord_delete_role",
+            "discord_assign_role",
+            "discord_remove_role",
             // members
-            "discord_list_members", "discord_get_member", "discord_kick", "discord_ban", "discord_unban",
+            "discord_list_members",
+            "discord_get_member",
+            "discord_kick",
+            "discord_ban",
+            "discord_unban",
             // server
-            "discord_server_info", "discord_create_invite",
+            "discord_server_info",
+            "discord_create_invite",
         ];
-        let filtered: Vec<ToolDefinition> = all_builtins.into_iter()
+        let filtered: Vec<ToolDefinition> = all_builtins
+            .into_iter()
             .filter(|t| whitelist.contains(&t.function.name.as_str()))
             .collect();
-        info!("[{}] Channel tool whitelist: {} tools", channel_prefix, filtered.len());
+        info!(
+            "[{}] Channel tool whitelist: {} tools",
+            channel_prefix,
+            filtered.len()
+        );
         filtered
     };
 
@@ -258,7 +336,8 @@ pub async fn run_channel_agent(
     // agent_loop's own `auto_approved_tools` list and never reach this map.
     // Any tool that *does* land here is dangerous (exec, write_file, delete_file,
     // etc.) and must NOT be auto-approved for remote channel users.
-    let approvals: PendingApprovals = std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
+    let approvals: PendingApprovals =
+        std::sync::Arc::new(parking_lot::Mutex::new(std::collections::HashMap::new()));
     let approvals_clone = approvals.clone();
     let channel_prefix_owned = channel_prefix.to_string();
     let auto_approver = tauri::async_runtime::spawn(async move {
@@ -269,10 +348,16 @@ pub async fn run_channel_agent(
             for key in keys {
                 if let Some(sender) = map.remove(&key) {
                     if allow_dangerous_tools {
-                        warn!("[{}] Auto-APPROVING dangerous tool (allow_dangerous_tools=true): {}", channel_prefix_owned, key);
+                        warn!(
+                            "[{}] Auto-APPROVING dangerous tool (allow_dangerous_tools=true): {}",
+                            channel_prefix_owned, key
+                        );
                         let _ = sender.send(true);
                     } else {
-                        warn!("[{}] Denying side-effect tool call from remote channel: {}", channel_prefix_owned, key);
+                        warn!(
+                            "[{}] Denying side-effect tool call from remote channel: {}",
+                            channel_prefix_owned, key
+                        );
                         let _ = sender.send(false);
                     }
                 }
@@ -306,18 +391,23 @@ pub async fn run_channel_agent(
             agent_id,
             daily_budget,
             Some(&daily_tokens_tracker),
-            None, // thinking_level
+            None,  // thinking_level
             false, // auto_approve_all — channels use safe default; Phase C adds per-channel policy
-            None, // yield_signal
-        ).await;
+            None,  // yield_signal
+        )
+        .await;
 
         // If the primary provider failed with a billing/auth/rate error, try fallback providers
         match &primary_result {
             Err(e) if is_provider_billing_error(&e.to_string()) => {
-                warn!("[{}] Primary provider failed ({}), trying fallback providers", channel_prefix, e);
+                warn!(
+                    "[{}] Primary provider failed ({}), trying fallback providers",
+                    channel_prefix, e
+                );
                 let fallback_providers: Vec<ProviderConfig> = {
                     let cfg = engine_state.config.lock();
-                    cfg.providers.iter()
+                    cfg.providers
+                        .iter()
                         .filter(|p| p.id != provider_config.id)
                         .cloned()
                         .collect()
@@ -325,10 +415,15 @@ pub async fn run_channel_agent(
 
                 let mut fallback_result = primary_result;
                 for fb_provider_cfg in &fallback_providers {
-                    let fb_model = fb_provider_cfg.default_model.clone()
+                    let fb_model = fb_provider_cfg
+                        .default_model
+                        .clone()
                         .unwrap_or_else(|| normalize_model_name(&model).to_string());
                     let fb_provider = AnyProvider::from_config(fb_provider_cfg);
-                    info!("[{}] Trying fallback: {:?} / {}", channel_prefix, fb_provider_cfg.kind, fb_model);
+                    info!(
+                        "[{}] Trying fallback: {:?} / {}",
+                        channel_prefix, fb_provider_cfg.kind, fb_model
+                    );
 
                     // Reset messages to pre-loop state for retry
                     messages.truncate(pre_loop_msg_count);
@@ -349,17 +444,25 @@ pub async fn run_channel_agent(
                         agent_id,
                         daily_budget,
                         Some(&daily_tokens_tracker),
-                        None, // thinking_level
+                        None,  // thinking_level
                         false, // auto_approve_all — channels: safe default
-                        None, // yield_signal
-                    ).await {
+                        None,  // yield_signal
+                    )
+                    .await
+                    {
                         Ok(text) => {
-                            info!("[{}] Fallback {:?} succeeded", channel_prefix, fb_provider_cfg.kind);
+                            info!(
+                                "[{}] Fallback {:?} succeeded",
+                                channel_prefix, fb_provider_cfg.kind
+                            );
                             fallback_result = Ok(text);
                             break;
                         }
                         Err(fb_err) => {
-                            warn!("[{}] Fallback {:?} also failed: {}", channel_prefix, fb_provider_cfg.kind, fb_err);
+                            warn!(
+                                "[{}] Fallback {:?} also failed: {}",
+                                channel_prefix, fb_provider_cfg.kind, fb_err
+                            );
                         }
                     }
                 }
@@ -384,7 +487,9 @@ pub async fn run_channel_agent(
                     _ => "user".into(),
                 },
                 content: msg.content.as_text(),
-                tool_calls_json: msg.tool_calls.as_ref()
+                tool_calls_json: msg
+                    .tool_calls
+                    .as_ref()
                     .map(|tc| serde_json::to_string(tc).unwrap_or_default()),
                 tool_call_id: msg.tool_call_id.clone(),
                 name: msg.name.clone(),
@@ -405,9 +510,16 @@ pub async fn run_channel_agent(
                 let emb_client = engine_state.embedding_client();
                 for (content, category) in &facts {
                     match memory::store_memory_dedup(
-                        &engine_state.store, content, category, 5, emb_client.as_ref(), None
-                    ).await {
-                        Ok(Some(_)) => {},
+                        &engine_state.store,
+                        content,
+                        category,
+                        5,
+                        emb_client.as_ref(),
+                        None,
+                    )
+                    .await
+                    {
+                        Ok(Some(_)) => {}
                         Ok(None) => info!("[channel-agent] Skipped duplicate memory"),
                         Err(e) => warn!("[channel-agent] Memory store failed: {}", e),
                     }
@@ -432,10 +544,11 @@ pub(crate) fn is_provider_billing_error(err: &str) -> bool {
         || lower.contains("quota exceeded")
         || lower.contains("payment required")
         || lower.contains("account")
-        || (lower.contains("api error 4") && (
-            lower.contains("401") || lower.contains("402")
-            || lower.contains("403") || lower.contains("429")
-        ))
+        || (lower.contains("api error 4")
+            && (lower.contains("401")
+                || lower.contains("402")
+                || lower.contains("403")
+                || lower.contains("429")))
 }
 
 /// Convenience wrapper: resolve routing config to determine the agent_id,
@@ -451,24 +564,23 @@ pub async fn run_routed_channel_agent(
     allow_dangerous_tools: bool,
 ) -> EngineResult<String> {
     // Load routing config and resolve agent
-    let _engine_state = app_handle.try_state::<EngineState>()
+    let _engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
 
-    let routing_config = crate::engine::routing::load_routing_config(
-        &std::sync::Arc::new(crate::engine::sessions::SessionStore::open()?)
-    );
+    let routing_config = crate::engine::routing::load_routing_config(&std::sync::Arc::new(
+        crate::engine::sessions::SessionStore::open()?,
+    ));
 
-    let route = crate::engine::routing::resolve_route(
-        &routing_config,
-        channel_prefix,
-        user_id,
-        channel_id,
-    );
+    let route =
+        crate::engine::routing::resolve_route(&routing_config, channel_prefix, user_id, channel_id);
 
     if route.matched_rule_id.is_some() {
         info!(
             "[{}] Routed user {} → agent '{}' (rule: {})",
-            channel_prefix, user_id, route.agent_id,
+            channel_prefix,
+            user_id,
+            route.agent_id,
             route.matched_rule_label.as_deref().unwrap_or("?")
         );
     }
@@ -481,5 +593,6 @@ pub async fn run_routed_channel_agent(
         user_id,
         &route.agent_id,
         allow_dangerous_tools,
-    ).await
+    )
+    .await
 }

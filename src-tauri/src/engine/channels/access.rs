@@ -3,8 +3,8 @@
 // Allowlist, pairing, and user management helpers shared by all channel bridges.
 
 use super::PendingUser;
-use crate::engine::state::EngineState;
 use crate::atoms::error::EngineResult;
+use crate::engine::state::EngineState;
 use log::info;
 use tauri::Manager;
 
@@ -52,9 +52,12 @@ pub fn approve_user_generic(
 where
 {
     // Load raw config as Value, modify, save
-    let engine_state = app_handle.try_state::<EngineState>()
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
-    let json_str = engine_state.store.get_config(config_key)?
+    let json_str = engine_state
+        .store
+        .get_config(config_key)?
         .unwrap_or_else(|| "{}".into());
     let mut val: serde_json::Value = serde_json::from_str(&json_str)?;
 
@@ -81,9 +84,12 @@ pub fn deny_user_generic(
     config_key: &str,
     user_id: &str,
 ) -> EngineResult<()> {
-    let engine_state = app_handle.try_state::<EngineState>()
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
-    let json_str = engine_state.store.get_config(config_key)?
+    let json_str = engine_state
+        .store
+        .get_config(config_key)?
         .unwrap_or_else(|| "{}".into());
     let mut val: serde_json::Value = serde_json::from_str(&json_str)?;
 
@@ -102,9 +108,12 @@ pub fn remove_user_generic(
     config_key: &str,
     user_id: &str,
 ) -> EngineResult<()> {
-    let engine_state = app_handle.try_state::<EngineState>()
+    let engine_state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine not initialized")?;
-    let json_str = engine_state.store.get_config(config_key)?
+    let json_str = engine_state
+        .store
+        .get_config(config_key)?
         .unwrap_or_else(|| "{}".into());
     let mut val: serde_json::Value = serde_json::from_str(&json_str)?;
 

@@ -107,11 +107,7 @@ channel_commands!(
     crate::engine::discord,
     crate::engine::discord::DiscordConfig
 );
-channel_commands!(
-    irc,
-    crate::engine::irc,
-    crate::engine::irc::IrcConfig
-);
+channel_commands!(irc, crate::engine::irc, crate::engine::irc::IrcConfig);
 channel_commands!(
     slack,
     crate::engine::slack,
@@ -163,9 +159,7 @@ channel_commands!(
 //   • remove_user is sync
 
 #[tauri::command]
-pub async fn engine_telegram_start(
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+pub async fn engine_telegram_start(app_handle: tauri::AppHandle) -> Result<(), String> {
     crate::engine::telegram::start_bridge(app_handle).map_err(|e| e.to_string())
 }
 
@@ -202,7 +196,9 @@ pub async fn engine_telegram_approve_user(
     app_handle: tauri::AppHandle,
     user_id: i64,
 ) -> Result<(), String> {
-    crate::engine::telegram::approve_user(&app_handle, user_id).await.map_err(|e| e.to_string())
+    crate::engine::telegram::approve_user(&app_handle, user_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -210,7 +206,9 @@ pub async fn engine_telegram_deny_user(
     app_handle: tauri::AppHandle,
     user_id: i64,
 ) -> Result<(), String> {
-    crate::engine::telegram::deny_user(&app_handle, user_id).await.map_err(|e| e.to_string())
+    crate::engine::telegram::deny_user(&app_handle, user_id)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

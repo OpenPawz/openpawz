@@ -1,8 +1,8 @@
 // Paw Agent Engine — DEX Token Discovery (search + trending) via DexScreener API
 
+use crate::atoms::error::EngineResult;
 use std::collections::HashMap;
 use std::time::Duration;
-use crate::atoms::error::EngineResult;
 
 /// Search for tokens by name or symbol using the DexScreener public API.
 /// Returns contract addresses, chain, price, volume, liquidity, and pair info.
@@ -17,16 +17,17 @@ pub async fn execute_dex_search_token(
     let max_results = args["max_results"].as_u64().unwrap_or(10).min(25) as usize;
 
     // Query DexScreener search API
-    let url = format!("https://api.dexscreener.com/latest/dex/search?q={}", urlencoding(query));
+    let url = format!(
+        "https://api.dexscreener.com/latest/dex/search?q={}",
+        urlencoding(query)
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .user_agent("Mozilla/5.0 (compatible; PawAgent/1.0)")
         .build()?;
 
-    let response = client.get(&url)
-        .send()
-        .await?;
+    let response = client.get(&url).send().await?;
 
     if !response.status().is_success() {
         return Err(format!("DexScreener API returned status {}", response.status()).into());
@@ -34,11 +35,15 @@ pub async fn execute_dex_search_token(
 
     let body: serde_json::Value = response.json().await?;
 
-    let pairs = body["pairs"].as_array()
+    let pairs = body["pairs"]
+        .as_array()
         .ok_or("No pairs found in DexScreener response")?;
 
     if pairs.is_empty() {
-        return Ok(format!("No results found for '{}'. Try a different search term.", query));
+        return Ok(format!(
+            "No results found for '{}'. Try a different search term.",
+            query
+        ));
     }
 
     let mut output = format!("Search results for '{}'\n\n", query);
@@ -46,7 +51,9 @@ pub async fn execute_dex_search_token(
     let mut count = 0;
 
     for pair in pairs {
-        if count >= max_results { break; }
+        if count >= max_results {
+            break;
+        }
 
         let chain_id = pair["chainId"].as_str().unwrap_or("unknown");
 
@@ -68,7 +75,9 @@ pub async fn execute_dex_search_token(
 
         // Deduplicate by token address + chain
         let dedup_key = format!("{}:{}", chain_id, token_address.to_lowercase());
-        if seen_tokens.contains_key(&dedup_key) { continue; }
+        if seen_tokens.contains_key(&dedup_key) {
+            continue;
+        }
         seen_tokens.insert(dedup_key, true);
 
         let price_usd = pair["priceUsd"].as_str().unwrap_or("N/A");
@@ -76,9 +85,18 @@ pub async fn execute_dex_search_token(
         let dex_id = pair["dexId"].as_str().unwrap_or("?");
         let url = pair["url"].as_str().unwrap_or("");
 
-        output.push_str(&format!("{}. {} ({}) on {}\n", count + 1, token_name, token_symbol, chain_id));
+        output.push_str(&format!(
+            "{}. {} ({}) on {}\n",
+            count + 1,
+            token_name,
+            token_symbol,
+            chain_id
+        ));
         output.push_str(&format!("   Contract: {}\n", token_address));
-        output.push_str(&format!("   Pair: {}/{} | DEX: {}\n", token_symbol, quote_symbol, dex_id));
+        output.push_str(&format!(
+            "   Pair: {}/{} | DEX: {}\n",
+            token_symbol, quote_symbol, dex_id
+        ));
         output.push_str(&format!("   Pair Address: {}\n", pair_address));
         output.push_str(&format!("   Price: ${}\n", price_usd));
 
@@ -87,15 +105,30 @@ pub async fn execute_dex_search_token(
             let h24 = volume.get("h24").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let h6 = volume.get("h6").and_then(|v| v.as_f64()).unwrap_or(0.0);
             let h1 = volume.get("h1").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            output.push_str(&format!("   Volume: 24h=${:.0} | 6h=${:.0} | 1h=${:.0}\n", h24, h6, h1));
+            output.push_str(&format!(
+                "   Volume: 24h=${:.0} | 6h=${:.0} | 1h=${:.0}\n",
+                h24, h6, h1
+            ));
         }
 
         // Price changes
         if let Some(price_change) = pair["priceChange"].as_object() {
-            let h24 = price_change.get("h24").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let h6 = price_change.get("h6").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            let h1 = price_change.get("h1").and_then(|v| v.as_f64()).unwrap_or(0.0);
-            output.push_str(&format!("   Price Change: 24h={:+.1}% | 6h={:+.1}% | 1h={:+.1}%\n", h24, h6, h1));
+            let h24 = price_change
+                .get("h24")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let h6 = price_change
+                .get("h6")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            let h1 = price_change
+                .get("h1")
+                .and_then(|v| v.as_f64())
+                .unwrap_or(0.0);
+            output.push_str(&format!(
+                "   Price Change: 24h={:+.1}% | 6h={:+.1}% | 1h={:+.1}%\n",
+                h24, h6, h1
+            ));
         }
 
         // Liquidity
@@ -116,7 +149,8 @@ pub async fn execute_dex_search_token(
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs()
-                .saturating_sub(secs)) / 3600;
+                .saturating_sub(secs))
+                / 3600;
             if age_hrs < 24 {
                 output.push_str(&format!("   Age: {} hours old [NEW]\n", age_hrs));
             } else {
@@ -132,7 +166,11 @@ pub async fn execute_dex_search_token(
         count += 1;
     }
 
-    output.push_str(&format!("Showing {} of {} total pairs found.\n", count, pairs.len()));
+    output.push_str(&format!(
+        "Showing {} of {} total pairs found.\n",
+        count,
+        pairs.len()
+    ));
     output.push_str("\nNext step: Use dex_check_token with the contract address to run safety checks before trading.\n");
 
     Ok(output)
@@ -164,10 +202,14 @@ pub async fn execute_dex_trending(
                         output.push_str(&format!("Recently Boosted ({} tokens):\n", arr.len()));
                         let mut count = 0;
                         for boost in arr {
-                            if count >= max_results { break; }
+                            if count >= max_results {
+                                break;
+                            }
 
                             let chain = boost["chainId"].as_str().unwrap_or("?");
-                            if !chain_filter.is_empty() && !chain.to_lowercase().contains(&chain_filter.to_lowercase()) {
+                            if !chain_filter.is_empty()
+                                && !chain.to_lowercase().contains(&chain_filter.to_lowercase())
+                            {
                                 continue;
                             }
 
@@ -176,9 +218,17 @@ pub async fn execute_dex_trending(
                             let url = boost["url"].as_str().unwrap_or("");
                             let amount = boost["amount"].as_f64().unwrap_or(0.0);
 
-                            output.push_str(&format!("  {}. {} on {}\n", count + 1, token_addr, chain));
+                            output.push_str(&format!(
+                                "  {}. {} on {}\n",
+                                count + 1,
+                                token_addr,
+                                chain
+                            ));
                             if !description.is_empty() {
-                                output.push_str(&format!("     {}\n", crate::engine::types::truncate_utf8(description, 100)));
+                                output.push_str(&format!(
+                                    "     {}\n",
+                                    crate::engine::types::truncate_utf8(description, 100)
+                                ));
                             }
                             if amount > 0.0 {
                                 output.push_str(&format!("     Boost amount: ${:.0}\n", amount));
@@ -189,13 +239,18 @@ pub async fn execute_dex_trending(
                             count += 1;
                         }
                         if count == 0 {
-                            output.push_str(&format!("  No boosted tokens found for chain '{}'\n", chain_filter));
+                            output.push_str(&format!(
+                                "  No boosted tokens found for chain '{}'\n",
+                                chain_filter
+                            ));
                         }
                     }
                 }
             }
         }
-        Err(e) => { output.push_str(&format!("  Boosts API error: {}\n", e)); }
+        Err(e) => {
+            output.push_str(&format!("  Boosts API error: {}\n", e));
+        }
     }
 
     // 2. Token Profiles (latest token listings with metadata)
@@ -205,13 +260,20 @@ pub async fn execute_dex_trending(
             if resp.status().is_success() {
                 if let Ok(profiles) = resp.json::<serde_json::Value>().await {
                     if let Some(arr) = profiles.as_array() {
-                        output.push_str(&format!("\nRecent Token Profiles ({} listings):\n", arr.len()));
+                        output.push_str(&format!(
+                            "\nRecent Token Profiles ({} listings):\n",
+                            arr.len()
+                        ));
                         let mut count = 0;
                         for profile in arr {
-                            if count >= max_results { break; }
+                            if count >= max_results {
+                                break;
+                            }
 
                             let chain = profile["chainId"].as_str().unwrap_or("?");
-                            if !chain_filter.is_empty() && !chain.to_lowercase().contains(&chain_filter.to_lowercase()) {
+                            if !chain_filter.is_empty()
+                                && !chain.to_lowercase().contains(&chain_filter.to_lowercase())
+                            {
                                 continue;
                             }
 
@@ -219,9 +281,15 @@ pub async fn execute_dex_trending(
                             let description = profile["description"].as_str().unwrap_or("");
                             let url = profile["url"].as_str().unwrap_or("");
 
-                            output.push_str(&format!("  {}. {} on {}\n", count + 1, token_addr, chain));
+                            output.push_str(&format!(
+                                "  {}. {} on {}\n",
+                                count + 1,
+                                token_addr,
+                                chain
+                            ));
                             if !description.is_empty() {
-                                let desc_trimmed = crate::engine::types::truncate_utf8(description, 120);
+                                let desc_trimmed =
+                                    crate::engine::types::truncate_utf8(description, 120);
                                 output.push_str(&format!("     {}\n", desc_trimmed));
                             }
                             if !url.is_empty() {
@@ -230,17 +298,23 @@ pub async fn execute_dex_trending(
                             count += 1;
                         }
                         if count == 0 {
-                            output.push_str(&format!("  No profiles found for chain '{}'\n", chain_filter));
+                            output.push_str(&format!(
+                                "  No profiles found for chain '{}'\n",
+                                chain_filter
+                            ));
                         }
                     }
                 }
             }
         }
-        Err(e) => { output.push_str(&format!("  Profiles API error: {}\n", e)); }
+        Err(e) => {
+            output.push_str(&format!("  Profiles API error: {}\n", e));
+        }
     }
 
     output.push_str("\nNext steps:\n");
-    output.push_str("1. Use dex_search_token to get price/volume/liquidity for interesting tokens\n");
+    output
+        .push_str("1. Use dex_search_token to get price/volume/liquidity for interesting tokens\n");
     output.push_str("2. Use dex_check_token to run safety audit before trading\n");
     output.push_str("3. Use dex_top_traders to find who's trading them profitably\n");
 

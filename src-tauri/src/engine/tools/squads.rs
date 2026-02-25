@@ -84,9 +84,9 @@ pub async fn execute(
     agent_id: &str,
 ) -> Option<Result<String, String>> {
     Some(match name {
-        "create_squad"    => exec_create(args, app_handle, agent_id),
-        "list_squads"     => exec_list(app_handle),
-        "manage_squad"    => exec_manage(args, app_handle),
+        "create_squad" => exec_create(args, app_handle, agent_id),
+        "list_squads" => exec_list(app_handle),
+        "manage_squad" => exec_manage(args, app_handle),
         "squad_broadcast" => exec_broadcast(args, app_handle, agent_id),
         _ => return None,
     })
@@ -97,26 +97,38 @@ fn exec_create(
     app_handle: &tauri::AppHandle,
     _agent_id: &str,
 ) -> Result<String, String> {
-    let name = args["name"].as_str().ok_or_else(|| "missing 'name'".to_string())?;
-    let goal = args["goal"].as_str().ok_or_else(|| "missing 'goal'".to_string())?;
-    let agent_ids: Vec<String> = args["agent_ids"].as_array()
+    let name = args["name"]
+        .as_str()
+        .ok_or_else(|| "missing 'name'".to_string())?;
+    let goal = args["goal"]
+        .as_str()
+        .ok_or_else(|| "missing 'goal'".to_string())?;
+    let agent_ids: Vec<String> = args["agent_ids"]
+        .as_array()
         .ok_or_else(|| "missing 'agent_ids'".to_string())?
         .iter()
         .filter_map(|v| v.as_str().map(String::from))
         .collect();
-    let coordinator = args["coordinator"].as_str()
+    let coordinator = args["coordinator"]
+        .as_str()
         .unwrap_or_else(|| agent_ids.first().map(|s| s.as_str()).unwrap_or("default"));
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or_else(|| "Engine state not available".to_string())?;
 
     let id = uuid::Uuid::new_v4().to_string();
-    let members: Vec<SquadMember> = agent_ids.iter().map(|aid| {
-        SquadMember {
+    let members: Vec<SquadMember> = agent_ids
+        .iter()
+        .map(|aid| SquadMember {
             agent_id: aid.clone(),
-            role: if aid == coordinator { "coordinator".into() } else { "member".into() },
-        }
-    }).collect();
+            role: if aid == coordinator {
+                "coordinator".into()
+            } else {
+                "member".into()
+            },
+        })
+        .collect();
 
     let squad = Squad {
         id: id.clone(),
@@ -128,25 +140,37 @@ fn exec_create(
         updated_at: String::new(),
     };
 
-    state.store.create_squad(&squad).map_err(|e| e.to_string())?;
+    state
+        .store
+        .create_squad(&squad)
+        .map_err(|e| e.to_string())?;
 
-    info!("[engine] create_squad: '{}' with {} members", name, agent_ids.len());
-    app_handle.emit("squad-updated", serde_json::json!({ "squad_id": id })).ok();
+    info!(
+        "[engine] create_squad: '{}' with {} members",
+        name,
+        agent_ids.len()
+    );
+    app_handle
+        .emit("squad-updated", serde_json::json!({ "squad_id": id }))
+        .ok();
 
-    let member_list: Vec<String> = members.iter()
+    let member_list: Vec<String> = members
+        .iter()
         .map(|m| format!("{} ({})", m.agent_id, m.role))
         .collect();
 
     Ok(format!(
         "Squad created!\n\n- **ID**: {}\n- **Name**: {}\n- **Goal**: {}\n- **Members**: {}",
-        id, name, goal, member_list.join(", ")
+        id,
+        name,
+        goal,
+        member_list.join(", ")
     ))
 }
 
-fn exec_list(
-    app_handle: &tauri::AppHandle,
-) -> Result<String, String> {
-    let state = app_handle.try_state::<EngineState>()
+fn exec_list(app_handle: &tauri::AppHandle) -> Result<String, String> {
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or_else(|| "Engine state not available".to_string())?;
 
     let squads = state.store.list_squads().map_err(|e| e.to_string())?;
@@ -156,59 +180,95 @@ fn exec_list(
 
     let mut output = format!("{} squad(s):\n\n", squads.len());
     for s in &squads {
-        let members: Vec<String> = s.members.iter()
+        let members: Vec<String> = s
+            .members
+            .iter()
             .map(|m| format!("{} ({})", m.agent_id, m.role))
             .collect();
         output.push_str(&format!(
             "---\n**{}** (ID: `{}`)\n- Goal: {}\n- Status: {}\n- Members: {}\n\n",
-            s.name, s.id, s.goal, s.status, members.join(", ")
+            s.name,
+            s.id,
+            s.goal,
+            s.status,
+            members.join(", ")
         ));
     }
     Ok(output)
 }
 
-fn exec_manage(
-    args: &serde_json::Value,
-    app_handle: &tauri::AppHandle,
-) -> Result<String, String> {
-    let squad_id = args["squad_id"].as_str().ok_or_else(|| "missing 'squad_id'".to_string())?;
-    let action = args["action"].as_str().ok_or_else(|| "missing 'action'".to_string())?;
+fn exec_manage(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> Result<String, String> {
+    let squad_id = args["squad_id"]
+        .as_str()
+        .ok_or_else(|| "missing 'squad_id'".to_string())?;
+    let action = args["action"]
+        .as_str()
+        .ok_or_else(|| "missing 'action'".to_string())?;
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or_else(|| "Engine state not available".to_string())?;
 
     match action {
         "add_member" => {
-            let aid = args["agent_id"].as_str().ok_or_else(|| "missing 'agent_id'".to_string())?;
+            let aid = args["agent_id"]
+                .as_str()
+                .ok_or_else(|| "missing 'agent_id'".to_string())?;
             let role = args["role"].as_str().unwrap_or("member");
-            state.store.add_squad_member(squad_id, &SquadMember {
-                agent_id: aid.to_string(),
-                role: role.to_string(),
-            }).map_err(|e| e.to_string())?;
-            app_handle.emit("squad-updated", serde_json::json!({ "squad_id": squad_id })).ok();
+            state
+                .store
+                .add_squad_member(
+                    squad_id,
+                    &SquadMember {
+                        agent_id: aid.to_string(),
+                        role: role.to_string(),
+                    },
+                )
+                .map_err(|e| e.to_string())?;
+            app_handle
+                .emit("squad-updated", serde_json::json!({ "squad_id": squad_id }))
+                .ok();
             Ok(format!("Added {} to squad as {}", aid, role))
         }
         "remove_member" => {
-            let aid = args["agent_id"].as_str().ok_or_else(|| "missing 'agent_id'".to_string())?;
-            state.store.remove_squad_member(squad_id, aid).map_err(|e| e.to_string())?;
-            app_handle.emit("squad-updated", serde_json::json!({ "squad_id": squad_id })).ok();
+            let aid = args["agent_id"]
+                .as_str()
+                .ok_or_else(|| "missing 'agent_id'".to_string())?;
+            state
+                .store
+                .remove_squad_member(squad_id, aid)
+                .map_err(|e| e.to_string())?;
+            app_handle
+                .emit("squad-updated", serde_json::json!({ "squad_id": squad_id }))
+                .ok();
             Ok(format!("Removed {} from squad", aid))
         }
         "update" => {
             let squads = state.store.list_squads().map_err(|e| e.to_string())?;
             if let Some(mut s) = squads.into_iter().find(|s| s.id == squad_id) {
-                if let Some(g) = args["goal"].as_str() { s.goal = g.to_string(); }
-                if let Some(n) = args["name"].as_str() { s.name = n.to_string(); }
+                if let Some(g) = args["goal"].as_str() {
+                    s.goal = g.to_string();
+                }
+                if let Some(n) = args["name"].as_str() {
+                    s.name = n.to_string();
+                }
                 state.store.update_squad(&s).map_err(|e| e.to_string())?;
-                app_handle.emit("squad-updated", serde_json::json!({ "squad_id": squad_id })).ok();
+                app_handle
+                    .emit("squad-updated", serde_json::json!({ "squad_id": squad_id }))
+                    .ok();
                 Ok(format!("Squad '{}' updated", s.name))
             } else {
                 Err(format!("Squad not found: {}", squad_id))
             }
         }
         "disband" => {
-            state.store.delete_squad(squad_id).map_err(|e| e.to_string())?;
-            app_handle.emit("squad-updated", serde_json::json!({ "squad_id": squad_id })).ok();
+            state
+                .store
+                .delete_squad(squad_id)
+                .map_err(|e| e.to_string())?;
+            app_handle
+                .emit("squad-updated", serde_json::json!({ "squad_id": squad_id }))
+                .ok();
             Ok(format!("Squad {} disbanded", squad_id))
         }
         other => Err(format!("Unknown action: {}", other)),
@@ -220,22 +280,30 @@ fn exec_broadcast(
     app_handle: &tauri::AppHandle,
     agent_id: &str,
 ) -> Result<String, String> {
-    let squad_id = args["squad_id"].as_str().ok_or_else(|| "missing 'squad_id'".to_string())?;
-    let content = args["content"].as_str().ok_or_else(|| "missing 'content'".to_string())?;
+    let squad_id = args["squad_id"]
+        .as_str()
+        .ok_or_else(|| "missing 'squad_id'".to_string())?;
+    let content = args["content"]
+        .as_str()
+        .ok_or_else(|| "missing 'content'".to_string())?;
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or_else(|| "Engine state not available".to_string())?;
 
     let squads = state.store.list_squads().map_err(|e| e.to_string())?;
-    let squad = squads.iter().find(|s| s.id == squad_id)
+    let squad = squads
+        .iter()
+        .find(|s| s.id == squad_id)
         .ok_or_else(|| format!("Squad not found: {}", squad_id))?;
 
-    let channel = args["channel"].as_str()
-        .unwrap_or(&squad.name);
+    let channel = args["channel"].as_str().unwrap_or(&squad.name);
 
     let mut sent = 0;
     for m in &squad.members {
-        if m.agent_id == agent_id { continue; }
+        if m.agent_id == agent_id {
+            continue;
+        }
         let msg = AgentMessage {
             id: uuid::Uuid::new_v4().to_string(),
             from_agent: agent_id.to_string(),
@@ -246,15 +314,23 @@ fn exec_broadcast(
             read: false,
             created_at: chrono::Utc::now().to_rfc3339(),
         };
-        state.store.send_agent_message(&msg).map_err(|e| e.to_string())?;
+        state
+            .store
+            .send_agent_message(&msg)
+            .map_err(|e| e.to_string())?;
 
         // Emit frontend event so UI can update in real time
-        app_handle.emit("agent-message", serde_json::json!({
-            "from": agent_id,
-            "to": m.agent_id,
-            "channel": channel,
-            "squad_id": squad_id,
-        })).ok();
+        app_handle
+            .emit(
+                "agent-message",
+                serde_json::json!({
+                    "from": agent_id,
+                    "to": m.agent_id,
+                    "channel": channel,
+                    "squad_id": squad_id,
+                }),
+            )
+            .ok();
 
         // Fire event-driven triggers (same as agent_send_message)
         let event = crate::engine::events::EngineEvent::AgentMessage {
@@ -272,9 +348,14 @@ fn exec_broadcast(
     }
 
     // Emit squad-updated so the squad detail view refreshes messages
-    app_handle.emit("squad-updated", serde_json::json!({ "squad_id": squad_id })).ok();
+    app_handle
+        .emit("squad-updated", serde_json::json!({ "squad_id": squad_id }))
+        .ok();
 
-    info!("[engine] squad_broadcast: {} → {} members of '{}'", agent_id, sent, squad.name);
+    info!(
+        "[engine] squad_broadcast: {} → {} members of '{}'",
+        agent_id, sent, squad.name
+    );
 
     // ── Swarm auto-wake: spawn agent turns for recipients ──────────────
     // Each recipient agent wakes up, reads the broadcast, thinks, and responds.
@@ -287,7 +368,9 @@ fn exec_broadcast(
         let squad_name_owned = squad.name.clone();
         let squad_goal_owned = squad.goal.clone();
         for m in &squad.members {
-            if m.agent_id == agent_id { continue; }
+            if m.agent_id == agent_id {
+                continue;
+            }
             if let Err(e) = crate::engine::swarm::spawn_swarm_reply(
                 app_handle,
                 squad_id,
@@ -302,5 +385,8 @@ fn exec_broadcast(
         }
     }
 
-    Ok(format!("Broadcast sent to {} members of squad '{}'", sent, squad.name))
+    Ok(format!(
+        "Broadcast sent to {} members of squad '{}'",
+        sent, squad.name
+    ))
 }

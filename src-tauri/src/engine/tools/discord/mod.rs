@@ -12,18 +12,18 @@
 // Shared helpers (token resolution, API client, rate-limit retry) live here.
 
 pub mod channels;
+pub mod members;
 pub mod messages;
 pub mod roles;
-pub mod members;
 pub mod server;
 
-use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
+use crate::atoms::types::*;
 use crate::engine::state::EngineState;
 use log::warn;
 use serde_json::Value;
-use tauri::Manager;
 use std::time::Duration;
+use tauri::Manager;
 
 pub(crate) const DISCORD_API: &str = "https://discord.com/api/v10";
 
@@ -47,8 +47,7 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     // Try each sub-module — first Some wins
-    None
-        .or(channels::execute(name, args, app_handle).await)
+    None.or(channels::execute(name, args, app_handle).await)
         .or(messages::execute(name, args, app_handle).await)
         .or(roles::execute(name, args, app_handle).await)
         .or(members::execute(name, args, app_handle).await)
@@ -59,7 +58,8 @@ pub async fn execute(
 
 /// Resolve the Discord bot token from the skill vault.
 pub(crate) fn get_bot_token(app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
     let creds = crate::engine::skills::get_skill_credentials(&state.store, "discord")
         .map_err(|e| format!("Failed to get Discord credentials: {}", e))?;
@@ -73,37 +73,50 @@ pub(crate) fn get_bot_token(app_handle: &tauri::AppHandle) -> EngineResult<Strin
 }
 
 /// Resolve the server (guild) ID from args or credential fallback.
-pub(crate) fn resolve_server_id(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+pub(crate) fn resolve_server_id(
+    args: &Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
     if let Some(sid) = args["server_id"].as_str() {
         if !sid.is_empty() {
             return Ok(sid.to_string());
         }
     }
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
     let creds = crate::engine::skills::get_skill_credentials(&state.store, "discord")
         .map_err(|e| format!("Failed to get Discord credentials: {}", e))?;
-    creds.get("DISCORD_SERVER_ID")
+    creds
+        .get("DISCORD_SERVER_ID")
         .filter(|s| !s.is_empty())
         .cloned()
         .ok_or("No server_id provided and DISCORD_SERVER_ID not set in skill credentials.".into())
 }
 
 /// Resolve the default channel ID from args or credential fallback.
-pub(crate) fn resolve_channel_id(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+pub(crate) fn resolve_channel_id(
+    args: &Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
     if let Some(cid) = args["channel_id"].as_str() {
         if !cid.is_empty() {
             return Ok(cid.to_string());
         }
     }
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
     let creds = crate::engine::skills::get_skill_credentials(&state.store, "discord")
         .map_err(|e| format!("Failed to get Discord credentials: {}", e))?;
-    creds.get("DISCORD_DEFAULT_CHANNEL")
+    creds
+        .get("DISCORD_DEFAULT_CHANNEL")
         .filter(|s| !s.is_empty())
         .cloned()
-        .ok_or("No channel_id provided and DISCORD_DEFAULT_CHANNEL not set in skill credentials.".into())
+        .ok_or(
+            "No channel_id provided and DISCORD_DEFAULT_CHANNEL not set in skill credentials."
+                .into(),
+        )
 }
 
 /// Build a reqwest client with the bot Authorization header.
@@ -121,7 +134,8 @@ pub(crate) async fn discord_request(
     auth: &str,
     body: Option<&Value>,
 ) -> EngineResult<Value> {
-    let mut req = client.request(method.clone(), url)
+    let mut req = client
+        .request(method.clone(), url)
         .header("Authorization", auth)
         .header("Content-Type", "application/json");
     if let Some(b) = body {
@@ -141,20 +155,28 @@ pub(crate) async fn discord_request(
         warn!("[discord] Rate limited, waiting {:.1}s", retry_after);
         tokio::time::sleep(Duration::from_secs_f64(retry_after + 0.1)).await;
 
-        let mut req2 = client.request(method, url)
+        let mut req2 = client
+            .request(method, url)
             .header("Authorization", auth)
             .header("Content-Type", "application/json");
         if let Some(b) = body {
             req2 = req2.json(b);
         }
-        let resp2 = req2.send().await.map_err(|e| format!("Retry HTTP error: {}", e))?;
+        let resp2 = req2
+            .send()
+            .await
+            .map_err(|e| format!("Retry HTTP error: {}", e))?;
         let status2 = resp2.status();
         let text2 = resp2.text().await.unwrap_or_default();
         if !status2.is_success() {
-            return Err(format!("Discord API {} (after retry): {}", status2, &text2[..text2.len().min(300)]).into());
+            return Err(format!(
+                "Discord API {} (after retry): {}",
+                status2,
+                &text2[..text2.len().min(300)]
+            )
+            .into());
         }
-        return serde_json::from_str(&text2)
-            .or_else(|_| Ok(Value::String(text2)));
+        return serde_json::from_str(&text2).or_else(|_| Ok(Value::String(text2)));
     }
 
     if status.as_u16() == 204 {
@@ -166,8 +188,7 @@ pub(crate) async fn discord_request(
         return Err(format!("Discord API {}: {}", status, &text[..text.len().min(300)]).into());
     }
 
-    serde_json::from_str(&text)
-        .or_else(|_| Ok(Value::String(text)))
+    serde_json::from_str(&text).or_else(|_| Ok(Value::String(text)))
 }
 
 use serde_json::json;

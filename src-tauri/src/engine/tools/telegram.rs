@@ -1,8 +1,8 @@
 // Paw Agent Engine — Telegram tools
 // telegram_send, telegram_read
 
-use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
+use crate::atoms::types::*;
 use log::info;
 use std::time::Duration;
 
@@ -46,8 +46,16 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "telegram_send" => Some(execute_telegram_send(args, app_handle).await.map_err(|e| e.to_string())),
-        "telegram_read" => Some(execute_telegram_read(args, app_handle).await.map_err(|e| e.to_string())),
+        "telegram_send" => Some(
+            execute_telegram_send(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "telegram_read" => Some(
+            execute_telegram_read(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -77,7 +85,8 @@ impl ToolDefinition {
             tool_type: "function".into(),
             function: FunctionDefinition {
                 name: "telegram_read".into(),
-                description: "Get information about the Telegram bridge status and known users.".into(),
+                description: "Get information about the Telegram bridge status and known users."
+                    .into(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -89,10 +98,15 @@ impl ToolDefinition {
     }
 }
 
-async fn execute_telegram_send(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+async fn execute_telegram_send(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
     use crate::engine::telegram::load_telegram_config;
 
-    let text = args["text"].as_str().ok_or("telegram_send: missing 'text'")?;
+    let text = args["text"]
+        .as_str()
+        .ok_or("telegram_send: missing 'text'")?;
     let config = load_telegram_config(app_handle)?;
 
     if config.bot_token.is_empty() {
@@ -121,15 +135,23 @@ async fn execute_telegram_send(args: &serde_json::Value, app_handle: &tauri::App
         return Err("telegram_send: no target specified and no known users. Someone needs to message the bot first so we learn their chat_id.".into());
     };
 
-    info!("[tool:telegram_send] Sending to chat_id {}: {}...", chat_id,
-        if text.len() > 50 { &text[..text.floor_char_boundary(50)] } else { text });
+    info!(
+        "[tool:telegram_send] Sending to chat_id {}: {}...",
+        chat_id,
+        if text.len() > 50 {
+            &text[..text.floor_char_boundary(50)]
+        } else {
+            text
+        }
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .build()?;
 
     let chunks: Vec<String> = if text.len() > 4000 {
-        text.chars().collect::<Vec<_>>()
+        text.chars()
+            .collect::<Vec<_>>()
             .chunks(4000)
             .map(|c| c.iter().collect::<String>())
             .collect()
@@ -143,7 +165,11 @@ async fn execute_telegram_send(args: &serde_json::Value, app_handle: &tauri::App
             "text": chunk,
             "parse_mode": "Markdown",
         });
-        let resp = client.post(format!("https://api.telegram.org/bot{}/sendMessage", config.bot_token))
+        let resp = client
+            .post(format!(
+                "https://api.telegram.org/bot{}/sendMessage",
+                config.bot_token
+            ))
             .json(&body)
             .send()
             .await?;
@@ -154,10 +180,18 @@ async fn execute_telegram_send(args: &serde_json::Value, app_handle: &tauri::App
         }
     }
 
-    Ok(format!("Message sent to Telegram (chat_id: {}, {} chars, {} chunk(s))", chat_id, text.len(), chunks.len()))
+    Ok(format!(
+        "Message sent to Telegram (chat_id: {}, {} chars, {} chunk(s))",
+        chat_id,
+        text.len(),
+        chunks.len()
+    ))
 }
 
-async fn execute_telegram_read(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
+async fn execute_telegram_read(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
     use crate::engine::telegram::load_telegram_config;
 
     let info = args["info"].as_str().unwrap_or("status");
@@ -175,7 +209,10 @@ async fn execute_telegram_read(args: &serde_json::Value, app_handle: &tauri::App
             }
             output.push_str(&format!("\nAllowed user IDs: {:?}\n", config.allowed_users));
             if !config.pending_users.is_empty() {
-                output.push_str(&format!("Pending approvals: {}\n", config.pending_users.len()));
+                output.push_str(&format!(
+                    "Pending approvals: {}\n",
+                    config.pending_users.len()
+                ));
             }
             Ok(output)
         }

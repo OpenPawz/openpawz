@@ -4,9 +4,9 @@
 // or ALTER TABLE … ADD COLUMN (errors are silently swallowed) at the end of
 // run_migrations() — never modify existing SQL to keep upgrade paths clean.
 
+use crate::atoms::error::EngineResult;
 use log::{info, warn};
 use rusqlite::Connection;
-use crate::atoms::error::EngineResult;
 
 pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
     // ── Pre-migration: detect stale project_agents schema ───────────
@@ -22,8 +22,11 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
             .unwrap_or(false);
 
         if has_old_schema {
-            warn!("[engine] Detected legacy project_agents schema — migrating to composite-PK layout");
-            conn.execute_batch("DROP TABLE IF EXISTS project_agents;").ok();
+            warn!(
+                "[engine] Detected legacy project_agents schema — migrating to composite-PK layout"
+            );
+            conn.execute_batch("DROP TABLE IF EXISTS project_agents;")
+                .ok();
         }
     }
 
@@ -188,16 +191,31 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
 
     // ── Migrations: add columns to existing tables ──────────────────
     // SQLite silently ignores ALTER TABLE ADD COLUMN errors if the column exists.
-    conn.execute("ALTER TABLE project_agents ADD COLUMN model TEXT", []).ok();
-    conn.execute("ALTER TABLE project_agents ADD COLUMN system_prompt TEXT", []).ok();
-    conn.execute("ALTER TABLE project_agents ADD COLUMN capabilities TEXT NOT NULL DEFAULT ''", []).ok();
+    conn.execute("ALTER TABLE project_agents ADD COLUMN model TEXT", [])
+        .ok();
+    conn.execute(
+        "ALTER TABLE project_agents ADD COLUMN system_prompt TEXT",
+        [],
+    )
+    .ok();
+    conn.execute(
+        "ALTER TABLE project_agents ADD COLUMN capabilities TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
 
     // Add agent_id column to sessions (for per-agent session isolation)
-    conn.execute("ALTER TABLE sessions ADD COLUMN agent_id TEXT", []).ok();
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id)", []).ok();
+    conn.execute("ALTER TABLE sessions ADD COLUMN agent_id TEXT", [])
+        .ok();
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id)",
+        [],
+    )
+    .ok();
 
     // ── Positions table: stop-loss / take-profit tracking ────────────
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS positions (
             id TEXT PRIMARY KEY,
             mint TEXT NOT NULL,
@@ -218,10 +236,13 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_positions_status ON positions(status);
         CREATE INDEX IF NOT EXISTS idx_positions_mint ON positions(mint);
-    ").ok();
+    ",
+    )
+    .ok();
 
     // ── Phase F.2: Skill Outputs (Dashboard Widgets) ────────────────
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS skill_outputs (
             id TEXT PRIMARY KEY,
             skill_id TEXT NOT NULL,
@@ -233,10 +254,13 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
             updated_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS idx_skill_outputs_skill ON skill_outputs(skill_id);
-    ").ok();
+    ",
+    )
+    .ok();
 
     // ── Phase F.6: Skill Storage (Extension KV Store) ───────────────
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS skill_storage (
             skill_id TEXT NOT NULL,
             key TEXT NOT NULL,
@@ -245,14 +269,21 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
             PRIMARY KEY (skill_id, key)
         );
         CREATE INDEX IF NOT EXISTS idx_skill_storage_skill ON skill_storage(skill_id);
-    ").ok();
+    ",
+    )
+    .ok();
 
     // ── Phase 2: Memory Intelligence migrations ──────────────────────
     // Add agent_id column to memories (for per-agent memory scope)
-    conn.execute("ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''", []).ok();
+    conn.execute(
+        "ALTER TABLE memories ADD COLUMN agent_id TEXT NOT NULL DEFAULT ''",
+        [],
+    )
+    .ok();
 
     // Create FTS5 virtual table for BM25 full-text search
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
             id UNINDEXED,
             content,
@@ -260,19 +291,29 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
             agent_id UNINDEXED,
             content_rowid=rowid
         );
-    ").ok();
+    ",
+    )
+    .ok();
 
     // Populate FTS index with existing memories that aren't indexed yet
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         INSERT OR IGNORE INTO memories_fts(id, content, category, agent_id)
         SELECT id, content, category, COALESCE(agent_id, '')
         FROM memories
         WHERE id NOT IN (SELECT id FROM memories_fts);
-    ").ok();
+    ",
+    )
+    .ok();
 
     // ── Event-Driven Triggers & Persistent Tasks ──────────────────
-    conn.execute("ALTER TABLE tasks ADD COLUMN event_trigger TEXT", []).ok();
-    conn.execute("ALTER TABLE tasks ADD COLUMN persistent INTEGER NOT NULL DEFAULT 0", []).ok();
+    conn.execute("ALTER TABLE tasks ADD COLUMN event_trigger TEXT", [])
+        .ok();
+    conn.execute(
+        "ALTER TABLE tasks ADD COLUMN persistent INTEGER NOT NULL DEFAULT 0",
+        [],
+    )
+    .ok();
 
     // ── Inter-Agent Communication ───────────────────────────────────
     conn.execute_batch("
@@ -291,7 +332,8 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
     ").ok();
 
     // ── Agent Squads ────────────────────────────────────────────────
-    conn.execute_batch("
+    conn.execute_batch(
+        "
         CREATE TABLE IF NOT EXISTS squads (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
@@ -308,7 +350,9 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
             PRIMARY KEY (squad_id, agent_id),
             FOREIGN KEY (squad_id) REFERENCES squads(id) ON DELETE CASCADE
         );
-    ").ok();
+    ",
+    )
+    .ok();
 
     // ── Seed _standalone sentinel project ───────────────────────────
     // Ensures user-created agents (via create_agent tool) satisfy the FK constraint.
@@ -321,26 +365,36 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
     // ── One-time dedup migration ─────────────────────────────────────
     // Removes duplicate messages caused by a historical bug that re-inserted
     // messages on every agent turn.  Guarded by a config flag so it only runs once.
-    let already_deduped: bool = conn.query_row(
-        "SELECT COUNT(*) FROM engine_config WHERE key = 'migration_dedup_done'",
-        [], |r| r.get::<_, i64>(0),
-    ).unwrap_or(0) > 0;
+    let already_deduped: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM engine_config WHERE key = 'migration_dedup_done'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
 
     if !already_deduped {
-        let deduped = conn.execute(
-            "DELETE FROM messages WHERE id NOT IN (
+        let deduped = conn
+            .execute(
+                "DELETE FROM messages WHERE id NOT IN (
                 SELECT MIN(id) FROM messages
                 GROUP BY session_id, role, content, tool_call_id
             )",
-            [],
-        ).unwrap_or(0);
+                [],
+            )
+            .unwrap_or(0);
         if deduped > 0 {
-            info!("[engine] Deduplication: removed {} duplicate messages", deduped);
+            info!(
+                "[engine] Deduplication: removed {} duplicate messages",
+                deduped
+            );
             conn.execute_batch(
                 "UPDATE sessions SET message_count = (
                     SELECT COUNT(*) FROM messages WHERE messages.session_id = sessions.id
-                )"
-            ).ok();
+                )",
+            )
+            .ok();
         }
         conn.execute(
             "INSERT OR REPLACE INTO engine_config (key, value) VALUES ('migration_dedup_done', '1')",

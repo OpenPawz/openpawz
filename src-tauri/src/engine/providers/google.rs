@@ -2,13 +2,15 @@
 // Implements the AiProvider golden trait.
 // Preserves the two-pass thought-part parsing for Gemini thinking models.
 
-use crate::engine::types::*;
 use crate::atoms::traits::{AiProvider, ProviderError};
-use crate::engine::providers::openai::{MAX_RETRIES, is_retryable_status, retry_delay, parse_retry_after};
 use crate::engine::http::CircuitBreaker;
+use crate::engine::providers::openai::{
+    is_retryable_status, parse_retry_after, retry_delay, MAX_RETRIES,
+};
+use crate::engine::types::*;
 use async_trait::async_trait;
 use futures::StreamExt;
-use log::{info, warn, error};
+use log::{error, info, warn};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::sync::LazyLock;
@@ -26,7 +28,9 @@ pub struct GoogleProvider {
 
 impl GoogleProvider {
     pub fn new(config: &ProviderConfig) -> Self {
-        let base_url = config.base_url.clone()
+        let base_url = config
+            .base_url
+            .clone()
             .unwrap_or_else(|| config.kind.default_base_url().to_string());
         GoogleProvider {
             client: Client::builder()
@@ -105,8 +109,8 @@ impl GoogleProvider {
                         }
                     }
                     for tc in tool_calls {
-                        let args: Value = serde_json::from_str(&tc.function.arguments)
-                            .unwrap_or(json!({}));
+                        let args: Value =
+                            serde_json::from_str(&tc.function.arguments).unwrap_or(json!({}));
                         let mut fc_part = json!({
                             "functionCall": {
                                 "name": tc.function.name,
@@ -141,7 +145,8 @@ impl GoogleProvider {
                                 ContentBlock::ImageUrl { image_url } => {
                                     // Gemini uses inlineData format for base64 images
                                     if let Some(rest) = image_url.url.strip_prefix("data:") {
-                                        if let Some((mime_type, b64)) = rest.split_once(";base64,") {
+                                        if let Some((mime_type, b64)) = rest.split_once(";base64,")
+                                        {
                                             parts.push(json!({
                                                 "inlineData": {
                                                     "mimeType": mime_type,
@@ -158,7 +163,11 @@ impl GoogleProvider {
                                         }));
                                     }
                                 }
-                                ContentBlock::Document { mime_type, data, name: _ } => {
+                                ContentBlock::Document {
+                                    mime_type,
+                                    data,
+                                    name: _,
+                                } => {
                                     // Gemini supports PDFs natively via inlineData
                                     parts.push(json!({
                                         "inlineData": {
@@ -194,15 +203,18 @@ impl GoogleProvider {
         for entry in contents {
             let entry_role = entry["role"].as_str().unwrap_or("").to_string();
             let can_merge = !merged.is_empty()
-                && merged.last().and_then(|e| e["role"].as_str()).map(|r| r == entry_role).unwrap_or(false);
+                && merged
+                    .last()
+                    .and_then(|e| e["role"].as_str())
+                    .map(|r| r == entry_role)
+                    .unwrap_or(false);
 
             if can_merge {
                 // Merge parts into the previous entry
                 if let Some(last) = merged.last_mut() {
-                    if let (Some(existing_parts), Some(new_parts)) = (
-                        last["parts"].as_array().cloned(),
-                        entry["parts"].as_array(),
-                    ) {
+                    if let (Some(existing_parts), Some(new_parts)) =
+                        (last["parts"].as_array().cloned(), entry["parts"].as_array())
+                    {
                         let mut combined = existing_parts;
                         combined.extend(new_parts.iter().cloned());
                         last["parts"] = json!(combined);
@@ -220,7 +232,10 @@ impl GoogleProvider {
         if !merged.is_empty() {
             let first_role = merged[0]["role"].as_str().unwrap_or("");
             if first_role != "user" {
-                log::warn!("[engine] Google: first content role is '{}', injecting synthetic user context", first_role);
+                log::warn!(
+                    "[engine] Google: first content role is '{}', injecting synthetic user context",
+                    first_role
+                );
                 merged.insert(0, json!({
                     "role": "user",
                     "parts": [{"text": "[Conversation context was truncated. Continue from where we left off.]"}]
@@ -279,25 +294,28 @@ impl GoogleProvider {
     }
 
     fn format_tools(tools: &[ToolDefinition]) -> Value {
-        let function_declarations: Vec<Value> = tools.iter().map(|t| {
-            let sanitized = Self::sanitize_schema(&t.function.parameters);
-            // If sanitization reduced parameters to an empty object (e.g. no-param
-            // tools like soul_list), omit the field entirely so Google doesn't
-            // reject it for missing `type: OBJECT`.
-            let is_empty = sanitized.as_object().is_some_and(|m| m.is_empty());
-            if is_empty {
-                json!({
-                    "name": t.function.name,
-                    "description": t.function.description,
-                })
-            } else {
-                json!({
-                    "name": t.function.name,
-                    "description": t.function.description,
-                    "parameters": sanitized,
-                })
-            }
-        }).collect();
+        let function_declarations: Vec<Value> = tools
+            .iter()
+            .map(|t| {
+                let sanitized = Self::sanitize_schema(&t.function.parameters);
+                // If sanitization reduced parameters to an empty object (e.g. no-param
+                // tools like soul_list), omit the field entirely so Google doesn't
+                // reject it for missing `type: OBJECT`.
+                let is_empty = sanitized.as_object().is_some_and(|m| m.is_empty());
+                if is_empty {
+                    json!({
+                        "name": t.function.name,
+                        "description": t.function.description,
+                    })
+                } else {
+                    json!({
+                        "name": t.function.name,
+                        "description": t.function.description,
+                        "parameters": sanitized,
+                    })
+                }
+            })
+            .collect();
 
         json!([{
             "functionDeclarations": function_declarations
@@ -375,7 +393,10 @@ impl GoogleProvider {
                     body["generationConfig"]["thinkingConfig"] = json!({
                         "thinkingBudget": budget,
                     });
-                    info!("[engine] Google: thinking enabled (budget={}) for model={}", budget, model);
+                    info!(
+                        "[engine] Google: thinking enabled (budget={}) for model={}",
+                        budget, model
+                    );
                 } else {
                     // Explicit "none" — disable or use minimum
                     body["generationConfig"]["thinkingConfig"] = json!({
@@ -384,7 +405,10 @@ impl GoogleProvider {
                     if thinking_required {
                         info!("[engine] Google: thinking-required model, using min budget={} for model={}", min_budget, model);
                     } else {
-                        info!("[engine] Google: thinking explicitly disabled for model={}", model);
+                        info!(
+                            "[engine] Google: thinking explicitly disabled for model={}",
+                            model
+                        );
                     }
                 }
             } else {
@@ -397,9 +421,15 @@ impl GoogleProvider {
                     "thinkingBudget": default_budget,
                 });
                 if thinking_required {
-                    info!("[engine] Google: thinking-required model, default budget={} for model={}", default_budget, model);
+                    info!(
+                        "[engine] Google: thinking-required model, default budget={} for model={}",
+                        default_budget, model
+                    );
                 } else {
-                    info!("[engine] Google: thinking auto-disabled (no thinking_level) for model={}", model);
+                    info!(
+                        "[engine] Google: thinking auto-disabled (no thinking_level) for model={}",
+                        model
+                    );
                 }
             }
         } else if let Some(level) = thinking_level {
@@ -414,7 +444,10 @@ impl GoogleProvider {
                 body["generationConfig"]["thinkingConfig"] = json!({
                     "thinkingBudget": budget,
                 });
-                info!("[engine] Google: thinking config set (budget={}) for model={}", budget, model);
+                info!(
+                    "[engine] Google: thinking config set (budget={}) for model={}",
+                    budget, model
+                );
             }
         }
         info!("[engine] Google request model={}", model);
@@ -430,10 +463,16 @@ impl GoogleProvider {
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
                 let delay = retry_delay(attempt - 1, retry_after.take()).await;
-                warn!("[engine] Google retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
+                warn!(
+                    "[engine] Google retry {}/{} after {}ms",
+                    attempt,
+                    MAX_RETRIES,
+                    delay.as_millis()
+                );
             }
 
-            let response = match self.client
+            let response = match self
+                .client
                 .post(&url)
                 .header("Content-Type", "application/json")
                 .json(&body)
@@ -445,7 +484,9 @@ impl GoogleProvider {
                     GOOGLE_CIRCUIT.record_failure();
                     last_error = format!("HTTP request failed: {}", e);
                     last_status = 0;
-                    if attempt < MAX_RETRIES { continue; }
+                    if attempt < MAX_RETRIES {
+                        continue;
+                    }
                     return Err(ProviderError::Transport(last_error));
                 }
             };
@@ -453,13 +494,22 @@ impl GoogleProvider {
             if !response.status().is_success() {
                 let status = response.status().as_u16();
                 last_status = status;
-                retry_after = response.headers()
+                retry_after = response
+                    .headers()
                     .get("retry-after")
                     .and_then(|v| v.to_str().ok())
                     .and_then(parse_retry_after);
                 let body_text = response.text().await.unwrap_or_default();
-                last_error = format!("API error {}: {}", status, &body_text[..body_text.len().min(200)]);
-                error!("[engine] Google error {}: {}", status, &body_text[..body_text.len().min(500)]);
+                last_error = format!(
+                    "API error {}: {}",
+                    status,
+                    &body_text[..body_text.len().min(200)]
+                );
+                error!(
+                    "[engine] Google error {}: {}",
+                    status,
+                    &body_text[..body_text.len().min(500)]
+                );
 
                 GOOGLE_CIRCUIT.record_failure();
 
@@ -477,7 +527,10 @@ impl GoogleProvider {
                         retry_after_secs: retry_after.take(),
                     })
                 } else {
-                    Err(ProviderError::Api { status, message: last_error })
+                    Err(ProviderError::Api {
+                        status,
+                        message: last_error,
+                    })
                 };
             }
 
@@ -486,9 +539,8 @@ impl GoogleProvider {
             let mut buffer = String::new();
 
             while let Some(result) = byte_stream.next().await {
-                let bytes = result.map_err(|e| {
-                    ProviderError::Transport(format!("Stream read error: {}", e))
-                })?;
+                let bytes = result
+                    .map_err(|e| ProviderError::Transport(format!("Stream read error: {}", e)))?;
                 buffer.push_str(&String::from_utf8_lossy(&bytes));
 
                 while let Some(line_end) = buffer.find('\n') {
@@ -500,7 +552,11 @@ impl GoogleProvider {
                         if data.len() < 2000 {
                             log::debug!("[engine] Google SSE: {}", data);
                         } else {
-                            log::debug!("[engine] Google SSE: {}... ({}b)", &data[..500], data.len());
+                            log::debug!(
+                                "[engine] Google SSE: {}... ({}b)",
+                                &data[..500],
+                                data.len()
+                            );
                         }
                         if let Ok(v) = serde_json::from_str::<Value>(data) {
                             // Extract actual model version from Google's response
@@ -511,18 +567,22 @@ impl GoogleProvider {
                             if let Some(candidates) = v["candidates"].as_array() {
                                 for candidate in candidates {
                                     let content = &candidate["content"];
-                                    let finish_reason = candidate["finishReason"].as_str()
-                                        .map(|s| s.to_string());
+                                    let finish_reason =
+                                        candidate["finishReason"].as_str().map(|s| s.to_string());
 
                                     // Detect blocked/empty responses (e.g. SAFETY, RECITATION, OTHER)
                                     // Also check for empty parts array [] — not just null
                                     let parts_empty = content.is_null()
                                         || content["parts"].is_null()
-                                        || content["parts"].as_array().map(|a| a.is_empty()).unwrap_or(false);
+                                        || content["parts"]
+                                            .as_array()
+                                            .map(|a| a.is_empty())
+                                            .unwrap_or(false);
                                     if parts_empty {
                                         if let Some(ref reason) = finish_reason {
                                             // Log ALL empty-content responses, including STOP
-                                            let safety_info = candidate.get("safetyRatings")
+                                            let safety_info = candidate
+                                                .get("safetyRatings")
                                                 .map(|r| r.to_string())
                                                 .unwrap_or_else(|| "none".to_string());
                                             warn!(
@@ -567,9 +627,14 @@ impl GoogleProvider {
                                         // round-trip signature. We still collect it for API replay.
                                         let mut collected_thoughts: Vec<ThoughtPart> = Vec::new();
                                         for part in parts {
-                                            if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                            if part
+                                                .get("thought")
+                                                .and_then(|v| v.as_bool())
+                                                .unwrap_or(false)
+                                            {
                                                 if let Some(text) = part["text"].as_str() {
-                                                    let sig = part.get("thoughtSignature")
+                                                    let sig = part
+                                                        .get("thoughtSignature")
                                                         .or_else(|| part.get("thought_signature"))
                                                         .and_then(|v| v.as_str());
                                                     // Emit thinking text to the frontend
@@ -596,12 +661,17 @@ impl GoogleProvider {
                                         // Second pass: process text and functionCall parts
                                         for part in parts {
                                             // Skip thought parts (already collected above)
-                                            if part.get("thought").and_then(|v| v.as_bool()).unwrap_or(false) {
+                                            if part
+                                                .get("thought")
+                                                .and_then(|v| v.as_bool())
+                                                .unwrap_or(false)
+                                            {
                                                 continue;
                                             }
                                             // Collect thoughtSignature from text parts for round-tripping
                                             if let Some(text) = part["text"].as_str() {
-                                                let sig = part.get("thoughtSignature")
+                                                let sig = part
+                                                    .get("thoughtSignature")
                                                     .or_else(|| part.get("thought_signature"))
                                                     .and_then(|v| v.as_str());
                                                 if let Some(s) = sig {
@@ -621,10 +691,12 @@ impl GoogleProvider {
                                                 });
                                             }
                                             if let Some(fc) = part.get("functionCall") {
-                                                let name = fc["name"].as_str().unwrap_or("").to_string();
+                                                let name =
+                                                    fc["name"].as_str().unwrap_or("").to_string();
                                                 let args = fc["args"].clone();
                                                 // thought_signature can be at the part level OR inside functionCall
-                                                let thought_sig = part.get("thoughtSignature")
+                                                let thought_sig = part
+                                                    .get("thoughtSignature")
                                                     .or_else(|| part.get("thought_signature"))
                                                     .or_else(|| fc.get("thoughtSignature"))
                                                     .or_else(|| fc.get("thought_signature"))
@@ -641,9 +713,15 @@ impl GoogleProvider {
                                                     delta_text: None,
                                                     tool_calls: vec![ToolCallDelta {
                                                         index: fc_idx,
-                                                        id: Some(format!("call_{}", uuid::Uuid::new_v4())),
+                                                        id: Some(format!(
+                                                            "call_{}",
+                                                            uuid::Uuid::new_v4()
+                                                        )),
                                                         function_name: Some(name),
-                                                        arguments_delta: Some(serde_json::to_string(&args).unwrap_or_default()),
+                                                        arguments_delta: Some(
+                                                            serde_json::to_string(&args)
+                                                                .unwrap_or_default(),
+                                                        ),
                                                         thought_signature: thought_sig,
                                                     }],
                                                     finish_reason: finish_reason.clone(),
@@ -673,7 +751,9 @@ impl GoogleProvider {
                                         usage: Some(TokenUsage {
                                             input_tokens: input,
                                             output_tokens: output,
-                                            total_tokens: um["totalTokenCount"].as_u64().unwrap_or(input + output),
+                                            total_tokens: um["totalTokenCount"]
+                                                .as_u64()
+                                                .unwrap_or(input + output),
                                             ..Default::default()
                                         }),
                                         model: api_model.clone(),
@@ -698,7 +778,10 @@ impl GoogleProvider {
                 message: last_error,
                 retry_after_secs: retry_after,
             }),
-            s => Err(ProviderError::Api { status: s, message: last_error }),
+            s => Err(ProviderError::Api {
+                status: s,
+                message: last_error,
+            }),
         }
     }
 }
@@ -723,6 +806,7 @@ impl AiProvider for GoogleProvider {
         temperature: Option<f64>,
         thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
-        self.chat_stream_inner(messages, tools, model, temperature, thinking_level).await
+        self.chat_stream_inner(messages, tools, model, temperature, thinking_level)
+            .await
     }
 }

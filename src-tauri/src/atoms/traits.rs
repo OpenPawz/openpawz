@@ -2,8 +2,8 @@
 // Every AI provider backend implements AiProvider.
 // Adding a new provider = implement this trait + register in AnyProvider.
 
+use crate::atoms::types::{Message, ProviderKind, StreamChunk, ToolDefinition};
 use async_trait::async_trait;
-use crate::atoms::types::{Message, ToolDefinition, StreamChunk, ProviderKind};
 
 // ── Error type ─────────────────────────────────────────────────────────────
 
@@ -15,7 +15,10 @@ pub enum ProviderError {
     /// Authentication rejected — not retryable.
     Auth(String),
     /// Provider rate-limited the request.
-    RateLimited { message: String, retry_after_secs: Option<u64> },
+    RateLimited {
+        message: String,
+        retry_after_secs: Option<u64>,
+    },
     /// Requested model does not exist or is unavailable.
     ModelNotFound(String),
     /// Operation not supported by this provider.
@@ -90,11 +93,7 @@ pub trait AiProvider: Send + Sync {
 
     /// Optional: generate embeddings for the memory system.
     /// Default impl returns `Unsupported`.
-    async fn embed(
-        &self,
-        _texts: &[String],
-        _model: &str,
-    ) -> Result<Vec<Vec<f32>>, ProviderError> {
+    async fn embed(&self, _texts: &[String], _model: &str) -> Result<Vec<Vec<f32>>, ProviderError> {
         Err(ProviderError::Unsupported(
             "embeddings not supported by this provider".into(),
         ))

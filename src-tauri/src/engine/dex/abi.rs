@@ -1,7 +1,7 @@
 // Paw Agent Engine — DEX ABI Encoding
 // EVM ABI encoding, Uniswap V3 calldata builders, and ERC-20 introspection helpers.
 
-use super::primitives::{keccak256, hex_decode};
+use super::primitives::{hex_decode, keccak256};
 use crate::atoms::error::{EngineError, EngineResult};
 
 /// Compute 4-byte function selector from signature
@@ -61,10 +61,7 @@ pub(crate) fn encode_allowance(owner: &[u8; 20], spender: &[u8; 20]) -> Vec<u8> 
 
 /// Encode Uniswap V3 QuoterV2.quoteExactInput for multi-hop paths
 /// quoteExactInput(bytes path, uint256 amountIn) → (uint256 amountOut, ...)
-pub(crate) fn encode_quote_exact_input(
-    path: &[u8],
-    amount_in: &[u8; 32],
-) -> Vec<u8> {
+pub(crate) fn encode_quote_exact_input(path: &[u8], amount_in: &[u8; 32]) -> Vec<u8> {
     let selector = function_selector("quoteExactInput(bytes,uint256)");
     let mut data = selector.to_vec();
     // ABI: offset to path (dynamic), amountIn
@@ -152,7 +149,13 @@ pub(crate) fn u256_to_quantity_hex(val: &[u8; 32]) -> String {
     if stripped.is_empty() {
         "0x0".to_string()
     } else {
-        format!("0x{}", stripped.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+        format!(
+            "0x{}",
+            stripped
+                .iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<String>()
+        )
     }
 }
 
@@ -164,7 +167,8 @@ pub(crate) fn encode_quote_exact_input_single(
     amount_in: &[u8; 32],
     fee: u32,
 ) -> Vec<u8> {
-    let selector = function_selector("quoteExactInputSingle((address,address,uint256,uint24,uint160))");
+    let selector =
+        function_selector("quoteExactInputSingle((address,address,uint256,uint24,uint160))");
     let mut data = selector.to_vec();
 
     // Struct is encoded inline as: token_in, token_out, amountIn, fee, sqrtPriceLimitX96
@@ -186,7 +190,9 @@ pub(crate) fn encode_exact_input_single(
     amount_in: &[u8; 32],
     amount_out_minimum: &[u8; 32],
 ) -> Vec<u8> {
-    let selector = function_selector("exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))");
+    let selector = function_selector(
+        "exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))",
+    );
     let mut data = selector.to_vec();
 
     data.extend_from_slice(&abi_encode_address(token_in));
@@ -230,24 +236,34 @@ pub(crate) fn decode_abi_string(hex_data: &str) -> EngineResult<String> {
     if bytes.len() < 64 {
         // Might be a non-standard response — try UTF-8 directly from bytes32
         let trimmed: Vec<u8> = bytes.iter().copied().filter(|&b| b != 0).collect();
-        return String::from_utf8(trimmed).map_err(|_| EngineError::Other("Cannot decode string".into()));
+        return String::from_utf8(trimmed)
+            .map_err(|_| EngineError::Other("Cannot decode string".into()));
     }
     // Standard ABI: offset (32 bytes) + length (32 bytes) + data
-    let offset_bytes: [u8; 32] = bytes[..32].try_into().map_err(|_| EngineError::Other("Bad offset".into()))?;
+    let offset_bytes: [u8; 32] = bytes[..32]
+        .try_into()
+        .map_err(|_| EngineError::Other("Bad offset".into()))?;
     let offset = u32::from_be_bytes(
-        offset_bytes[28..32].try_into().map_err(|_| EngineError::Other("Bad offset u32 slice".into()))?
+        offset_bytes[28..32]
+            .try_into()
+            .map_err(|_| EngineError::Other("Bad offset u32 slice".into()))?,
     ) as usize;
 
     if offset + 32 > bytes.len() {
         // Try bytes32 fallback
         let trimmed: Vec<u8> = bytes[..32].iter().copied().filter(|&b| b != 0).collect();
-        return String::from_utf8(trimmed).map_err(|_| EngineError::Other("Cannot decode string".into()));
+        return String::from_utf8(trimmed)
+            .map_err(|_| EngineError::Other("Cannot decode string".into()));
     }
 
     let len_start = offset;
-    let len_bytes: [u8; 32] = bytes[len_start..len_start + 32].try_into().map_err(|_| EngineError::Other("Bad length".into()))?;
+    let len_bytes: [u8; 32] = bytes[len_start..len_start + 32]
+        .try_into()
+        .map_err(|_| EngineError::Other("Bad length".into()))?;
     let len = u32::from_be_bytes(
-        len_bytes[28..32].try_into().map_err(|_| EngineError::Other("Bad length u32 slice".into()))?
+        len_bytes[28..32]
+            .try_into()
+            .map_err(|_| EngineError::Other("Bad length u32 slice".into()))?,
     ) as usize;
 
     let data_start = len_start + 32;

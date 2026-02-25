@@ -15,7 +15,12 @@ pub(crate) fn keccak256(data: &[u8]) -> [u8; 32] {
 
 /// Hex-encode bytes with 0x prefix
 pub(crate) fn hex_encode(data: &[u8]) -> String {
-    format!("0x{}", data.iter().map(|b| format!("{:02x}", b)).collect::<String>())
+    format!(
+        "0x{}",
+        data.iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<String>()
+    )
 }
 
 /// Hex-decode a 0x-prefixed string
@@ -37,7 +42,10 @@ pub(crate) fn hex_decode(s: &str) -> EngineResult<Vec<u8>> {
     };
     (0..hex_str.len())
         .step_by(2)
-        .map(|i| u8::from_str_radix(&hex_str[i..i + 2], 16).map_err(|e| EngineError::Other(format!("Hex decode: {}", e))))
+        .map(|i| {
+            u8::from_str_radix(&hex_str[i..i + 2], 16)
+                .map_err(|e| EngineError::Other(format!("Hex decode: {}", e)))
+        })
         .collect()
 }
 
@@ -58,7 +66,11 @@ pub(crate) fn eip55_checksum(addr_bytes: &[u8]) -> String {
     let mut checksummed = String::with_capacity(42);
     checksummed.push_str("0x");
     for (i, c) in hex_addr.chars().enumerate() {
-        let hash_nibble = if i % 2 == 0 { hash[i / 2] >> 4 } else { hash[i / 2] & 0x0f };
+        let hash_nibble = if i % 2 == 0 {
+            hash[i / 2] >> 4
+        } else {
+            hash[i / 2] & 0x0f
+        };
         if hash_nibble >= 8 {
             checksummed.push(c.to_ascii_uppercase());
         } else {
@@ -73,7 +85,11 @@ pub(crate) fn parse_address(addr: &str) -> EngineResult<[u8; 20]> {
     let addr = addr.trim();
     let bytes = hex_decode(addr)?;
     if bytes.len() != 20 {
-        return Err(EngineError::Other(format!("Invalid address length: {} bytes (expected 20). Address: '{}'", bytes.len(), addr)));
+        return Err(EngineError::Other(format!(
+            "Invalid address length: {} bytes (expected 20). Address: '{}'",
+            bytes.len(),
+            addr
+        )));
     }
     let mut arr = [0u8; 20];
     arr.copy_from_slice(&bytes);
@@ -87,14 +103,19 @@ pub(crate) fn parse_u256_decimal(s: &str) -> EngineResult<[u8; 32]> {
 
     // Handle scientific notation
     if s.contains('e') || s.contains('E') {
-        return Err(EngineError::Other("Scientific notation not supported, use plain decimal".into()));
+        return Err(EngineError::Other(
+            "Scientific notation not supported, use plain decimal".into(),
+        ));
     }
 
     // Convert decimal string to bytes
     let mut digits: Vec<u8> = Vec::new();
     for c in s.chars() {
         if !c.is_ascii_digit() {
-            return Err(EngineError::Other(format!("Invalid decimal character: {}", c)));
+            return Err(EngineError::Other(format!(
+                "Invalid decimal character: {}",
+                c
+            )));
         }
         digits.push(c as u8 - b'0');
     }
@@ -131,14 +152,21 @@ pub(crate) fn amount_to_raw(amount: &str, decimals: u8) -> EngineResult<String> 
     let decimal_part = if parts.len() == 2 { parts[1] } else { "" };
 
     if decimal_part.len() > decimals as usize {
-        return Err(EngineError::Other(format!("Too many decimal places (max {} for this token)", decimals)));
+        return Err(EngineError::Other(format!(
+            "Too many decimal places (max {} for this token)",
+            decimals
+        )));
     }
 
     let padded_decimals = format!("{:0<width$}", decimal_part, width = decimals as usize);
     let raw = format!("{}{}", integer_part, padded_decimals);
     // Strip leading zeros but keep at least "0"
     let trimmed = raw.trim_start_matches('0');
-    if trimmed.is_empty() { Ok("0".into()) } else { Ok(trimmed.into()) }
+    if trimmed.is_empty() {
+        Ok("0".into())
+    } else {
+        Ok(trimmed.into())
+    }
 }
 
 /// Convert raw units to human-readable amount
@@ -173,7 +201,9 @@ pub(crate) fn raw_to_amount(raw_hex: &str, decimals: u8) -> EngineResult<String>
     if decimal_str.len() <= dec {
         let padded = format!("{:0>width$}", decimal_str, width = dec + 1);
         let (int_part, frac_part) = padded.split_at(padded.len() - dec);
-        Ok(format!("{}.{}", int_part, frac_part.trim_end_matches('0')).trim_end_matches('.').to_string())
+        Ok(format!("{}.{}", int_part, frac_part.trim_end_matches('0'))
+            .trim_end_matches('.')
+            .to_string())
     } else {
         let (int_part, frac_part) = decimal_str.split_at(decimal_str.len() - dec);
         let trimmed_frac = frac_part.trim_end_matches('0');
@@ -201,7 +231,10 @@ mod tests {
 
     #[test]
     fn hex_decode_valid() {
-        assert_eq!(hex_decode("0xdeadbeef").unwrap(), vec![0xde, 0xad, 0xbe, 0xef]);
+        assert_eq!(
+            hex_decode("0xdeadbeef").unwrap(),
+            vec![0xde, 0xad, 0xbe, 0xef]
+        );
     }
 
     #[test]
@@ -225,7 +258,10 @@ mod tests {
     fn keccak256_known_vector() {
         // keccak256("") = c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470
         let hash = keccak256(b"");
-        assert_eq!(hex_encode(&hash), "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+        assert_eq!(
+            hex_encode(&hash),
+            "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        );
     }
 
     #[test]

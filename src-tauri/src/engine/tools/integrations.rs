@@ -1,8 +1,8 @@
 // Paw Agent Engine — Integration tools
 // rest_api_call, webhook_send, image_generate
 
-use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
+use crate::atoms::types::*;
 use log::info;
 use std::time::Duration;
 
@@ -59,14 +59,15 @@ pub fn definitions() -> Vec<ToolDefinition> {
 
 /// Return definitions only for the given skill_id ("rest_api", "webhook", "image_gen")
 pub fn definitions_for(skill_id: &str) -> Vec<ToolDefinition> {
-    definitions().into_iter().filter(|d| {
-        match skill_id {
-            "rest_api"  => d.function.name == "rest_api_call",
-            "webhook"   => d.function.name == "webhook_send",
+    definitions()
+        .into_iter()
+        .filter(|d| match skill_id {
+            "rest_api" => d.function.name == "rest_api_call",
+            "webhook" => d.function.name == "webhook_send",
             "image_gen" => d.function.name == "image_generate",
             _ => false,
-        }
-    }).collect()
+        })
+        .collect()
 }
 
 pub async fn execute(
@@ -75,8 +76,8 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     let skill_id = match name {
-        "rest_api_call"  => "rest_api",
-        "webhook_send"   => "webhook",
+        "rest_api_call" => "rest_api",
+        "webhook_send" => "webhook",
         "image_generate" => "image_gen",
         _ => return None,
     };
@@ -85,9 +86,15 @@ pub async fn execute(
         Err(e) => return Some(Err(e.to_string())),
     };
     Some(match name {
-        "rest_api_call"  => execute_rest_api_call(args, &creds).await.map_err(|e| e.to_string()),
-        "webhook_send"   => execute_webhook_send(args, &creds).await.map_err(|e| e.to_string()),
-        "image_generate" => execute_image_generate(args, &creds).await.map_err(|e| e.to_string()),
+        "rest_api_call" => execute_rest_api_call(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "webhook_send" => execute_webhook_send(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "image_generate" => execute_image_generate(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
         _ => unreachable!(),
     })
 }
@@ -96,14 +103,30 @@ async fn execute_rest_api_call(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let path = args["path"].as_str().ok_or("rest_api_call: missing 'path'")?;
+    let path = args["path"]
+        .as_str()
+        .ok_or("rest_api_call: missing 'path'")?;
     let method = args["method"].as_str().unwrap_or("GET");
     let base_url = creds.get("API_BASE_URL").ok_or("Missing API_BASE_URL")?;
     let api_key = creds.get("API_KEY").ok_or("Missing API_KEY")?;
-    let auth_header = creds.get("API_AUTH_HEADER").map(|s| s.as_str()).unwrap_or("Authorization");
-    let auth_prefix = creds.get("API_AUTH_PREFIX").map(|s| s.as_str()).unwrap_or("Bearer");
+    let auth_header = creds
+        .get("API_AUTH_HEADER")
+        .map(|s| s.as_str())
+        .unwrap_or("Authorization");
+    let auth_prefix = creds
+        .get("API_AUTH_PREFIX")
+        .map(|s| s.as_str())
+        .unwrap_or("Bearer");
 
-    let url = format!("{}{}", base_url.trim_end_matches('/'), if path.starts_with('/') { path.to_string() } else { format!("/{}", path) });
+    let url = format!(
+        "{}{}",
+        base_url.trim_end_matches('/'),
+        if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{}", path)
+        }
+    );
     info!("[skill:rest_api] {} {}", method, url);
 
     let client = reqwest::Client::builder()
@@ -111,11 +134,11 @@ async fn execute_rest_api_call(
         .build()?;
 
     let mut request = match method.to_uppercase().as_str() {
-        "POST"   => client.post(&url),
-        "PUT"    => client.put(&url),
-        "PATCH"  => client.patch(&url),
+        "POST" => client.post(&url),
+        "PUT" => client.put(&url),
+        "PATCH" => client.patch(&url),
         "DELETE" => client.delete(&url),
-        _        => client.get(&url),
+        _ => client.get(&url),
     };
 
     request = request.header(auth_header, format!("{} {}", auth_prefix, api_key));
@@ -129,22 +152,37 @@ async fn execute_rest_api_call(
     }
 
     if let Some(body) = args["body"].as_str() {
-        request = request.header("Content-Type", "application/json").body(body.to_string());
+        request = request
+            .header("Content-Type", "application/json")
+            .body(body.to_string());
     }
 
     let resp = request.send().await?;
     let status = resp.status().as_u16();
     let body = resp.text().await?;
-    let truncated = if body.len() > 30_000 { format!("{}...\n[truncated, {} total bytes]", &body[..30_000], body.len()) } else { body };
+    let truncated = if body.len() > 30_000 {
+        format!(
+            "{}...\n[truncated, {} total bytes]",
+            &body[..30_000],
+            body.len()
+        )
+    } else {
+        body
+    };
 
-    Ok(format!("API {} {} → {}\n\n{}", method, path, status, truncated))
+    Ok(format!(
+        "API {} {} → {}\n\n{}",
+        method, path, status, truncated
+    ))
 }
 
 async fn execute_webhook_send(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let payload = args.get("payload").ok_or("webhook_send: missing 'payload'")?;
+    let payload = args
+        .get("payload")
+        .ok_or("webhook_send: missing 'payload'")?;
     let url = creds.get("WEBHOOK_URL").ok_or("Missing WEBHOOK_URL")?;
     info!("[skill:webhook] POST {}", url);
 
@@ -152,7 +190,8 @@ async fn execute_webhook_send(
         .timeout(Duration::from_secs(15))
         .build()?;
 
-    let mut request = client.post(url.as_str())
+    let mut request = client
+        .post(url.as_str())
         .header("Content-Type", "application/json")
         .json(payload);
 
@@ -169,9 +208,18 @@ async fn execute_webhook_send(
     let body = resp.text().await.unwrap_or_default();
 
     if status < 400 {
-        Ok(format!("Webhook delivered (HTTP {}). Response: {}", status, &body[..body.len().min(1000)]))
+        Ok(format!(
+            "Webhook delivered (HTTP {}). Response: {}",
+            status,
+            &body[..body.len().min(1000)]
+        ))
     } else {
-        Err(format!("Webhook failed (HTTP {}): {}", status, &body[..body.len().min(1000)]).into())
+        Err(format!(
+            "Webhook failed (HTTP {}): {}",
+            status,
+            &body[..body.len().min(1000)]
+        )
+        .into())
     }
 }
 
@@ -188,11 +236,18 @@ async fn execute_image_generate(
     args: &serde_json::Value,
     creds: &std::collections::HashMap<String, String>,
 ) -> EngineResult<String> {
-    let prompt = args["prompt"].as_str().ok_or("image_generate: missing 'prompt'")?;
+    let prompt = args["prompt"]
+        .as_str()
+        .ok_or("image_generate: missing 'prompt'")?;
     let filename = args["filename"].as_str().unwrap_or("");
-    let api_key = creds.get("GEMINI_API_KEY").ok_or("Missing GEMINI_API_KEY credential")?;
+    let api_key = creds
+        .get("GEMINI_API_KEY")
+        .ok_or("Missing GEMINI_API_KEY credential")?;
 
-    info!("[skill:image_gen] Generating image for prompt: {}", &prompt[..prompt.len().min(80)]);
+    info!(
+        "[skill:image_gen] Generating image for prompt: {}",
+        &prompt[..prompt.len().min(80)]
+    );
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(120))
@@ -208,7 +263,8 @@ async fn execute_image_generate(
         "generationConfig": { "responseModalities": ["TEXT", "IMAGE"] }
     });
 
-    let resp = client.post(&url)
+    let resp = client
+        .post(&url)
         .header("Content-Type", "application/json")
         .json(&body)
         .send()
@@ -218,13 +274,19 @@ async fn execute_image_generate(
     let resp_text = resp.text().await?;
 
     if status >= 400 {
-        return Err(format!("Gemini API error (HTTP {}): {}", status, &resp_text[..resp_text.len().min(500)]).into());
+        return Err(format!(
+            "Gemini API error (HTTP {}): {}",
+            status,
+            &resp_text[..resp_text.len().min(500)]
+        )
+        .into());
     }
 
     let resp_json: serde_json::Value = serde_json::from_str(&resp_text)?;
 
     let parts = resp_json
-        .get("candidates").and_then(|c| c.get(0))
+        .get("candidates")
+        .and_then(|c| c.get(0))
         .and_then(|c| c.get("content"))
         .and_then(|c| c.get("parts"))
         .and_then(|p| p.as_array())
@@ -259,7 +321,8 @@ async fn execute_image_generate(
 
     let output_name = if filename.is_empty() {
         let ts = chrono::Utc::now().format("%Y%m%d_%H%M%S").to_string();
-        let slug: String = prompt.chars()
+        let slug: String = prompt
+            .chars()
             .filter(|c| c.is_alphanumeric() || *c == ' ')
             .take(30)
             .collect::<String>()
@@ -280,7 +343,8 @@ async fn execute_image_generate(
     let output_path = output_dir.join(format!("{}.{}", output_name, ext));
 
     use base64::Engine as _;
-    let bytes = base64::engine::general_purpose::STANDARD.decode(&base64_data)
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&base64_data)
         .map_err(|e| crate::atoms::error::EngineError::Other(e.to_string()))?;
 
     std::fs::write(&output_path, &bytes)?;
@@ -288,9 +352,17 @@ async fn execute_image_generate(
     let path_str = output_path.to_string_lossy().to_string();
     let size_kb = bytes.len() / 1024;
 
-    info!("[skill:image_gen] Saved {} ({} KB) to {}", mime_type, size_kb, path_str);
+    info!(
+        "[skill:image_gen] Saved {} ({} KB) to {}",
+        mime_type, size_kb, path_str
+    );
 
-    let mut result = format!("Image generated and saved to: {}\nSize: {} KB | Format: {}", path_str, size_kb, ext.to_uppercase());
+    let mut result = format!(
+        "Image generated and saved to: {}\nSize: {} KB | Format: {}",
+        path_str,
+        size_kb,
+        ext.to_uppercase()
+    );
     if let Some(text) = text_response {
         result.push_str(&format!("\n\nModel notes: {}", text));
     }

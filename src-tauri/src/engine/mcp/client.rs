@@ -38,8 +38,7 @@ impl McpClient {
             config.name, config.command
         );
 
-        let transport =
-            StdioTransport::spawn(&config.command, &config.args, &config.env).await?;
+        let transport = StdioTransport::spawn(&config.command, &config.args, &config.env).await?;
 
         let mut client = McpClient {
             config,
@@ -110,10 +109,7 @@ impl McpClient {
         if let Some(err) = resp.error {
             // Server may not support tools — that's OK
             if err.code == -32601 {
-                info!(
-                    "[mcp] Server '{}' does not expose tools",
-                    self.config.name
-                );
+                info!("[mcp] Server '{}' does not expose tools", self.config.name);
                 self.tools = vec![];
                 return Ok(());
             }
@@ -124,8 +120,8 @@ impl McpClient {
         }
 
         if let Some(result) = resp.result {
-            let list: ToolsListResult = serde_json::from_value(result)
-                .map_err(|e| format!("Parse tools/list: {}", e))?;
+            let list: ToolsListResult =
+                serde_json::from_value(result).map_err(|e| format!("Parse tools/list: {}", e))?;
             info!(
                 "[mcp] Server '{}' exposes {} tools",
                 self.config.name,

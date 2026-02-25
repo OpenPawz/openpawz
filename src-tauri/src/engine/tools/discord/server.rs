@@ -2,9 +2,12 @@
 //
 // Tools: discord_server_info, discord_create_invite
 
-use crate::atoms::types::*;
+use super::{
+    authorized_client, discord_request, get_bot_token, resolve_channel_id, resolve_server_id,
+    DISCORD_API,
+};
 use crate::atoms::error::EngineResult;
-use super::{DISCORD_API, get_bot_token, resolve_server_id, resolve_channel_id, authorized_client, discord_request};
+use crate::atoms::types::*;
 use log::info;
 use serde_json::{json, Value};
 
@@ -48,8 +51,12 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "discord_server_info"   => Some(exec_info(args, app_handle).await.map_err(|e| e.to_string())),
-        "discord_create_invite" => Some(exec_invite(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_server_info" => Some(exec_info(args, app_handle).await.map_err(|e| e.to_string())),
+        "discord_create_invite" => Some(
+            exec_invite(args, app_handle)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
@@ -73,12 +80,19 @@ async fn exec_info(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
     let boost_tier = data["premium_tier"].as_i64().unwrap_or(0);
     let description = data["description"].as_str().unwrap_or("(none)");
     let verification = match data["verification_level"].as_i64().unwrap_or(0) {
-        0 => "None", 1 => "Low", 2 => "Medium", 3 => "High", 4 => "Very High", _ => "?",
+        0 => "None",
+        1 => "Low",
+        2 => "Medium",
+        3 => "High",
+        4 => "Very High",
+        _ => "?",
     };
-    let features: Vec<&str> = data["features"].as_array()
+    let features: Vec<&str> = data["features"]
+        .as_array()
         .map(|f| f.iter().filter_map(|v| v.as_str()).collect())
         .unwrap_or_default();
-    let icon = data["icon"].as_str()
+    let icon = data["icon"]
+        .as_str()
         .map(|h| format!("https://cdn.discordapp.com/icons/{}/{}.png", server_id, h))
         .unwrap_or_else(|| "(none)".into());
 
@@ -91,9 +105,20 @@ async fn exec_info(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
         • Description: {}\n\
         • Features: {}\n\
         • Icon: {}",
-        name, server_id, owner_id, members, online, boosts, boost_tier,
-        verification, description,
-        if features.is_empty() { "(none)".to_string() } else { features.join(", ") },
+        name,
+        server_id,
+        owner_id,
+        members,
+        online,
+        boosts,
+        boost_tier,
+        verification,
+        description,
+        if features.is_empty() {
+            "(none)".to_string()
+        } else {
+            features.join(", ")
+        },
         icon
     ))
 }
@@ -106,9 +131,15 @@ async fn exec_invite(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let (client, auth) = authorized_client(&token);
 
     let mut body = json!({});
-    if let Some(age) = args["max_age"].as_i64() { body["max_age"] = json!(age); }
-    if let Some(uses) = args["max_uses"].as_i64() { body["max_uses"] = json!(uses); }
-    if let Some(unique) = args["unique"].as_bool() { body["unique"] = json!(unique); }
+    if let Some(age) = args["max_age"].as_i64() {
+        body["max_age"] = json!(age);
+    }
+    if let Some(uses) = args["max_uses"].as_i64() {
+        body["max_uses"] = json!(uses);
+    }
+    if let Some(unique) = args["unique"].as_bool() {
+        body["unique"] = json!(unique);
+    }
 
     let url = format!("{}/channels/{}/invites", DISCORD_API, channel_id);
     let result = discord_request(&client, reqwest::Method::POST, &url, &auth, Some(&body)).await?;
@@ -116,8 +147,16 @@ async fn exec_invite(args: &Value, app_handle: &tauri::AppHandle) -> EngineResul
     let code = result["code"].as_str().unwrap_or("?");
     let max_age = result["max_age"].as_i64().unwrap_or(0);
     let max_uses = result["max_uses"].as_i64().unwrap_or(0);
-    let expiry = if max_age == 0 { "never".to_string() } else { format!("{}h", max_age / 3600) };
-    let uses = if max_uses == 0 { "unlimited".to_string() } else { format!("{}", max_uses) };
+    let expiry = if max_age == 0 {
+        "never".to_string()
+    } else {
+        format!("{}h", max_age / 3600)
+    };
+    let uses = if max_uses == 0 {
+        "unlimited".to_string()
+    } else {
+        format!("{}", max_uses)
+    };
 
     info!("[discord] Created invite: discord.gg/{}", code);
     Ok(format!(

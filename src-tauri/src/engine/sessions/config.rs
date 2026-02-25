@@ -1,6 +1,6 @@
-use rusqlite::params;
-use crate::atoms::error::EngineResult;
 use super::SessionStore;
+use crate::atoms::error::EngineResult;
+use rusqlite::params;
 
 impl SessionStore {
     // ── Config storage ─────────────────────────────────────────────────

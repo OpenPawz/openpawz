@@ -1,10 +1,10 @@
 // Agent Squads — CRUD operations on the `squads` and `squad_members` tables.
 // Squads group agents into named teams that can be assigned goals collectively.
 
-use rusqlite::params;
-use crate::engine::types::{Squad, SquadMember};
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::types::{Squad, SquadMember};
+use rusqlite::params;
 
 impl SessionStore {
     /// List all squads with their members.
@@ -12,27 +12,27 @@ impl SessionStore {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
             "SELECT id, name, goal, status, created_at, updated_at
-             FROM squads ORDER BY updated_at DESC"
+             FROM squads ORDER BY updated_at DESC",
         )?;
-        let squads = stmt.query_map([], |row| {
-            Ok(Squad {
-                id: row.get(0)?,
-                name: row.get(1)?,
-                goal: row.get(2)?,
-                status: row.get(3)?,
-                members: vec![],
-                created_at: row.get(4)?,
-                updated_at: row.get(5)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect::<Vec<_>>();
+        let squads = stmt
+            .query_map([], |row| {
+                Ok(Squad {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    goal: row.get(2)?,
+                    status: row.get(3)?,
+                    members: vec![],
+                    created_at: row.get(4)?,
+                    updated_at: row.get(5)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
 
         let mut result = Vec::new();
         for mut s in squads {
-            let mut m_stmt = conn.prepare(
-                "SELECT agent_id, role FROM squad_members WHERE squad_id = ?1"
-            )?;
+            let mut m_stmt =
+                conn.prepare("SELECT agent_id, role FROM squad_members WHERE squad_id = ?1")?;
             s.members = m_stmt
                 .query_map(params![s.id], |row| {
                     Ok(SquadMember {
@@ -113,13 +113,15 @@ impl SessionStore {
 mod tests {
     use super::*;
     use crate::engine::sessions::schema_for_testing;
-    use rusqlite::Connection;
     use parking_lot::Mutex;
+    use rusqlite::Connection;
 
     fn test_store() -> SessionStore {
         let conn = Connection::open_in_memory().unwrap();
         schema_for_testing(&conn);
-        SessionStore { conn: Mutex::new(conn) }
+        SessionStore {
+            conn: Mutex::new(conn),
+        }
     }
 
     #[test]
@@ -131,8 +133,14 @@ mod tests {
             goal: "Build the thing".into(),
             status: "active".into(),
             members: vec![
-                SquadMember { agent_id: "alice".into(), role: "coordinator".into() },
-                SquadMember { agent_id: "bob".into(), role: "member".into() },
+                SquadMember {
+                    agent_id: "alice".into(),
+                    role: "coordinator".into(),
+                },
+                SquadMember {
+                    agent_id: "bob".into(),
+                    role: "member".into(),
+                },
             ],
             created_at: String::new(),
             updated_at: String::new(),
@@ -159,10 +167,15 @@ mod tests {
         };
         store.create_squad(&squad).unwrap();
 
-        store.add_squad_member("s1", &SquadMember {
-            agent_id: "alice".into(),
-            role: "coordinator".into(),
-        }).unwrap();
+        store
+            .add_squad_member(
+                "s1",
+                &SquadMember {
+                    agent_id: "alice".into(),
+                    role: "coordinator".into(),
+                },
+            )
+            .unwrap();
 
         let squads = store.list_squads().unwrap();
         assert_eq!(squads[0].members.len(), 1);
@@ -180,9 +193,10 @@ mod tests {
             name: "Team".into(),
             goal: "test".into(),
             status: "active".into(),
-            members: vec![
-                SquadMember { agent_id: "alice".into(), role: "member".into() },
-            ],
+            members: vec![SquadMember {
+                agent_id: "alice".into(),
+                role: "member".into(),
+            }],
             created_at: String::new(),
             updated_at: String::new(),
         };

@@ -40,17 +40,27 @@ pub(crate) fn rlp_encode_list(items: &[Vec<u8>]) -> Vec<u8> {
 
 /// Convert usize to minimal big-endian byte representation
 pub(crate) fn to_minimal_be_bytes(val: usize) -> Vec<u8> {
-    if val == 0 { return vec![]; }
+    if val == 0 {
+        return vec![];
+    }
     let bytes = val.to_be_bytes();
-    let first_nonzero = bytes.iter().position(|&b| b != 0).unwrap_or(bytes.len() - 1);
+    let first_nonzero = bytes
+        .iter()
+        .position(|&b| b != 0)
+        .unwrap_or(bytes.len() - 1);
     bytes[first_nonzero..].to_vec()
 }
 
 /// Encode a u64 as minimal big-endian bytes (for RLP)
 pub(crate) fn u64_to_minimal_be(val: u64) -> Vec<u8> {
-    if val == 0 { return vec![]; }
+    if val == 0 {
+        return vec![];
+    }
     let bytes = val.to_be_bytes();
-    let first_nonzero = bytes.iter().position(|&b| b != 0).unwrap_or(bytes.len() - 1);
+    let first_nonzero = bytes
+        .iter()
+        .position(|&b| b != 0)
+        .unwrap_or(bytes.len() - 1);
     bytes[first_nonzero..].to_vec()
 }
 

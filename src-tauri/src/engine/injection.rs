@@ -73,10 +73,19 @@ fn build_patterns() -> Vec<InjectionPattern> {
                 let l = t.to_lowercase();
                 let fillers: &[&str] = &["", "all ", "your ", "the ", "my ", "a ", "an "];
                 for verb in &["ignore", "disregard", "forget", "override"] {
-                    for target in &["previous instructions", "prior instructions", "above instructions",
-                                    "earlier instructions", "previous prompt", "prior prompt",
-                                    "all instructions", "your instructions", "system prompt",
-                                    "previous rules", "your rules"] {
+                    for target in &[
+                        "previous instructions",
+                        "prior instructions",
+                        "above instructions",
+                        "earlier instructions",
+                        "previous prompt",
+                        "prior prompt",
+                        "all instructions",
+                        "your instructions",
+                        "system prompt",
+                        "previous rules",
+                        "your rules",
+                    ] {
                         for filler in fillers {
                             let phrase = format!("{} {}{}", verb, filler, target);
                             if l.contains(&phrase) {
@@ -94,7 +103,10 @@ fn build_patterns() -> Vec<InjectionPattern> {
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
-                if l.contains("you are now a") || l.contains("you are now an") || l.contains("you are now the") {
+                if l.contains("you are now a")
+                    || l.contains("you are now an")
+                    || l.contains("you are now the")
+                {
                     Some("you are now a/an/the".into())
                 } else {
                     None
@@ -113,9 +125,18 @@ fn build_patterns() -> Vec<InjectionPattern> {
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
-                for prefix in &["system override", "system command", "system directive",
-                                "admin override", "admin command", "root override", "root command"] {
-                    if l.contains(prefix) { return Some(prefix.to_string()); }
+                for prefix in &[
+                    "system override",
+                    "system command",
+                    "system directive",
+                    "admin override",
+                    "admin command",
+                    "root override",
+                    "root command",
+                ] {
+                    if l.contains(prefix) {
+                        return Some(prefix.to_string());
+                    }
                 }
                 None
             },
@@ -126,8 +147,11 @@ fn build_patterns() -> Vec<InjectionPattern> {
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
-                if l.contains("dan mode") || l.contains("dan prompt") || l.contains("dan jailbreak")
-                    || l.contains("do anything now") {
+                if l.contains("dan mode")
+                    || l.contains("dan prompt")
+                    || l.contains("dan jailbreak")
+                    || l.contains("do anything now")
+                {
                     Some("DAN jailbreak".into())
                 } else {
                     None
@@ -138,21 +162,34 @@ fn build_patterns() -> Vec<InjectionPattern> {
             description: "Known DAN jailbreak pattern",
         },
         InjectionPattern {
-            check: |t| find_ci(t, "developer mode enabled").or_else(|| find_ci(t, "developer mode activated")),
+            check: |t| {
+                find_ci(t, "developer mode enabled")
+                    .or_else(|| find_ci(t, "developer mode activated"))
+            },
             severity: InjectionSeverity::Critical,
             category: "jailbreak",
             description: "Fake developer mode activation",
         },
-
         // ── HIGH: Prompt leaking ──
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
-                for verb in &["show", "reveal", "tell", "display", "print", "output", "repeat", "echo"] {
-                    for target in &["your system prompt", "your instructions", "your rules",
-                                    "the system prompt", "your configuration", "your guidelines",
-                                    "your prompt", "the prompt"] {
-                        if l.contains(&format!("{} me {}", verb, target)) || l.contains(&format!("{} {}", verb, target)) {
+                for verb in &[
+                    "show", "reveal", "tell", "display", "print", "output", "repeat", "echo",
+                ] {
+                    for target in &[
+                        "your system prompt",
+                        "your instructions",
+                        "your rules",
+                        "the system prompt",
+                        "your configuration",
+                        "your guidelines",
+                        "your prompt",
+                        "the prompt",
+                    ] {
+                        if l.contains(&format!("{} me {}", verb, target))
+                            || l.contains(&format!("{} {}", verb, target))
+                        {
                             return Some(format!("{} {}", verb, target));
                         }
                     }
@@ -166,8 +203,11 @@ fn build_patterns() -> Vec<InjectionPattern> {
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
-                if l.contains("what are your instructions") || l.contains("what is your system prompt")
-                    || l.contains("what are your rules") || l.contains("what is your prompt") {
+                if l.contains("what are your instructions")
+                    || l.contains("what is your system prompt")
+                    || l.contains("what are your rules")
+                    || l.contains("what is your prompt")
+                {
                     Some("what are your instructions/prompt".into())
                 } else {
                     None
@@ -183,7 +223,6 @@ fn build_patterns() -> Vec<InjectionPattern> {
             category: "leaking",
             description: "Repeat text above (prompt leak)",
         },
-
         // ── HIGH: Tool injection ──
         InjectionPattern {
             check: |t| find_ci(t, "tool_call("),
@@ -191,12 +230,14 @@ fn build_patterns() -> Vec<InjectionPattern> {
             category: "tool_injection",
             description: "Direct tool_call injection",
         },
-
         // ── MEDIUM: Markup injection ──
         InjectionPattern {
             check: |t| {
-                if t.contains("[INST]") || t.contains("[/INST]") { Some("[INST] markers".into()) }
-                else { None }
+                if t.contains("[INST]") || t.contains("[/INST]") {
+                    Some("[INST] markers".into())
+                } else {
+                    None
+                }
             },
             severity: InjectionSeverity::Medium,
             category: "markup",
@@ -204,8 +245,11 @@ fn build_patterns() -> Vec<InjectionPattern> {
         },
         InjectionPattern {
             check: |t| {
-                if t.contains("<|im_start|>") || t.contains("<|im_end|>") { Some("ChatML markers".into()) }
-                else { None }
+                if t.contains("<|im_start|>") || t.contains("<|im_end|>") {
+                    Some("ChatML markers".into())
+                } else {
+                    None
+                }
             },
             severity: InjectionSeverity::Medium,
             category: "markup",
@@ -216,9 +260,14 @@ fn build_patterns() -> Vec<InjectionPattern> {
                 // Check for role prefix injection at line starts
                 for line in t.lines() {
                     let trimmed = line.trim();
-                    if trimmed.starts_with("System:") || trimmed.starts_with("Human:")
-                        || trimmed.starts_with("Assistant:") {
-                        return Some(format!("Role prefix: {}", crate::engine::types::truncate_utf8(trimmed, 20)));
+                    if trimmed.starts_with("System:")
+                        || trimmed.starts_with("Human:")
+                        || trimmed.starts_with("Assistant:")
+                    {
+                        return Some(format!(
+                            "Role prefix: {}",
+                            crate::engine::types::truncate_utf8(trimmed, 20)
+                        ));
                     }
                 }
                 None
@@ -230,9 +279,13 @@ fn build_patterns() -> Vec<InjectionPattern> {
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
-                if l.contains("<system>") || l.contains("</system>")
-                    || l.contains("<user>") || l.contains("</user>")
-                    || l.contains("<assistant>") || l.contains("</assistant>") {
+                if l.contains("<system>")
+                    || l.contains("</system>")
+                    || l.contains("<user>")
+                    || l.contains("</user>")
+                    || l.contains("<assistant>")
+                    || l.contains("</assistant>")
+                {
                     Some("XML role tags".into())
                 } else {
                     None
@@ -242,15 +295,18 @@ fn build_patterns() -> Vec<InjectionPattern> {
             category: "markup",
             description: "XML role tag injection",
         },
-
         // ── MEDIUM: Social engineering ──
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
-                if l.contains("without any restrictions") || l.contains("without restrictions")
-                    || l.contains("without limitations") || l.contains("without safety")
-                    || l.contains("without guardrails") || l.contains("without filters")
-                    || l.contains("without censorship") {
+                if l.contains("without any restrictions")
+                    || l.contains("without restrictions")
+                    || l.contains("without limitations")
+                    || l.contains("without safety")
+                    || l.contains("without guardrails")
+                    || l.contains("without filters")
+                    || l.contains("without censorship")
+                {
                     Some("without restrictions/safety".into())
                 } else {
                     None
@@ -260,14 +316,19 @@ fn build_patterns() -> Vec<InjectionPattern> {
             category: "social",
             description: "Requesting removal of safety restrictions",
         },
-
         // ── LOW: Bypass mentions ──
         InjectionPattern {
             check: |t| {
                 let l = t.to_lowercase();
                 let fillers: &[&str] = &["", "the ", "your ", "a ", "an ", "all ", "my "];
                 for verb in &["bypass", "circumvent", "evade", "disable"] {
-                    for target in &["safety", "security", "content filter", "moderation", "filter"] {
+                    for target in &[
+                        "safety",
+                        "security",
+                        "content filter",
+                        "moderation",
+                        "filter",
+                    ] {
                         for filler in fillers {
                             let phrase = format!("{} {}{}", verb, filler, target);
                             if l.contains(&phrase) {
@@ -325,7 +386,9 @@ pub fn scan_for_injection(text: &str) -> InjectionScanResult {
         }
     }
 
-    if score > 100 { score = 100; }
+    if score > 100 {
+        score = 100;
+    }
 
     InjectionScanResult {
         is_injection: !matches.is_empty(),
@@ -345,7 +408,8 @@ pub fn log_injection_detected(channel: &str, user_id: &str, result: &InjectionSc
     if result.is_injection {
         warn!(
             "[injection] {} from user {} — severity={:?} score={} matches={}",
-            channel, user_id,
+            channel,
+            user_id,
             result.severity.unwrap_or(InjectionSeverity::Low),
             result.score,
             result.matches.len()

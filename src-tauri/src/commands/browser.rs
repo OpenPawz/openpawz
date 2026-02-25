@@ -82,13 +82,10 @@ fn walkdir(path: &std::path::Path) -> u64 {
 // ── Browser Profile Commands ───────────────────────────────────────────
 
 #[tauri::command]
-pub fn engine_browser_get_config(
-    state: State<'_, EngineState>,
-) -> Result<BrowserConfig, String> {
+pub fn engine_browser_get_config(state: State<'_, EngineState>) -> Result<BrowserConfig, String> {
     match state.store.get_config("browser_config") {
         Ok(Some(json)) => {
-            let mut config: BrowserConfig =
-                serde_json::from_str(&json).unwrap_or_default();
+            let mut config: BrowserConfig = serde_json::from_str(&json).unwrap_or_default();
             // Refresh sizes
             for p in &mut config.profiles {
                 p.size_bytes = profile_dir_size(&p.user_data_dir);
@@ -106,7 +103,11 @@ pub fn engine_browser_set_config(
 ) -> Result<(), String> {
     let json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
     state.store.set_config("browser_config", &json)?;
-    info!("[browser] Config saved: {} profiles, default={}", config.profiles.len(), config.default_profile);
+    info!(
+        "[browser] Config saved: {} profiles, default={}",
+        config.profiles.len(),
+        config.default_profile
+    );
     Ok(())
 }
 
@@ -115,7 +116,14 @@ pub fn engine_browser_create_profile(
     state: State<'_, EngineState>,
     name: String,
 ) -> Result<BrowserProfile, String> {
-    let id = format!("profile-{}", uuid::Uuid::new_v4().to_string().split('-').next().unwrap_or("x"));
+    let id = format!(
+        "profile-{}",
+        uuid::Uuid::new_v4()
+            .to_string()
+            .split('-')
+            .next()
+            .unwrap_or("x")
+    );
     let user_data_dir = default_profile_dir(&id);
 
     // Create the directory
@@ -199,7 +207,8 @@ pub fn engine_screenshots_list() -> Result<Vec<ScreenshotEntry>, String> {
     }
 
     let mut entries = Vec::new();
-    let read = std::fs::read_dir(&dir).map_err(|e| format!("Failed to read screenshots dir: {}", e))?;
+    let read =
+        std::fs::read_dir(&dir).map_err(|e| format!("Failed to read screenshots dir: {}", e))?;
 
     for entry in read.flatten() {
         let path = entry.path();
@@ -207,13 +216,15 @@ pub fn engine_screenshots_list() -> Result<Vec<ScreenshotEntry>, String> {
             continue;
         }
         let meta = entry.metadata().ok();
-        let filename = path.file_name().unwrap_or_default().to_string_lossy().into();
+        let filename = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into();
         let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
         let created_at = meta
             .and_then(|m| m.created().ok())
-            .map(|t| {
-                chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339()
-            })
+            .map(|t| chrono::DateTime::<chrono::Utc>::from(t).to_rfc3339())
             .unwrap_or_default();
 
         entries.push(ScreenshotEntry {
@@ -231,21 +242,15 @@ pub fn engine_screenshots_list() -> Result<Vec<ScreenshotEntry>, String> {
 
 /// Get a screenshot as base64-encoded PNG for display in chat.
 #[tauri::command]
-pub fn engine_screenshot_get(
-    filename: String,
-) -> Result<ScreenshotEntry, String> {
+pub fn engine_screenshot_get(filename: String) -> Result<ScreenshotEntry, String> {
     let dir = std::env::temp_dir().join("paw-screenshots");
     let path = dir.join(&filename);
     if !path.exists() {
         return Err(format!("Screenshot not found: {}", filename));
     }
 
-    let data = std::fs::read(&path)
-        .map_err(|e| format!("Failed to read screenshot: {}", e))?;
-    let base64 = base64::Engine::encode(
-        &base64::engine::general_purpose::STANDARD,
-        &data,
-    );
+    let data = std::fs::read(&path).map_err(|e| format!("Failed to read screenshot: {}", e))?;
+    let base64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data);
 
     let meta = std::fs::metadata(&path).ok();
     let size_bytes = meta.as_ref().map(|m| m.len()).unwrap_or(0);
@@ -269,8 +274,7 @@ pub fn engine_screenshot_delete(filename: String) -> Result<(), String> {
     let dir = std::env::temp_dir().join("paw-screenshots");
     let path = dir.join(&filename);
     if path.exists() {
-        std::fs::remove_file(&path)
-            .map_err(|e| format!("Failed to delete screenshot: {}", e))?;
+        std::fs::remove_file(&path).map_err(|e| format!("Failed to delete screenshot: {}", e))?;
     }
     info!("[browser] Deleted screenshot: {}", filename);
     Ok(())
@@ -309,15 +313,19 @@ pub fn engine_workspaces_list() -> Result<Vec<WorkspaceInfo>, String> {
     }
 
     let mut workspaces = Vec::new();
-    let read = std::fs::read_dir(&base)
-        .map_err(|e| format!("Failed to read workspaces dir: {}", e))?;
+    let read =
+        std::fs::read_dir(&base).map_err(|e| format!("Failed to read workspaces dir: {}", e))?;
 
     for entry in read.flatten() {
         let path = entry.path();
         if !path.is_dir() {
             continue;
         }
-        let agent_id = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let agent_id = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let (total_files, total_size) = count_dir_recursive(&path);
 
         workspaces.push(WorkspaceInfo {
@@ -355,14 +363,18 @@ pub fn engine_workspace_files(
     }
 
     let mut files = Vec::new();
-    let read = std::fs::read_dir(&target)
-        .map_err(|e| format!("Failed to read workspace dir: {}", e))?;
+    let read =
+        std::fs::read_dir(&target).map_err(|e| format!("Failed to read workspace dir: {}", e))?;
 
     for entry in read.flatten() {
         let path = entry.path();
         let meta = entry.metadata().ok();
         let is_dir = path.is_dir();
-        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
         let size_bytes = if is_dir {
             count_dir_recursive(&path).1
         } else {
@@ -382,9 +394,7 @@ pub fn engine_workspace_files(
         });
     }
 
-    files.sort_by(|a, b| {
-        b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name))
-    });
+    files.sort_by(|a, b| b.is_dir.cmp(&a.is_dir).then(a.name.cmp(&b.name)));
     Ok(files)
 }
 
@@ -398,8 +408,7 @@ pub fn engine_workspace_delete(agent_id: String) -> Result<(), String> {
         .join(&agent_id);
 
     if base.exists() {
-        std::fs::remove_dir_all(&base)
-            .map_err(|e| format!("Failed to delete workspace: {}", e))?;
+        std::fs::remove_dir_all(&base).map_err(|e| format!("Failed to delete workspace: {}", e))?;
         info!("[workspace] Deleted workspace for agent: {}", agent_id);
     }
     Ok(())
@@ -480,9 +489,7 @@ impl Default for NetworkPolicy {
 }
 
 #[tauri::command]
-pub fn engine_network_get_policy(
-    state: State<'_, EngineState>,
-) -> Result<NetworkPolicy, String> {
+pub fn engine_network_get_policy(state: State<'_, EngineState>) -> Result<NetworkPolicy, String> {
     match state.store.get_config("network_policy") {
         Ok(Some(json)) => serde_json::from_str(&json).map_err(|e| e.to_string()),
         _ => Ok(NetworkPolicy::default()),
@@ -523,13 +530,20 @@ pub fn engine_network_check_url(
     let domain = extract_domain(&url);
 
     // Always block blocked domains
-    if policy.blocked_domains.iter().any(|d| domain_matches(&domain, d)) {
+    if policy
+        .blocked_domains
+        .iter()
+        .any(|d| domain_matches(&domain, d))
+    {
         return Ok((false, domain));
     }
 
     // If allowlist is enabled, check against it
     if policy.enabled {
-        let allowed = policy.allowed_domains.iter().any(|d| domain_matches(&domain, d));
+        let allowed = policy
+            .allowed_domains
+            .iter()
+            .any(|d| domain_matches(&domain, d));
         return Ok((allowed, domain));
     }
 

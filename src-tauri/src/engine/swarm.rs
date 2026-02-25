@@ -7,12 +7,12 @@
 // Depth-limited: max N auto-wakes per squad activation to prevent infinite loops.
 // Counter resets after cooldown period or when explicitly cleared.
 
-use crate::engine::state::{EngineState, resolve_provider_for_model, normalize_model_name};
-use crate::engine::types::*;
-use crate::engine::providers::AnyProvider;
 use crate::engine::agent_loop;
 use crate::engine::chat as chat_org;
+use crate::engine::providers::AnyProvider;
 use crate::engine::skills;
+use crate::engine::state::{normalize_model_name, resolve_provider_for_model, EngineState};
+use crate::engine::types::*;
 use log::{info, warn};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -77,7 +77,10 @@ pub fn reset_counter(squad_id: &str) {
 pub fn reset_all_counters() {
     let mut counters = SWARM_COUNTERS.lock();
     if !counters.is_empty() {
-        info!("[swarm] Resetting swarm counters for {} squads (new human turn)", counters.len());
+        info!(
+            "[swarm] Resetting swarm counters for {} squads (new human turn)",
+            counters.len()
+        );
         counters.clear();
     }
 }
@@ -207,22 +210,25 @@ async fn run_swarm_turn(
     let (provider_config, model) = {
         let agent_model = state.store.get_agent_model(recipient_id);
         let cfg = state.config.lock();
-        let default_model = cfg
-            .default_model
-            .clone()
-            .unwrap_or_else(|| "gpt-4o".into());
+        let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".into());
         let model = if let Some(ref am) = agent_model {
             // Agent has an explicit model override in the DB — honour it
             normalize_model_name(am).to_string()
         } else {
-            normalize_model_name(
-                &cfg.model_routing
-                    .resolve(recipient_id, "worker", "", &default_model),
-            )
+            normalize_model_name(&cfg.model_routing.resolve(
+                recipient_id,
+                "worker",
+                "",
+                &default_model,
+            ))
             .to_string()
         };
-        info!("[swarm] Resolved model for '{}': {} (agent_override={})",
-            recipient_id, model, agent_model.is_some());
+        info!(
+            "[swarm] Resolved model for '{}': {} (agent_override={})",
+            recipient_id,
+            model,
+            agent_model.is_some()
+        );
         let provider = resolve_provider_for_model(&model, &cfg.providers)
             .or_else(|| {
                 cfg.default_provider
@@ -264,8 +270,13 @@ async fn run_swarm_turn(
         let cfg = state.config.lock();
         cfg.user_timezone.clone()
     };
-    let runtime_context =
-        chat_org::build_runtime_context(&model, &provider_name, &session_id, recipient_id, &user_tz);
+    let runtime_context = chat_org::build_runtime_context(
+        &model,
+        &provider_name,
+        &session_id,
+        recipient_id,
+        &user_tz,
+    );
 
     let mut full_system_prompt = chat_org::compose_chat_system_prompt(
         base_system_prompt.as_deref(),
@@ -319,9 +330,12 @@ async fn run_swarm_turn(
         let cfg = state.config.lock();
         cfg.context_window_tokens
     };
-    let mut messages = state
-        .store
-        .load_conversation(&session_id, full_system_prompt.as_deref(), Some(context_window), Some(recipient_id))?;
+    let mut messages = state.store.load_conversation(
+        &session_id,
+        full_system_prompt.as_deref(),
+        Some(context_window),
+        Some(recipient_id),
+    )?;
 
     // Build tools — swarm agents get the full tool set (no Tool RAG gating)
     // because they're operating autonomously toward a specific goal.
@@ -333,7 +347,13 @@ async fn run_swarm_turn(
         }
         let enabled_ids: Vec<String> = crate::engine::skills::builtin_skills()
             .iter()
-            .filter(|s| state.store.get_skill_enabled_state(&s.id).unwrap_or(None).unwrap_or(s.default_enabled))
+            .filter(|s| {
+                state
+                    .store
+                    .get_skill_enabled_state(&s.id)
+                    .unwrap_or(None)
+                    .unwrap_or(s.default_enabled)
+            })
             .map(|s| s.id.clone())
             .collect();
         for t in crate::atoms::types::ToolDefinition::skill_tools(&enabled_ids) {
@@ -380,9 +400,9 @@ async fn run_swarm_turn(
         recipient_id,
         daily_budget,
         Some(&daily_tokens),
-        None,  // thinking_level
-        true,  // auto_approve_all — swarm agents run autonomously
-        None,  // yield_signal
+        None, // thinking_level
+        true, // auto_approve_all — swarm agents run autonomously
+        None, // yield_signal
     )
     .await
     .map_err(|e| e.to_string())?;

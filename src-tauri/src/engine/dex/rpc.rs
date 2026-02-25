@@ -25,38 +25,60 @@ pub(crate) async fn rpc_call(
         .send()
         .await?;
 
-    let result: serde_json::Value = resp
-        .json()
-        .await?;
+    let result: serde_json::Value = resp.json().await?;
 
     if let Some(error) = result.get("error") {
         return Err(EngineError::Other(format!("RPC error: {}", error)));
     }
 
-    result.get("result")
+    result
+        .get("result")
         .cloned()
         .ok_or_else(|| EngineError::Other("RPC response missing 'result' field".into()))
 }
 
 /// Get ETH balance of an address
 pub(crate) async fn eth_get_balance(rpc_url: &str, address: &str) -> EngineResult<String> {
-    let result = rpc_call(rpc_url, "eth_getBalance", serde_json::json!([address, "latest"])).await?;
-    result.as_str().map(String::from).ok_or(EngineError::Other("Invalid balance result".into()))
+    let result = rpc_call(
+        rpc_url,
+        "eth_getBalance",
+        serde_json::json!([address, "latest"]),
+    )
+    .await?;
+    result
+        .as_str()
+        .map(String::from)
+        .ok_or(EngineError::Other("Invalid balance result".into()))
 }
 
 /// Call a contract (read-only)
 pub(crate) async fn eth_call(rpc_url: &str, to: &str, data: &[u8]) -> EngineResult<String> {
-    let result = rpc_call(rpc_url, "eth_call", serde_json::json!([
-        { "to": to, "data": hex_encode(data) },
-        "latest"
-    ])).await?;
-    result.as_str().map(String::from).ok_or(EngineError::Other("Invalid eth_call result".into()))
+    let result = rpc_call(
+        rpc_url,
+        "eth_call",
+        serde_json::json!([
+            { "to": to, "data": hex_encode(data) },
+            "latest"
+        ]),
+    )
+    .await?;
+    result
+        .as_str()
+        .map(String::from)
+        .ok_or(EngineError::Other("Invalid eth_call result".into()))
 }
 
 /// Get the next nonce for an address
 pub(crate) async fn eth_get_transaction_count(rpc_url: &str, address: &str) -> EngineResult<u64> {
-    let result = rpc_call(rpc_url, "eth_getTransactionCount", serde_json::json!([address, "latest"])).await?;
-    let hex = result.as_str().ok_or(EngineError::Other("Invalid nonce result".into()))?;
+    let result = rpc_call(
+        rpc_url,
+        "eth_getTransactionCount",
+        serde_json::json!([address, "latest"]),
+    )
+    .await?;
+    let hex = result
+        .as_str()
+        .ok_or(EngineError::Other("Invalid nonce result".into()))?;
     u64::from_str_radix(hex.strip_prefix("0x").unwrap_or(hex), 16)
         .map_err(|e| EngineError::Other(format!("Parse nonce: {}", e)))
 }
@@ -64,8 +86,14 @@ pub(crate) async fn eth_get_transaction_count(rpc_url: &str, address: &str) -> E
 /// Get current gas fees (EIP-1559) — returns (max_priority_fee_per_gas, max_fee_per_gas)
 pub(crate) async fn get_gas_fees(rpc_url: &str) -> EngineResult<(u64, u64)> {
     // Get base fee from latest block
-    let block = rpc_call(rpc_url, "eth_getBlockByNumber", serde_json::json!(["latest", false])).await?;
-    let base_fee_hex = block.get("baseFeePerGas")
+    let block = rpc_call(
+        rpc_url,
+        "eth_getBlockByNumber",
+        serde_json::json!(["latest", false]),
+    )
+    .await?;
+    let base_fee_hex = block
+        .get("baseFeePerGas")
         .and_then(|v| v.as_str())
         .ok_or(EngineError::Other("Missing baseFeePerGas".into()))?;
     let base_fee = u64::from_str_radix(base_fee_hex.strip_prefix("0x").unwrap_or(base_fee_hex), 16)
@@ -88,13 +116,20 @@ pub(crate) async fn eth_estimate_gas(
     data: &[u8],
     value: &str,
 ) -> EngineResult<u64> {
-    let result = rpc_call(rpc_url, "eth_estimateGas", serde_json::json!([{
-        "from": from,
-        "to": to,
-        "data": hex_encode(data),
-        "value": value
-    }])).await?;
-    let hex = result.as_str().ok_or(EngineError::Other("Invalid gas estimate".into()))?;
+    let result = rpc_call(
+        rpc_url,
+        "eth_estimateGas",
+        serde_json::json!([{
+            "from": from,
+            "to": to,
+            "data": hex_encode(data),
+            "value": value
+        }]),
+    )
+    .await?;
+    let hex = result
+        .as_str()
+        .ok_or(EngineError::Other("Invalid gas estimate".into()))?;
     let estimate = u64::from_str_radix(hex.strip_prefix("0x").unwrap_or(hex), 16)
         .map_err(|e| EngineError::Other(format!("Parse gas estimate: {}", e)))?;
     // Add 20% buffer
@@ -102,23 +137,48 @@ pub(crate) async fn eth_estimate_gas(
 }
 
 /// Broadcast a signed transaction
-pub(crate) async fn eth_send_raw_transaction(rpc_url: &str, signed_tx: &[u8]) -> EngineResult<String> {
-    let result = rpc_call(rpc_url, "eth_sendRawTransaction", serde_json::json!([hex_encode(signed_tx)])).await?;
-    result.as_str().map(String::from).ok_or(EngineError::Other("Invalid tx hash result".into()))
+pub(crate) async fn eth_send_raw_transaction(
+    rpc_url: &str,
+    signed_tx: &[u8],
+) -> EngineResult<String> {
+    let result = rpc_call(
+        rpc_url,
+        "eth_sendRawTransaction",
+        serde_json::json!([hex_encode(signed_tx)]),
+    )
+    .await?;
+    result
+        .as_str()
+        .map(String::from)
+        .ok_or(EngineError::Other("Invalid tx hash result".into()))
 }
 
 /// Get chain ID
 pub(crate) async fn eth_chain_id(rpc_url: &str) -> EngineResult<u64> {
     let result = rpc_call(rpc_url, "eth_chainId", serde_json::json!([])).await?;
-    let hex = result.as_str().ok_or(EngineError::Other("Invalid chain ID".into()))?;
+    let hex = result
+        .as_str()
+        .ok_or(EngineError::Other("Invalid chain ID".into()))?;
     u64::from_str_radix(hex.strip_prefix("0x").unwrap_or(hex), 16)
         .map_err(|e| EngineError::Other(format!("Parse chain ID: {}", e)))
 }
 
 /// Get transaction receipt (to check if tx was mined)
-pub(crate) async fn eth_get_transaction_receipt(rpc_url: &str, tx_hash: &str) -> EngineResult<Option<serde_json::Value>> {
-    let result = rpc_call(rpc_url, "eth_getTransactionReceipt", serde_json::json!([tx_hash])).await?;
-    if result.is_null() { Ok(None) } else { Ok(Some(result)) }
+pub(crate) async fn eth_get_transaction_receipt(
+    rpc_url: &str,
+    tx_hash: &str,
+) -> EngineResult<Option<serde_json::Value>> {
+    let result = rpc_call(
+        rpc_url,
+        "eth_getTransactionReceipt",
+        serde_json::json!([tx_hash]),
+    )
+    .await?;
+    if result.is_null() {
+        Ok(None)
+    } else {
+        Ok(Some(result))
+    }
 }
 
 /// Chunked eth_getLogs — splits large block ranges into smaller chunks to avoid

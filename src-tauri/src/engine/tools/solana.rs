@@ -99,22 +99,42 @@ pub async fn execute(
     };
     let state = app_handle.state::<EngineState>();
     Some(match name {
-        "sol_wallet_create" => crate::engine::sol_dex::execute_sol_wallet_create(args, &creds, app_handle).await.map_err(|e| e.to_string()),
-        "sol_balance"       => crate::engine::sol_dex::execute_sol_balance(args, &creds).await.map_err(|e| e.to_string()),
-        "sol_quote"         => crate::engine::sol_dex::execute_sol_quote(args, &creds).await.map_err(|e| e.to_string()),
+        "sol_wallet_create" => {
+            crate::engine::sol_dex::execute_sol_wallet_create(args, &creds, app_handle)
+                .await
+                .map_err(|e| e.to_string())
+        }
+        "sol_balance" => crate::engine::sol_dex::execute_sol_balance(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "sol_quote" => crate::engine::sol_dex::execute_sol_quote(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
         "sol_swap" => {
             let result = crate::engine::sol_dex::execute_sol_swap(args, &creds).await;
             if result.is_ok() {
                 let token_in = args["token_in"].as_str().unwrap_or("?");
                 let token_out = args["token_out"].as_str().unwrap_or("?");
-                let pair = format!("{} -> {}", token_in.to_uppercase(), token_out.to_uppercase());
+                let pair = format!(
+                    "{} -> {}",
+                    token_in.to_uppercase(),
+                    token_out.to_uppercase()
+                );
                 let _ = state.store.insert_trade(
-                    "sol_swap", Some("swap"), Some(&pair),
-                    args["token_in"].as_str(), args["amount"].as_str().unwrap_or("0"),
-                    None, None, "completed", None,
+                    "sol_swap",
+                    Some("swap"),
+                    Some(&pair),
+                    args["token_in"].as_str(),
+                    args["amount"].as_str().unwrap_or("0"),
+                    None,
+                    None,
+                    "completed",
+                    None,
                     args["token_out"].as_str(),
                     args["reason"].as_str().unwrap_or(""),
-                    None, None, result.as_ref().ok().map(|s| s.as_str()),
+                    None,
+                    None,
+                    result.as_ref().ok().map(|s| s.as_str()),
                 );
 
                 // Auto-open position on BUY (when spending SOL to get a token)
@@ -130,14 +150,18 @@ pub async fn execute(
                     let app = app_handle.clone();
                     let result_text = result.as_ref().map(|r| r.clone()).unwrap_or_default();
                     tokio::spawn(async move {
-                        let price = crate::engine::sol_dex::get_token_price_usd(&output_mint).await.unwrap_or(0.0);
+                        let price = crate::engine::sol_dex::get_token_price_usd(&output_mint)
+                            .await
+                            .unwrap_or(0.0);
                         let received_amount: f64 = result_text
                             .lines()
                             .find(|l| l.contains("Received"))
                             .and_then(|l| {
                                 let parts: Vec<&str> = l.split('|').collect();
                                 if parts.len() >= 3 {
-                                    parts[2].split_whitespace().next()
+                                    parts[2]
+                                        .split_whitespace()
+                                        .next()
                                         .and_then(|s| s.replace(',', "").parse::<f64>().ok())
                                 } else {
                                     None
@@ -148,34 +172,65 @@ pub async fn execute(
                         if received_amount > 0.0 && price > 0.0 {
                             if let Some(st) = app.try_state::<EngineState>() {
                                 match st.store.insert_position(
-                                    &output_mint, &symbol, price, amount_sol,
-                                    received_amount, 0.30, 2.0, None,
+                                    &output_mint,
+                                    &symbol,
+                                    price,
+                                    amount_sol,
+                                    received_amount,
+                                    0.30,
+                                    2.0,
+                                    None,
                                 ) {
-                                    Ok(id) => log::info!("[positions] Auto-opened position {} for {} tokens of {}", id, received_amount, symbol),
-                                    Err(e) => log::warn!("[positions] Failed to auto-open position: {}", e),
+                                    Ok(id) => log::info!(
+                                        "[positions] Auto-opened position {} for {} tokens of {}",
+                                        id,
+                                        received_amount,
+                                        symbol
+                                    ),
+                                    Err(e) => log::warn!(
+                                        "[positions] Failed to auto-open position: {}",
+                                        e
+                                    ),
                                 }
                             }
                         } else {
-                            log::info!("[positions] Skipped position for {} — price={}, amount={}", symbol, price, received_amount);
+                            log::info!(
+                                "[positions] Skipped position for {} — price={}, amount={}",
+                                symbol,
+                                price,
+                                received_amount
+                            );
                         }
                     });
                 }
             }
             result.map_err(|e| e.to_string())
         }
-        "sol_portfolio"  => crate::engine::sol_dex::execute_sol_portfolio(args, &creds).await.map_err(|e| e.to_string()),
-        "sol_token_info" => crate::engine::sol_dex::execute_sol_token_info(args, &creds).await.map_err(|e| e.to_string()),
+        "sol_portfolio" => crate::engine::sol_dex::execute_sol_portfolio(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
+        "sol_token_info" => crate::engine::sol_dex::execute_sol_token_info(args, &creds)
+            .await
+            .map_err(|e| e.to_string()),
         "sol_transfer" => {
             let result = crate::engine::sol_dex::execute_sol_transfer(args, &creds).await;
             if result.is_ok() {
                 let currency = args["currency"].as_str().unwrap_or("?");
                 let _ = state.store.insert_trade(
-                    "sol_transfer", Some("transfer"), Some(&currency.to_uppercase()),
-                    args["currency"].as_str(), args["amount"].as_str().unwrap_or("0"),
-                    None, None, "completed", None,
+                    "sol_transfer",
+                    Some("transfer"),
+                    Some(&currency.to_uppercase()),
+                    args["currency"].as_str(),
+                    args["amount"].as_str().unwrap_or("0"),
+                    None,
+                    None,
+                    "completed",
+                    None,
                     args["to_address"].as_str(),
                     args["reason"].as_str().unwrap_or(""),
-                    None, None, result.as_ref().ok().map(|s| s.as_str()),
+                    None,
+                    None,
+                    result.as_ref().ok().map(|s| s.as_str()),
                 );
             }
             result.map_err(|e| e.to_string())

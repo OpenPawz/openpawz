@@ -15,40 +15,43 @@ pub(crate) mod sub_agent;
 pub mod tools;
 
 use crate::engine::providers::AnyProvider;
-use crate::engine::state::EngineState;
 use crate::engine::skills;
+use crate::engine::state::EngineState;
 use crate::engine::types::*;
 use log::info;
 use tauri::{Emitter, Manager};
 
+use crate::atoms::error::EngineResult;
 use agent_loop::{run_orchestrator_loop, AgentRole};
 use sub_agent::resolve_provider_for_model;
 use tools::boss_tools;
-use crate::atoms::error::EngineResult;
 
 // ── Public API ─────────────────────────────────────────────────────────
 
 /// Run the full orchestrator flow for a project.
 /// The boss agent gets a special system prompt + delegation tools,
 /// and orchestrates sub-agents to achieve the project goal.
-pub async fn run_project(
-    app_handle: &tauri::AppHandle,
-    project_id: &str,
-) -> EngineResult<String> {
+pub async fn run_project(app_handle: &tauri::AppHandle, project_id: &str) -> EngineResult<String> {
     let state = app_handle.state::<EngineState>();
     let run_id = uuid::Uuid::new_v4().to_string();
 
     // Load project
     let projects = state.store.list_projects()?;
-    let project = projects.into_iter().find(|p| p.id == project_id)
+    let project = projects
+        .into_iter()
+        .find(|p| p.id == project_id)
         .ok_or_else(|| format!("Project not found: {}", project_id))?;
 
     if project.agents.is_empty() {
         return Err("Project has no agents assigned. Add at least a boss agent.".into());
     }
 
-    info!("[orchestrator] Starting project '{}' with {} agents, boss='{}'",
-        project.title, project.agents.len(), project.boss_agent);
+    info!(
+        "[orchestrator] Starting project '{}' with {} agents, boss='{}'",
+        project.title,
+        project.agents.len(),
+        project.boss_agent
+    );
 
     // Update project status to running
     {
@@ -58,10 +61,15 @@ pub async fn run_project(
     }
 
     // Emit project started
-    app_handle.emit("project-event", serde_json::json!({
-        "kind": "project_started",
-        "project_id": project_id,
-    })).ok();
+    app_handle
+        .emit(
+            "project-event",
+            serde_json::json!({
+                "kind": "project_started",
+                "project_id": project_id,
+            }),
+        )
+        .ok();
 
     // Record initial message
     let init_msg = ProjectMessage {
@@ -70,7 +78,10 @@ pub async fn run_project(
         from_agent: "system".into(),
         to_agent: None,
         kind: "message".into(),
-        content: format!("Project '{}' started. Goal: {}", project.title, project.goal),
+        content: format!(
+            "Project '{}' started. Goal: {}",
+            project.title, project.goal
+        ),
         metadata: None,
         created_at: chrono::Utc::now().to_rfc3339(),
     };
@@ -79,18 +90,30 @@ pub async fn run_project(
     // Get provider config — use model routing for boss agent
     let (provider_config, model) = {
         let cfg = state.config.lock();
-        let default_model = cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string());
+        let default_model = cfg
+            .default_model
+            .clone()
+            .unwrap_or_else(|| "gpt-4o".to_string());
 
         let boss_entry = project.agents.iter().find(|a| a.role == "boss");
-        let boss_specialty = boss_entry.map(|a| a.specialty.as_str()).unwrap_or("general");
+        let boss_specialty = boss_entry
+            .map(|a| a.specialty.as_str())
+            .unwrap_or("general");
 
-        let model = if let Some(agent_model) = boss_entry.and_then(|a| a.model.as_deref()).filter(|m| !m.is_empty()) {
+        let model = if let Some(agent_model) = boss_entry
+            .and_then(|a| a.model.as_deref())
+            .filter(|m| !m.is_empty())
+        {
             agent_model.to_string()
         } else {
-            cfg.model_routing.resolve(&project.boss_agent, "boss", boss_specialty, &default_model)
+            cfg.model_routing
+                .resolve(&project.boss_agent, "boss", boss_specialty, &default_model)
         };
 
-        info!("[orchestrator] Boss agent '{}' using model '{}'", project.boss_agent, model);
+        info!(
+            "[orchestrator] Boss agent '{}' using model '{}'",
+            project.boss_agent, model
+        );
 
         let provider = resolve_provider_for_model(&cfg, &model);
         match provider {
@@ -109,19 +132,37 @@ pub async fn run_project(
     };
 
     // Build agent roster description
-    let agent_roster: Vec<String> = project.agents.iter()
+    let agent_roster: Vec<String> = project
+        .agents
+        .iter()
         .filter(|a| a.role != "boss")
-        .map(|a| format!("- **{}** (specialty: {}): {}", a.agent_id, a.specialty, a.status))
+        .map(|a| {
+            format!(
+                "- **{}** (specialty: {}): {}",
+                a.agent_id, a.specialty, a.status
+            )
+        })
         .collect();
 
     // Boss agent system prompt
-    let boss_soul = state.store.compose_agent_context(&project.boss_agent).unwrap_or(None);
-    let skill_instructions = skills::get_enabled_skill_instructions(&state.store, &project.boss_agent).unwrap_or_default();
+    let boss_soul = state
+        .store
+        .compose_agent_context(&project.boss_agent)
+        .unwrap_or(None);
+    let skill_instructions =
+        skills::get_enabled_skill_instructions(&state.store, &project.boss_agent)
+            .unwrap_or_default();
 
     let mut sys_parts: Vec<String> = Vec::new();
-    if let Some(sp) = &base_system_prompt { sys_parts.push(sp.clone()); }
-    if let Some(soul) = boss_soul { sys_parts.push(soul); }
-    if !skill_instructions.is_empty() { sys_parts.push(skill_instructions.clone()); }
+    if let Some(sp) = &base_system_prompt {
+        sys_parts.push(sp.clone());
+    }
+    if let Some(soul) = boss_soul {
+        sys_parts.push(soul);
+    }
+    if !skill_instructions.is_empty() {
+        sys_parts.push(skill_instructions.clone());
+    }
 
     sys_parts.push(format!(
         r#"## Orchestrator Mode
@@ -156,7 +197,8 @@ You are the **Boss Agent** orchestrating project "{}".
 
     // Build tools: builtins + skill tools + orchestrator boss tools
     let mut all_tools = ToolDefinition::builtins();
-    let enabled_ids: Vec<String> = skills::builtin_skills().iter()
+    let enabled_ids: Vec<String> = skills::builtin_skills()
+        .iter()
         .filter(|s| state.store.is_skill_enabled(&s.id).unwrap_or(false))
         .map(|s| s.id.clone())
         .collect();
@@ -169,8 +211,19 @@ You are the **Boss Agent** orchestrating project "{}".
 
     // Create boss session
     let session_id = format!("eng-project-{}-boss", project_id);
-    if state.store.get_session(&session_id).ok().flatten().is_none() {
-        state.store.create_session(&session_id, &model, None, Some(&format!("project-boss-{}", project_id)))?;
+    if state
+        .store
+        .get_session(&session_id)
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        state.store.create_session(
+            &session_id,
+            &model,
+            None,
+            Some(&format!("project-boss-{}", project_id)),
+        )?;
     }
 
     // User message = project goal
@@ -178,7 +231,10 @@ You are the **Boss Agent** orchestrating project "{}".
         id: uuid::Uuid::new_v4().to_string(),
         session_id: session_id.clone(),
         role: "user".into(),
-        content: format!("Execute this project:\n\nTitle: {}\nGoal: {}", project.title, project.goal),
+        content: format!(
+            "Execute this project:\n\nTitle: {}\nGoal: {}",
+            project.title, project.goal
+        ),
         tool_calls_json: None,
         tool_call_id: None,
         name: None,
@@ -186,7 +242,10 @@ You are the **Boss Agent** orchestrating project "{}".
     };
     state.store.add_message(&user_msg)?;
 
-    let mut messages = state.store.load_conversation(&session_id, Some(&boss_system_prompt), None, None)?;
+    let mut messages =
+        state
+            .store
+            .load_conversation(&session_id, Some(&boss_system_prompt), None, None)?;
     let provider = AnyProvider::from_config(&provider_config);
     let pending = state.pending_approvals.clone();
     let pid = project_id.to_string();
@@ -206,7 +265,8 @@ You are the **Boss Agent** orchestrating project "{}".
         &pid,
         &project.boss_agent,
         AgentRole::Boss,
-    ).await;
+    )
+    .await;
 
     // Save final response
     match &result {
@@ -243,11 +303,16 @@ You are the **Boss Agent** orchestrating project "{}".
         }
     }
 
-    app_handle.emit("project-event", serde_json::json!({
-        "kind": "project_finished",
-        "project_id": project_id,
-        "success": result.is_ok(),
-    })).ok();
+    app_handle
+        .emit(
+            "project-event",
+            serde_json::json!({
+                "kind": "project_finished",
+                "project_id": project_id,
+                "success": result.is_ok(),
+            }),
+        )
+        .ok();
 
     result
 }

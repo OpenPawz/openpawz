@@ -9,12 +9,12 @@
 // The headless browser is lazily initialized — Chrome/Chromium is only launched
 // when the agent actually calls web_screenshot or web_browse.
 
+use crate::atoms::error::{EngineError, EngineResult};
 use headless_chrome::{Browser, LaunchOptions, Tab};
 use log::{info, warn};
+use parking_lot::Mutex;
 use scraper::{Html, Selector};
 use std::sync::{Arc, OnceLock};
-use parking_lot::Mutex;
-use crate::atoms::error::{EngineResult, EngineError};
 use std::time::Duration;
 use tauri::Manager;
 
@@ -39,7 +39,7 @@ fn get_or_launch_browser(profile_dir: Option<std::path::PathBuf>) -> EngineResul
     let mut builder = LaunchOptions::default_builder();
     builder
         .headless(true)
-        .sandbox(false)  // Required in containers / CI
+        .sandbox(false) // Required in containers / CI
         .idle_browser_timeout(Duration::from_secs(300));
 
     // Use profile directory if configured
@@ -52,10 +52,13 @@ fn get_or_launch_browser(profile_dir: Option<std::path::PathBuf>) -> EngineResul
         builder
             .build()
             .map_err(|e| EngineError::Other(e.to_string()))?,
-    ).map_err(|e| format!(
-        "Failed to launch Chrome/Chromium: {}. Make sure Chrome or Chromium is installed.",
-        e
-    ))?;
+    )
+    .map_err(|e| {
+        format!(
+            "Failed to launch Chrome/Chromium: {}. Make sure Chrome or Chromium is installed.",
+            e
+        )
+    })?;
 
     let arc = Arc::new(browser);
     *guard = Some(Arc::clone(&arc));
@@ -66,7 +69,8 @@ fn get_or_launch_browser(profile_dir: Option<std::path::PathBuf>) -> EngineResul
 // ── web_search: DuckDuckGo search ──────────────────────────────────────
 
 pub async fn execute_web_search(args: &serde_json::Value) -> EngineResult<String> {
-    let query = args["query"].as_str()
+    let query = args["query"]
+        .as_str()
         .ok_or("web_search: missing 'query' argument")?;
     let limit = args["limit"].as_u64().unwrap_or(8) as usize;
 
@@ -95,20 +99,29 @@ pub async fn execute_web_search(args: &serde_json::Value) -> EngineResult<String
 
     let mut results = Vec::new();
     for element in document.select(&result_selector).take(limit) {
-        let title = element.select(&title_selector).next()
+        let title = element
+            .select(&title_selector)
+            .next()
             .map(|e| e.text().collect::<String>())
             .unwrap_or_default()
-            .trim().to_string();
+            .trim()
+            .to_string();
 
-        let snippet = element.select(&snippet_selector).next()
+        let snippet = element
+            .select(&snippet_selector)
+            .next()
             .map(|e| e.text().collect::<String>())
             .unwrap_or_default()
-            .trim().to_string();
+            .trim()
+            .to_string();
 
-        let url = element.select(&url_selector).next()
+        let url = element
+            .select(&url_selector)
+            .next()
             .map(|e| e.text().collect::<String>())
             .unwrap_or_default()
-            .trim().to_string();
+            .trim()
+            .to_string();
 
         if !title.is_empty() {
             results.push(format!("**{}**\n{}\n{}", title, url, snippet));
@@ -141,7 +154,8 @@ pub async fn execute_web_search(args: &serde_json::Value) -> EngineResult<String
 // ── web_read: Fetch URL → readable text ────────────────────────────────
 
 pub async fn execute_web_read(args: &serde_json::Value) -> EngineResult<String> {
-    let url = args["url"].as_str()
+    let url = args["url"]
+        .as_str()
         .ok_or("web_read: missing 'url' argument")?;
     let selector = args["selector"].as_str();
 
@@ -156,7 +170,8 @@ pub async fn execute_web_read(args: &serde_json::Value) -> EngineResult<String> 
     let resp = client.get(url).send().await?;
 
     let status = resp.status().as_u16();
-    let content_type = resp.headers()
+    let content_type = resp
+        .headers()
         .get("content-type")
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
@@ -167,11 +182,18 @@ pub async fn execute_web_read(args: &serde_json::Value) -> EngineResult<String> 
     // If non-HTML content, return raw (could be JSON, XML, plain text)
     if !content_type.contains("html") {
         let truncated = if body.len() > 50_000 {
-            format!("{}...\n[truncated, {} total bytes]", &body[..50_000], body.len())
+            format!(
+                "{}...\n[truncated, {} total bytes]",
+                &body[..50_000],
+                body.len()
+            )
         } else {
             body
         };
-        return Ok(format!("Content from {} (HTTP {}, {}):\n\n{}", url, status, content_type, truncated));
+        return Ok(format!(
+            "Content from {} (HTTP {}, {}):\n\n{}",
+            url, status, content_type, truncated
+        ));
     }
 
     // Parse HTML and extract readable text
@@ -180,12 +202,11 @@ pub async fn execute_web_read(args: &serde_json::Value) -> EngineResult<String> 
     let text = if let Some(sel_str) = selector {
         // User specified a CSS selector — extract just that part
         match Selector::parse(sel_str) {
-            Ok(sel) => {
-                document.select(&sel)
-                    .map(|el| extract_text_from_element(&el))
-                    .collect::<Vec<_>>()
-                    .join("\n\n")
-            }
+            Ok(sel) => document
+                .select(&sel)
+                .map(|el| extract_text_from_element(&el))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
             Err(_) => return Err(format!("Invalid CSS selector: {}", sel_str).into()),
         }
     } else {
@@ -198,7 +219,8 @@ pub async fn execute_web_read(args: &serde_json::Value) -> EngineResult<String> 
     }
 
     // Extract page title
-    let title = Selector::parse("title").ok()
+    let title = Selector::parse("title")
+        .ok()
         .and_then(|sel| document.select(&sel).next())
         .map(|el| el.text().collect::<String>())
         .unwrap_or_default();
@@ -206,12 +228,23 @@ pub async fn execute_web_read(args: &serde_json::Value) -> EngineResult<String> 
     // Truncate long content
     const MAX_TEXT: usize = 30_000;
     let truncated = if text.len() > MAX_TEXT {
-        format!("{}...\n\n[Content truncated at {} chars, {} total]", &text[..MAX_TEXT], MAX_TEXT, text.len())
+        format!(
+            "{}...\n\n[Content truncated at {} chars, {} total]",
+            &text[..MAX_TEXT],
+            MAX_TEXT,
+            text.len()
+        )
     } else {
         text
     };
 
-    Ok(format!("# {}\nSource: {} (HTTP {})\n\n{}", title.trim(), url, status, truncated))
+    Ok(format!(
+        "# {}\nSource: {} (HTTP {})\n\n{}",
+        title.trim(),
+        url,
+        status,
+        truncated
+    ))
 }
 
 /// Extract readable text from an HTML element, skipping scripts/styles.
@@ -233,9 +266,17 @@ fn extract_text_from_element(element: &scraper::ElementRef) -> String {
 /// Tries <article>, <main>, then falls back to <body>, skipping nav/footer/script/style.
 fn extract_readable_text(document: &Html) -> String {
     // Try content-rich selectors first
-    for sel_str in &["article", "main", "[role=main]", ".post-content", ".entry-content", ".article-body"] {
+    for sel_str in &[
+        "article",
+        "main",
+        "[role=main]",
+        ".post-content",
+        ".entry-content",
+        ".article-body",
+    ] {
         if let Ok(sel) = Selector::parse(sel_str) {
-            let parts: Vec<String> = document.select(&sel)
+            let parts: Vec<String> = document
+                .select(&sel)
                 .map(|el| extract_text_from_element(&el))
                 .filter(|t| !t.trim().is_empty())
                 .collect();
@@ -251,11 +292,24 @@ fn extract_readable_text(document: &Html) -> String {
             let mut paragraphs = Vec::new();
 
             // Get all <p>, <h1>-<h6>, <li>, <td>, <blockquote> elements
-            for sel_str in &["p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "pre", "td"] {
+            for sel_str in &[
+                "p",
+                "h1",
+                "h2",
+                "h3",
+                "h4",
+                "h5",
+                "h6",
+                "li",
+                "blockquote",
+                "pre",
+                "td",
+            ] {
                 if let Ok(sel) = Selector::parse(sel_str) {
                     for el in body.select(&sel) {
                         let text = extract_text_from_element(&el);
-                        if text.len() > 20 {  // Skip very short fragments
+                        if text.len() > 20 {
+                            // Skip very short fragments
                             paragraphs.push(text);
                         }
                     }
@@ -289,19 +343,30 @@ fn resolve_profile_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathB
     }
     let home = dirs::home_dir()?;
     let dir = home.join(".paw").join("browser-profiles").join(profile_id);
-    if dir.exists() { Some(dir) } else { None }
+    if dir.exists() {
+        Some(dir)
+    } else {
+        None
+    }
 }
 
 // ── web_screenshot: Headless Chrome screenshot ─────────────────────────
 
-pub async fn execute_web_screenshot(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let url = args["url"].as_str()
+pub async fn execute_web_screenshot(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
+    let url = args["url"]
+        .as_str()
         .ok_or("web_screenshot: missing 'url' argument")?;
     let full_page = args["full_page"].as_bool().unwrap_or(false);
     let width = args["width"].as_u64().unwrap_or(1280) as u32;
     let height = args["height"].as_u64().unwrap_or(800) as u32;
 
-    info!("[web] screenshot: {} {}x{} full_page={}", url, width, height, full_page);
+    info!(
+        "[web] screenshot: {} {}x{} full_page={}",
+        url, width, height, full_page
+    );
 
     let url_owned = url.to_string();
     let profile_dir = resolve_profile_dir(app_handle);
@@ -373,15 +438,22 @@ pub async fn execute_web_screenshot(args: &serde_json::Value, app_handle: &tauri
 
 // ── web_browse: Interactive headless browser session ───────────────────
 
-pub async fn execute_web_browse(args: &serde_json::Value, app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let action = args["action"].as_str()
+pub async fn execute_web_browse(
+    args: &serde_json::Value,
+    app_handle: &tauri::AppHandle,
+) -> EngineResult<String> {
+    let action = args["action"]
+        .as_str()
         .ok_or("web_browse: missing 'action' argument")?;
     let url = args["url"].as_str().map(|s| s.to_string());
     let selector = args["selector"].as_str().map(|s| s.to_string());
     let text = args["text"].as_str().map(|s| s.to_string());
     let js = args["javascript"].as_str().map(|s| s.to_string());
 
-    info!("[web] browse: action={} url={:?} selector={:?}", action, url, selector);
+    info!(
+        "[web] browse: action={} url={:?} selector={:?}",
+        action, url, selector
+    );
 
     let action_owned = action.to_string();
     let profile_dir = resolve_profile_dir(app_handle);

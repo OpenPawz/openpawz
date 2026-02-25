@@ -31,26 +31,29 @@ pub fn engine_sandbox_set_config(
 // ── Engine configuration ───────────────────────────────────────────────
 
 #[tauri::command]
-pub fn engine_get_config(
-    state: State<'_, EngineState>,
-) -> Result<EngineConfig, String> {
+pub fn engine_get_config(state: State<'_, EngineState>) -> Result<EngineConfig, String> {
     let cfg = state.config.lock();
     Ok(cfg.clone())
 }
 
 /// Get the current daily token spend and budget status.
 #[tauri::command]
-pub fn engine_get_daily_spend(
-    state: State<'_, EngineState>,
-) -> Result<serde_json::Value, String> {
+pub fn engine_get_daily_spend(state: State<'_, EngineState>) -> Result<serde_json::Value, String> {
     let (input_tokens, output_tokens, estimated_usd) = state.daily_tokens.estimated_spend_usd();
     let cache_read = state.daily_tokens.cache_read_tokens.load(Ordering::Relaxed);
-    let cache_create = state.daily_tokens.cache_create_tokens.load(Ordering::Relaxed);
+    let cache_create = state
+        .daily_tokens
+        .cache_create_tokens
+        .load(Ordering::Relaxed);
     let budget = {
         let cfg = state.config.lock();
         cfg.daily_budget_usd
     };
-    let budget_pct = if budget > 0.0 { (estimated_usd / budget * 100.0).min(100.0) } else { 0.0 };
+    let budget_pct = if budget > 0.0 {
+        (estimated_usd / budget * 100.0).min(100.0)
+    } else {
+        0.0
+    };
     Ok(serde_json::json!({
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
@@ -68,8 +71,7 @@ pub fn engine_set_config(
     state: State<'_, EngineState>,
     config: EngineConfig,
 ) -> Result<(), String> {
-    let json = serde_json::to_string(&config)
-        .map_err(|e| format!("Serialize error: {}", e))?;
+    let json = serde_json::to_string(&config).map_err(|e| format!("Serialize error: {}", e))?;
 
     // Persist to DB
     state.store.set_config("engine_config", &json)?;
@@ -78,7 +80,10 @@ pub fn engine_set_config(
     let mut cfg = state.config.lock();
     *cfg = config;
 
-    info!("[engine] Config updated, {} providers configured", cfg.providers.len());
+    info!(
+        "[engine] Config updated, {} providers configured",
+        cfg.providers.len()
+    );
     Ok(())
 }
 
@@ -103,11 +108,13 @@ pub fn engine_upsert_provider(
     }
 
     // Persist
-    let json = serde_json::to_string(&*cfg)
-        .map_err(|e| format!("Serialize error: {}", e))?;
+    let json = serde_json::to_string(&*cfg).map_err(|e| format!("Serialize error: {}", e))?;
     state.store.set_config("engine_config", &json)?;
 
-    info!("[engine] Provider upserted, {} total providers", cfg.providers.len());
+    info!(
+        "[engine] Provider upserted, {} total providers",
+        cfg.providers.len()
+    );
     Ok(())
 }
 
@@ -126,19 +133,19 @@ pub fn engine_remove_provider(
         cfg.default_provider = cfg.providers.first().map(|p| p.id.clone());
     }
 
-    let json = serde_json::to_string(&*cfg)
-        .map_err(|e| format!("Serialize error: {}", e))?;
+    let json = serde_json::to_string(&*cfg).map_err(|e| format!("Serialize error: {}", e))?;
     state.store.set_config("engine_config", &json)?;
 
-    info!("[engine] Provider removed, {} remaining", cfg.providers.len());
+    info!(
+        "[engine] Provider removed, {} remaining",
+        cfg.providers.len()
+    );
     Ok(())
 }
 
 /// Check if the engine is configured and ready to use.
 #[tauri::command]
-pub fn engine_status(
-    state: State<'_, EngineState>,
-) -> Result<serde_json::Value, String> {
+pub fn engine_status(state: State<'_, EngineState>) -> Result<serde_json::Value, String> {
     let cfg = state.config.lock();
 
     let has_providers = !cfg.providers.is_empty();
@@ -156,9 +163,7 @@ pub fn engine_status(
 /// Auto-setup: detect Ollama on first run and add it as a provider.
 /// Returns what was done so the frontend can show a toast.
 #[tauri::command]
-pub async fn engine_auto_setup(
-    state: State<'_, EngineState>,
-) -> Result<serde_json::Value, String> {
+pub async fn engine_auto_setup(state: State<'_, EngineState>) -> Result<serde_json::Value, String> {
     // Only run if no providers are configured yet
     {
         let cfg = state.config.lock();
@@ -187,7 +192,12 @@ pub async fn engine_auto_setup(
                 let mut up = false;
                 for _ in 0..10 {
                     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-                    if client.get(format!("{}/api/tags", base_url)).send().await.is_ok() {
+                    if client
+                        .get(format!("{}/api/tags", base_url))
+                        .send()
+                        .await
+                        .is_ok()
+                    {
                         up = true;
                         break;
                     }
@@ -212,8 +222,13 @@ pub async fn engine_auto_setup(
     let models: Vec<String> = match client.get(format!("{}/api/tags", base_url)).send().await {
         Ok(resp) => {
             if let Ok(data) = resp.json::<serde_json::Value>().await {
-                data["models"].as_array()
-                    .map(|arr| arr.iter().filter_map(|m| m["name"].as_str().map(String::from)).collect())
+                data["models"]
+                    .as_array()
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|m| m["name"].as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default()
             } else {
                 vec![]
@@ -223,9 +238,23 @@ pub async fn engine_auto_setup(
     };
 
     // Pick the best available model, or pull a small one
-    let preferred = ["llama3.2:3b", "llama3.2:1b", "llama3.1:8b", "llama3:8b", "mistral:7b", "gemma2:2b", "phi3:mini", "qwen2.5:3b"];
-    let chosen_model = models.iter()
-        .find(|m| preferred.iter().any(|p| m.starts_with(p.split(':').next().unwrap_or(""))))
+    let preferred = [
+        "llama3.2:3b",
+        "llama3.2:1b",
+        "llama3.1:8b",
+        "llama3:8b",
+        "mistral:7b",
+        "gemma2:2b",
+        "phi3:mini",
+        "qwen2.5:3b",
+    ];
+    let chosen_model = models
+        .iter()
+        .find(|m| {
+            preferred
+                .iter()
+                .any(|p| m.starts_with(p.split(':').next().unwrap_or("")))
+        })
         .cloned()
         .or_else(|| models.first().cloned());
 
@@ -235,10 +264,12 @@ pub async fn engine_auto_setup(
         // No models at all — pull a small one
         info!("[engine] Ollama has no models — pulling llama3.2:3b");
         let pull_body = serde_json::json!({ "name": "llama3.2:3b", "stream": false });
-        match client.post(format!("{}/api/pull", base_url))
+        match client
+            .post(format!("{}/api/pull", base_url))
             .json(&pull_body)
             .timeout(std::time::Duration::from_secs(300))
-            .send().await
+            .send()
+            .await
         {
             Ok(resp) if resp.status().is_success() => {
                 info!("[engine] Successfully pulled llama3.2:3b");
@@ -271,12 +302,14 @@ pub async fn engine_auto_setup(
         cfg.default_provider = Some("ollama".to_string());
         cfg.default_model = Some(model_name.clone());
 
-        let json = serde_json::to_string(&*cfg)
-            .map_err(|e| format!("Serialize: {}", e))?;
+        let json = serde_json::to_string(&*cfg).map_err(|e| format!("Serialize: {}", e))?;
         state.store.set_config("engine_config", &json)?;
     }
 
-    info!("[engine] Auto-setup complete: Ollama added as default provider with model '{}'", model_name);
+    info!(
+        "[engine] Auto-setup complete: Ollama added as default provider with model '{}'",
+        model_name
+    );
 
     Ok(serde_json::json!({
         "action": "ollama_added",

@@ -1,10 +1,10 @@
 // Agent-to-agent direct messaging — CRUD operations on the `agent_messages` table.
 // Independent of the project/orchestrator message bus: any agent can message any other.
 
-use rusqlite::params;
-use crate::engine::types::AgentMessage;
 use super::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::types::AgentMessage;
+use rusqlite::params;
 
 impl SessionStore {
     /// Send a direct message between agents.
@@ -33,7 +33,11 @@ impl SessionStore {
                  FROM agent_messages
                  WHERE (to_agent = ?1 OR to_agent = 'broadcast') AND channel = ?2
                  ORDER BY read ASC, created_at DESC LIMIT ?3",
-                vec![Box::new(agent_id.to_string()), Box::new(ch.to_string()), Box::new(limit)],
+                vec![
+                    Box::new(agent_id.to_string()),
+                    Box::new(ch.to_string()),
+                    Box::new(limit),
+                ],
             )
         } else {
             (
@@ -45,20 +49,21 @@ impl SessionStore {
             )
         };
         let mut stmt = conn.prepare(sql)?;
-        let msgs = stmt.query_map(rusqlite::params_from_iter(p.iter()), |row| {
-            Ok(AgentMessage {
-                id: row.get(0)?,
-                from_agent: row.get(1)?,
-                to_agent: row.get(2)?,
-                channel: row.get(3)?,
-                content: row.get(4)?,
-                metadata: row.get(5)?,
-                read: row.get::<_, i64>(6)? != 0,
-                created_at: row.get(7)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect::<Vec<_>>();
+        let msgs = stmt
+            .query_map(rusqlite::params_from_iter(p.iter()), |row| {
+                Ok(AgentMessage {
+                    id: row.get(0)?,
+                    from_agent: row.get(1)?,
+                    to_agent: row.get(2)?,
+                    channel: row.get(3)?,
+                    content: row.get(4)?,
+                    metadata: row.get(5)?,
+                    read: row.get::<_, i64>(6)? != 0,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
 
         // Return in chronological order
         let mut result = msgs;
@@ -80,20 +85,21 @@ impl SessionStore {
              WHERE channel = ?1
              ORDER BY created_at DESC LIMIT ?2",
         )?;
-        let msgs = stmt.query_map(params![channel, limit], |row| {
-            Ok(AgentMessage {
-                id: row.get(0)?,
-                from_agent: row.get(1)?,
-                to_agent: row.get(2)?,
-                channel: row.get(3)?,
-                content: row.get(4)?,
-                metadata: row.get(5)?,
-                read: row.get::<_, i64>(6)? != 0,
-                created_at: row.get(7)?,
-            })
-        })?
-        .filter_map(|r| r.ok())
-        .collect::<Vec<_>>();
+        let msgs = stmt
+            .query_map(params![channel, limit], |row| {
+                Ok(AgentMessage {
+                    id: row.get(0)?,
+                    from_agent: row.get(1)?,
+                    to_agent: row.get(2)?,
+                    channel: row.get(3)?,
+                    content: row.get(4)?,
+                    metadata: row.get(5)?,
+                    read: row.get::<_, i64>(6)? != 0,
+                    created_at: row.get(7)?,
+                })
+            })?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
 
         let mut result = msgs;
         result.reverse();
@@ -115,13 +121,15 @@ impl SessionStore {
 mod tests {
     use super::*;
     use crate::engine::sessions::schema_for_testing;
-    use rusqlite::Connection;
     use parking_lot::Mutex;
+    use rusqlite::Connection;
 
     fn test_store() -> SessionStore {
         let conn = Connection::open_in_memory().unwrap();
         schema_for_testing(&conn);
-        SessionStore { conn: Mutex::new(conn) }
+        SessionStore {
+            conn: Mutex::new(conn),
+        }
     }
 
     #[test]

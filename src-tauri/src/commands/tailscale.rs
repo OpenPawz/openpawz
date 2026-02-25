@@ -55,11 +55,16 @@ pub fn engine_tailscale_status() -> Result<TailscaleStatus, String> {
     let installed = which_tailscale().is_some();
     if !installed {
         return Ok(TailscaleStatus {
-            installed: false, running: false,
-            hostname: String::new(), tailnet: String::new(),
-            ip: String::new(), version: String::new(),
-            serve_active: false, funnel_active: false,
-            serve_url: String::new(), funnel_url: String::new(),
+            installed: false,
+            running: false,
+            hostname: String::new(),
+            tailnet: String::new(),
+            ip: String::new(),
+            version: String::new(),
+            serve_active: false,
+            funnel_active: false,
+            serve_url: String::new(),
+            funnel_url: String::new(),
         });
     }
 
@@ -67,46 +72,57 @@ pub fn engine_tailscale_status() -> Result<TailscaleStatus, String> {
     let status_json = run_ts_cmd(&["status", "--json"]).unwrap_or_default();
     let status: serde_json::Value = serde_json::from_str(&status_json).unwrap_or_default();
 
-    let running = status.get("BackendState")
+    let running = status
+        .get("BackendState")
         .and_then(|v| v.as_str())
         .map(|s| s == "Running")
         .unwrap_or(false);
 
-    let hostname = status.get("Self")
+    let hostname = status
+        .get("Self")
         .and_then(|s| s.get("HostName"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    let tailnet = status.get("CurrentTailnet")
+    let tailnet = status
+        .get("CurrentTailnet")
         .and_then(|t| t.get("Name"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    let ip = status.get("TailscaleIPs")
+    let ip = status
+        .get("TailscaleIPs")
         .and_then(|v| v.as_array())
         .and_then(|arr| arr.first())
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
 
-    let version = run_ts_cmd(&["version"]).unwrap_or_default().trim().to_string();
+    let version = run_ts_cmd(&["version"])
+        .unwrap_or_default()
+        .trim()
+        .to_string();
 
     // Check serve/funnel state
     let serve_json = run_ts_cmd(&["serve", "status", "--json"]).unwrap_or_default();
     let serve_status: serde_json::Value = serde_json::from_str(&serve_json).unwrap_or_default();
 
-    let serve_active = serve_status.get("TCP").or(serve_status.get("Web"))
+    let serve_active = serve_status
+        .get("TCP")
+        .or(serve_status.get("Web"))
         .map(|v| !v.is_null() && v.as_object().is_some_and(|o| !o.is_empty()))
         .unwrap_or(false);
 
-    let funnel_active = serve_status.get("AllowFunnel")
+    let funnel_active = serve_status
+        .get("AllowFunnel")
         .and_then(|v| v.as_object())
         .map(|m| !m.is_empty())
         .unwrap_or(false);
 
-    let dns_name = status.get("Self")
+    let dns_name = status
+        .get("Self")
         .and_then(|s| s.get("DNSName"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
@@ -115,21 +131,35 @@ pub fn engine_tailscale_status() -> Result<TailscaleStatus, String> {
 
     let serve_url = if serve_active && !dns_name.is_empty() {
         format!("https://{}", dns_name)
-    } else { String::new() };
+    } else {
+        String::new()
+    };
 
     let funnel_url = if funnel_active && !dns_name.is_empty() {
         format!("https://{} (public)", dns_name)
-    } else { String::new() };
+    } else {
+        String::new()
+    };
 
     Ok(TailscaleStatus {
-        installed, running, hostname, tailnet, ip, version,
-        serve_active, funnel_active, serve_url, funnel_url,
+        installed,
+        running,
+        hostname,
+        tailnet,
+        ip,
+        version,
+        serve_active,
+        funnel_active,
+        serve_url,
+        funnel_url,
     })
 }
 
 /// Get persisted Tailscale config.
 #[tauri::command]
-pub fn engine_tailscale_get_config(state: State<'_, EngineState>) -> Result<TailscaleConfig, String> {
+pub fn engine_tailscale_get_config(
+    state: State<'_, EngineState>,
+) -> Result<TailscaleConfig, String> {
     match state.store.get_config("tailscale_config") {
         Ok(Some(json)) => serde_json::from_str(&json).map_err(|e| format!("Parse error: {}", e)),
         _ => Ok(TailscaleConfig::default()),
@@ -143,7 +173,10 @@ pub fn engine_tailscale_set_config(
     config: TailscaleConfig,
 ) -> Result<(), String> {
     let json = serde_json::to_string(&config).map_err(|e| format!("Serialize error: {}", e))?;
-    state.store.set_config("tailscale_config", &json).map_err(|e| e.to_string())
+    state
+        .store
+        .set_config("tailscale_config", &json)
+        .map_err(|e| e.to_string())
 }
 
 /// Start Tailscale Serve on the configured port.
@@ -167,8 +200,7 @@ pub fn engine_tailscale_serve_start(
 #[tauri::command]
 pub fn engine_tailscale_serve_stop() -> Result<String, String> {
     info!("[tailscale] Stopping serve");
-    run_ts_cmd(&["serve", "--bg", "off"])
-        .map_err(|e| format!("Tailscale serve stop failed: {}", e))
+    run_ts_cmd(&["serve", "--bg", "off"]).map_err(|e| format!("Tailscale serve stop failed: {}", e))
 }
 
 /// Enable Tailscale Funnel (public internet access).
@@ -252,7 +284,8 @@ fn which_tailscale() -> Option<String> {
 
 /// Run a tailscale CLI subcommand.
 fn run_ts_cmd(args: &[&str]) -> Result<String, String> {
-    let bin = which_tailscale().ok_or("Tailscale not found. Install from https://tailscale.com/download")?;
+    let bin = which_tailscale()
+        .ok_or("Tailscale not found. Install from https://tailscale.com/download")?;
     let output = Command::new(&bin)
         .args(args)
         .output()
@@ -262,7 +295,11 @@ fn run_ts_cmd(args: &[&str]) -> Result<String, String> {
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        warn!("[tailscale] Command failed: tailscale {} → {}", args.join(" "), stderr);
+        warn!(
+            "[tailscale] Command failed: tailscale {} → {}",
+            args.join(" "),
+            stderr
+        );
         Err(stderr)
     }
 }

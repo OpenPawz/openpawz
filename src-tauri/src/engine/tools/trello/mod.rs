@@ -13,19 +13,19 @@
 // Shared helpers (credential resolution, API client) live here.
 
 pub mod boards;
-pub mod lists;
 pub mod cards;
-pub mod labels;
 pub mod checklists;
+pub mod labels;
+pub mod lists;
 pub mod members;
 
-use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
+use crate::atoms::types::*;
 use crate::engine::state::EngineState;
 use log::warn;
 use serde_json::Value;
-use tauri::Manager;
 use std::time::Duration;
+use tauri::Manager;
 
 pub(crate) const TRELLO_API: &str = "https://api.trello.com/1";
 
@@ -49,8 +49,7 @@ pub async fn execute(
     args: &Value,
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
-    None
-        .or(boards::execute(name, args, app_handle).await)
+    None.or(boards::execute(name, args, app_handle).await)
         .or(lists::execute(name, args, app_handle).await)
         .or(cards::execute(name, args, app_handle).await)
         .or(labels::execute(name, args, app_handle).await)
@@ -62,7 +61,8 @@ pub async fn execute(
 
 /// Resolve Trello API key from the skill vault.
 pub(crate) fn get_api_key(app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
     let creds = crate::engine::skills::get_skill_credentials(&state.store, "trello")
         .map_err(|e| format!("Failed to get Trello credentials: {}", e))?;
@@ -77,7 +77,8 @@ pub(crate) fn get_api_key(app_handle: &tauri::AppHandle) -> EngineResult<String>
 
 /// Resolve Trello token from the skill vault.
 pub(crate) fn get_token(app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
     let creds = crate::engine::skills::get_skill_credentials(&state.store, "trello")
         .map_err(|e| format!("Failed to get Trello credentials: {}", e))?;
@@ -116,7 +117,8 @@ pub(crate) async fn trello_request(
     body: Option<&Value>,
 ) -> EngineResult<Value> {
     let http = client();
-    let mut req = http.request(method.clone(), url)
+    let mut req = http
+        .request(method.clone(), url)
         .header("Content-Type", "application/json");
     if let Some(b) = body {
         req = req.json(b);
@@ -131,19 +133,27 @@ pub(crate) async fn trello_request(
         warn!("[trello] Rate limited, waiting 1s and retrying");
         tokio::time::sleep(Duration::from_secs(1)).await;
 
-        let mut req2 = http.request(method, url)
+        let mut req2 = http
+            .request(method, url)
             .header("Content-Type", "application/json");
         if let Some(b) = body {
             req2 = req2.json(b);
         }
-        let resp2 = req2.send().await.map_err(|e| format!("Retry HTTP error: {}", e))?;
+        let resp2 = req2
+            .send()
+            .await
+            .map_err(|e| format!("Retry HTTP error: {}", e))?;
         let status2 = resp2.status();
         let text2 = resp2.text().await.unwrap_or_default();
         if !status2.is_success() {
-            return Err(format!("Trello API {} (after retry): {}", status2, &text2[..text2.len().min(500)]).into());
+            return Err(format!(
+                "Trello API {} (after retry): {}",
+                status2,
+                &text2[..text2.len().min(500)]
+            )
+            .into());
         }
-        return serde_json::from_str(&text2)
-            .or_else(|_| Ok(Value::String(text2)));
+        return serde_json::from_str(&text2).or_else(|_| Ok(Value::String(text2)));
     }
 
     if !status.is_success() {
@@ -154,6 +164,5 @@ pub(crate) async fn trello_request(
         return Ok(serde_json::json!({"ok": true}));
     }
 
-    serde_json::from_str(&text)
-        .or_else(|_| Ok(Value::String(text)))
+    serde_json::from_str(&text).or_else(|_| Ok(Value::String(text)))
 }

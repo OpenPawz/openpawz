@@ -1,9 +1,9 @@
 use log::info;
 
-use crate::engine::sessions::SessionStore;
-use super::types::{CommunitySkill, DiscoveredSkill};
 use super::parser::parse_skill_md;
+use super::types::{CommunitySkill, DiscoveredSkill};
 use crate::atoms::error::EngineResult;
+use crate::engine::sessions::SessionStore;
 
 /// Fetch the list of skills available in a GitHub repo.
 /// Uses the GitHub API to list files in skills/ directories.
@@ -17,10 +17,12 @@ pub async fn fetch_repo_skills(source: &str) -> EngineResult<Vec<DiscoveredSkill
         owner, repo
     );
 
-    let resp = client.get(&tree_url)
+    let resp = client
+        .get(&tree_url)
         .header("User-Agent", "Pawz/1.0")
         .header("Accept", "application/vnd.github.v3+json")
-        .send().await?;
+        .send()
+        .await?;
 
     let tree: serde_json::Value = if resp.status().is_success() {
         resp.json().await?
@@ -30,19 +32,26 @@ pub async fn fetch_repo_skills(source: &str) -> EngineResult<Vec<DiscoveredSkill
             "https://api.github.com/repos/{}/{}/git/trees/master?recursive=1",
             owner, repo
         );
-        let resp2 = client.get(&tree_url_master)
+        let resp2 = client
+            .get(&tree_url_master)
             .header("User-Agent", "Pawz/1.0")
             .header("Accept", "application/vnd.github.v3+json")
-            .send().await?;
+            .send()
+            .await?;
 
         if !resp2.status().is_success() {
-            return Err(format!("GitHub API returned {} (tried both main and master branches)", resp2.status()).into());
+            return Err(format!(
+                "GitHub API returned {} (tried both main and master branches)",
+                resp2.status()
+            )
+            .into());
         }
         resp2.json().await?
     };
 
     // Find all SKILL.md files
-    let skill_paths: Vec<String> = tree["tree"].as_array()
+    let skill_paths: Vec<String> = tree["tree"]
+        .as_array()
         .unwrap_or(&vec![])
         .iter()
         .filter_map(|entry| {
@@ -69,9 +78,11 @@ pub async fn fetch_repo_skills(source: &str) -> EngineResult<Vec<DiscoveredSkill
                 owner, repo, branch, path
             );
 
-            if let Ok(r) = client.get(&raw_url)
+            if let Ok(r) = client
+                .get(&raw_url)
                 .header("User-Agent", "Pawz/1.0")
-                .send().await
+                .send()
+                .await
             {
                 if r.status().is_success() {
                     content = r.text().await.unwrap_or_default();
@@ -130,9 +141,11 @@ pub async fn install_community_skill(
     );
     info!("[skills] Fetching SKILL.md from: {}", raw_url);
 
-    let resp = client.get(&raw_url)
+    let resp = client
+        .get(&raw_url)
         .header("User-Agent", "Pawz/1.0")
-        .send().await?;
+        .send()
+        .await?;
 
     if !resp.status().is_success() {
         // Try the 'master' branch as fallback
@@ -140,11 +153,17 @@ pub async fn install_community_skill(
             "https://raw.githubusercontent.com/{}/{}/master/{}",
             owner, repo, resolved_path
         );
-        info!("[skills] main branch failed (HTTP {}), trying master: {}", resp.status(), fallback_url);
+        info!(
+            "[skills] main branch failed (HTTP {}), trying master: {}",
+            resp.status(),
+            fallback_url
+        );
 
-        let resp2 = client.get(&fallback_url)
+        let resp2 = client
+            .get(&fallback_url)
             .header("User-Agent", "Pawz/1.0")
-            .send().await?;
+            .send()
+            .await?;
 
         if !resp2.status().is_success() {
             return Err(format!(
@@ -170,10 +189,7 @@ async fn discover_skill_path(
     repo: &str,
 ) -> EngineResult<String> {
     // Try common paths first (fast, no API rate limit)
-    let candidates = vec![
-        "SKILL.md".to_string(),
-        format!("skills/{}/SKILL.md", repo),
-    ];
+    let candidates = vec!["SKILL.md".to_string(), format!("skills/{}/SKILL.md", repo)];
 
     for candidate in &candidates {
         for branch in &["main", "master"] {
@@ -181,9 +197,11 @@ async fn discover_skill_path(
                 "https://raw.githubusercontent.com/{}/{}/{}/{}",
                 owner, repo, branch, candidate
             );
-            if let Ok(resp) = client.head(&url)
+            if let Ok(resp) = client
+                .head(&url)
                 .header("User-Agent", "Pawz/1.0")
-                .send().await
+                .send()
+                .await
             {
                 if resp.status().is_success() {
                     info!("[skills] Auto-discovered SKILL.md at: {}", candidate);
@@ -198,14 +216,17 @@ async fn discover_skill_path(
         "https://api.github.com/repos/{}/{}/git/trees/main?recursive=1",
         owner, repo
     );
-    if let Ok(resp) = client.get(&tree_url)
+    if let Ok(resp) = client
+        .get(&tree_url)
         .header("User-Agent", "Pawz/1.0")
         .header("Accept", "application/vnd.github.v3+json")
-        .send().await
+        .send()
+        .await
     {
         if resp.status().is_success() {
             if let Ok(tree) = resp.json::<serde_json::Value>().await {
-                let skill_paths: Vec<String> = tree["tree"].as_array()
+                let skill_paths: Vec<String> = tree["tree"]
+                    .as_array()
                     .unwrap_or(&vec![])
                     .iter()
                     .filter_map(|entry| {
@@ -230,7 +251,8 @@ async fn discover_skill_path(
         "No SKILL.md found in {}/{}. The repository may not contain a valid Paw skill. \
          Try specifying the path explicitly (e.g., 'skills/my-skill/SKILL.md').",
         owner, repo
-    ).into())
+    )
+    .into())
 }
 
 /// Finalize skill installation: parse SKILL.md content, save to DB.
@@ -242,8 +264,8 @@ fn finish_install(
     content: &str,
     agent_id: Option<&str>,
 ) -> EngineResult<CommunitySkill> {
-    let (name, description, instructions) = parse_skill_md(content)
-        .ok_or("Invalid SKILL.md format — missing name in frontmatter")?;
+    let (name, description, instructions) =
+        parse_skill_md(content).ok_or("Invalid SKILL.md format — missing name in frontmatter")?;
 
     let skill_name = name.to_lowercase().replace(' ', "-");
     let id = format!("{}/{}/{}", owner, repo, skill_name);
@@ -267,7 +289,10 @@ fn finish_install(
     };
 
     store.save_community_skill(&skill)?;
-    info!("[skills] Installed community skill: {} from {} (agents: {:?})", id, source, &skill.agent_ids);
+    info!(
+        "[skills] Installed community skill: {} from {} (agents: {:?})",
+        id, source, &skill.agent_ids
+    );
 
     Ok(skill)
 }

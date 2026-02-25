@@ -220,7 +220,9 @@ mod tests {
 
         // Direct test of the prefix stripping logic
         assert_eq!(
-            stripped.strip_prefix("github").and_then(|r| r.strip_prefix('_')),
+            stripped
+                .strip_prefix("github")
+                .and_then(|r| r.strip_prefix('_')),
             Some("read_file")
         );
     }

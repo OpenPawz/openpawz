@@ -164,10 +164,7 @@ fn generate_toml(data: &WizardFormData) -> Result<String, String> {
     // [instructions] section
     if !data.instructions.is_empty() {
         out.push_str("\n[instructions]\n");
-        out.push_str(&format!(
-            "text = \"{}\"\n",
-            toml_escape(&data.instructions)
-        ));
+        out.push_str(&format!("text = \"{}\"\n", toml_escape(&data.instructions)));
     }
 
     // [widget] section
@@ -219,8 +216,11 @@ fn generate_toml(data: &WizardFormData) -> Result<String, String> {
             out.push_str(&format!("command = \"{}\"\n", toml_escape(&m.command)));
         }
         if !m.args.is_empty() {
-            let args_str: Vec<String> =
-                m.args.iter().map(|a| format!("\"{}\"", toml_escape(a))).collect();
+            let args_str: Vec<String> = m
+                .args
+                .iter()
+                .map(|a| format!("\"{}\"", toml_escape(a)))
+                .collect();
             out.push_str(&format!("args = [{}]\n", args_str.join(", ")));
         }
         if !m.transport.is_empty() && m.transport != "stdio" {
@@ -262,10 +262,7 @@ fn url_encode(s: &str) -> String {
 
 /// Build a GitHub new-file URL pre-filled with skill TOML for PawzHub PR.
 #[tauri::command]
-pub fn engine_wizard_publish_url(
-    skill_id: String,
-    toml_content: String,
-) -> Result<String, String> {
+pub fn engine_wizard_publish_url(skill_id: String, toml_content: String) -> Result<String, String> {
     if skill_id.is_empty() {
         return Err("Skill ID is required".into());
     }
@@ -424,7 +421,9 @@ mod tests {
         let skill = parsed.get("skill").expect("should have [skill]");
         assert_eq!(skill.get("id").unwrap().as_str().unwrap(), "test-skill");
 
-        let creds = parsed.get("credentials").expect("should have [[credentials]]");
+        let creds = parsed
+            .get("credentials")
+            .expect("should have [[credentials]]");
         assert!(creds.as_array().unwrap().len() == 1);
     }
 }

@@ -2,14 +2,14 @@
 // Handles: OpenAI, OpenRouter, Ollama, Azure OpenAI, and any OpenAI-compatible REST API.
 // Implements the AiProvider Golden Trait.
 
-use async_trait::async_trait;
 use crate::atoms::traits::{AiProvider, ProviderError};
 use crate::engine::types::{
-    ContentBlock, Message, MessageContent, ProviderConfig, ProviderKind,
-    StreamChunk, ToolCallDelta, ToolDefinition, TokenUsage,
+    ContentBlock, Message, MessageContent, ProviderConfig, ProviderKind, StreamChunk, TokenUsage,
+    ToolCallDelta, ToolDefinition,
 };
+use async_trait::async_trait;
 use futures::StreamExt;
-use log::{info, warn, error};
+use log::{error, info, warn};
 use reqwest::Client;
 use serde_json::{json, Value};
 use std::time::Duration;
@@ -19,7 +19,7 @@ use std::time::Duration;
 // with `use super::openai::{MAX_RETRIES, ...}` unchanged.
 
 pub(crate) use crate::engine::http::{
-    MAX_RETRIES, is_retryable_status, retry_delay, parse_retry_after,
+    is_retryable_status, parse_retry_after, retry_delay, MAX_RETRIES,
 };
 
 // Import the circuit breaker for provider-level use
@@ -40,7 +40,9 @@ pub struct OpenAiProvider {
 
 impl OpenAiProvider {
     pub fn new(config: &ProviderConfig) -> Self {
-        let base_url = config.base_url.clone()
+        let base_url = config
+            .base_url
+            .clone()
             .unwrap_or_else(|| config.kind.default_base_url().to_string());
         let is_azure = base_url.contains(".azure.com");
         OpenAiProvider {
@@ -56,11 +58,14 @@ impl OpenAiProvider {
     }
 
     fn format_messages(messages: &[Message]) -> Vec<Value> {
-        messages.iter().map(|msg| {
-            let content_val = match &msg.content {
-                MessageContent::Text(s) => json!(s),
-                MessageContent::Blocks(blocks) => {
-                    let parts: Vec<Value> = blocks.iter().map(|b| match b {
+        messages
+            .iter()
+            .map(|msg| {
+                let content_val =
+                    match &msg.content {
+                        MessageContent::Text(s) => json!(s),
+                        MessageContent::Blocks(blocks) => {
+                            let parts: Vec<Value> = blocks.iter().map(|b| match b {
                         ContentBlock::Text { text } => json!({"type": "text", "text": text}),
                         ContentBlock::ImageUrl { image_url } => json!({
                             "type": "image_url",
@@ -77,37 +82,41 @@ impl OpenAiProvider {
                             }
                         }),
                     }).collect();
-                    json!(parts)
+                            json!(parts)
+                        }
+                    };
+                let mut m = json!({
+                    "role": msg.role,
+                    "content": content_val,
+                });
+                if let Some(tc) = &msg.tool_calls {
+                    m["tool_calls"] = json!(tc);
                 }
-            };
-            let mut m = json!({
-                "role": msg.role,
-                "content": content_val,
-            });
-            if let Some(tc) = &msg.tool_calls {
-                m["tool_calls"] = json!(tc);
-            }
-            if let Some(id) = &msg.tool_call_id {
-                m["tool_call_id"] = json!(id);
-            }
-            if let Some(name) = &msg.name {
-                m["name"] = json!(name);
-            }
-            m
-        }).collect()
+                if let Some(id) = &msg.tool_call_id {
+                    m["tool_call_id"] = json!(id);
+                }
+                if let Some(name) = &msg.name {
+                    m["name"] = json!(name);
+                }
+                m
+            })
+            .collect()
     }
 
     fn format_tools(tools: &[ToolDefinition]) -> Vec<Value> {
-        tools.iter().map(|t| {
-            json!({
-                "type": t.tool_type,
-                "function": {
-                    "name": t.function.name,
-                    "description": t.function.description,
-                    "parameters": t.function.parameters,
-                }
+        tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "type": t.tool_type,
+                    "function": {
+                        "name": t.function.name,
+                        "description": t.function.description,
+                        "parameters": t.function.parameters,
+                    }
+                })
             })
-        }).collect()
+            .collect()
     }
 
     /// Parse a single SSE data line from an OpenAI-compatible stream.
@@ -128,7 +137,8 @@ impl OpenAiProvider {
         let delta_text = delta["content"].as_str().map(|s| s.to_string());
 
         // OpenAI reasoning models (o1, o3, o4-mini) emit reasoning in a separate field
-        let thinking_text = delta.get("reasoning_content")
+        let thinking_text = delta
+            .get("reasoning_content")
             .or_else(|| delta.get("reasoning"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
@@ -256,11 +266,17 @@ impl AiProvider for OpenAiProvider {
         for attempt in 0..=MAX_RETRIES {
             if attempt > 0 {
                 let delay = retry_delay(attempt - 1, retry_after.take()).await;
-                warn!("[engine] OpenAI retry {}/{} after {}ms", attempt, MAX_RETRIES, delay.as_millis());
+                warn!(
+                    "[engine] OpenAI retry {}/{} after {}ms",
+                    attempt,
+                    MAX_RETRIES,
+                    delay.as_millis()
+                );
             }
 
             // Azure uses api-key header; everyone else uses Bearer token
-            let mut req = self.client
+            let mut req = self
+                .client
                 .post(&url)
                 .header("Content-Type", "application/json");
             if self.is_azure {
@@ -275,7 +291,9 @@ impl AiProvider for OpenAiProvider {
                     OPENAI_CIRCUIT.record_failure();
                     last_error = format!("HTTP request failed: {}", e);
                     last_status = 0;
-                    if attempt < MAX_RETRIES { continue; }
+                    if attempt < MAX_RETRIES {
+                        continue;
+                    }
                     return Err(ProviderError::Transport(last_error));
                 }
             };
@@ -284,15 +302,22 @@ impl AiProvider for OpenAiProvider {
                 let status = response.status().as_u16();
                 last_status = status;
                 // Parse Retry-After header before consuming body
-                retry_after = response.headers()
+                retry_after = response
+                    .headers()
                     .get("retry-after")
                     .and_then(|v| v.to_str().ok())
                     .and_then(parse_retry_after);
                 let body_text = response.text().await.unwrap_or_default();
-                last_error = format!("API error {}: {}", status,
-                    crate::engine::types::truncate_utf8(&body_text, 200));
-                error!("[engine] OpenAI error {}: {}", status,
-                    crate::engine::types::truncate_utf8(&body_text, 500));
+                last_error = format!(
+                    "API error {}: {}",
+                    status,
+                    crate::engine::types::truncate_utf8(&body_text, 200)
+                );
+                error!(
+                    "[engine] OpenAI error {}: {}",
+                    status,
+                    crate::engine::types::truncate_utf8(&body_text, 500)
+                );
 
                 OPENAI_CIRCUIT.record_failure();
 
@@ -310,7 +335,10 @@ impl AiProvider for OpenAiProvider {
                         retry_after_secs: retry_after.take(),
                     })
                 } else {
-                    Err(ProviderError::Api { status, message: last_error })
+                    Err(ProviderError::Api {
+                        status,
+                        message: last_error,
+                    })
                 };
             }
 
@@ -320,9 +348,8 @@ impl AiProvider for OpenAiProvider {
             let mut buffer = String::new();
 
             while let Some(result) = byte_stream.next().await {
-                let bytes = result.map_err(|e| {
-                    ProviderError::Transport(format!("Stream read error: {}", e))
-                })?;
+                let bytes = result
+                    .map_err(|e| ProviderError::Transport(format!("Stream read error: {}", e)))?;
                 buffer.push_str(&String::from_utf8_lossy(&bytes));
 
                 // Process complete SSE lines
@@ -352,7 +379,10 @@ impl AiProvider for OpenAiProvider {
                 message: last_error,
                 retry_after_secs: retry_after,
             }),
-            s => Err(ProviderError::Api { status: s, message: last_error }),
+            s => Err(ProviderError::Api {
+                status: s,
+                message: last_error,
+            }),
         }
     }
 }

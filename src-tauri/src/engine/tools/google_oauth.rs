@@ -20,9 +20,9 @@ use crate::atoms::error::EngineResult;
 use crate::commands::state::EngineState;
 use crate::engine::skills;
 use log::info;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -110,7 +110,8 @@ const ERROR_HTML: &str = r#"<!DOCTYPE html>
 /// Run the full OAuth2 flow: open browser → capture code → exchange → store.
 /// Returns the connected email address on success.
 pub async fn run_oauth_flow(app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     // Get client ID/secret — bundled (official builds) or user-provided
@@ -120,9 +121,11 @@ pub async fn run_oauth_flow(app_handle: &tauri::AppHandle) -> EngineResult<Strin
         .ok_or("No Google OAuth credentials. Set PAW_GOOGLE_CLIENT_ID at build time, or paste your own Client ID in skill settings.")?;
 
     // 1. Spin up ephemeral localhost listener
-    let listener = TcpListener::bind("127.0.0.1:0").await
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
         .map_err(|e| format!("Failed to bind localhost listener: {}", e))?;
-    let port = listener.local_addr()
+    let port = listener
+        .local_addr()
         .map_err(|e| format!("Failed to get listener port: {}", e))?
         .port();
 
@@ -140,7 +143,9 @@ pub async fn run_oauth_flow(app_handle: &tauri::AppHandle) -> EngineResult<Strin
 
     // 3. Open the user's browser
     info!("[google-oauth] Opening browser for consent");
-    app_handle.opener().open_url(&auth_url, None::<&str>)
+    app_handle
+        .opener()
+        .open_url(&auth_url, None::<&str>)
         .map_err(|e| format!("Failed to open browser: {}", e))?;
 
     // 4. Wait for the callback (with timeout)
@@ -150,18 +155,24 @@ pub async fn run_oauth_flow(app_handle: &tauri::AppHandle) -> EngineResult<Strin
     // 5. Exchange the code for tokens
     let tokens = exchange_code(&code, &client_id, &client_secret, &redirect_uri).await?;
 
-    let access_token = tokens["access_token"].as_str()
+    let access_token = tokens["access_token"]
+        .as_str()
         .ok_or("Token response missing 'access_token'")?;
     let refresh_token = tokens["refresh_token"].as_str()
         .ok_or("Token response missing 'refresh_token'. Try again — make sure to click 'Allow' on the consent screen.")?;
     let expires_in = tokens["expires_in"].as_u64().unwrap_or(3600);
 
     // 6. Get the user's email address
-    let email = get_user_email(access_token).await.unwrap_or_else(|_| "unknown".to_string());
+    let email = get_user_email(access_token)
+        .await
+        .unwrap_or_else(|_| "unknown".to_string());
     info!("[google-oauth] Connected as: {}", email);
 
     // 7. Store tokens in skill vault (encrypted)
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
     let expires_at = (now + expires_in).to_string();
 
     store_cred(&state, &vault_key, "GOOGLE_ACCESS_TOKEN", access_token)?;
@@ -170,7 +181,9 @@ pub async fn run_oauth_flow(app_handle: &tauri::AppHandle) -> EngineResult<Strin
     store_cred(&state, &vault_key, "GOOGLE_USER_EMAIL", &email)?;
 
     // Auto-enable the skill
-    state.store.set_skill_enabled("google_workspace", true)
+    state
+        .store
+        .set_skill_enabled("google_workspace", true)
         .map_err(|e| e.to_string())?;
 
     info!("[google-oauth] Tokens stored, skill enabled");
@@ -182,16 +195,22 @@ pub async fn run_oauth_flow(app_handle: &tauri::AppHandle) -> EngineResult<Strin
 async fn wait_for_callback(listener: TcpListener) -> EngineResult<String> {
     // 2-minute timeout for the user to complete the consent flow
     let timeout = tokio::time::timeout(Duration::from_secs(120), async {
-        let (mut stream, _addr) = listener.accept().await
+        let (mut stream, _addr) = listener
+            .accept()
+            .await
             .map_err(|e| format!("Accept failed: {}", e))?;
 
         let mut buf = vec![0u8; 4096];
-        let n = stream.read(&mut buf).await
+        let n = stream
+            .read(&mut buf)
+            .await
             .map_err(|e| format!("Read failed: {}", e))?;
         let request = String::from_utf8_lossy(&buf[..n]).to_string();
 
         // Parse the GET request line: "GET /?code=XXXX&scope=... HTTP/1.1"
-        let path = request.lines().next()
+        let path = request
+            .lines()
+            .next()
             .and_then(|line| line.split_whitespace().nth(1))
             .unwrap_or("");
 
@@ -220,7 +239,8 @@ async fn wait_for_callback(listener: TcpListener) -> EngineResult<String> {
         Ok(code)
     });
 
-    timeout.await
+    timeout
+        .await
         .map_err(|_| "Timed out waiting for Google authorization (2 minutes). Please try again.")?
 }
 
@@ -242,7 +262,13 @@ fn url_encode(s: &str) -> String {
 
 fn url_decode(s: &str) -> String {
     url::form_urlencoded::parse(s.as_bytes())
-        .map(|(k, v)| if v.is_empty() { k.to_string() } else { format!("{}={}", k, v) })
+        .map(|(k, v)| {
+            if v.is_empty() {
+                k.to_string()
+            } else {
+                format!("{}={}", k, v)
+            }
+        })
         .next()
         .unwrap_or_else(|| s.to_string())
 }
@@ -255,7 +281,8 @@ async fn exchange_code(
     redirect_uri: &str,
 ) -> EngineResult<serde_json::Value> {
     let client = reqwest::Client::new();
-    let resp = client.post(TOKEN_ENDPOINT)
+    let resp = client
+        .post(TOKEN_ENDPOINT)
         .form(&[
             ("code", code),
             ("client_id", client_id),
@@ -275,8 +302,7 @@ async fn exchange_code(
         return Err(format!("Token exchange failed ({}): {}", status, body).into());
     }
 
-    serde_json::from_str(&body)
-        .map_err(|e| format!("Invalid token response: {}", e).into())
+    serde_json::from_str(&body).map_err(|e| format!("Invalid token response: {}", e).into())
 }
 
 /// Refresh an access token using a refresh token.
@@ -286,7 +312,8 @@ pub async fn refresh_access_token(
     client_secret: &str,
 ) -> EngineResult<(String, u64)> {
     let client = reqwest::Client::new();
-    let resp = client.post(TOKEN_ENDPOINT)
+    let resp = client
+        .post(TOKEN_ENDPOINT)
         .form(&[
             ("refresh_token", refresh_token),
             ("client_id", client_id),
@@ -305,14 +332,18 @@ pub async fn refresh_access_token(
         return Err(format!("Token refresh failed ({}): {}", status, body).into());
     }
 
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| format!("Invalid refresh response: {}", e))?;
+    let json: serde_json::Value =
+        serde_json::from_str(&body).map_err(|e| format!("Invalid refresh response: {}", e))?;
 
-    let access_token = json["access_token"].as_str()
+    let access_token = json["access_token"]
+        .as_str()
         .ok_or("Refresh response missing 'access_token'")?
         .to_string();
     let expires_in = json["expires_in"].as_u64().unwrap_or(3600);
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
 
     Ok((access_token, now + expires_in))
 }
@@ -320,17 +351,21 @@ pub async fn refresh_access_token(
 /// Get the user's email from the userinfo endpoint.
 async fn get_user_email(access_token: &str) -> EngineResult<String> {
     let client = reqwest::Client::new();
-    let resp = client.get(USERINFO_ENDPOINT)
+    let resp = client
+        .get(USERINFO_ENDPOINT)
         .header("Authorization", format!("Bearer {}", access_token))
         .timeout(Duration::from_secs(10))
         .send()
         .await
         .map_err(|e| format!("Userinfo request failed: {}", e))?;
 
-    let json: serde_json::Value = resp.json().await
+    let json: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| format!("Userinfo parse failed: {}", e))?;
 
-    json["email"].as_str()
+    json["email"]
+        .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "Userinfo response missing 'email'".into())
 }
@@ -344,10 +379,16 @@ pub fn get_connection_status(app_handle: &tauri::AppHandle) -> Option<String> {
 
 /// Disconnect Google OAuth — remove all stored tokens.
 pub fn disconnect(app_handle: &tauri::AppHandle) -> EngineResult<()> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
-    for key in &["GOOGLE_ACCESS_TOKEN", "GOOGLE_REFRESH_TOKEN", "GOOGLE_TOKEN_EXPIRES_AT", "GOOGLE_USER_EMAIL"] {
+    for key in &[
+        "GOOGLE_ACCESS_TOKEN",
+        "GOOGLE_REFRESH_TOKEN",
+        "GOOGLE_TOKEN_EXPIRES_AT",
+        "GOOGLE_USER_EMAIL",
+    ] {
         let _ = state.store.delete_skill_credential("google_workspace", key);
     }
 
@@ -361,13 +402,18 @@ pub fn disconnect(app_handle: &tauri::AppHandle) -> EngineResult<()> {
 // ── Credential helpers ─────────────────────────────────────────────────────
 
 fn get_decrypted_cred(state: &EngineState, vault_key: &[u8], key: &str) -> Option<String> {
-    let encrypted = state.store.get_skill_credential("google_workspace", key).ok()??;
+    let encrypted = state
+        .store
+        .get_skill_credential("google_workspace", key)
+        .ok()??;
     skills::decrypt_credential(&encrypted, vault_key).ok()
 }
 
 fn store_cred(state: &EngineState, vault_key: &[u8], key: &str, value: &str) -> EngineResult<()> {
     let encrypted = skills::encrypt_credential(value, vault_key);
-    state.store.set_skill_credential("google_workspace", key, &encrypted)
+    state
+        .store
+        .set_skill_credential("google_workspace", key, &encrypted)
         .map_err(|e| e.to_string())?;
     Ok(())
 }

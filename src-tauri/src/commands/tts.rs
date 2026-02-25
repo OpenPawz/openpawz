@@ -8,24 +8,30 @@ use tauri::State;
 /// TTS configuration stored in DB as JSON under key "tts_config"
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TtsConfig {
-    pub provider: String,        // "google" | "openai" | "elevenlabs"
-    pub voice: String,           // e.g. "en-US-Chirp3-HD-Achernar" or "alloy" or ElevenLabs voice_id
-    pub speed: f64,              // 0.25–4.0
-    pub language_code: String,   // e.g. "en-US"
-    pub auto_speak: bool,        // automatically speak new responses
+    pub provider: String,      // "google" | "openai" | "elevenlabs"
+    pub voice: String,         // e.g. "en-US-Chirp3-HD-Achernar" or "alloy" or ElevenLabs voice_id
+    pub speed: f64,            // 0.25–4.0
+    pub language_code: String, // e.g. "en-US"
+    pub auto_speak: bool,      // automatically speak new responses
     #[serde(default)]
-    pub elevenlabs_api_key: String,  // ElevenLabs API key (separate from provider keys)
+    pub elevenlabs_api_key: String, // ElevenLabs API key (separate from provider keys)
     #[serde(default = "default_elevenlabs_model")]
-    pub elevenlabs_model: String,    // "eleven_multilingual_v2" | "eleven_turbo_v2_5"
+    pub elevenlabs_model: String, // "eleven_multilingual_v2" | "eleven_turbo_v2_5"
     #[serde(default = "default_stability")]
-    pub stability: f64,              // 0.0–1.0 (ElevenLabs voice stability)
+    pub stability: f64, // 0.0–1.0 (ElevenLabs voice stability)
     #[serde(default = "default_similarity")]
-    pub similarity_boost: f64,       // 0.0–1.0 (ElevenLabs clarity + similarity)
+    pub similarity_boost: f64, // 0.0–1.0 (ElevenLabs clarity + similarity)
 }
 
-fn default_elevenlabs_model() -> String { "eleven_multilingual_v2".into() }
-fn default_stability() -> f64 { 0.5 }
-fn default_similarity() -> f64 { 0.75 }
+fn default_elevenlabs_model() -> String {
+    "eleven_multilingual_v2".into()
+}
+fn default_stability() -> f64 {
+    0.5
+}
+fn default_similarity() -> f64 {
+    0.75
+}
 
 impl Default for TtsConfig {
     fn default() -> Self {
@@ -66,10 +72,23 @@ pub async fn engine_tts_speak(
     // Extract needed values before any async calls (MutexGuard is !Send)
     let (openai_provider_info, google_key) = {
         let config = state.config.lock();
-        let openai = config.providers.iter().find(|p| p.kind == ProviderKind::OpenAI);
-        let google = config.providers.iter().find(|p| p.kind == ProviderKind::Google);
+        let openai = config
+            .providers
+            .iter()
+            .find(|p| p.kind == ProviderKind::OpenAI);
+        let google = config
+            .providers
+            .iter()
+            .find(|p| p.kind == ProviderKind::Google);
         (
-            openai.map(|p| (p.api_key.clone(), p.base_url.clone().unwrap_or_else(|| "https://api.openai.com/v1".into()))),
+            openai.map(|p| {
+                (
+                    p.api_key.clone(),
+                    p.base_url
+                        .clone()
+                        .unwrap_or_else(|| "https://api.openai.com/v1".into()),
+                )
+            }),
             google.map(|p| p.api_key.clone()),
         )
     };
@@ -82,14 +101,16 @@ pub async fn engine_tts_speak(
         }
         "elevenlabs" => {
             if tts_config.elevenlabs_api_key.is_empty() {
-                return Err("No ElevenLabs API key configured — add one in Settings → Voice & TTS".into());
+                return Err(
+                    "No ElevenLabs API key configured — add one in Settings → Voice & TTS".into(),
+                );
             }
             tts_elevenlabs(&tts_config.elevenlabs_api_key, &text, &tts_config).await
         }
         _ => {
             // Default: Google Cloud TTS
-            let api_key = google_key
-                .ok_or("No Google provider configured — add one in Settings → Models")?;
+            let api_key =
+                google_key.ok_or("No Google provider configured — add one in Settings → Models")?;
             tts_google(&api_key, &text, &tts_config).await
         }
     }
@@ -97,9 +118,7 @@ pub async fn engine_tts_speak(
 
 /// Get TTS config
 #[tauri::command]
-pub fn engine_tts_get_config(
-    state: State<'_, EngineState>,
-) -> Result<TtsConfig, String> {
+pub fn engine_tts_get_config(state: State<'_, EngineState>) -> Result<TtsConfig, String> {
     match state.store.get_config("tts_config") {
         Ok(Some(json)) => serde_json::from_str(&json).map_err(|e| e.to_string()),
         _ => Ok(TtsConfig::default()),
@@ -114,7 +133,10 @@ pub fn engine_tts_set_config(
 ) -> Result<(), String> {
     let json = serde_json::to_string(&config).map_err(|e| e.to_string())?;
     state.store.set_config("tts_config", &json)?;
-    info!("[tts] Config saved: provider={}, voice={}", config.provider, config.voice);
+    info!(
+        "[tts] Config saved: provider={}, voice={}",
+        config.provider, config.voice
+    );
     Ok(())
 }
 
@@ -161,15 +183,15 @@ async fn tts_google(api_key: &str, text: &str, config: &TtsConfig) -> Result<Str
             return Err(format!("Google TTS error ({}): {}", status, body));
         }
 
-        let result: serde_json::Value = resp.json().await
+        let result: serde_json::Value = resp
+            .json()
+            .await
             .map_err(|e| format!("Google TTS JSON parse error: {}", e))?;
 
         if let Some(audio) = result["audioContent"].as_str() {
             // Decode and accumulate raw audio bytes
-            let bytes = base64::Engine::decode(
-                &base64::engine::general_purpose::STANDARD,
-                audio,
-            ).map_err(|e| format!("Base64 decode error: {}", e))?;
+            let bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, audio)
+                .map_err(|e| format!("Base64 decode error: {}", e))?;
             all_audio.extend_from_slice(&bytes);
         } else {
             return Err("Google TTS: no audioContent in response".into());
@@ -184,7 +206,12 @@ async fn tts_google(api_key: &str, text: &str, config: &TtsConfig) -> Result<Str
 }
 
 /// OpenAI TTS — calls /v1/audio/speech
-async fn tts_openai(api_key: &str, base_url: &str, text: &str, config: &TtsConfig) -> Result<String, String> {
+async fn tts_openai(
+    api_key: &str,
+    base_url: &str,
+    text: &str,
+    config: &TtsConfig,
+) -> Result<String, String> {
     let clean = strip_markdown(text);
     if clean.trim().is_empty() {
         return Err("No speakable text after stripping markdown".into());
@@ -218,7 +245,9 @@ async fn tts_openai(api_key: &str, base_url: &str, text: &str, config: &TtsConfi
             return Err(format!("OpenAI TTS error ({}): {}", status, body));
         }
 
-        let bytes = resp.bytes().await
+        let bytes = resp
+            .bytes()
+            .await
             .map_err(|e| format!("OpenAI TTS read error: {}", e))?;
         all_audio.extend_from_slice(&bytes);
     }
@@ -270,12 +299,18 @@ async fn tts_elevenlabs(api_key: &str, text: &str, config: &TtsConfig) -> Result
             return Err(format!("ElevenLabs TTS error ({}): {}", status, body));
         }
 
-        let bytes = resp.bytes().await
+        let bytes = resp
+            .bytes()
+            .await
             .map_err(|e| format!("ElevenLabs TTS read error: {}", e))?;
         all_audio.extend_from_slice(&bytes);
     }
 
-    info!("[tts] ElevenLabs synthesized {} chunks, {} bytes total", chunks.len(), all_audio.len());
+    info!(
+        "[tts] ElevenLabs synthesized {} chunks, {} bytes total",
+        chunks.len(),
+        all_audio.len()
+    );
     Ok(base64::Engine::encode(
         &base64::engine::general_purpose::STANDARD,
         &all_audio,
@@ -298,10 +333,21 @@ pub async fn engine_tts_transcribe(
     // Collect available provider credentials
     let (openai_info, google_key) = {
         let config = state.config.lock();
-        let openai = config.providers.iter()
+        let openai = config
+            .providers
+            .iter()
             .find(|p| p.kind == ProviderKind::OpenAI)
-            .map(|p| (p.api_key.clone(), p.base_url.clone().unwrap_or_else(|| "https://api.openai.com/v1".into())));
-        let google = config.providers.iter()
+            .map(|p| {
+                (
+                    p.api_key.clone(),
+                    p.base_url
+                        .clone()
+                        .unwrap_or_else(|| "https://api.openai.com/v1".into()),
+                )
+            });
+        let google = config
+            .providers
+            .iter()
             .find(|p| p.kind == ProviderKind::Google)
             .map(|p| p.api_key.clone());
         (openai, google)
@@ -319,11 +365,15 @@ pub async fn engine_tts_transcribe(
 }
 
 /// OpenAI Whisper STT
-async fn stt_openai_whisper(api_key: &str, base_url: &str, audio_base64: &str, mime_type: &str) -> Result<String, String> {
-    let audio_bytes = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        audio_base64,
-    ).map_err(|e| format!("Audio decode error: {}", e))?;
+async fn stt_openai_whisper(
+    api_key: &str,
+    base_url: &str,
+    audio_base64: &str,
+    mime_type: &str,
+) -> Result<String, String> {
+    let audio_bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, audio_base64)
+            .map_err(|e| format!("Audio decode error: {}", e))?;
 
     let ext = match mime_type {
         "audio/webm" | "audio/webm;codecs=opus" => "webm",
@@ -346,7 +396,10 @@ async fn stt_openai_whisper(api_key: &str, base_url: &str, audio_base64: &str, m
 
     let client = reqwest::Client::new();
     let resp = client
-        .post(format!("{}/audio/transcriptions", base_url.trim_end_matches('/')))
+        .post(format!(
+            "{}/audio/transcriptions",
+            base_url.trim_end_matches('/')
+        ))
         .header("Authorization", format!("Bearer {}", api_key))
         .multipart(form)
         .send()
@@ -359,16 +412,23 @@ async fn stt_openai_whisper(api_key: &str, base_url: &str, audio_base64: &str, m
         return Err(format!("Whisper API error ({}): {}", status, body));
     }
 
-    let result: serde_json::Value = resp.json().await
+    let result: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| format!("Whisper API JSON parse error: {}", e))?;
 
-    result["text"].as_str()
+    result["text"]
+        .as_str()
         .map(|s| s.to_string())
         .ok_or_else(|| "Whisper API: no text in response".into())
 }
 
 /// Google Cloud Speech-to-Text v1 (short audio, synchronous recognize)
-async fn stt_google_cloud(api_key: &str, audio_base64: &str, mime_type: &str) -> Result<String, String> {
+async fn stt_google_cloud(
+    api_key: &str,
+    audio_base64: &str,
+    mime_type: &str,
+) -> Result<String, String> {
     let encoding = match mime_type {
         "audio/webm" | "audio/webm;codecs=opus" => "WEBM_OPUS",
         "audio/ogg" | "audio/ogg;codecs=opus" => "OGG_OPUS",
@@ -407,13 +467,17 @@ async fn stt_google_cloud(api_key: &str, audio_base64: &str, mime_type: &str) ->
         return Err(format!("Google STT error ({}): {}", status, err_body));
     }
 
-    let result: serde_json::Value = resp.json().await
+    let result: serde_json::Value = resp
+        .json()
+        .await
         .map_err(|e| format!("Google STT JSON parse error: {}", e))?;
 
     // Concatenate all result alternatives
-    let transcript = result["results"].as_array()
+    let transcript = result["results"]
+        .as_array()
         .map(|results| {
-            results.iter()
+            results
+                .iter()
                 .filter_map(|r| r["alternatives"][0]["transcript"].as_str())
                 .collect::<Vec<_>>()
                 .join(" ")
@@ -440,16 +504,24 @@ fn strip_markdown(text: &str) -> String {
     // Remove inline code
     out = out.replace('`', "");
     // Remove bold/italic markers
-    out = out.replace("**", "").replace("__", "").replace('*', "").replace('_', " ");
+    out = out
+        .replace("**", "")
+        .replace("__", "")
+        .replace('*', "")
+        .replace('_', " ");
     // Remove headers
-    out = out.lines().map(|l| {
-        let trimmed = l.trim_start();
-        if trimmed.starts_with('#') {
-            trimmed.trim_start_matches('#').trim_start()
-        } else {
-            l
-        }
-    }).collect::<Vec<_>>().join("\n");
+    out = out
+        .lines()
+        .map(|l| {
+            let trimmed = l.trim_start();
+            if trimmed.starts_with('#') {
+                trimmed.trim_start_matches('#').trim_start()
+            } else {
+                l
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     // Remove links [text](url) → text
     let mut result = String::new();
     let mut chars = out.chars().peekable();
@@ -469,7 +541,9 @@ fn strip_markdown(text: &str) -> String {
                 if chars.peek() == Some(&'(') {
                     chars.next();
                     for cc in chars.by_ref() {
-                        if cc == ')' { break; }
+                        if cc == ')' {
+                            break;
+                        }
                     }
                 }
                 result.push_str(&link_text);
@@ -482,14 +556,18 @@ fn strip_markdown(text: &str) -> String {
         }
     }
     // Remove bullet points
-    result = result.lines().map(|l| {
-        let trimmed = l.trim_start();
-        if trimmed.starts_with("- ") || trimmed.starts_with("• ") {
-            &trimmed[2..]
-        } else {
-            l
-        }
-    }).collect::<Vec<_>>().join("\n");
+    result = result
+        .lines()
+        .map(|l| {
+            let trimmed = l.trim_start();
+            if trimmed.starts_with("- ") || trimmed.starts_with("• ") {
+                &trimmed[2..]
+            } else {
+                l
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     // Collapse whitespace
     while result.contains("  ") {
         result = result.replace("  ", " ");

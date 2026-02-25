@@ -10,11 +10,11 @@
 //
 // Called by: commands/chat.rs (the thin System layer)
 
-use crate::engine::types::*;
 use crate::engine::sessions::SessionStore;
 use crate::engine::skills;
-use crate::engine::tools;
 use crate::engine::tool_index;
+use crate::engine::tools;
+use crate::engine::types::*;
 use log::{info, warn};
 
 // ── Tool builder ───────────────────────────────────────────────────────────────
@@ -82,21 +82,22 @@ pub fn build_chat_tools(
     let is_mcp = |name: &str| name.starts_with("mcp_");
     // If the agent policy explicitly lists skill tools, auto-include them
     // so users don't have to rely on request_tools for tools they manually enabled.
-    let is_policy_allowed = |name: &str| {
-        tool_filter.is_some_and(|f| f.iter().any(|n| n == name))
-    };
+    let is_policy_allowed = |name: &str| tool_filter.is_some_and(|f| f.iter().any(|n| n == name));
     // When integration skills are enabled (Discord, Slack, etc.), their agent
     // instructions reference `fetch` and `exec` for API calls and reading creds.
     // Auto-include these so the model doesn't try to call tools it can't see.
     let has_integration_skills = !enabled_ids.is_empty();
-    let is_skill_required = |name: &str| {
-        has_integration_skills && matches!(name, "fetch" | "exec")
-    };
+    let is_skill_required = |name: &str| has_integration_skills && matches!(name, "fetch" | "exec");
 
-    let mut t: Vec<ToolDefinition> = all_tools.into_iter()
+    let mut t: Vec<ToolDefinition> = all_tools
+        .into_iter()
         .filter(|tool| {
             let name = tool.function.name.as_str();
-            is_core(name) || is_loaded(name) || is_mcp(name) || is_policy_allowed(name) || is_skill_required(name)
+            is_core(name)
+                || is_loaded(name)
+                || is_mcp(name)
+                || is_policy_allowed(name)
+                || is_skill_required(name)
         })
         .collect();
 
@@ -145,11 +146,7 @@ pub fn build_runtime_context(
         )
     } else {
         let local = chrono::Local::now();
-        format!(
-            "{} {}",
-            local.format("%Y-%m-%d %H:%M"),
-            local.format("%A")
-        )
+        format!("{} {}", local.format("%Y-%m-%d %H:%M"), local.format("%A"))
     };
 
     let ws = tools::agent_workspace(agent_id);
@@ -209,8 +206,12 @@ pub fn build_agent_roster(store: &SessionStore, current_agent_id: &str) -> Optio
 
     let mut lines: Vec<String> = Vec::new();
     for (_project_id, agent) in &agents {
-        if agent.agent_id == current_agent_id { continue; } // don't list yourself
-        if agent.agent_id == "default" { continue; } // skip the default agent entry
+        if agent.agent_id == current_agent_id {
+            continue;
+        } // don't list yourself
+        if agent.agent_id == "default" {
+            continue;
+        } // skip the default agent entry
 
         let model_info = agent.model.as_deref().unwrap_or("default");
         lines.push(format!(
@@ -266,9 +267,7 @@ pub fn compose_chat_system_prompt(
     parts.push(build_platform_awareness());
     // Coding guidelines are heavy (~5K chars). Only inject when coding/dev skills
     // are actually enabled, to keep the system prompt lean for everyday tasks.
-    if skill_instructions.contains("development")
-        || skill_instructions.contains("## Code")
-    {
+    if skill_instructions.contains("development") || skill_instructions.contains("## Code") {
         parts.push(build_coding_guidelines().to_string());
     }
     parts.push(runtime_context);
@@ -365,9 +364,7 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
     let a_is_question = a.trim_end().ends_with('?');
     let b_is_question = b.trim_end().ends_with('?');
     if a_is_question && b_is_question {
-        warn!(
-            "[engine] Question loop detected — assistant asked two consecutive questions"
-        );
+        warn!("[engine] Question loop detected — assistant asked two consecutive questions");
         inject_loop_break(messages);
         return;
     }
@@ -382,18 +379,18 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
 
     if let Some(user_text) = last_user {
         let stop_words: std::collections::HashSet<&str> = [
-            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-            "have", "has", "had", "do", "does", "did", "will", "would", "could",
-            "should", "may", "might", "can", "shall", "to", "of", "in", "for",
-            "on", "with", "at", "by", "from", "as", "into", "about", "like",
-            "through", "after", "over", "between", "out", "against", "during",
-            "i", "you", "he", "she", "it", "we", "they", "me", "him", "her",
-            "us", "them", "my", "your", "his", "its", "our", "their", "this",
-            "that", "these", "those", "and", "but", "or", "nor", "not", "so",
-            "if", "then", "than", "too", "very", "just", "don't", "im",
-            "i'd", "i'm", "i'll", "i've", "you're", "it's", "what", "how",
-            "all", "each", "which", "who", "when", "where", "why",
-        ].into_iter().collect();
+            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+            "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can",
+            "shall", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into",
+            "about", "like", "through", "after", "over", "between", "out", "against", "during",
+            "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them", "my",
+            "your", "his", "its", "our", "their", "this", "that", "these", "those", "and", "but",
+            "or", "nor", "not", "so", "if", "then", "than", "too", "very", "just", "don't", "im",
+            "i'd", "i'm", "i'll", "i've", "you're", "it's", "what", "how", "all", "each", "which",
+            "who", "when", "where", "why",
+        ]
+        .into_iter()
+        .collect();
 
         let user_keywords: std::collections::HashSet<&str> = user_text
             .split_whitespace()
@@ -412,7 +409,8 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
             warn!(
                 "[engine] Short-directive loop: user said '{}' but model asked another question \
                 (similarity={:.0}%) — injecting redirect",
-                user_text, similarity * 100.0
+                user_text,
+                similarity * 100.0
             );
             inject_loop_break(messages);
             return;
@@ -428,7 +426,8 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
                 warn!(
                     "[engine] Topic-ignoring loop: user keywords overlap={:.0}%, \
                     inter-response similarity={:.0}% — injecting redirect",
-                    topic_ratio * 100.0, similarity * 100.0
+                    topic_ratio * 100.0,
+                    similarity * 100.0
                 );
                 inject_loop_break(messages);
             }

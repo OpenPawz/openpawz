@@ -1,11 +1,11 @@
 // Solana DEX — Portfolio & Token Info
 // execute_sol_balance, execute_sol_portfolio, execute_sol_token_info
 
-use std::collections::HashMap;
 use super::constants::KNOWN_TOKENS;
 use super::helpers::{lamports_to_amount, resolve_token};
 use super::rpc::{get_sol_balance, get_token_accounts, rpc_call};
 use crate::atoms::error::EngineResult;
+use std::collections::HashMap;
 
 /// sol_balance — Check SOL + SPL token balances
 pub async fn execute_sol_balance(
@@ -14,7 +14,8 @@ pub async fn execute_sol_balance(
 ) -> EngineResult<String> {
     let rpc_url = creds.get("SOLANA_RPC_URL")
         .ok_or("Missing SOLANA_RPC_URL. Configure your Solana RPC endpoint in Skills → Solana DEX Trading.")?;
-    let wallet = creds.get("SOLANA_WALLET_ADDRESS")
+    let wallet = creds
+        .get("SOLANA_WALLET_ADDRESS")
         .ok_or("No Solana wallet found. Use sol_wallet_create first.")?;
 
     let token_filter = args.get("token").and_then(|v| v.as_str());
@@ -36,14 +37,25 @@ pub async fn execute_sol_balance(
             let mut found = false;
             for (acct_mint, amount, decimals, _) in &accounts {
                 if acct_mint == &mint {
-                    let dec = if *decimals > 0 { *decimals } else { known_decimals };
-                    output.push_str(&format!("**{}**: {}\n", token_sym.to_uppercase(), lamports_to_amount(*amount, dec)));
+                    let dec = if *decimals > 0 {
+                        *decimals
+                    } else {
+                        known_decimals
+                    };
+                    output.push_str(&format!(
+                        "**{}**: {}\n",
+                        token_sym.to_uppercase(),
+                        lamports_to_amount(*amount, dec)
+                    ));
                     found = true;
                     break;
                 }
             }
             if !found {
-                output.push_str(&format!("**{}**: 0 (no token account)\n", token_sym.to_uppercase()));
+                output.push_str(&format!(
+                    "**{}**: 0 (no token account)\n",
+                    token_sym.to_uppercase()
+                ));
             }
         }
     } else {
@@ -53,11 +65,16 @@ pub async fn execute_sol_balance(
             output.push_str("\n**SPL Tokens**:\n");
             for (mint, amount, decimals, _) in &accounts {
                 // Try to resolve symbol
-                let symbol = KNOWN_TOKENS.iter()
+                let symbol = KNOWN_TOKENS
+                    .iter()
                     .find(|(_, addr, _)| addr == mint)
                     .map(|(sym, _, _)| sym.to_string())
-                    .unwrap_or_else(|| format!("{}…{}", &mint[..4], &mint[mint.len()-4..]));
-                output.push_str(&format!("  {} : {}\n", symbol, lamports_to_amount(*amount, *decimals)));
+                    .unwrap_or_else(|| format!("{}…{}", &mint[..4], &mint[mint.len() - 4..]));
+                output.push_str(&format!(
+                    "  {} : {}\n",
+                    symbol,
+                    lamports_to_amount(*amount, *decimals)
+                ));
             }
         }
     }
@@ -70,9 +87,11 @@ pub async fn execute_sol_portfolio(
     args: &serde_json::Value,
     creds: &HashMap<String, String>,
 ) -> EngineResult<String> {
-    let rpc_url = creds.get("SOLANA_RPC_URL")
+    let rpc_url = creds
+        .get("SOLANA_RPC_URL")
         .ok_or("Missing SOLANA_RPC_URL.")?;
-    let wallet = creds.get("SOLANA_WALLET_ADDRESS")
+    let wallet = creds
+        .get("SOLANA_WALLET_ADDRESS")
         .ok_or("No Solana wallet. Use sol_wallet_create first.")?;
 
     let mut output = format!("## Solana Portfolio\n**Wallet**: `{}`\n\n", wallet);
@@ -87,17 +106,27 @@ pub async fn execute_sol_portfolio(
     let accounts = get_token_accounts(rpc_url, wallet).await?;
 
     // Extra mints to check from args
-    let _extra_mints: Vec<String> = args.get("tokens")
+    let _extra_mints: Vec<String> = args
+        .get("tokens")
         .and_then(|v| v.as_array())
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
         .unwrap_or_default();
 
     for (mint, amount, decimals, _) in &accounts {
-        let symbol = KNOWN_TOKENS.iter()
+        let symbol = KNOWN_TOKENS
+            .iter()
             .find(|(_, addr, _)| addr == mint)
             .map(|(sym, _, _)| sym.to_string())
-            .unwrap_or_else(|| format!("{}…{}", &mint[..4], &mint[mint.len()-4..]));
-        output.push_str(&format!("| {} | {} |\n", symbol, lamports_to_amount(*amount, *decimals)));
+            .unwrap_or_else(|| format!("{}…{}", &mint[..4], &mint[mint.len() - 4..]));
+        output.push_str(&format!(
+            "| {} | {} |\n",
+            symbol,
+            lamports_to_amount(*amount, *decimals)
+        ));
     }
 
     if accounts.is_empty() {
@@ -106,7 +135,10 @@ pub async fn execute_sol_portfolio(
 
     // Get cluster version as network info
     if let Ok(ver) = rpc_call(rpc_url, "getVersion", serde_json::json!([])).await {
-        let v = ver.get("solana-core").and_then(|v| v.as_str()).unwrap_or("?");
+        let v = ver
+            .get("solana-core")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
         output.push_str(&format!("\n**Network**: Solana Mainnet (node v{})\n", v));
     }
 
@@ -118,10 +150,12 @@ pub async fn execute_sol_token_info(
     args: &serde_json::Value,
     creds: &HashMap<String, String>,
 ) -> EngineResult<String> {
-    let rpc_url = creds.get("SOLANA_RPC_URL")
+    let rpc_url = creds
+        .get("SOLANA_RPC_URL")
         .ok_or("Missing SOLANA_RPC_URL.")?;
 
-    let mint_input = args["mint_address"].as_str()
+    let mint_input = args["mint_address"]
+        .as_str()
         .or_else(|| args["token_address"].as_str())
         .ok_or("sol_token_info: missing 'mint_address'")?;
 
@@ -131,10 +165,15 @@ pub async fn execute_sol_token_info(
     let mut output = format!("## Solana Token Info\n**Mint**: `{}`\n\n", mint);
 
     // Get mint account info
-    let mint_result = rpc_call(rpc_url, "getAccountInfo", serde_json::json!([
-        mint,
-        { "encoding": "jsonParsed" }
-    ])).await?;
+    let mint_result = rpc_call(
+        rpc_url,
+        "getAccountInfo",
+        serde_json::json!([
+            mint,
+            { "encoding": "jsonParsed" }
+        ]),
+    )
+    .await?;
 
     let account = mint_result.get("value");
     if account.is_none() || account.unwrap().is_null() {
@@ -153,10 +192,14 @@ pub async fn execute_sol_token_info(
         let freeze_auth = info.get("freezeAuthority").and_then(|v| v.as_str());
         let mint_auth = info.get("mintAuthority").and_then(|v| v.as_str());
 
-        let is_initialized = info.get("isInitialized").and_then(|v| v.as_bool()).unwrap_or(false);
+        let is_initialized = info
+            .get("isInitialized")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
 
         // Resolve known symbol
-        let symbol = KNOWN_TOKENS.iter()
+        let symbol = KNOWN_TOKENS
+            .iter()
             .find(|(_, addr, _)| *addr == mint)
             .map(|(sym, _, _)| *sym)
             .unwrap_or("Unknown");
@@ -166,10 +209,18 @@ pub async fn execute_sol_token_info(
         output.push_str(&format!("| Decimals | {} |\n", decimals));
         output.push_str(&format!("| Total Supply | {} |\n", supply_human));
         output.push_str(&format!("| Initialized | {} |\n", is_initialized));
-        output.push_str(&format!("| Mint Authority | {} |\n",
-            mint_auth.map(|a| format!("`{}`", a)).unwrap_or("None (fixed supply)".into())));
-        output.push_str(&format!("| Freeze Authority | {} |\n",
-            freeze_auth.map(|a| format!("`{}`", a)).unwrap_or("None (unfrozen)".into())));
+        output.push_str(&format!(
+            "| Mint Authority | {} |\n",
+            mint_auth
+                .map(|a| format!("`{}`", a))
+                .unwrap_or("None (fixed supply)".into())
+        ));
+        output.push_str(&format!(
+            "| Freeze Authority | {} |\n",
+            freeze_auth
+                .map(|a| format!("`{}`", a))
+                .unwrap_or("None (unfrozen)".into())
+        ));
 
         // Safety assessment
         let mut warnings = Vec::new();
@@ -193,14 +244,20 @@ pub async fn execute_sol_token_info(
     }
 
     // Account owner (program)
-    let owner = account.get("owner").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let owner = account
+        .get("owner")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     let program_name = match owner {
         "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA" => "SPL Token Program",
         "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" => "Token-2022 Program",
         _ => owner,
     };
     output.push_str(&format!("\n**Token Program**: {}\n", program_name));
-    output.push_str(&format!("\n🔗 [View on Solscan](https://solscan.io/token/{})\n", mint));
+    output.push_str(&format!(
+        "\n🔗 [View on Solscan](https://solscan.io/token/{})\n",
+        mint
+    ));
 
     Ok(output)
 }

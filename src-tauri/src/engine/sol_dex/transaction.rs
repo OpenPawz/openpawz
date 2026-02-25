@@ -1,7 +1,8 @@
 // Solana DEX — Transaction Building & Signing
 // sign_solana_transaction, decode/encode_compact_u16, build_solana_transaction, derive_ata
 
-use log::info;use crate::atoms::error::{EngineError, EngineResult};
+use crate::atoms::error::{EngineError, EngineResult};
+use log::info;
 // ── Transaction Signing ───────────────────────────────────────────────
 
 /// Sign a pre-built Solana transaction (legacy or versioned v0).
@@ -14,7 +15,10 @@ use log::info;use crate::atoms::error::{EngineError, EngineResult};
 ///
 /// If byte 0 has high bit set (>= 0x80), it's a versioned tx (version = byte & 0x7F).
 /// We sign the message portion with ed25519 and place the signature in the first slot.
-pub(crate) fn sign_solana_transaction(tx_bytes: &[u8], secret_key: &[u8; 32]) -> EngineResult<Vec<u8>> {
+pub(crate) fn sign_solana_transaction(
+    tx_bytes: &[u8],
+    secret_key: &[u8; 32],
+) -> EngineResult<Vec<u8>> {
     if tx_bytes.is_empty() {
         return Err(EngineError::Other("Empty transaction".into()));
     }
@@ -36,14 +40,21 @@ pub(crate) fn sign_solana_transaction(tx_bytes: &[u8], secret_key: &[u8; 32]) ->
     // Parse compact-u16 for num_signatures (after version prefix if present)
     let (num_sigs, sig_header_len) = decode_compact_u16(&tx_bytes[version_prefix_len..])?;
     if num_sigs == 0 {
-        return Err(EngineError::Other("Transaction has 0 signatures required".into()));
+        return Err(EngineError::Other(
+            "Transaction has 0 signatures required".into(),
+        ));
     }
 
     let sigs_start = version_prefix_len + sig_header_len;
     let sigs_end = sigs_start + (num_sigs as usize * 64);
     if sigs_end > tx_bytes.len() {
-        return Err(EngineError::Other(format!("Transaction too short: need {} bytes for {} signatures, have {} (versioned={})",
-            sigs_end, num_sigs, tx_bytes.len(), is_versioned)));
+        return Err(EngineError::Other(format!(
+            "Transaction too short: need {} bytes for {} signatures, have {} (versioned={})",
+            sigs_end,
+            num_sigs,
+            tx_bytes.len(),
+            is_versioned
+        )));
     }
 
     // Message is everything after the signature slots
@@ -66,7 +77,12 @@ pub(crate) fn sign_solana_transaction(tx_bytes: &[u8], secret_key: &[u8; 32]) ->
     // Place our signature in the first slot
     signed[sigs_start..sigs_start + 64].copy_from_slice(&signature.to_bytes());
 
-    info!("[sol_dex] Transaction signed (versioned={}, sigs={}, msg_len={})", is_versioned, num_sigs, message.len());
+    info!(
+        "[sol_dex] Transaction signed (versioned={}, sigs={}, msg_len={})",
+        is_versioned,
+        num_sigs,
+        message.len()
+    );
 
     Ok(signed)
 }
@@ -105,7 +121,11 @@ pub(crate) fn encode_compact_u16(val: u16) -> Vec<u8> {
     } else if val < 0x4000 {
         vec![(val & 0x7F | 0x80) as u8, (val >> 7) as u8]
     } else {
-        vec![(val & 0x7F | 0x80) as u8, ((val >> 7) & 0x7F | 0x80) as u8, (val >> 14) as u8]
+        vec![
+            (val & 0x7F | 0x80) as u8,
+            ((val >> 7) & 0x7F | 0x80) as u8,
+            (val >> 14) as u8,
+        ]
     }
 }
 
@@ -163,10 +183,15 @@ pub(crate) fn build_solana_transaction(
 
 /// Derive Associated Token Account (ATA) address
 /// ATA = PDA of [wallet, TOKEN_PROGRAM_ID, mint] with ATA_PROGRAM_ID
-pub(crate) fn derive_ata(wallet: &[u8; 32], mint: &[u8; 32], token_program: &[u8; 32]) -> EngineResult<[u8; 32]> {
+pub(crate) fn derive_ata(
+    wallet: &[u8; 32],
+    mint: &[u8; 32],
+    token_program: &[u8; 32],
+) -> EngineResult<[u8; 32]> {
     use sha2::Digest;
     let ata_program = bs58::decode("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL")
-        .into_vec().map_err(|e| EngineError::Other(format!("ATA program decode: {}", e)))?;
+        .into_vec()
+        .map_err(|e| EngineError::Other(format!("ATA program decode: {}", e)))?;
 
     // PDA: sha256([wallet, token_program, mint, ata_program, "ProgramDerivedAddress"])
     // Try finding a valid PDA (bump seed from 255 down to 0)

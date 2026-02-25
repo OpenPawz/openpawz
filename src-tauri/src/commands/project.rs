@@ -3,13 +3,11 @@
 
 use crate::commands::state::EngineState;
 use crate::engine::types::*;
-use log::{info, error};
+use log::{error, info};
 use tauri::State;
 
 #[tauri::command]
-pub fn engine_projects_list(
-    state: State<'_, EngineState>,
-) -> Result<Vec<Project>, String> {
+pub fn engine_projects_list(state: State<'_, EngineState>) -> Result<Vec<Project>, String> {
     state.store.list_projects().map_err(|e| e.to_string())
 }
 
@@ -18,7 +16,10 @@ pub fn engine_project_create(
     state: State<'_, EngineState>,
     project: Project,
 ) -> Result<(), String> {
-    state.store.create_project(&project).map_err(|e| e.to_string())
+    state
+        .store
+        .create_project(&project)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -26,7 +27,10 @@ pub fn engine_project_update(
     state: State<'_, EngineState>,
     project: Project,
 ) -> Result<(), String> {
-    state.store.update_project(&project).map_err(|e| e.to_string())
+    state
+        .store
+        .update_project(&project)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -34,7 +38,10 @@ pub fn engine_project_delete(
     state: State<'_, EngineState>,
     project_id: String,
 ) -> Result<(), String> {
-    state.store.delete_project(&project_id).map_err(|e| e.to_string())
+    state
+        .store
+        .delete_project(&project_id)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -43,7 +50,10 @@ pub fn engine_project_set_agents(
     project_id: String,
     agents: Vec<ProjectAgent>,
 ) -> Result<(), String> {
-    state.store.set_project_agents(&project_id, &agents).map_err(|e| e.to_string())
+    state
+        .store
+        .set_project_agents(&project_id, &agents)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -52,7 +62,10 @@ pub fn engine_project_messages(
     project_id: String,
     limit: Option<i64>,
 ) -> Result<Vec<ProjectMessage>, String> {
-    state.store.get_project_messages(&project_id, limit.unwrap_or(100)).map_err(|e| e.to_string())
+    state
+        .store
+        .get_project_messages(&project_id, limit.unwrap_or(100))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -67,7 +80,11 @@ pub async fn engine_project_run(
     // Spawn the orchestrator in background
     tauri::async_runtime::spawn(async move {
         match crate::engine::orchestrator::run_project(&app, &pid).await {
-            Ok(text) => info!("[orchestrator] Project {} completed: {}...", pid, truncate_utf8(&text, 200)),
+            Ok(text) => info!(
+                "[orchestrator] Project {} completed: {}...",
+                pid,
+                truncate_utf8(&text, 200)
+            ),
             Err(e) => error!("[orchestrator] Project {} failed: {}", pid, e),
         }
     });

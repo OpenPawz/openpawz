@@ -16,15 +16,17 @@ use tauri::Manager;
 /// One-time startup DB housekeeping: purge empty sessions, prune oversized ones.
 fn startup_housekeeping(state: &commands::state::EngineState) {
     use atoms::constants::{
-        STARTUP_EMPTY_SESSION_MAX_AGE_SECS,
+        CHAT_SESSION_MAX_MESSAGES, STARTUP_EMPTY_SESSION_MAX_AGE_SECS,
         STARTUP_STALE_SESSION_MAX_AGE_DAYS,
-        CHAT_SESSION_MAX_MESSAGES,
     };
 
     log::info!("[startup] Running DB housekeeping…");
 
     // 1. Delete empty sessions older than 1 hour
-    match state.store.cleanup_empty_sessions(STARTUP_EMPTY_SESSION_MAX_AGE_SECS, None) {
+    match state
+        .store
+        .cleanup_empty_sessions(STARTUP_EMPTY_SESSION_MAX_AGE_SECS, None)
+    {
         Ok(n) if n > 0 => log::info!("[startup] Purged {} empty sessions", n),
         Err(e) => log::warn!("[startup] Empty session cleanup failed: {}", e),
         _ => {}
@@ -33,8 +35,8 @@ fn startup_housekeeping(state: &commands::state::EngineState) {
     // 2. Prune large sessions: any session with > MAX messages gets trimmed
     match state.store.list_sessions_filtered(500, None) {
         Ok(sessions) => {
-            let stale_cutoff = chrono::Utc::now()
-                - chrono::Duration::days(STARTUP_STALE_SESSION_MAX_AGE_DAYS);
+            let stale_cutoff =
+                chrono::Utc::now() - chrono::Duration::days(STARTUP_STALE_SESSION_MAX_AGE_DAYS);
             let stale_cutoff_str = stale_cutoff.to_rfc3339();
 
             for s in &sessions {
@@ -50,10 +52,12 @@ fn startup_housekeeping(state: &commands::state::EngineState) {
                         CHAT_SESSION_MAX_MESSAGES
                     };
                     match state.store.prune_session_messages(&s.id, keep) {
-                        Ok(n) if n > 0 => log::info!(
+                        Ok(n) if n > 0 => {
+                            log::info!(
                             "[startup] Pruned {} messages from session '{}' (kept {}, stale={})",
                             n, s.id, keep, is_stale
-                        ),
+                        )
+                        }
                         Err(e) => log::warn!("[startup] Prune failed for session {}: {}", s.id, e),
                         _ => {}
                     }
@@ -68,21 +72,25 @@ fn startup_housekeeping(state: &commands::state::EngineState) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let engine_state = commands::state::EngineState::new()
-        .expect("Failed to initialize Paw Agent Engine");
+    let engine_state =
+        commands::state::EngineState::new().expect("Failed to initialize Paw Agent Engine");
 
     tauri::Builder::default()
         .manage(engine_state)
-        .plugin(tauri_plugin_log::Builder::new()
-            .target(tauri_plugin_log::Target::new(
-                tauri_plugin_log::TargetKind::LogDir { file_name: Some("openpawz".into()) },
-            ))
-            .max_file_size(5_000_000)
-            // Global default: only Info+ from third-party crates
-            .level(log::LevelFilter::Info)
-            // App crate: keep Debug for engine diagnostics
-            .level_for("paw_temp", log::LevelFilter::Debug)
-            .build())
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .target(tauri_plugin_log::Target::new(
+                    tauri_plugin_log::TargetKind::LogDir {
+                        file_name: Some("openpawz".into()),
+                    },
+                ))
+                .max_file_size(5_000_000)
+                // Global default: only Info+ from third-party crates
+                .level(log::LevelFilter::Info)
+                // App crate: keep Debug for engine diagnostics
+                .level_for("paw_temp", log::LevelFilter::Debug)
+                .build(),
+        )
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
@@ -367,7 +375,6 @@ pub fn run() {
             commands::browser::engine_network_get_policy,
             commands::browser::engine_network_set_policy,
             commands::browser::engine_network_check_url,
-
             // ── Tailscale (Remote Access) ──
             commands::tailscale::engine_tailscale_status,
             commands::tailscale::engine_tailscale_get_config,

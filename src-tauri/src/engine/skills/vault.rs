@@ -1,14 +1,15 @@
 // Pawz Agent Engine — Skill Vault (SessionStore credential methods)
 // SQLite-backed credential storage: CRUD, enabled state, custom instructions.
 
-use crate::engine::sessions::SessionStore;
 use crate::atoms::error::EngineResult;
+use crate::engine::sessions::SessionStore;
 
 impl SessionStore {
     /// Initialize the skill vault tables (call from open()).
     pub fn init_skill_tables(&self) -> EngineResult<()> {
         let conn = self.conn.lock();
-        conn.execute_batch("
+        conn.execute_batch(
+            "
             CREATE TABLE IF NOT EXISTS skill_credentials (
                 skill_id TEXT NOT NULL,
                 cred_key TEXT NOT NULL,
@@ -28,13 +29,19 @@ impl SessionStore {
                 instructions TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
-        ")?;
+        ",
+        )?;
         Ok(())
     }
 
     /// Store a credential for a skill.
     /// Value is stored encrypted (caller must encrypt before calling).
-    pub fn set_skill_credential(&self, skill_id: &str, key: &str, encrypted_value: &str) -> EngineResult<()> {
+    pub fn set_skill_credential(
+        &self,
+        skill_id: &str,
+        key: &str,
+        encrypted_value: &str,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         conn.execute(
             "INSERT INTO skill_credentials (skill_id, cred_key, cred_value, updated_at)
@@ -84,9 +91,12 @@ impl SessionStore {
     pub fn list_skill_credential_keys(&self, skill_id: &str) -> EngineResult<Vec<String>> {
         let conn = self.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT cred_key FROM skill_credentials WHERE skill_id = ?1 ORDER BY cred_key"
+            "SELECT cred_key FROM skill_credentials WHERE skill_id = ?1 ORDER BY cred_key",
         )?;
-        let keys: Vec<String> = stmt.query_map(rusqlite::params![skill_id], |row: &rusqlite::Row| row.get::<_, String>(0))?
+        let keys: Vec<String> = stmt
+            .query_map(rusqlite::params![skill_id], |row: &rusqlite::Row| {
+                row.get::<_, String>(0)
+            })?
             .filter_map(|r: Result<String, rusqlite::Error>| r.ok())
             .collect();
         Ok(keys)
@@ -188,7 +198,11 @@ impl SessionStore {
 
     /// Set custom instructions for a skill.
     /// Pass empty string to clear (falls back to defaults).
-    pub fn set_skill_custom_instructions(&self, skill_id: &str, instructions: &str) -> EngineResult<()> {
+    pub fn set_skill_custom_instructions(
+        &self,
+        skill_id: &str,
+        instructions: &str,
+    ) -> EngineResult<()> {
         let conn = self.conn.lock();
         if instructions.is_empty() {
             conn.execute(

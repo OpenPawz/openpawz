@@ -20,7 +20,16 @@ pub async fn engine_memory_store(
     let cat = category.unwrap_or_else(|| "general".into());
     let imp = importance.unwrap_or(5);
     let emb_client = state.embedding_client();
-    memory::store_memory(&state.store, &content, &cat, imp, emb_client.as_ref(), agent_id.as_deref()).await.map_err(|e| e.to_string())
+    memory::store_memory(
+        &state.store,
+        &content,
+        &cat,
+        imp,
+        emb_client.as_ref(),
+        agent_id.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -33,21 +42,25 @@ pub async fn engine_memory_search(
     let lim = limit.unwrap_or(10);
     let threshold = state.memory_config.lock().recall_threshold;
     let emb_client = state.embedding_client();
-    memory::search_memories(&state.store, &query, lim, threshold, emb_client.as_ref(), agent_id.as_deref()).await.map_err(|e| e.to_string())
+    memory::search_memories(
+        &state.store,
+        &query,
+        lim,
+        threshold,
+        emb_client.as_ref(),
+        agent_id.as_deref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn engine_memory_stats(
-    state: State<'_, EngineState>,
-) -> Result<MemoryStats, String> {
+pub fn engine_memory_stats(state: State<'_, EngineState>) -> Result<MemoryStats, String> {
     state.store.memory_stats().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn engine_memory_delete(
-    state: State<'_, EngineState>,
-    id: String,
-) -> Result<(), String> {
+pub fn engine_memory_delete(state: State<'_, EngineState>, id: String) -> Result<(), String> {
     state.store.delete_memory(&id).map_err(|e| e.to_string())
 }
 
@@ -56,15 +69,16 @@ pub fn engine_memory_list(
     state: State<'_, EngineState>,
     limit: Option<usize>,
 ) -> Result<Vec<Memory>, String> {
-    state.store.list_memories(limit.unwrap_or(100)).map_err(|e| e.to_string())
+    state
+        .store
+        .list_memories(limit.unwrap_or(100))
+        .map_err(|e| e.to_string())
 }
 
 // ── Memory config ──────────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn engine_get_memory_config(
-    state: State<'_, EngineState>,
-) -> Result<MemoryConfig, String> {
+pub fn engine_get_memory_config(state: State<'_, EngineState>) -> Result<MemoryConfig, String> {
     let cfg = state.memory_config.lock();
     Ok(cfg.clone())
 }
@@ -74,8 +88,7 @@ pub fn engine_set_memory_config(
     state: State<'_, EngineState>,
     config: MemoryConfig,
 ) -> Result<(), String> {
-    let json = serde_json::to_string(&config)
-        .map_err(|e| format!("Serialize error: {}", e))?;
+    let json = serde_json::to_string(&config).map_err(|e| format!("Serialize error: {}", e))?;
     state.store.set_config("memory_config", &json)?;
     let mut cfg = state.memory_config.lock();
     *cfg = config;
@@ -86,11 +99,10 @@ pub fn engine_set_memory_config(
 // ── Embedding / Ollama ─────────────────────────────────────────────────
 
 #[tauri::command]
-pub async fn engine_test_embedding(
-    state: State<'_, EngineState>,
-) -> Result<usize, String> {
-    let client = state.embedding_client()
-        .ok_or_else(|| "No embedding configuration — set base URL and model in memory settings".to_string())?;
+pub async fn engine_test_embedding(state: State<'_, EngineState>) -> Result<usize, String> {
+    let client = state.embedding_client().ok_or_else(|| {
+        "No embedding configuration — set base URL and model in memory settings".to_string()
+    })?;
     let dims = client.test_connection().await?;
     info!("[engine] Embedding test passed: {} dimensions", dims);
     Ok(dims)
@@ -104,12 +116,14 @@ pub async fn engine_embedding_status(
 ) -> Result<serde_json::Value, String> {
     let client = match state.embedding_client() {
         Some(c) => c,
-        None => return Ok(serde_json::json!({
-            "ollama_running": false,
-            "model_available": false,
-            "model_name": "",
-            "error": "No embedding configuration"
-        })),
+        None => {
+            return Ok(serde_json::json!({
+                "ollama_running": false,
+                "model_available": false,
+                "model_name": "",
+                "error": "No embedding configuration"
+            }))
+        }
     };
 
     let model_name = {
@@ -133,10 +147,9 @@ pub async fn engine_embedding_status(
 
 /// Pull the embedding model from Ollama.
 #[tauri::command]
-pub async fn engine_embedding_pull_model(
-    state: State<'_, EngineState>,
-) -> Result<String, String> {
-    let client = state.embedding_client()
+pub async fn engine_embedding_pull_model(state: State<'_, EngineState>) -> Result<String, String> {
+    let client = state
+        .embedding_client()
         .ok_or_else(|| "No embedding configuration".to_string())?;
 
     // Check Ollama running first
@@ -173,7 +186,10 @@ pub async fn engine_ensure_embedding_ready(
     if status.embedding_dims > 0 {
         let mut cfg = state.memory_config.lock();
         if cfg.embedding_dims != status.embedding_dims {
-            info!("[engine] Updating embedding_dims from {} to {} based on actual model output", cfg.embedding_dims, status.embedding_dims);
+            info!(
+                "[engine] Updating embedding_dims from {} to {} based on actual model output",
+                cfg.embedding_dims, status.embedding_dims
+            );
             cfg.embedding_dims = status.embedding_dims;
             // Save to DB
             if let Ok(json) = serde_json::to_string(&*cfg) {
@@ -197,8 +213,9 @@ pub async fn engine_ensure_embedding_ready(
 pub async fn engine_memory_backfill(
     state: State<'_, EngineState>,
 ) -> Result<serde_json::Value, String> {
-    let client = state.embedding_client()
-        .ok_or_else(|| "No embedding configuration — Ollama must be running with an embedding model".to_string())?;
+    let client = state.embedding_client().ok_or_else(|| {
+        "No embedding configuration — Ollama must be running with an embedding model".to_string()
+    })?;
 
     let (success, fail) = memory::backfill_embeddings(&state.store, &client).await?;
     Ok(serde_json::json!({

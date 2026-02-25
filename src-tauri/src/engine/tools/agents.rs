@@ -1,12 +1,12 @@
 // Paw Agent Engine — Agent management tools
 
+use crate::atoms::error::EngineResult;
 use crate::atoms::types::*;
-use crate::engine::state::EngineState;
 use crate::engine::memory;
+use crate::engine::state::EngineState;
 use log::info;
 use tauri::Emitter;
 use tauri::Manager;
-use crate::atoms::error::EngineResult;
 
 pub fn definitions() -> Vec<ToolDefinition> {
     vec![
@@ -132,38 +132,78 @@ pub async fn execute(
     _agent_id: &str,
 ) -> Option<Result<String, String>> {
     Some(match name {
-        "self_info"          => execute_self_info(app_handle).await.map_err(|e| e.to_string()),
-        "update_profile"     => execute_update_profile(args, app_handle).await.map_err(|e| e.to_string()),
-        "create_agent"       => execute_create_agent(args, app_handle).await.map_err(|e| e.to_string()),
-        "agent_list"         => execute_agent_list(app_handle).await.map_err(|e| e.to_string()),
-        "agent_skills"       => execute_agent_skills(args, app_handle).await.map_err(|e| e.to_string()),
-        "agent_skill_assign" => execute_agent_skill_assign(args, app_handle).await.map_err(|e| e.to_string()),
-        "manage_session"     => execute_manage_session(args, app_handle).await.map_err(|e| e.to_string()),
+        "self_info" => execute_self_info(app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "update_profile" => execute_update_profile(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "create_agent" => execute_create_agent(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "agent_list" => execute_agent_list(app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "agent_skills" => execute_agent_skills(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "agent_skill_assign" => execute_agent_skill_assign(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
+        "manage_session" => execute_manage_session(args, app_handle)
+            .await
+            .map_err(|e| e.to_string()),
         _ => return None,
     })
 }
 
 async fn execute_self_info(app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let cfg = state.config.lock();
     let mcfg = state.memory_config.lock();
 
-    let providers_info: Vec<String> = cfg.providers.iter().map(|p| {
-        let is_default = cfg.default_provider.as_ref() == Some(&p.id);
-        format!("  - {} ({:?}){}", p.id, p.kind, if is_default { " <- DEFAULT" } else { "" })
-    }).collect();
+    let providers_info: Vec<String> = cfg
+        .providers
+        .iter()
+        .map(|p| {
+            let is_default = cfg.default_provider.as_ref() == Some(&p.id);
+            format!(
+                "  - {} ({:?}){}",
+                p.id,
+                p.kind,
+                if is_default { " <- DEFAULT" } else { "" }
+            )
+        })
+        .collect();
 
     let routing = &cfg.model_routing;
     let routing_info = format!(
         "  Boss model: {}\n  Worker model: {}\n  Specialties: {}\n  Per-agent overrides: {}",
         routing.boss_model.as_deref().unwrap_or("(default)"),
         routing.worker_model.as_deref().unwrap_or("(default)"),
-        if routing.specialty_models.is_empty() { "none".into() }
-        else { routing.specialty_models.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join(", ") },
-        if routing.agent_models.is_empty() { "none".into() }
-        else { routing.agent_models.iter().map(|(k, v)| format!("{}={}", k, v)).collect::<Vec<_>>().join(", ") },
+        if routing.specialty_models.is_empty() {
+            "none".into()
+        } else {
+            routing
+                .specialty_models
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
+        if routing.agent_models.is_empty() {
+            "none".into()
+        } else {
+            routing
+                .agent_models
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v))
+                .collect::<Vec<_>>()
+                .join(", ")
+        },
     );
 
     let memory_info = format!(
@@ -176,8 +216,15 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> EngineResult<String
     );
 
     let skills_list = crate::engine::skills::builtin_skills();
-    let enabled_skills: Vec<String> = skills_list.iter()
-        .filter(|s| state.store.get_skill_enabled_state(&s.id).unwrap_or(None).unwrap_or(s.default_enabled))
+    let enabled_skills: Vec<String> = skills_list
+        .iter()
+        .filter(|s| {
+            state
+                .store
+                .get_skill_enabled_state(&s.id)
+                .unwrap_or(None)
+                .unwrap_or(s.default_enabled)
+        })
         .map(|s| format!("  - {} ({})", s.name, s.id))
         .collect();
 
@@ -201,10 +248,18 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> EngineResult<String
         cfg.default_provider.as_deref().unwrap_or("(not set)"),
         cfg.max_tool_rounds,
         cfg.tool_timeout_secs,
-        if providers_info.is_empty() { "  (none configured)".into() } else { providers_info.join("\n") },
+        if providers_info.is_empty() {
+            "  (none configured)".into()
+        } else {
+            providers_info.join("\n")
+        },
         routing_info,
         memory_info,
-        if enabled_skills.is_empty() { "  (none enabled)".into() } else { enabled_skills.join("\n") },
+        if enabled_skills.is_empty() {
+            "  (none enabled)".into()
+        } else {
+            enabled_skills.join("\n")
+        },
     ))
 }
 
@@ -212,7 +267,8 @@ async fn execute_update_profile(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let agent_id = args["agent_id"].as_str()
+    let agent_id = args["agent_id"]
+        .as_str()
         .ok_or("update_profile: missing 'agent_id' argument (use 'default' for the main agent)")?;
 
     let name = args["name"].as_str();
@@ -226,34 +282,72 @@ async fn execute_update_profile(
 
     let mut updates = serde_json::Map::new();
     updates.insert("agent_id".into(), serde_json::json!(agent_id));
-    if let Some(v) = name { updates.insert("name".into(), serde_json::json!(v)); }
-    if let Some(v) = avatar { updates.insert("avatar".into(), serde_json::json!(v)); }
-    if let Some(v) = bio { updates.insert("bio".into(), serde_json::json!(v)); }
-    if let Some(v) = system_prompt { updates.insert("system_prompt".into(), serde_json::json!(v)); }
+    if let Some(v) = name {
+        updates.insert("name".into(), serde_json::json!(v));
+    }
+    if let Some(v) = avatar {
+        updates.insert("avatar".into(), serde_json::json!(v));
+    }
+    if let Some(v) = bio {
+        updates.insert("bio".into(), serde_json::json!(v));
+    }
+    if let Some(v) = system_prompt {
+        updates.insert("system_prompt".into(), serde_json::json!(v));
+    }
 
-    info!("[engine] update_profile tool: updating agent '{}' with fields: {:?}",
-        agent_id, updates.keys().collect::<Vec<_>>());
+    info!(
+        "[engine] update_profile tool: updating agent '{}' with fields: {:?}",
+        agent_id,
+        updates.keys().collect::<Vec<_>>()
+    );
 
     let _ = app_handle.emit("agent-profile-updated", serde_json::Value::Object(updates));
 
     let mut desc_parts = vec![format!("Updated profile for agent '{}':", agent_id)];
-    if let Some(v) = name { desc_parts.push(format!("name -> {}", v)); }
-    if let Some(v) = avatar { desc_parts.push(format!("avatar -> {}", v)); }
-    if let Some(v) = bio { desc_parts.push(format!("bio -> {}", v)); }
-    if system_prompt.is_some() { desc_parts.push("system_prompt updated".into()); }
+    if let Some(v) = name {
+        desc_parts.push(format!("name -> {}", v));
+    }
+    if let Some(v) = avatar {
+        desc_parts.push(format!("avatar -> {}", v));
+    }
+    if let Some(v) = bio {
+        desc_parts.push(format!("bio -> {}", v));
+    }
+    if system_prompt.is_some() {
+        desc_parts.push("system_prompt updated".into());
+    }
     let memory_content = desc_parts.join(" ");
 
     let state = app_handle.try_state::<EngineState>();
     if let Some(state) = state {
         let emb_client = state.embedding_client();
-        let _ = memory::store_memory(&state.store, &memory_content, "fact", 5, emb_client.as_ref(), None).await;
+        let _ = memory::store_memory(
+            &state.store,
+            &memory_content,
+            "fact",
+            5,
+            emb_client.as_ref(),
+            None,
+        )
+        .await;
     }
 
-    let mut result_parts = vec![format!("Successfully updated agent profile for '{}':", agent_id)];
-    if let Some(v) = name { result_parts.push(format!("- **Name**: {}", v)); }
-    if let Some(v) = avatar { result_parts.push(format!("- **Avatar**: {}", v)); }
-    if let Some(v) = bio { result_parts.push(format!("- **Bio**: {}", v)); }
-    if system_prompt.is_some() { result_parts.push("- **System Prompt**: updated".into()); }
+    let mut result_parts = vec![format!(
+        "Successfully updated agent profile for '{}':",
+        agent_id
+    )];
+    if let Some(v) = name {
+        result_parts.push(format!("- **Name**: {}", v));
+    }
+    if let Some(v) = avatar {
+        result_parts.push(format!("- **Avatar**: {}", v));
+    }
+    if let Some(v) = bio {
+        result_parts.push(format!("- **Bio**: {}", v));
+    }
+    if system_prompt.is_some() {
+        result_parts.push("- **System Prompt**: updated".into());
+    }
     result_parts.push("\nThe UI has been updated in real-time.".into());
 
     Ok(result_parts.join("\n"))
@@ -263,17 +357,28 @@ async fn execute_create_agent(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let name = args["name"].as_str().ok_or("create_agent: missing 'name'")?;
-    let role = args["role"].as_str().ok_or("create_agent: missing 'role'")?;
-    let system_prompt = args["system_prompt"].as_str().ok_or("create_agent: missing 'system_prompt'")?;
+    let name = args["name"]
+        .as_str()
+        .ok_or("create_agent: missing 'name'")?;
+    let role = args["role"]
+        .as_str()
+        .ok_or("create_agent: missing 'role'")?;
+    let system_prompt = args["system_prompt"]
+        .as_str()
+        .ok_or("create_agent: missing 'system_prompt'")?;
     let specialty = args["specialty"].as_str().unwrap_or("general");
     let model = args["model"].as_str().filter(|s| !s.is_empty());
     let capabilities: Vec<String> = args["capabilities"]
         .as_array()
-        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
 
-    let slug: String = name.to_lowercase()
+    let slug: String = name
+        .to_lowercase()
         .chars()
         .map(|c| if c.is_alphanumeric() { c } else { '-' })
         .collect::<String>()
@@ -287,9 +392,13 @@ async fn execute_create_agent(
         .as_secs();
     let agent_id = format!("agent-{}-{}", slug, timestamp);
 
-    info!("[engine] create_agent tool: creating '{}' as {}", name, agent_id);
+    info!(
+        "[engine] create_agent tool: creating '{}' as {}",
+        name, agent_id
+    );
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let agent = crate::engine::types::ProjectAgent {
@@ -310,7 +419,15 @@ async fn execute_create_agent(
         name, agent_id, role, specialty
     );
     let emb_client = state.embedding_client();
-    let _ = memory::store_memory(&state.store, &memory_content, "fact", 5, emb_client.as_ref(), None).await;
+    let _ = memory::store_memory(
+        &state.store,
+        &memory_content,
+        "fact",
+        5,
+        emb_client.as_ref(),
+        None,
+    )
+    .await;
 
     Ok(format!(
         "Successfully created agent '{}'!\n\n\
@@ -320,21 +437,32 @@ async fn execute_create_agent(
         - **Model**: {}\n\
         - **Capabilities**: {}\n\n\
         The agent is now available in the Agents view.",
-        name, agent_id, role, specialty,
+        name,
+        agent_id,
+        role,
+        specialty,
         model.unwrap_or("(uses default)"),
-        if capabilities.is_empty() { "all tools".to_string() } else { capabilities.join(", ") }
+        if capabilities.is_empty() {
+            "all tools".to_string()
+        } else {
+            capabilities.join(", ")
+        }
     ))
 }
 
 async fn execute_agent_list(app_handle: &tauri::AppHandle) -> EngineResult<String> {
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let backend_agents = state.store.list_all_agents().unwrap_or_default();
     let all_skills = state.store.list_community_skills().unwrap_or_default();
 
     let mut skill_counts: std::collections::HashMap<String, u64> = std::collections::HashMap::new();
-    let global_count = all_skills.iter().filter(|s| s.agent_ids.is_empty() && s.enabled).count();
+    let global_count = all_skills
+        .iter()
+        .filter(|s| s.agent_ids.is_empty() && s.enabled)
+        .count();
 
     for skill in &all_skills {
         if skill.enabled {
@@ -355,7 +483,8 @@ async fn execute_agent_list(app_handle: &tauri::AppHandle) -> EngineResult<Strin
 
     let mut idx = 2;
     for (_project_id, agent) in &backend_agents {
-        let agent_skills = skill_counts.get(&agent.agent_id).cloned().unwrap_or(0) + global_count as u64;
+        let agent_skills =
+            skill_counts.get(&agent.agent_id).cloned().unwrap_or(0) + global_count as u64;
         output.push_str(&format!(
             "{}. **{}** (id: `{}`)\n   Role: {} | Specialty: {}\n   Model: {}\n   Capabilities: {}\n   Community skills: {}\n\n",
             idx,
@@ -378,15 +507,19 @@ async fn execute_agent_skills(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let agent_id = args["agent_id"].as_str().ok_or("Missing 'agent_id' parameter")?;
+    let agent_id = args["agent_id"]
+        .as_str()
+        .ok_or("Missing 'agent_id' parameter")?;
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let all_skills = state.store.list_community_skills()?;
-    let agent_skills: Vec<_> = all_skills.iter().filter(|s| {
-        s.agent_ids.is_empty() || s.agent_ids.contains(&agent_id.to_string())
-    }).collect();
+    let agent_skills: Vec<_> = all_skills
+        .iter()
+        .filter(|s| s.agent_ids.is_empty() || s.agent_ids.contains(&agent_id.to_string()))
+        .collect();
 
     if agent_skills.is_empty() {
         return Ok(format!("Agent '{}' has no community skills assigned.\n\nUse skill_search to find skills, then agent_skill_assign to give them to this agent.", agent_id));
@@ -402,9 +535,17 @@ async fn execute_agent_skills(
         };
         output.push_str(&format!(
             "{}. **{}** [{}]\n   ID: `{}`\n   {}\n   Scope: {}\n   Source: {}\n\n",
-            i + 1, skill.name, status, skill.id,
-            if skill.description.is_empty() { "(no description)" } else { &skill.description },
-            scope, skill.source,
+            i + 1,
+            skill.name,
+            status,
+            skill.id,
+            if skill.description.is_empty() {
+                "(no description)"
+            } else {
+                &skill.description
+            },
+            scope,
+            skill.source,
         ));
     }
     output.push_str("Use agent_skill_assign to add or remove skills from this agent.");
@@ -415,16 +556,30 @@ async fn execute_agent_skill_assign(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let skill_id = args["skill_id"].as_str().ok_or("Missing 'skill_id' parameter")?;
-    let agent_id = args["agent_id"].as_str().ok_or("Missing 'agent_id' parameter")?;
-    let action = args["action"].as_str().ok_or("Missing 'action' parameter (must be 'add' or 'remove')")?;
+    let skill_id = args["skill_id"]
+        .as_str()
+        .ok_or("Missing 'skill_id' parameter")?;
+    let agent_id = args["agent_id"]
+        .as_str()
+        .ok_or("Missing 'agent_id' parameter")?;
+    let action = args["action"]
+        .as_str()
+        .ok_or("Missing 'action' parameter (must be 'add' or 'remove')")?;
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     let all_skills = state.store.list_community_skills()?;
-    let skill = all_skills.iter().find(|s| s.id == skill_id)
-        .ok_or_else(|| format!("Skill '{}' not found. Use skill_list to see installed skills.", skill_id))?;
+    let skill = all_skills
+        .iter()
+        .find(|s| s.id == skill_id)
+        .ok_or_else(|| {
+            format!(
+                "Skill '{}' not found. Use skill_list to see installed skills.",
+                skill_id
+            )
+        })?;
 
     let mut agent_ids = skill.agent_ids.clone();
 
@@ -437,24 +592,49 @@ async fn execute_agent_skill_assign(
                 ));
             }
             if agent_ids.contains(&agent_id.to_string()) {
-                return Ok(format!("Skill '{}' is already assigned to agent '{}'.", skill.name, agent_id));
+                return Ok(format!(
+                    "Skill '{}' is already assigned to agent '{}'.",
+                    skill.name, agent_id
+                ));
             }
             agent_ids.push(agent_id.to_string());
-            state.store.set_community_skill_agents(skill_id, &agent_ids)?;
-            let _ = app_handle.emit("community-skill-updated", serde_json::json!({ "skill_id": skill_id }));
-            Ok(format!("Assigned skill '{}' to agent '{}'.", skill.name, agent_id))
+            state
+                .store
+                .set_community_skill_agents(skill_id, &agent_ids)?;
+            let _ = app_handle.emit(
+                "community-skill-updated",
+                serde_json::json!({ "skill_id": skill_id }),
+            );
+            Ok(format!(
+                "Assigned skill '{}' to agent '{}'.",
+                skill.name, agent_id
+            ))
         }
         "remove" => {
             if agent_ids.is_empty() {
-                return Ok(format!("Skill '{}' is currently global. Cannot remove from individual agents.", skill.name));
+                return Ok(format!(
+                    "Skill '{}' is currently global. Cannot remove from individual agents.",
+                    skill.name
+                ));
             }
             if !agent_ids.contains(&agent_id.to_string()) {
-                return Ok(format!("Skill '{}' is not assigned to agent '{}'.", skill.name, agent_id));
+                return Ok(format!(
+                    "Skill '{}' is not assigned to agent '{}'.",
+                    skill.name, agent_id
+                ));
             }
             agent_ids.retain(|id| id != agent_id);
-            state.store.set_community_skill_agents(skill_id, &agent_ids)?;
-            let _ = app_handle.emit("community-skill-updated", serde_json::json!({ "skill_id": skill_id }));
-            Ok(format!("Removed skill '{}' from agent '{}'.", skill.name, agent_id))
+            state
+                .store
+                .set_community_skill_agents(skill_id, &agent_ids)?;
+            let _ = app_handle.emit(
+                "community-skill-updated",
+                serde_json::json!({ "skill_id": skill_id }),
+            );
+            Ok(format!(
+                "Removed skill '{}' from agent '{}'.",
+                skill.name, agent_id
+            ))
         }
         _ => Err(format!("Invalid action '{}'. Must be 'add' or 'remove'.", action).into()),
     }
@@ -466,10 +646,12 @@ async fn execute_manage_session(
     args: &serde_json::Value,
     app_handle: &tauri::AppHandle,
 ) -> EngineResult<String> {
-    let action = args["action"].as_str()
+    let action = args["action"]
+        .as_str()
         .ok_or("Missing 'action' parameter (must be 'list', 'clear', or 'delete')")?;
 
-    let state = app_handle.try_state::<EngineState>()
+    let state = app_handle
+        .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
     match action {
@@ -479,40 +661,70 @@ async fn execute_manage_session(
             let filtered: Vec<_> = if filter.is_empty() {
                 sessions
             } else {
-                sessions.into_iter()
+                sessions
+                    .into_iter()
                     .filter(|s| s.id.contains(filter))
                     .collect()
             };
 
             if filtered.is_empty() {
-                return Ok(format!("No sessions found{}.",
-                    if filter.is_empty() { String::new() } else { format!(" matching '{}'", filter) }
+                return Ok(format!(
+                    "No sessions found{}.",
+                    if filter.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" matching '{}'", filter)
+                    }
                 ));
             }
 
-            let mut lines = vec![format!("**Sessions** ({}{})\n", filtered.len(),
-                if filter.is_empty() { String::new() } else { format!(", filter: '{}'", filter) }
+            let mut lines = vec![format!(
+                "**Sessions** ({}{})\n",
+                filtered.len(),
+                if filter.is_empty() {
+                    String::new()
+                } else {
+                    format!(", filter: '{}'", filter)
+                }
             )];
 
             for s in &filtered {
-                let msg_count = state.store.get_messages(&s.id, 1000)
+                let msg_count = state
+                    .store
+                    .get_messages(&s.id, 1000)
                     .map(|msgs| msgs.len())
                     .unwrap_or(0);
                 let label = s.label.as_deref().unwrap_or("");
                 let agent = s.agent_id.as_deref().unwrap_or("?");
-                let prefix = if s.id.starts_with("eng-discord") { "🎮" }
-                    else if s.id.starts_with("eng-telegram") { "📱" }
-                    else if s.id.starts_with("eng-slack") { "💬" }
-                    else if s.id.starts_with("eng-task") { "📋" }
-                    else { "💭" };
-                lines.push(format!("{} `{}` — {} msgs, agent={}{}", prefix, s.id, msg_count, agent,
-                    if label.is_empty() { String::new() } else { format!(", label=\"{}\"", label) }
+                let prefix = if s.id.starts_with("eng-discord") {
+                    "🎮"
+                } else if s.id.starts_with("eng-telegram") {
+                    "📱"
+                } else if s.id.starts_with("eng-slack") {
+                    "💬"
+                } else if s.id.starts_with("eng-task") {
+                    "📋"
+                } else {
+                    "💭"
+                };
+                lines.push(format!(
+                    "{} `{}` — {} msgs, agent={}{}",
+                    prefix,
+                    s.id,
+                    msg_count,
+                    agent,
+                    if label.is_empty() {
+                        String::new()
+                    } else {
+                        format!(", label=\"{}\"", label)
+                    }
                 ));
             }
             Ok(lines.join("\n"))
         }
         "clear" => {
-            let session_id = args["session_id"].as_str()
+            let session_id = args["session_id"]
+                .as_str()
                 .ok_or("'session_id' is required for 'clear' action")?;
 
             // Support prefix matching for bulk clear
@@ -520,7 +732,8 @@ async fn execute_manage_session(
                 // Try prefix match
                 let prefix = session_id.trim_end_matches('*');
                 let sessions = state.store.list_sessions(500)?;
-                let matching: Vec<_> = sessions.iter()
+                let matching: Vec<_> = sessions
+                    .iter()
                     .filter(|s| s.id.starts_with(prefix))
                     .collect();
                 if matching.is_empty() {
@@ -531,21 +744,29 @@ async fn execute_manage_session(
                     state.store.clear_messages(&s.id)?;
                     cleared += 1;
                 }
-                Ok(format!("Cleared messages from {} session(s) matching '{}'.", cleared, prefix))
+                Ok(format!(
+                    "Cleared messages from {} session(s) matching '{}'.",
+                    cleared, prefix
+                ))
             } else {
                 state.store.clear_messages(session_id)?;
-                info!("[manage_session] Cleared messages from session: {}", session_id);
+                info!(
+                    "[manage_session] Cleared messages from session: {}",
+                    session_id
+                );
                 Ok(format!("Cleared all messages from session '{}'. The session will start fresh on next message.", session_id))
             }
         }
         "delete" => {
-            let session_id = args["session_id"].as_str()
+            let session_id = args["session_id"]
+                .as_str()
                 .ok_or("'session_id' is required for 'delete' action")?;
 
             if session_id.contains('*') || state.store.get_session(session_id)?.is_none() {
                 let prefix = session_id.trim_end_matches('*');
                 let sessions = state.store.list_sessions(500)?;
-                let matching: Vec<_> = sessions.iter()
+                let matching: Vec<_> = sessions
+                    .iter()
                     .filter(|s| s.id.starts_with(prefix))
                     .collect();
                 if matching.is_empty() {
@@ -556,13 +777,23 @@ async fn execute_manage_session(
                     state.store.delete_session(&s.id)?;
                     deleted += 1;
                 }
-                Ok(format!("Deleted {} session(s) matching '{}'.", deleted, prefix))
+                Ok(format!(
+                    "Deleted {} session(s) matching '{}'.",
+                    deleted, prefix
+                ))
             } else {
                 state.store.delete_session(session_id)?;
                 info!("[manage_session] Deleted session: {}", session_id);
-                Ok(format!("Deleted session '{}' and all its messages.", session_id))
+                Ok(format!(
+                    "Deleted session '{}' and all its messages.",
+                    session_id
+                ))
             }
         }
-        _ => Err(format!("Invalid action '{}'. Must be 'list', 'clear', or 'delete'.", action).into()),
+        _ => Err(format!(
+            "Invalid action '{}'. Must be 'list', 'clear', or 'delete'.",
+            action
+        )
+        .into()),
     }
 }

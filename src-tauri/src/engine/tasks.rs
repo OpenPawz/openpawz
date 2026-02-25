@@ -9,12 +9,12 @@
 //   - check_positions:    SL/TP monitoring for open trading positions
 //   - compute_next_run:   Simple schedule parser
 
-use crate::atoms::constants::{CRON_SESSION_KEEP_MESSAGES, CRON_MAX_TOOL_ROUNDS};
-use crate::engine::{agent_loop, skills, sessions, telegram, sol_dex};
+use crate::atoms::constants::{CRON_MAX_TOOL_ROUNDS, CRON_SESSION_KEEP_MESSAGES};
 use crate::engine::providers::AnyProvider;
-use crate::engine::state::{EngineState, normalize_model_name, resolve_provider_for_model};
+use crate::engine::state::{normalize_model_name, resolve_provider_for_model, EngineState};
 use crate::engine::types::*;
-use log::{info, warn, error};
+use crate::engine::{agent_loop, sessions, skills, sol_dex, telegram};
+use log::{error, info, warn};
 use std::collections::HashMap;
 use tauri::{Emitter, Manager};
 
@@ -32,7 +32,10 @@ pub async fn execute_task(
     {
         let mut inflight = state.inflight_tasks.lock();
         if inflight.contains(task_id) {
-            info!("[engine] Task '{}' already in flight — skipping duplicate", task_id);
+            info!(
+                "[engine] Task '{}' already in flight — skipping duplicate",
+                task_id
+            );
             return Err(format!("Task {} is already running", task_id));
         }
         inflight.insert(task_id.to_string());
@@ -41,18 +44,28 @@ pub async fn execute_task(
     let run_id = uuid::Uuid::new_v4().to_string();
 
     let tasks = state.store.list_tasks()?;
-    let task = tasks.into_iter().find(|t| t.id == task_id)
+    let task = tasks
+        .into_iter()
+        .find(|t| t.id == task_id)
         .ok_or_else(|| format!("Task not found: {}", task_id))?;
 
     let agent_ids: Vec<String> = if !task.assigned_agents.is_empty() {
-        task.assigned_agents.iter().map(|a| a.agent_id.clone()).collect()
+        task.assigned_agents
+            .iter()
+            .map(|a| a.agent_id.clone())
+            .collect()
     } else if let Some(ref agent) = task.assigned_agent {
         vec![agent.clone()]
     } else {
         vec!["default".to_string()]
     };
 
-    info!("[engine] Running task '{}' with {} agent(s): {:?}", task.title, agent_ids.len(), agent_ids);
+    info!(
+        "[engine] Running task '{}' with {} agent(s): {:?}",
+        task.title,
+        agent_ids.len(),
+        agent_ids
+    );
 
     {
         let mut t = task.clone();
@@ -63,7 +76,10 @@ pub async fn execute_task(
     for agent_id in &agent_ids {
         let aid = uuid::Uuid::new_v4().to_string();
         state.store.add_task_activity(
-            &aid, task_id, "agent_started", Some(agent_id),
+            &aid,
+            task_id,
+            "agent_started",
+            Some(agent_id),
             &format!("Agent {} started working on: {}", agent_id, task.title),
         )?;
     }
@@ -81,15 +97,19 @@ pub async fn execute_task(
             cfg.max_tool_rounds,
             cfg.tool_timeout_secs,
             cfg.model_routing.clone(),
-            cfg.default_model.clone().unwrap_or_else(|| "gpt-4o".to_string()),
+            cfg.default_model
+                .clone()
+                .unwrap_or_else(|| "gpt-4o".to_string()),
         )
     };
 
     let first_agent_id = agent_ids.first().map(|s| s.as_str()).unwrap_or("default");
-    let skill_instructions = skills::get_enabled_skill_instructions(&state.store, first_agent_id).unwrap_or_default();
+    let skill_instructions =
+        skills::get_enabled_skill_instructions(&state.store, first_agent_id).unwrap_or_default();
 
     let mut all_tools = ToolDefinition::builtins();
-    let enabled_ids: Vec<String> = skills::builtin_skills().iter()
+    let enabled_ids: Vec<String> = skills::builtin_skills()
+        .iter()
         .filter(|s| state.store.is_skill_enabled(&s.id).unwrap_or(false))
         .map(|s| s.id.clone())
         .collect();
@@ -134,13 +154,21 @@ pub async fn execute_task(
         let session_id = format!("eng-task-{}-{}", task.id, agent_id);
 
         if is_recurring {
-            match state.store.prune_session_messages(&session_id, CRON_SESSION_KEEP_MESSAGES) {
+            match state
+                .store
+                .prune_session_messages(&session_id, CRON_SESSION_KEEP_MESSAGES)
+            {
                 Ok(pruned) if pruned > 0 => {
-                    info!("[engine] Pruned {} old messages from cron session {} (kept {})",
-                        pruned, session_id, CRON_SESSION_KEEP_MESSAGES);
+                    info!(
+                        "[engine] Pruned {} old messages from cron session {} (kept {})",
+                        pruned, session_id, CRON_SESSION_KEEP_MESSAGES
+                    );
                 }
                 Err(e) => {
-                    warn!("[engine] Failed to prune cron session {}: {}", session_id, e);
+                    warn!(
+                        "[engine] Failed to prune cron session {}: {}",
+                        session_id, e
+                    );
                 }
                 _ => {}
             }
@@ -150,9 +178,15 @@ pub async fn execute_task(
             if !task_model.is_empty() {
                 let normalized = normalize_model_name(task_model).to_string();
                 if normalized != *task_model {
-                    info!("[engine] Task '{}' model remapped: {} → {}", task.title, task_model, normalized);
+                    info!(
+                        "[engine] Task '{}' model remapped: {} → {}",
+                        task.title, task_model, normalized
+                    );
                 }
-                info!("[engine] Task '{}' has explicit model override: {}", task.title, normalized);
+                info!(
+                    "[engine] Task '{}' has explicit model override: {}",
+                    task.title, normalized
+                );
                 normalized
             } else {
                 model_routing.resolve(&agent_id, "worker", "", &default_model)
@@ -160,17 +194,24 @@ pub async fn execute_task(
         } else {
             model_routing.resolve(&agent_id, "worker", "", &default_model)
         };
-        info!("[engine] Agent '{}' resolved model: {} (task_override: {:?}, default: {})", agent_id, agent_model, task.model, default_model);
+        info!(
+            "[engine] Agent '{}' resolved model: {} (task_override: {:?}, default: {})",
+            agent_id, agent_model, task.model, default_model
+        );
 
         let (provider_config, model) = {
             let cfg = state.config.lock();
             let model = agent_model;
             let provider = resolve_provider_for_model(&model, &cfg.providers)
                 .or_else(|| {
-                    cfg.providers.iter().find(|p| p.default_model.as_deref() == Some(model.as_str())).cloned()
+                    cfg.providers
+                        .iter()
+                        .find(|p| p.default_model.as_deref() == Some(model.as_str()))
+                        .cloned()
                 })
                 .or_else(|| {
-                    cfg.default_provider.as_ref()
+                    cfg.default_provider
+                        .as_ref()
                         .and_then(|dp| cfg.providers.iter().find(|p| p.id == *dp).cloned())
                 })
                 .or_else(|| cfg.providers.first().cloned());
@@ -180,16 +221,30 @@ pub async fn execute_task(
             }
         };
 
-        if state.store.get_session(&session_id).ok().flatten().is_none() {
-            state.store.create_session(&session_id, &model, None, Some(&agent_id))?;
+        if state
+            .store
+            .get_session(&session_id)
+            .ok()
+            .flatten()
+            .is_none()
+        {
+            state
+                .store
+                .create_session(&session_id, &model, None, Some(&agent_id))?;
         }
 
         let agent_context = state.store.compose_core_context(&agent_id).unwrap_or(None);
 
         let mut parts: Vec<String> = Vec::new();
-        if let Some(sp) = &base_system_prompt { parts.push(sp.clone()); }
-        if let Some(ac) = agent_context { parts.push(ac); }
-        if !skill_instructions.is_empty() { parts.push(skill_instructions.clone()); }
+        if let Some(sp) = &base_system_prompt {
+            parts.push(sp.clone());
+        }
+        if let Some(ac) = agent_context {
+            parts.push(ac);
+        }
+        if !skill_instructions.is_empty() {
+            parts.push(skill_instructions.clone());
+        }
 
         {
             let user_tz = {
@@ -265,7 +320,12 @@ pub async fn execute_task(
             let cfg = state.config.lock();
             cfg.context_window_tokens
         };
-        let mut messages = state.store.load_conversation(&session_id, Some(&full_system_prompt), Some(context_window), Some(&agent_id))?;
+        let mut messages = state.store.load_conversation(
+            &session_id,
+            Some(&full_system_prompt),
+            Some(context_window),
+            Some(&agent_id),
+        )?;
 
         let provider = AnyProvider::from_config(&provider_config);
         let pending_clone = pending.clone();
@@ -304,10 +364,11 @@ pub async fn execute_task(
                 &agent_id,
                 task_daily_budget_clone,
                 Some(&task_daily_tokens_clone),
-                None, // thinking_level
+                None,  // thinking_level
                 false, // auto_approve_all — tasks use safe default; opt-in is per-chat
-                None, // yield_signal
-            ).await;
+                None,  // yield_signal
+            )
+            .await;
 
             // NOTE: We use raw rusqlite::Connection here because this runs inside
             // a tokio::spawn closure where SessionStore (Mutex<Connection>) can't
@@ -366,7 +427,8 @@ pub async fn execute_task(
             conn.execute(
                 "UPDATE tasks SET status = ?2, updated_at = datetime('now') WHERE id = ?1",
                 rusqlite::params![task_id_for_spawn, new_status],
-            ).ok();
+            )
+            .ok();
 
             // Persistent tasks re-queue immediately with a short cooldown
             if is_persistent && !is_recurring {
@@ -380,18 +442,27 @@ pub async fn execute_task(
             let aid = uuid::Uuid::new_v4().to_string();
             let summary = if is_persistent {
                 if agent_count > 1 {
-                    format!("All {} agents finished (persistent). Re-queuing in 30s.", agent_count)
+                    format!(
+                        "All {} agents finished (persistent). Re-queuing in 30s.",
+                        agent_count
+                    )
                 } else {
                     "Persistent task cycle completed. Re-queuing in 30s.".to_string()
                 }
             } else if is_recurring {
                 if agent_count > 1 {
-                    format!("All {} agents finished (recurring). Staying in_progress for next run.", agent_count)
+                    format!(
+                        "All {} agents finished (recurring). Staying in_progress for next run.",
+                        agent_count
+                    )
                 } else {
                     "Cron cycle completed. Staying in_progress for next run.".to_string()
                 }
             } else if agent_count > 1 {
-                format!("All {} agents finished. Status: {}", agent_count, new_status)
+                format!(
+                    "All {} agents finished. Status: {}",
+                    agent_count, new_status
+                )
             } else {
                 format!("Task completed. Status: {}", new_status)
             };
@@ -424,7 +495,9 @@ async fn check_positions(app_handle: &tauri::AppHandle) {
         }
     };
 
-    if positions.is_empty() { return; }
+    if positions.is_empty() {
+        return;
+    }
 
     let creds = match skills::get_skill_credentials(&state.store, "solana") {
         Ok(c) => c,
@@ -453,47 +526,86 @@ async fn check_positions(app_handle: &tauri::AppHandle) {
         let current_price = match sol_dex::get_token_price_usd(&pos.mint).await {
             Ok(p) => p,
             Err(e) => {
-                warn!("[positions] Price lookup failed for {} ({}): {}", pos.symbol, &pos.mint[..std::cmp::min(8, pos.mint.len())], e);
+                warn!(
+                    "[positions] Price lookup failed for {} ({}): {}",
+                    pos.symbol,
+                    &pos.mint[..std::cmp::min(8, pos.mint.len())],
+                    e
+                );
                 continue;
             }
         };
 
         let _ = state.store.update_position_price(&pos.id, current_price);
 
-        if pos.entry_price_usd <= 0.0 { continue; }
+        if pos.entry_price_usd <= 0.0 {
+            continue;
+        }
         let ratio = current_price / pos.entry_price_usd;
 
         if ratio <= (1.0 - pos.stop_loss_pct) {
             info!("[positions] 🛑 STOP-LOSS triggered for {} — entry ${:.8}, now ${:.8} ({:.1}% loss)",
                 pos.symbol, pos.entry_price_usd, current_price, (1.0 - ratio) * 100.0);
 
-            let sell_result = execute_position_sell(app_handle, &creds, &pos.mint, &pos.symbol, pos.current_amount).await;
+            let sell_result = execute_position_sell(
+                app_handle,
+                &creds,
+                &pos.mint,
+                &pos.symbol,
+                pos.current_amount,
+            )
+            .await;
             match sell_result {
                 Ok(tx) => {
                     let _ = state.store.close_position(&pos.id, "closed_sl", Some(&tx));
                     let _ = state.store.insert_trade(
-                        "sol_swap", Some("sell"), Some(&format!("{} → SOL", pos.symbol)),
-                        Some(&pos.mint), &pos.current_amount.to_string(),
-                        None, None, "completed", None, Some("SOL"),
+                        "sol_swap",
+                        Some("sell"),
+                        Some(&format!("{} → SOL", pos.symbol)),
+                        Some(&pos.mint),
+                        &pos.current_amount.to_string(),
+                        None,
+                        None,
+                        "completed",
+                        None,
+                        Some("SOL"),
                         &format!("Auto stop-loss at {:.1}% loss", (1.0 - ratio) * 100.0),
-                        None, None, Some(&tx),
+                        None,
+                        None,
+                        Some(&tx),
                     );
-                    app_handle.emit("position-closed", serde_json::json!({
-                        "id": pos.id, "symbol": pos.symbol, "reason": "stop_loss",
-                        "entry_price": pos.entry_price_usd, "exit_price": current_price,
-                    })).ok();
-                    info!("[positions] ✅ Stop-loss sell executed for {} — tx: {}", pos.symbol, &tx[..std::cmp::min(16, tx.len())]);
+                    app_handle
+                        .emit(
+                            "position-closed",
+                            serde_json::json!({
+                                "id": pos.id, "symbol": pos.symbol, "reason": "stop_loss",
+                                "entry_price": pos.entry_price_usd, "exit_price": current_price,
+                            }),
+                        )
+                        .ok();
+                    info!(
+                        "[positions] ✅ Stop-loss sell executed for {} — tx: {}",
+                        pos.symbol,
+                        &tx[..std::cmp::min(16, tx.len())]
+                    );
                 }
                 Err(e) => {
-                    error!("[positions] ❌ Stop-loss sell FAILED for {}: {}", pos.symbol, e);
+                    error!(
+                        "[positions] ❌ Stop-loss sell FAILED for {}: {}",
+                        pos.symbol, e
+                    );
                 }
             }
         } else if ratio >= pos.take_profit_pct {
-            info!("[positions] 🎯 TAKE-PROFIT triggered for {} — entry ${:.8}, now ${:.8} ({:.1}x)",
-                pos.symbol, pos.entry_price_usd, current_price, ratio);
+            info!(
+                "[positions] 🎯 TAKE-PROFIT triggered for {} — entry ${:.8}, now ${:.8} ({:.1}x)",
+                pos.symbol, pos.entry_price_usd, current_price, ratio
+            );
 
             let sell_amount = pos.current_amount / 2.0;
-            let sell_result = execute_position_sell(app_handle, &creds, &pos.mint, &pos.symbol, sell_amount).await;
+            let sell_result =
+                execute_position_sell(app_handle, &creds, &pos.mint, &pos.symbol, sell_amount)
+                    .await;
             match sell_result {
                 Ok(tx) => {
                     let remaining = pos.current_amount - sell_amount;
@@ -501,23 +613,48 @@ async fn check_positions(app_handle: &tauri::AppHandle) {
                         let _ = state.store.close_position(&pos.id, "closed_tp", Some(&tx));
                     } else {
                         let _ = state.store.reduce_position(&pos.id, remaining);
-                        let _ = state.store.update_position_targets(&pos.id, 0.05, pos.take_profit_pct * 1.5);
+                        let _ = state.store.update_position_targets(
+                            &pos.id,
+                            0.05,
+                            pos.take_profit_pct * 1.5,
+                        );
                     }
                     let _ = state.store.insert_trade(
-                        "sol_swap", Some("sell"), Some(&format!("{} → SOL", pos.symbol)),
-                        Some(&pos.mint), &sell_amount.to_string(),
-                        None, None, "completed", None, Some("SOL"),
+                        "sol_swap",
+                        Some("sell"),
+                        Some(&format!("{} → SOL", pos.symbol)),
+                        Some(&pos.mint),
+                        &sell_amount.to_string(),
+                        None,
+                        None,
+                        "completed",
+                        None,
+                        Some("SOL"),
                         &format!("Auto take-profit at {:.1}x", ratio),
-                        None, None, Some(&tx),
+                        None,
+                        None,
+                        Some(&tx),
                     );
-                    app_handle.emit("position-closed", serde_json::json!({
-                        "id": pos.id, "symbol": pos.symbol, "reason": "take_profit",
-                        "entry_price": pos.entry_price_usd, "exit_price": current_price,
-                    })).ok();
-                    info!("[positions] ✅ Take-profit sell executed for {} — tx: {}", pos.symbol, &tx[..std::cmp::min(16, tx.len())]);
+                    app_handle
+                        .emit(
+                            "position-closed",
+                            serde_json::json!({
+                                "id": pos.id, "symbol": pos.symbol, "reason": "take_profit",
+                                "entry_price": pos.entry_price_usd, "exit_price": current_price,
+                            }),
+                        )
+                        .ok();
+                    info!(
+                        "[positions] ✅ Take-profit sell executed for {} — tx: {}",
+                        pos.symbol,
+                        &tx[..std::cmp::min(16, tx.len())]
+                    );
                 }
                 Err(e) => {
-                    error!("[positions] ❌ Take-profit sell FAILED for {}: {}", pos.symbol, e);
+                    error!(
+                        "[positions] ❌ Take-profit sell FAILED for {}: {}",
+                        pos.symbol, e
+                    );
                 }
             }
         }
@@ -569,7 +706,9 @@ pub async fn run_cron_heartbeat(app_handle: &tauri::AppHandle) {
         }
     };
 
-    if due_tasks.is_empty() { return; }
+    if due_tasks.is_empty() {
+        return;
+    }
 
     info!("[heartbeat] {} cron task(s) due", due_tasks.len());
 
@@ -579,26 +718,48 @@ pub async fn run_cron_heartbeat(app_handle: &tauri::AppHandle) {
 
         let now = chrono::Utc::now();
         let next = compute_next_run(&task.cron_schedule, &now);
-        if let Err(e) = state.store.update_task_cron_run(&task_id, &now.to_rfc3339(), next.as_deref()) {
-            error!("[heartbeat] Failed to update cron timestamps for '{}': {}", task_title, e);
+        if let Err(e) =
+            state
+                .store
+                .update_task_cron_run(&task_id, &now.to_rfc3339(), next.as_deref())
+        {
+            error!(
+                "[heartbeat] Failed to update cron timestamps for '{}': {}",
+                task_title, e
+            );
             continue;
         }
 
         let aid = uuid::Uuid::new_v4().to_string();
-        state.store.add_task_activity(
-            &aid, &task_id, "cron_triggered", None,
-            &format!("Cron triggered: {}", task.cron_schedule.as_deref().unwrap_or("unknown")),
-        ).ok();
+        state
+            .store
+            .add_task_activity(
+                &aid,
+                &task_id,
+                "cron_triggered",
+                None,
+                &format!(
+                    "Cron triggered: {}",
+                    task.cron_schedule.as_deref().unwrap_or("unknown")
+                ),
+            )
+            .ok();
 
         let app = app_handle.clone();
         tauri::async_runtime::spawn(async move {
             let st = app.state::<EngineState>();
             match execute_task(&app, &st, &task_id).await {
                 Ok(run_id) => {
-                    info!("[heartbeat] Cron task '{}' started, run_id={}", task_title, run_id);
+                    info!(
+                        "[heartbeat] Cron task '{}' started, run_id={}",
+                        task_title, run_id
+                    );
                 }
                 Err(e) => {
-                    error!("[heartbeat] Cron task '{}' failed to start: {}", task_title, e);
+                    error!(
+                        "[heartbeat] Cron task '{}' failed to start: {}",
+                        task_title, e
+                    );
                     if let Ok(conn) = rusqlite::Connection::open(sessions::engine_db_path()) {
                         let aid = uuid::Uuid::new_v4().to_string();
                         conn.execute(
@@ -611,15 +772,23 @@ pub async fn run_cron_heartbeat(app_handle: &tauri::AppHandle) {
         });
     }
 
-    app_handle.emit("cron-heartbeat", serde_json::json!({
-        "timestamp": chrono::Utc::now().to_rfc3339(),
-    })).ok();
+    app_handle
+        .emit(
+            "cron-heartbeat",
+            serde_json::json!({
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            }),
+        )
+        .ok();
 }
 
 // ── Schedule helpers ───────────────────────────────────────────────────
 
 /// Simple schedule parser: "every Xm", "every Xh", "daily HH:MM"
-pub fn compute_next_run(schedule: &Option<String>, from: &chrono::DateTime<chrono::Utc>) -> Option<String> {
+pub fn compute_next_run(
+    schedule: &Option<String>,
+    from: &chrono::DateTime<chrono::Utc>,
+) -> Option<String> {
     let s = schedule.as_deref()?;
     let s = s.trim().to_lowercase();
 

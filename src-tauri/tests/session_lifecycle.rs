@@ -6,7 +6,9 @@ use super::test_store;
 #[test]
 fn create_session_returns_valid_session() {
     let store = test_store();
-    let session = store.create_session("s1", "gpt-4", Some("You are helpful"), None).unwrap();
+    let session = store
+        .create_session("s1", "gpt-4", Some("You are helpful"), None)
+        .unwrap();
     assert_eq!(session.id, "s1");
     assert_eq!(session.model, "gpt-4");
     assert_eq!(session.system_prompt.as_deref(), Some("You are helpful"));
@@ -26,7 +28,9 @@ fn list_sessions_returns_created_sessions() {
 fn list_sessions_respects_limit() {
     let store = test_store();
     for i in 0..5 {
-        store.create_session(&format!("s{}", i), "gpt-4", None, None).unwrap();
+        store
+            .create_session(&format!("s{}", i), "gpt-4", None, None)
+            .unwrap();
     }
     let sessions = store.list_sessions(3).unwrap();
     assert_eq!(sessions.len(), 3);
@@ -80,7 +84,11 @@ fn get_messages_returns_added_messages() {
         let msg = paw_temp_lib::atoms::types::StoredMessage {
             id: format!("m{}", i),
             session_id: "s1".into(),
-            role: if i % 2 == 0 { "user".into() } else { "assistant".into() },
+            role: if i % 2 == 0 {
+                "user".into()
+            } else {
+                "assistant".into()
+            },
             content: format!("Message {}", i),
             tool_calls_json: None,
             tool_call_id: None,

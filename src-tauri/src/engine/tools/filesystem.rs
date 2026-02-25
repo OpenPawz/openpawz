@@ -1,8 +1,8 @@
 // Paw Agent Engine — Filesystem tools
 // read_file, write_file, list_directory, append_file, delete_file
 
-use crate::atoms::types::*;
 use crate::atoms::error::EngineResult;
+use crate::atoms::types::*;
 use log::{info, warn};
 
 /// Sensitive paths that agents must never read or write.
@@ -50,12 +50,20 @@ fn resolve_and_validate(
     // Canonicalize: resolve symlinks and `..` segments.
     // For operations on not-yet-existing files (write, append), canonicalize the parent.
     let canonical = if resolved.exists() {
-        resolved.canonicalize()
-            .map_err(|e| format!("{}: failed to resolve path '{}': {}", operation, raw_path, e))?
+        resolved.canonicalize().map_err(|e| {
+            format!(
+                "{}: failed to resolve path '{}': {}",
+                operation, raw_path, e
+            )
+        })?
     } else if let Some(parent) = resolved.parent() {
         if parent.exists() {
-            let canon_parent = parent.canonicalize()
-                .map_err(|e| format!("{}: failed to resolve parent of '{}': {}", operation, raw_path, e))?;
+            let canon_parent = parent.canonicalize().map_err(|e| {
+                format!(
+                    "{}: failed to resolve parent of '{}': {}",
+                    operation, raw_path, e
+                )
+            })?;
             canon_parent.join(resolved.file_name().unwrap_or_default())
         } else {
             // Parent doesn't exist yet — use the raw resolved path but check for `..`
@@ -70,7 +78,10 @@ fn resolve_and_validate(
         let ws = super::agent_workspace(agent_id);
         if let Ok(canon_ws) = ws.canonicalize() {
             if !canonical.starts_with(&canon_ws) {
-                warn!("[engine] {} blocked path traversal: {} (agent={})", operation, raw_path, agent_id);
+                warn!(
+                    "[engine] {} blocked path traversal: {} (agent={})",
+                    operation, raw_path, agent_id
+                );
                 return Err(format!(
                     "{}: path '{}' escapes the agent workspace. Use paths within your workspace or absolute paths to allowed locations.",
                     operation, raw_path
@@ -85,7 +96,10 @@ fn resolve_and_validate(
         if sensitive.starts_with('/') {
             // Absolute sensitive path
             if path_str.starts_with(sensitive) {
-                warn!("[engine] {} blocked access to sensitive path: {} (agent={})", operation, raw_path, agent_id);
+                warn!(
+                    "[engine] {} blocked access to sensitive path: {} (agent={})",
+                    operation, raw_path, agent_id
+                );
                 return Err(format!(
                     "{}: access to '{}' is blocked by security policy. This path contains sensitive system or credential data.",
                     operation, raw_path
@@ -96,7 +110,10 @@ fn resolve_and_validate(
             let needle = format!("/{}/", sensitive);
             let needle_end = format!("/{}", sensitive);
             if path_str.contains(&needle) || path_str.ends_with(&needle_end) {
-                warn!("[engine] {} blocked access to sensitive path: {} (matched '{}', agent={})", operation, raw_path, sensitive, agent_id);
+                warn!(
+                    "[engine] {} blocked access to sensitive path: {} (matched '{}', agent={})",
+                    operation, raw_path, sensitive, agent_id
+                );
                 return Err(format!(
                     "{}: access to '{}' is blocked by security policy. This path contains sensitive credential data.",
                     operation, raw_path
@@ -193,17 +210,39 @@ pub async fn execute(
     agent_id: &str,
 ) -> Option<Result<String, String>> {
     match name {
-        "read_file"      => Some(execute_read_file(args, agent_id).await.map_err(|e| e.to_string())),
-        "write_file"     => Some(execute_write_file(args, agent_id).await.map_err(|e| e.to_string())),
-        "list_directory" => Some(execute_list_directory(args, agent_id).await.map_err(|e| e.to_string())),
-        "append_file"    => Some(execute_append_file(args, agent_id).await.map_err(|e| e.to_string())),
-        "delete_file"    => Some(execute_delete_file(args, agent_id).await.map_err(|e| e.to_string())),
+        "read_file" => Some(
+            execute_read_file(args, agent_id)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "write_file" => Some(
+            execute_write_file(args, agent_id)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "list_directory" => Some(
+            execute_list_directory(args, agent_id)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "append_file" => Some(
+            execute_append_file(args, agent_id)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
+        "delete_file" => Some(
+            execute_delete_file(args, agent_id)
+                .await
+                .map_err(|e| e.to_string()),
+        ),
         _ => None,
     }
 }
 
 async fn execute_read_file(args: &serde_json::Value, agent_id: &str) -> EngineResult<String> {
-    let raw_path = args["path"].as_str().ok_or("read_file: missing 'path' argument")?;
+    let raw_path = args["path"]
+        .as_str()
+        .ok_or("read_file: missing 'path' argument")?;
     let resolved = resolve_and_validate(raw_path, agent_id, "read_file")?;
     let path = resolved.to_string_lossy();
 
@@ -226,29 +265,45 @@ async fn execute_read_file(args: &serde_json::Value, agent_id: &str) -> EngineRe
 
     const MAX_FILE: usize = 32_000;
     if content.len() > MAX_FILE {
-        Ok(format!("{}...\n[truncated, {} total bytes]", &content[..MAX_FILE], content.len()))
+        Ok(format!(
+            "{}...\n[truncated, {} total bytes]",
+            &content[..MAX_FILE],
+            content.len()
+        ))
     } else {
         Ok(content)
     }
 }
 
 async fn execute_write_file(args: &serde_json::Value, agent_id: &str) -> EngineResult<String> {
-    let raw_path = args["path"].as_str().ok_or("write_file: missing 'path' argument")?;
-    let content = args["content"].as_str().ok_or("write_file: missing 'content' argument")?;
+    let raw_path = args["path"]
+        .as_str()
+        .ok_or("write_file: missing 'path' argument")?;
+    let content = args["content"]
+        .as_str()
+        .ok_or("write_file: missing 'content' argument")?;
     let resolved = resolve_and_validate(raw_path, agent_id, "write_file")?;
     let path = resolved.to_string_lossy();
 
-    info!("[engine] write_file: {} ({} bytes, agent={})", path, content.len(), agent_id);
+    info!(
+        "[engine] write_file: {} ({} bytes, agent={})",
+        path,
+        content.len(),
+        agent_id
+    );
 
     let content_lower = content.to_lowercase();
     let has_private_key = content.contains("-----BEGIN") && content.contains("PRIVATE KEY");
-    let has_api_secret = content_lower.contains("api_key_secret") || content_lower.contains("cdp_api_key");
-    let has_raw_b64_key = content.len() > 40 && content.contains("==") && (content_lower.contains("secret") || content_lower.contains("private"));
+    let has_api_secret =
+        content_lower.contains("api_key_secret") || content_lower.contains("cdp_api_key");
+    let has_raw_b64_key = content.len() > 40
+        && content.contains("==")
+        && (content_lower.contains("secret") || content_lower.contains("private"));
     if has_private_key || has_api_secret || has_raw_b64_key {
         return Err(
             "Cannot write files containing API secrets or private keys. \
              Credentials are managed securely by the engine — use built-in skill tools directly."
-            .into()
+                .into(),
         );
     }
 
@@ -259,7 +314,11 @@ async fn execute_write_file(args: &serde_json::Value, agent_id: &str) -> EngineR
     std::fs::write(&resolved, content)
         .map_err(|e| format!("Failed to write file '{}': {}", path, e))?;
 
-    Ok(format!("Successfully wrote {} bytes to {}", content.len(), path))
+    Ok(format!(
+        "Successfully wrote {} bytes to {}",
+        content.len(),
+        path
+    ))
 }
 
 async fn execute_list_directory(args: &serde_json::Value, agent_id: &str) -> EngineResult<String> {
@@ -270,7 +329,10 @@ async fn execute_list_directory(args: &serde_json::Value, agent_id: &str) -> Eng
     let resolved = resolve_and_validate(raw_path, agent_id, "list_directory")?;
     let path = resolved.to_string_lossy().to_string();
 
-    info!("[engine] list_directory: {} recursive={} (agent={})", path, recursive, agent_id);
+    info!(
+        "[engine] list_directory: {} recursive={} (agent={})",
+        path, recursive, agent_id
+    );
 
     if !resolved.exists() {
         return Err(format!("Directory '{}' does not exist", path).into());
@@ -281,8 +343,16 @@ async fn execute_list_directory(args: &serde_json::Value, agent_id: &str) -> Eng
 
     let mut entries = Vec::new();
 
-    fn walk_dir(dir: &std::path::Path, prefix: &str, depth: usize, max_depth: usize, entries: &mut Vec<String>) -> std::io::Result<()> {
-        if depth > max_depth { return Ok(()); }
+    fn walk_dir(
+        dir: &std::path::Path,
+        prefix: &str,
+        depth: usize,
+        max_depth: usize,
+        entries: &mut Vec<String>,
+    ) -> std::io::Result<()> {
+        if depth > max_depth {
+            return Ok(());
+        }
         let mut items: Vec<_> = std::fs::read_dir(dir)?.filter_map(|e| e.ok()).collect();
         items.sort_unstable_by_key(|a| a.file_name());
         for entry in &items {
@@ -290,13 +360,23 @@ async fn execute_list_directory(args: &serde_json::Value, agent_id: &str) -> Eng
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             let suffix = if is_dir { "/" } else { "" };
             if let Ok(meta) = entry.metadata() {
-                let size = if is_dir { String::new() } else { format!(" ({} bytes)", meta.len()) };
+                let size = if is_dir {
+                    String::new()
+                } else {
+                    format!(" ({} bytes)", meta.len())
+                };
                 entries.push(format!("{}{}{}{}", prefix, name, suffix, size));
             } else {
                 entries.push(format!("{}{}{}", prefix, name, suffix));
             }
             if is_dir && depth < max_depth {
-                walk_dir(&entry.path(), &format!("{}  ", prefix), depth + 1, max_depth, entries)?;
+                walk_dir(
+                    &entry.path(),
+                    &format!("{}  ", prefix),
+                    depth + 1,
+                    max_depth,
+                    entries,
+                )?;
             }
         }
         Ok(())
@@ -316,7 +396,11 @@ async fn execute_list_directory(args: &serde_json::Value, agent_id: &str) -> Eng
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             let suffix = if is_dir { "/" } else { "" };
             if let Ok(meta) = entry.metadata() {
-                let size = if is_dir { String::new() } else { format!(" ({} bytes)", meta.len()) };
+                let size = if is_dir {
+                    String::new()
+                } else {
+                    format!(" ({} bytes)", meta.len())
+                };
                 entries.push(format!("{}{}{}", name, suffix, size));
             } else {
                 entries.push(format!("{}{}", name, suffix));
@@ -332,12 +416,21 @@ async fn execute_list_directory(args: &serde_json::Value, agent_id: &str) -> Eng
 }
 
 async fn execute_append_file(args: &serde_json::Value, agent_id: &str) -> EngineResult<String> {
-    let raw_path = args["path"].as_str().ok_or("append_file: missing 'path' argument")?;
-    let content = args["content"].as_str().ok_or("append_file: missing 'content' argument")?;
+    let raw_path = args["path"]
+        .as_str()
+        .ok_or("append_file: missing 'path' argument")?;
+    let content = args["content"]
+        .as_str()
+        .ok_or("append_file: missing 'content' argument")?;
     let resolved = resolve_and_validate(raw_path, agent_id, "append_file")?;
     let path = resolved.to_string_lossy();
 
-    info!("[engine] append_file: {} ({} bytes, agent={})", path, content.len(), agent_id);
+    info!(
+        "[engine] append_file: {} ({} bytes, agent={})",
+        path,
+        content.len(),
+        agent_id
+    );
 
     use std::io::Write;
     let mut file = std::fs::OpenOptions::new()
@@ -353,12 +446,17 @@ async fn execute_append_file(args: &serde_json::Value, agent_id: &str) -> Engine
 }
 
 async fn execute_delete_file(args: &serde_json::Value, agent_id: &str) -> EngineResult<String> {
-    let raw_path = args["path"].as_str().ok_or("delete_file: missing 'path' argument")?;
+    let raw_path = args["path"]
+        .as_str()
+        .ok_or("delete_file: missing 'path' argument")?;
     let recursive = args["recursive"].as_bool().unwrap_or(false);
     let resolved = resolve_and_validate(raw_path, agent_id, "delete_file")?;
     let path = resolved.to_string_lossy();
 
-    info!("[engine] delete_file: {} recursive={} (agent={})", path, recursive, agent_id);
+    info!(
+        "[engine] delete_file: {} recursive={} (agent={})",
+        path, recursive, agent_id
+    );
 
     if !resolved.exists() {
         return Err(format!("Path '{}' does not exist", path).into());
@@ -370,8 +468,12 @@ async fn execute_delete_file(args: &serde_json::Value, agent_id: &str) -> Engine
                 .map_err(|e| format!("Failed to remove directory '{}': {}", path, e))?;
             Ok(format!("Deleted directory '{}' (recursive)", path))
         } else {
-            std::fs::remove_dir(&resolved)
-                .map_err(|e| format!("Failed to remove directory '{}' (not empty? use recursive=true): {}", path, e))?;
+            std::fs::remove_dir(&resolved).map_err(|e| {
+                format!(
+                    "Failed to remove directory '{}' (not empty? use recursive=true): {}",
+                    path, e
+                )
+            })?;
             Ok(format!("Deleted empty directory '{}'", path))
         }
     } else {
