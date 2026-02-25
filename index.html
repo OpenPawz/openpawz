@@ -217,8 +217,89 @@
 
         <!-- ═══ Integrations View ═══ -->
         <div class="view integrations-view" id="integrations-view">
-          <div class="integrations-content" id="integrations-content">
-            <!-- Rendered by integrations/molecules.ts -->
+          <!-- Hero header -->
+          <div class="integrations-hero">
+            <div class="integrations-hero-left">
+              <h1 class="integrations-hero-title">Integration Hub</h1>
+              <p class="integrations-hero-sub">Connect 400+ services. One click. Infinite power.</p>
+            </div>
+            <div class="integrations-hero-right">
+              <div class="integrations-hero-stat k-row k-spring">
+                <span class="ms integrations-hero-stat-icon">extension</span>
+                <div>
+                  <div class="integrations-hero-stat-val" id="integrations-stat-total">0</div>
+                  <div class="integrations-hero-stat-lbl">Services</div>
+                </div>
+              </div>
+              <div class="integrations-hero-stat k-row k-spring">
+                <span class="ms integrations-hero-stat-icon">power</span>
+                <div>
+                  <div class="integrations-hero-stat-val" id="integrations-stat-connected">0</div>
+                  <div class="integrations-hero-stat-lbl">Connected</div>
+                </div>
+              </div>
+              <div class="integrations-hero-stat k-row k-spring">
+                <span class="ms integrations-hero-stat-icon">build</span>
+                <div>
+                  <div class="integrations-hero-stat-val" id="integrations-stat-tools">0</div>
+                  <div class="integrations-hero-stat-lbl">Tools</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Two-column body -->
+          <div class="integrations-body">
+            <!-- Main column: tabs + content -->
+            <div class="integrations-main-col">
+              <div class="integrations-content" id="integrations-content">
+                <!-- Rendered by integrations/molecules.ts -->
+              </div>
+            </div>
+
+            <!-- Side panel: status + quick actions -->
+            <div class="integrations-side-panel k-stagger">
+              <!-- Connection Health card -->
+              <div class="integrations-panel-card k-row k-spring k-materialise">
+                <div class="integrations-panel-card-header">
+                  <span class="ms integrations-panel-card-icon">monitor_heart</span>
+                  <span class="integrations-panel-card-title">Connection Health</span>
+                </div>
+                <div class="integrations-health-list" id="integrations-health-list">
+                  <div class="integrations-health-empty">No connections yet</div>
+                </div>
+              </div>
+
+              <!-- Category Breakdown card -->
+              <div class="integrations-panel-card k-row k-spring k-materialise">
+                <div class="integrations-panel-card-header">
+                  <span class="ms integrations-panel-card-icon">donut_small</span>
+                  <span class="integrations-panel-card-title">By Category</span>
+                </div>
+                <div class="integrations-category-breakdown" id="integrations-category-breakdown">
+                  <!-- filled by JS -->
+                </div>
+              </div>
+
+              <!-- Quick Actions card -->
+              <div class="integrations-panel-card k-row k-spring k-materialise">
+                <div class="integrations-panel-card-header">
+                  <span class="ms integrations-panel-card-icon">rocket_launch</span>
+                  <span class="integrations-panel-card-title">Quick Actions</span>
+                </div>
+                <div class="integrations-quick-actions">
+                  <button class="integrations-quick-btn" id="integrations-qa-browse">
+                    <span class="ms">search</span> Browse All
+                  </button>
+                  <button class="integrations-quick-btn" id="integrations-qa-automations">
+                    <span class="ms">auto_fix_high</span> Automations
+                  </button>
+                  <button class="integrations-quick-btn" id="integrations-qa-queries">
+                    <span class="ms">psychology</span> Agent Queries
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
