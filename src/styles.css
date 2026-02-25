@@ -582,15 +582,17 @@ body {
 }
 
 .sidebar-header {
-  padding: 12px 10px 8px;
+  padding: 8px 0;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  min-height: 40px;
 }
 
 .sidebar:hover .sidebar-header {
-  justify-content: flex-start;
-  padding: 12px 12px 8px;
+  justify-content: space-between;
+  padding: 8px 10px;
 }
 
 .sidebar-brand {
@@ -600,8 +602,8 @@ body {
 }
 
 .sidebar-logo {
-  width: 32px;
-  height: 32px;
+  width: 24px;
+  height: 24px;
   background: url('/src/assets/avatars/5.png') center/contain no-repeat;
   border-radius: var(--radius-sm);
   display: flex;
@@ -4842,31 +4844,33 @@ button:focus:not(:focus-visible) {
   gap: 2px;
 }
 
-/* Skills */
+/* Skills — Dense text list (no icons, no pills) */
 .cmd-skills-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  gap: 0;
 }
 .cmd-skill-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 10px;
+  padding: 3px 0;
   font-size: 12px;
+  font-family: var(--font-mono);
   color: var(--text-primary);
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
+  background: none;
+  border: none;
+  border-radius: 0;
   white-space: nowrap;
 }
 .cmd-skill-icon {
-  font-size: 14px;
+  display: none; /* remove emoji icons — text is the interface */
 }
 .cmd-skills-more {
-  font-size: 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
   color: var(--text-muted);
-  margin-top: 8px;
+  margin-top: 4px;
 }
 .today-card {
   background: var(--bg-secondary);
@@ -13289,6 +13293,11 @@ details[open] > .skill-advanced-summary::before {
   transition:
     color 0.15s ease,
     background 0.15s ease;
+  /* Hide bell when sidebar collapsed — only show on hover-expand */
+  display: none;
+}
+.sidebar:hover .sidebar-notification-btn {
+  display: flex;
 }
 .sidebar-notification-btn:hover {
   color: var(--text-primary);

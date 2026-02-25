@@ -28,7 +28,7 @@ import {
   wireDashboardEvents,
   loadServiceHealth,
 } from '../../features/integration-health';
-import { heatmapStrip, statusDot } from '../../components/molecules/data-viz';
+import { heatmapStrip } from '../../components/molecules/data-viz';
 import { isShowcaseActive, getShowcaseData } from '../../components/showcase';
 
 // ── Tauri bridge (no pawEngine equivalent for these commands) ──────────
@@ -258,7 +258,7 @@ export async function fetchActiveSkills() {
     if (countEl) countEl.textContent = String(showcase.skillNames.length);
     container.innerHTML = `
       <div class="cmd-skills-grid">
-        ${showcase.skillNames.map((n) => `<span class="cmd-skill-chip">${escHtml(n)} ${statusDot('active')}</span>`).join('')}
+        ${showcase.skillNames.map((n) => `<span class="cmd-skill-chip">◉ ${escHtml(n)}</span>`).join('')}
       </div>
     `;
     return;
@@ -288,9 +288,7 @@ export async function fetchActiveSkills() {
           .map(
             (s) =>
               `<span class="cmd-skill-chip" title="${escHtml(s.name)}">
-                ${s.icon ? `<span class="cmd-skill-icon">${escHtml(s.icon)}</span>` : ''}
-                ${escHtml(s.name)}
-                ${s.is_ready ? statusDot('active') : statusDot('idle')}
+                ${s.is_ready ? '◉' : '○'} ${escHtml(s.name)}
               </span>`,
           )
           .join('')}
