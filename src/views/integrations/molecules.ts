@@ -11,6 +11,7 @@ import {
 import { SERVICE_CATALOG } from './catalog';
 import { openSetupGuide } from './setup-guide';
 import { loadAutomations, loadServiceTemplates } from './automations';
+import { loadQueryPanel, loadServiceQueries, setQueryConnectedIds } from './queries';
 
 // ── Module state (set by index.ts) ─────────────────────────────────────
 
@@ -36,7 +37,7 @@ let _searchQuery = '';
 let _activeCategory: ServiceCategory | 'all' = 'all';
 let _sortOption: SortOption = 'popular';
 let _viewMode: 'grid' | 'list' = 'grid';
-let _mainTab: 'services' | 'automations' = 'services';
+let _mainTab: 'services' | 'automations' | 'queries' = 'services';
 
 // ── Main render ────────────────────────────────────────────────────────
 
@@ -67,6 +68,9 @@ export function renderIntegrations(): void {
         <button class="integrations-main-tab ${_mainTab === 'automations' ? 'active' : ''}" data-main-tab="automations">
           <span class="ms ms-sm">auto_fix_high</span> Automations
         </button>
+        <button class="integrations-main-tab ${_mainTab === 'queries' ? 'active' : ''}" data-main-tab="queries">
+          <span class="ms ms-sm">psychology</span> Queries
+        </button>
       </div>
     </div>
 
@@ -76,7 +80,7 @@ export function renderIntegrations(): void {
   // Wire main tab switching
   container.querySelectorAll('.integrations-main-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      _mainTab = (btn as HTMLElement).dataset.mainTab as 'services' | 'automations';
+      _mainTab = (btn as HTMLElement).dataset.mainTab as 'services' | 'automations' | 'queries';
       renderIntegrations();
     });
   });
@@ -85,6 +89,10 @@ export function renderIntegrations(): void {
   if (_mainTab === 'automations') {
     tabBody.innerHTML = '<div class="automations-panel"></div>';
     loadAutomations(tabBody.querySelector('.automations-panel')!);
+  } else if (_mainTab === 'queries') {
+    tabBody.innerHTML = '<div class="queries-panel"></div>';
+    setQueryConnectedIds(new Set(_state.getConnected().map((c) => c.serviceId)));
+    loadQueryPanel(tabBody.querySelector('.queries-panel')!);
   } else {
     _renderServicesTab(tabBody);
   }
@@ -252,10 +260,8 @@ function _renderDetail(service: ServiceDefinition): void {
     </div>
 
     <div class="integrations-detail-section">
-      <h3><span class="ms ms-sm">chat</span> Ask Your Agent</h3>
-      <div class="integrations-examples">
-        ${service.queryExamples.map((q) => `<div class="integrations-example-chip">"${escHtml(q)}"</div>`).join('')}
-      </div>
+      <h3><span class="ms ms-sm">psychology</span> Ask Your Agent</h3>
+      <div id="detail-svc-queries"></div>
     </div>
 
     <div class="integrations-detail-section">
@@ -270,6 +276,13 @@ function _renderDetail(service: ServiceDefinition): void {
       </a>
     </div>` : ''}
   `;
+
+  // Render service-specific query examples
+  const queryContainer = document.getElementById('detail-svc-queries');
+  if (queryContainer) {
+    setQueryConnectedIds(new Set(_state.getConnected().map((c) => c.serviceId)));
+    loadServiceQueries(queryContainer, service.id);
+  }
 
   // Render service-specific automation templates
   const tplContainer = document.getElementById('detail-svc-templates');
