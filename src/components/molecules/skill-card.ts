@@ -407,7 +407,7 @@ export function fromCommunitySkill(skill: CommunitySkill): SkillCardData {
     action: { type: 'toggle', checked: skill.enabled, skillId: skill.id },
     extraBadges: [`${ms('person')} ${agentLabel}`],
     detailsHtml: skill.instructions
-      ? `<pre style="font-size:11px;background:var(--bg-surface);border-radius:6px;padding:8px;margin:0;max-height:160px;overflow:auto;white-space:pre-wrap">${escHtml(skill.instructions.length > 300 ? skill.instructions.substring(0, 300) + '...' : skill.instructions)}</pre>`
+      ? `<pre style="font-size:11px;background:var(--bg-surface);border-radius:6px;padding:8px;margin:0;max-height:160px;overflow:auto;white-space:pre-wrap">${escHtml(skill.instructions.length > 300 ? `${skill.instructions.substring(0, 300)}...` : skill.instructions)}</pre>`
       : undefined,
     dataAttrs: { 'community-id': skill.id },
   };

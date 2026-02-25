@@ -274,4 +274,49 @@ impl SessionStore {
         }
         Ok(Some(format!("## Today's Memory Notes ({})\n{}", today, lines.join("\n"))))
     }
+
+    /// Get raw content strings of today's memories (for dedup against auto-recall).
+    pub fn get_todays_memory_contents(&self, agent_id: &str) -> EngineResult<Vec<String>> {
+        let conn = self.conn.lock();
+        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today_start = format!("{} 00:00:00", today);
+        let mut stmt = conn.prepare(
+            "SELECT content FROM memories
+             WHERE created_at >= ?1 AND (agent_id = ?2 OR agent_id = '')
+             ORDER BY importance DESC, created_at DESC
+             LIMIT 20"
+        )?;
+
+        let rows: Vec<String> = stmt.query_map(params![today_start, agent_id], |row| {
+            row.get::<_, String>(0)
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(rows)
+    }
+
+    /// Get recent memory contents *in a specific category* for dedup checking.
+    /// Scoping to category avoids false positives (e.g. a "preference" blocking
+    /// a "session" summary with similar wording).
+    pub fn get_recent_memory_contents_by_category(&self, max_age_secs: i64, category: &str, agent_id: Option<&str>) -> EngineResult<Vec<String>> {
+        let conn = self.conn.lock();
+        let cutoff = chrono::Utc::now() - chrono::Duration::seconds(max_age_secs);
+        let cutoff_str = cutoff.format("%Y-%m-%d %H:%M:%S").to_string();
+        let aid = agent_id.unwrap_or("");
+        let mut stmt = conn.prepare(
+            "SELECT content FROM memories
+             WHERE created_at >= ?1 AND category = ?2 AND (agent_id = ?3 OR agent_id = '')
+             ORDER BY created_at DESC
+             LIMIT 50"
+        )?;
+
+        let rows: Vec<String> = stmt.query_map(params![cutoff_str, category, aid], |row| {
+            row.get::<_, String>(0)
+        })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+        Ok(rows)
+    }
 }

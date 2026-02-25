@@ -58,6 +58,61 @@ pub async fn store_memory(
     Ok(id)
 }
 
+/// Jaccard overlap threshold: memories above this are considered near-duplicates.
+pub const DEDUP_OVERLAP_THRESHOLD: f64 = 0.6;
+
+/// Store a memory with near-duplicate detection.
+///
+/// Before storing, checks if any memory *in the same category* created in the
+/// last hour has > 60% word overlap with the new content.  If so, skips the
+/// store and returns `None`.  This prevents memory loops where auto-capture
+/// and session summaries pile up near-identical entries on every context
+/// switch or model change.
+pub async fn store_memory_dedup(
+    store: &SessionStore,
+    content: &str,
+    category: &str,
+    importance: u8,
+    embedding_client: Option<&EmbeddingClient>,
+    agent_id: Option<&str>,
+) -> EngineResult<Option<String>> {
+    // Check recent memories *in the same category* for near-duplicates (last 1 hour)
+    let recent = store.get_recent_memory_contents_by_category(3600, category, agent_id)?;
+    for existing in &recent {
+        if content_overlap(content, existing) > DEDUP_OVERLAP_THRESHOLD {
+            let preview = &content[..content.floor_char_boundary(80)];
+            info!(
+                "[memory] Skipping near-duplicate {} memory (overlap > {:.0}%): {}",
+                category, DEDUP_OVERLAP_THRESHOLD * 100.0, preview
+            );
+            return Ok(None);
+        }
+    }
+
+    let id = store_memory(store, content, category, importance, embedding_client, agent_id).await?;
+    Ok(Some(id))
+}
+
+/// Compute word-level Jaccard overlap between two texts.
+/// Returns a value between 0.0 (no overlap) and 1.0 (identical word sets).
+/// Exported for use by the dedup logic in commands/chat.rs.
+pub fn content_overlap(a: &str, b: &str) -> f64 {
+    let words_a: std::collections::HashSet<&str> = a.split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|w| w.len() > 2)
+        .collect();
+    let words_b: std::collections::HashSet<&str> = b.split_whitespace()
+        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
+        .filter(|w| w.len() > 2)
+        .collect();
+    if words_a.is_empty() && words_b.is_empty() {
+        return 1.0;
+    }
+    let intersection = words_a.intersection(&words_b).count() as f64;
+    let union = words_a.union(&words_b).count() as f64;
+    if union < 1.0 { 0.0 } else { intersection / union }
+}
+
 // ── Search (hybrid BM25 + vector + temporal decay + MMR) ───────────────
 
 /// Search memories using hybrid strategy (BM25 + vector + temporal decay + MMR).
@@ -264,21 +319,9 @@ fn mmr_rerank(candidates: &[Memory], k: usize, lambda: f64) -> Vec<Memory> {
 }
 
 /// Simple content similarity (Jaccard on word sets) for MMR diversity.
+/// Delegates to the public `content_overlap` function.
 fn content_similarity(a: &str, b: &str) -> f64 {
-    let a_words: std::collections::HashSet<&str> = a.split_whitespace()
-        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
-        .filter(|w| w.len() > 2)
-        .collect();
-    let b_words: std::collections::HashSet<&str> = b.split_whitespace()
-        .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()))
-        .filter(|w| w.len() > 2)
-        .collect();
-    if a_words.is_empty() && b_words.is_empty() {
-        return 1.0;
-    }
-    let intersection = a_words.intersection(&b_words).count() as f64;
-    let union = a_words.union(&b_words).count() as f64;
-    if union < 1.0 { 0.0 } else { intersection / union }
+    content_overlap(a, b)
 }
 
 // ── Backfill ───────────────────────────────────────────────────────────

@@ -192,9 +192,13 @@ pub async fn engine_chat_send(
         info!("[engine] No core soul files found for agent '{}'", agent_id_owned);
     }
 
-    let todays_memories = state.store.get_todays_memories(&agent_id_owned).unwrap_or(None);
+    let (todays_memories, todays_memory_contents) = {
+        let tm = state.store.get_todays_memories(&agent_id_owned).unwrap_or(None);
+        let contents = state.store.get_todays_memory_contents(&agent_id_owned).unwrap_or_default();
+        (tm, contents)
+    };
     if let Some(ref tm) = todays_memories {
-        info!("[engine] Today's memory notes injected ({} chars)", tm.len());
+        info!("[engine] Today's memory notes injected ({} chars, {} entries)", tm.len(), todays_memory_contents.len());
     }
 
     // ── Auto-capture flag ──────────────────────────────────────────────────
@@ -242,6 +246,8 @@ pub async fn engine_chat_send(
     // ── Auto-recall: search memories relevant to this message ──────────
     // Same as channel agents — inject relevant long-term memories into
     // the system prompt so the agent doesn't "forget" cross-session context.
+    // Dedup: skip memories already present in today's memory notes to avoid
+    // double-injection which causes the model to loop on the same content.
     {
         let (auto_recall_on, recall_limit, recall_threshold) = {
             let mcfg = state.memory_config.lock();
@@ -254,15 +260,26 @@ pub async fn engine_chat_send(
                 emb_client.as_ref(), Some(&agent_id_owned),
             ).await {
                 Ok(mems) if !mems.is_empty() => {
-                    let ctx: Vec<String> = mems.iter()
-                        .map(|m| format!("- [{}] {}", m.category, m.content))
+                    // Filter out memories already in today's notes (dedup)
+                    let deduped: Vec<&Memory> = mems.iter()
+                        .filter(|m| !todays_memory_contents.iter().any(|tc| {
+                            memory::content_overlap(&m.content, tc) > memory::DEDUP_OVERLAP_THRESHOLD
+                        }))
                         .collect();
-                    let memory_block = format!("## Relevant Memories\n{}", ctx.join("\n"));
-                    if let Some(ref mut p) = full_system_prompt {
-                        p.push_str("\n\n---\n\n");
-                        p.push_str(&memory_block);
+                    if !deduped.is_empty() {
+                        let ctx: Vec<String> = deduped.iter()
+                            .map(|m| format!("- [{}] {}", m.category, m.content))
+                            .collect();
+                        let memory_block = format!("## Relevant Memories\n{}", ctx.join("\n"));
+                        if let Some(ref mut p) = full_system_prompt {
+                            p.push_str("\n\n---\n\n");
+                            p.push_str(&memory_block);
+                        }
+                        info!("[engine] Auto-recalled {} memories ({} deduped from today's, {} chars)",
+                            mems.len(), mems.len() - deduped.len(), memory_block.len());
+                    } else {
+                        info!("[engine] Auto-recall: all {} results already in today's notes, skipping", mems.len());
                     }
-                    info!("[engine] Auto-recalled {} memories ({} chars)", mems.len(), memory_block.len());
                 }
                 Ok(_) => {} // No relevant memories found
                 Err(e) => warn!("[engine] Auto-recall search failed: {}", e),
@@ -426,7 +443,7 @@ pub async fn engine_chat_send(
                         }
                     }
 
-                    // Auto-capture memorable facts
+                    // Auto-capture memorable facts (with dedup guard)
                     if auto_capture_on && !final_text.is_empty() {
                         let facts = memory::extract_memorable_facts(
                             &user_message_for_capture,
@@ -435,7 +452,7 @@ pub async fn engine_chat_send(
                         if !facts.is_empty() {
                             let emb_client = engine_state.embedding_client();
                             for (content, category) in &facts {
-                                match memory::store_memory(
+                                match memory::store_memory_dedup(
                                     &engine_state.store,
                                     content,
                                     category,
@@ -445,10 +462,11 @@ pub async fn engine_chat_send(
                                 )
                                 .await
                                 {
-                                    Ok(id) => info!(
+                                    Ok(Some(id)) => info!(
                                         "[engine] Auto-captured memory: {}",
                                         crate::engine::types::truncate_utf8(&id, 8)
                                     ),
+                                    Ok(None) => info!("[engine] Auto-capture skipped (near-duplicate)"),
                                     Err(e) => warn!("[engine] Auto-capture failed: {}", e),
                                 }
                             }
@@ -458,6 +476,8 @@ pub async fn engine_chat_send(
                     // Session-end summary (powers "Today's Memory Notes" in future sessions)
                     // Only store when actual tool work was done — plain chat responses
                     // are not worth memorizing and cause memory bloat.
+                    // Rate-limit: skip if a session summary was stored in the last 5 minutes
+                    // to prevent memory accumulation loops during rapid context switches.
                     let had_tool_calls = messages.iter().skip(pre_loop_msg_count).any(|m| {
                         m.role == Role::Tool
                             || m.tool_calls
@@ -480,7 +500,7 @@ pub async fn engine_chat_send(
                             summary,
                         );
                         let emb_client = engine_state.embedding_client();
-                        match memory::store_memory(
+                        match memory::store_memory_dedup(
                             &engine_state.store,
                             &session_summary,
                             "session",
@@ -490,10 +510,11 @@ pub async fn engine_chat_send(
                         )
                         .await
                         {
-                            Ok(_) => info!(
-                                "[engine] Session summary stored ({} chars)",
-                                session_summary.len()
+                            Ok(Some(id)) => info!(
+                                "[engine] Session summary stored ({} chars, id={})",
+                                session_summary.len(), &id[..id.len().min(8)]
                             ),
+                            Ok(None) => info!("[engine] Session summary skipped (near-duplicate)"),
                             Err(e) => warn!("[engine] Session summary store failed: {}", e),
                         }
                     }

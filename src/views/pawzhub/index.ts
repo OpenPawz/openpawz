@@ -46,14 +46,7 @@ export async function loadPawzHub(): Promise<void> {
     const disabledBuiltins = builtinSkills.filter((s) => !s.enabled);
 
     // Render full page
-    container.innerHTML =
-      renderHeroSection() +
-      `<div id="ph-registry-results">` +
-      renderFeaturedSection(entries) +
-      renderAllSkillsSection(entries) +
-      `</div>` +
-      renderBuiltinSkillsSection(disabledBuiltins) +
-      renderCommunitySection(communitySkills);
+    container.innerHTML = `${renderHeroSection()}<div id="ph-registry-results">${renderFeaturedSection(entries)}${renderAllSkillsSection(entries)}</div>${renderBuiltinSkillsSection(disabledBuiltins)}${renderCommunitySection(communitySkills)}`;
 
     // Bind events
     const registryContainer = $('ph-registry-results');

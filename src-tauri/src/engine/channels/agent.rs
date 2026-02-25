@@ -396,7 +396,7 @@ pub async fn run_channel_agent(
         }
     }
 
-    // Auto-capture memories
+    // Auto-capture memories (with dedup)
     if let Ok(final_text) = &result {
         let auto_capture = engine_state.memory_config.lock().auto_capture;
         if auto_capture && !final_text.is_empty() {
@@ -404,9 +404,13 @@ pub async fn run_channel_agent(
             if !facts.is_empty() {
                 let emb_client = engine_state.embedding_client();
                 for (content, category) in &facts {
-                    let _ = memory::store_memory(
+                    match memory::store_memory_dedup(
                         &engine_state.store, content, category, 5, emb_client.as_ref(), None
-                    ).await;
+                    ).await {
+                        Ok(Some(_)) => {},
+                        Ok(None) => info!("[channel-agent] Skipped duplicate memory"),
+                        Err(e) => warn!("[channel-agent] Memory store failed: {}", e),
+                    }
                 }
             }
         }

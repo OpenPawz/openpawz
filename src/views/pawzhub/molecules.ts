@@ -373,7 +373,7 @@ async function communityBrowse(source: string): Promise<void> {
       }
     </div>`;
 
-    results.innerHTML = header + `<div class="skills-card-grid">${skills.map((s) => renderSkillCard(fromDiscoveredSkill(s))).join('')}</div>`;
+    results.innerHTML = `${header}<div class="skills-card-grid">${skills.map((s) => renderSkillCard(fromDiscoveredSkill(s))).join('')}</div>`;
     wireCommunityInstallButtons(results, skills);
   } catch (err) {
     results.innerHTML = `<p style="color:var(--accent-danger);padding:12px">${msIcon('error')} ${escHtml(String(err))}</p>`;

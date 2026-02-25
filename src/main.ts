@@ -7,7 +7,7 @@ import { installErrorBoundary, setErrorHandler } from './error-boundary';
 import { appState, applyModelPricingOverrides } from './state/index';
 import { escHtml, populateModelSelect, promptModal, icon } from './components/helpers';
 import { showToast } from './components/toast';
-import { initTheme } from './components/molecules/theme';
+import { initTheme, getTheme, setTheme } from './components/molecules/theme';
 import { initHILModal } from './components/molecules/hil_modal';
 import {
   initChatListeners,
@@ -60,7 +60,6 @@ import * as AgentsModule from './views/agents';
 import * as TasksModule from './views/tasks';
 import * as OrchestratorModule from './views/orchestrator';
 import { initCommandPalette } from './components/command-palette';
-import { getTheme, setTheme } from './components/molecules/theme';
 import { initNotifications } from './components/notifications';
 import { initWebhookLog } from './components/webhook-log';
 import { isTourComplete, startTour } from './components/tour';
