@@ -99,6 +99,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  min-height: 0;
 }
 
 /* ── Side Panel Cards ── */
@@ -453,6 +454,112 @@
 /* Tools section spacing */
 .tools-section {
   margin-bottom: 16px;
+}
+
+/* ── Active Tab Sections ── */
+.active-section {
+  margin-bottom: 20px;
+}
+.active-section-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.active-section-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.active-dot-ready { background: var(--success, #8FB0A0); }
+.active-dot-setup { background: var(--accent-warning, #D4A853); }
+.active-dot-unavail { background: var(--text-muted); }
+.active-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.active-section-count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.active-section-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+  line-height: 1.45;
+}
+.active-section-chevron {
+  margin-left: auto;
+  color: var(--text-muted);
+  transition: transform 0.15s;
+}
+.active-section-toggle {
+  cursor: pointer;
+}
+.active-section-toggle:hover .active-section-title {
+  color: var(--accent);
+}
+
+/* Platform Unavailable — compact row list */
+.active-unavail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.active-unavail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+.active-unavail-row:hover {
+  border-color: var(--border);
+}
+.active-unavail-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.active-unavail-info strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.active-unavail-missing {
+  font-size: 11px;
+  color: var(--error, #ef4444);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.active-unavail-missing code {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  padding: 1px 5px;
+  background: var(--bg-tertiary);
+  border-radius: 3px;
+}
+.active-unavail-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.active-disable-btn {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ── Responsive: collapse side panel ── */

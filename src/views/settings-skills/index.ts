@@ -173,19 +173,22 @@ export async function loadSkillsSettings(): Promise<void> {
     // Integration-tier skills live on the Integrations page — exclude from Skills
     const nonIntegrationSkills = skills.filter((s) => s.tier !== 'integration');
 
-    // Compute tab counts (integrations excluded)
+    // Compute counts (integrations excluded)
     const integrationCount = 0; // no longer shown on Skills page
     const promptSkills = nonIntegrationSkills.filter((s) => s.tier === 'skill');
     const toolCount = mcpServers.length + promptSkills.length;
     const extensionCount = nonIntegrationSkills.filter((s) => s.tier === 'extension' || s.has_widget).length;
-    const enabledCount = nonIntegrationSkills.filter((s) => s.enabled).length;
+    const readyCount = nonIntegrationSkills.filter((s) => s.enabled && s.is_ready).length;
     const mcpConnected = mcpStatuses.filter((s) => s.connected).length;
 
-    // Update hero stats (skills count excludes integrations)
-    updateSkillsHeroStats(nonIntegrationSkills.length, enabledCount, mcpConnected);
+    // Hero stats: Total skills | Ready (actually working) | MCP connected
+    updateSkillsHeroStats(nonIntegrationSkills.length, readyCount, mcpConnected);
+
+    // Active tab count shows ready + MCP connected (actually working items)
+    const activeCount = readyCount + mcpConnected;
 
     // Update tab counts
-    updateTabCounts({ skills, mcpStatuses, integrationCount, toolCount, extensionCount });
+    updateTabCounts({ skills: nonIntegrationSkills, mcpStatuses, integrationCount, toolCount, extensionCount, activeCountOverride: activeCount });
 
     // Wire tab bar (only needs to happen once but is idempotent)
     bindTabBar();
