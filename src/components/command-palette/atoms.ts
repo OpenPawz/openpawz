@@ -30,11 +30,23 @@ const VIEW_ENTRIES: { key: string; label: string; icon: string; shortcut?: strin
 ];
 
 /** Action entries that appear in the palette. */
-const ACTION_ENTRIES: { key: string; label: string; icon: string; description: string; shortcut?: string }[] = [
+const ACTION_ENTRIES: {
+  key: string;
+  label: string;
+  icon: string;
+  description: string;
+  shortcut?: string;
+}[] = [
   { key: 'new-task', label: 'New Task', icon: '➕', description: 'Create a task', shortcut: '⌘N' },
   { key: 'new-chat', label: 'New Chat', icon: '💬', description: 'Start a new conversation' },
   { key: 'toggle-theme', label: 'Toggle Theme', icon: '🎨', description: 'Switch dark/light mode' },
-  { key: 'shortcuts', label: 'Keyboard Shortcuts', icon: '⌨️', description: 'Show all shortcuts', shortcut: '?' },
+  {
+    key: 'shortcuts',
+    label: 'Keyboard Shortcuts',
+    icon: '⌨️',
+    description: 'Show all shortcuts',
+    shortcut: '?',
+  },
 ];
 
 /** Simple agent info passed in — avoids importing the full Agent type. */

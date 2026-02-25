@@ -194,15 +194,17 @@ export function renderCommunitySection(installed: CommunitySkill[]): string {
         <span class="ph-section-count">${installed.length}</span>
       </h3>
       <div class="skills-card-grid">
-        ${installed.map((s) => {
-          const cardData = fromCommunitySkill(s);
-          // Override action with custom HTML for toggle + remove binding
-          cardData.action = {
-            type: 'custom',
-            html: `<label class="skill-toggle-label"><input type="checkbox" class="ph-community-toggle" data-skill="${escHtml(s.id)}" ${s.enabled ? 'checked' : ''} /> Enable</label><button class="btn btn-ghost btn-sm ph-community-remove" data-skill="${escHtml(s.id)}" title="Remove">Remove</button>`,
-          };
-          return renderSkillCard(cardData);
-        }).join('')}
+        ${installed
+          .map((s) => {
+            const cardData = fromCommunitySkill(s);
+            // Override action with custom HTML for toggle + remove binding
+            cardData.action = {
+              type: 'custom',
+              html: `<label class="skill-toggle-label"><input type="checkbox" class="ph-community-toggle" data-skill="${escHtml(s.id)}" ${s.enabled ? 'checked' : ''} /> Enable</label><button class="btn btn-ghost btn-sm ph-community-remove" data-skill="${escHtml(s.id)}" title="Remove">Remove</button>`,
+            };
+            return renderSkillCard(cardData);
+          })
+          .join('')}
       </div>
     </div>`
       : '';
@@ -296,9 +298,7 @@ export async function pawzhubBrowse(category: string, container: HTMLElement): P
       </div>`;
       return;
     }
-    container.innerHTML =
-      renderFeaturedSection(entries) +
-      renderAllSkillsSection(entries);
+    container.innerHTML = renderFeaturedSection(entries) + renderAllSkillsSection(entries);
     wireInstallButtons(container);
   } catch (err) {
     container.innerHTML = `<p style="color:var(--accent-danger);padding:12px">${msIcon('error')} ${escHtml(String(err))}</p>`;
@@ -466,7 +466,9 @@ export function bindPawzHubEvents(container: HTMLElement): void {
   // Category buttons
   document.querySelectorAll('.ph-category-btn').forEach((el) => {
     el.addEventListener('click', () => {
-      document.querySelectorAll('.ph-category-btn').forEach((b) => b.classList.remove('btn-primary'));
+      document
+        .querySelectorAll('.ph-category-btn')
+        .forEach((b) => b.classList.remove('btn-primary'));
       el.classList.add('btn-primary');
       const category = (el as HTMLElement).dataset.category!;
       pawzhubBrowse(category, container);

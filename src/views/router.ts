@@ -82,7 +82,9 @@ const navHighlightMap: Record<string, string> = {
 
 /** Programmatically click a settings sub-tab (for memory/engine redirects). */
 function _switchSettingsTab(tabName: string) {
-  const btn = document.querySelector(`.settings-tab[data-settings-tab="${tabName}"]`) as HTMLElement | null;
+  const btn = document.querySelector(
+    `.settings-tab[data-settings-tab="${tabName}"]`,
+  ) as HTMLElement | null;
   if (btn) btn.click();
 }
 
@@ -185,8 +187,10 @@ export function switchView(viewName: string) {
         break;
     }
   }
-  if (viewName !== 'settings' && viewName !== 'memory' && viewName !== 'nodes') SettingsModule.stopUsageAutoRefresh();
-  if (viewName !== 'settings' && viewName !== 'memory' && viewName !== 'nodes') SettingsModule.stopOverrideBannerInterval();
+  if (viewName !== 'settings' && viewName !== 'memory' && viewName !== 'nodes')
+    SettingsModule.stopUsageAutoRefresh();
+  if (viewName !== 'settings' && viewName !== 'memory' && viewName !== 'nodes')
+    SettingsModule.stopOverrideBannerInterval();
   if (viewName !== 'orchestrator') OrchestratorModule.stopMessagePoll();
   switch (viewName) {
     case 'pawzhub':

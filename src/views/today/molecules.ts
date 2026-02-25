@@ -354,7 +354,10 @@ function renderCapabilityGroups(groups: CapabilityGroup[], totalSkills: number):
     )
     .join('');
 
-  const moreGroups = groups.length > 6 ? `<div class="cap-overflow">+${groups.length - 6} more categories</div>` : '';
+  const moreGroups =
+    groups.length > 6
+      ? `<div class="cap-overflow">+${groups.length - 6} more categories</div>`
+      : '';
 
   return `
     <div class="cap-summary">${totalSkills} skill${totalSkills !== 1 ? 's' : ''} across ${groups.length} ${groups.length !== 1 ? 'categories' : 'category'}</div>

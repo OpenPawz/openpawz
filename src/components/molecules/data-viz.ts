@@ -55,11 +55,7 @@ export function heatmapStrip(
 /**
  * Horizontal progress bar with optional label.
  */
-export function progressBar(
-  percent: number,
-  color = 'var(--accent)',
-  label?: string,
-): string {
+export function progressBar(percent: number, color = 'var(--accent)', label?: string): string {
   const clamped = Math.max(0, Math.min(100, percent));
   const labelHtml = label
     ? `<div style="display:flex;justify-content:space-between;margin-bottom:4px">
@@ -76,11 +72,7 @@ export function progressBar(
 /**
  * Circular SVG ring gauge.
  */
-export function progressRing(
-  percent: number,
-  color = 'var(--accent)',
-  size = 48,
-): string {
+export function progressRing(percent: number, color = 'var(--accent)', size = 48): string {
   const clamped = Math.max(0, Math.min(100, percent));
   const strokeWidth = 4;
   const radius = (size - strokeWidth) / 2;
@@ -102,9 +94,7 @@ export function progressRing(
 /**
  * Status indicator dot with optional pulse animation.
  */
-export function statusDot(
-  state: 'idle' | 'active' | 'error' | 'offline',
-): string {
+export function statusDot(state: 'idle' | 'active' | 'error' | 'offline'): string {
   const cls = `viz-dot viz-dot-${state}`;
   return `<span class="${cls}"></span>`;
 }
@@ -113,11 +103,7 @@ export function statusDot(
  * Animate a number from 0 to target, updating element textContent.
  * Uses requestAnimationFrame for smooth count-up.
  */
-export function animateCountUp(
-  element: HTMLElement,
-  target: number,
-  duration = 600,
-): void {
+export function animateCountUp(element: HTMLElement, target: number, duration = 600): void {
   const start = performance.now();
   const isFloat = target % 1 !== 0;
 

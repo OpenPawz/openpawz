@@ -72,16 +72,25 @@ function renderCurrentTab(): void {
       break;
     }
     case 'integrations': {
-      setMoleculesState({ currentFilter: _currentFilter, searchQuery: _searchQuery, reloadFn: loadSkillsSettings });
+      setMoleculesState({
+        currentFilter: _currentFilter,
+        searchQuery: _searchQuery,
+        reloadFn: loadSkillsSettings,
+      });
       list.innerHTML = renderIntegrationsTab(_skills, loadSkillsSettings);
       const integrations = _skills.filter(
-        (s) => s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
+        (s) =>
+          s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
       );
       bindIntegrationsTabEvents(integrations, setFilter, setSearch);
       break;
     }
     case 'tools': {
-      const data: ToolsTabData = { skills: _skills, mcpServers: _mcpServers, mcpStatuses: _mcpStatuses };
+      const data: ToolsTabData = {
+        skills: _skills,
+        mcpServers: _mcpServers,
+        mcpStatuses: _mcpStatuses,
+      };
       list.innerHTML = renderToolsTab(data);
       bindToolsTabEvents();
       break;
@@ -157,7 +166,8 @@ export async function loadSkillsSettings(): Promise<void> {
 
     // Compute tab counts
     const integrationCount = skills.filter(
-      (s) => s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
+      (s) =>
+        s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
     ).length;
     const promptSkills = skills.filter((s) => s.tier === 'skill');
     const toolCount = mcpServers.length + promptSkills.length;

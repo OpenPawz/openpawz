@@ -15,9 +15,7 @@ export function renderExtensionsTab(
   tomlSkills: TomlSkillEntry[],
 ): string {
   // Extension-tier skills: has_widget OR has_view OR tier === 'extension'
-  const extensions = skills.filter(
-    (s) => s.tier === 'extension' || s.has_widget,
-  );
+  const extensions = skills.filter((s) => s.tier === 'extension' || s.has_widget);
 
   // Build extension tabs from TOML skills with [view] sections
   const viewTabs = buildExtensionTabs(tomlSkills);
@@ -79,11 +77,13 @@ export function renderExtensionsTab(
         <span style="font-size:12px;font-weight:400;color:var(--text-muted)">(${widgetExtensions.length})</span>
       </h3>
       <div class="skills-card-grid">
-        ${widgetExtensions.map((s) => {
-          const cardData = fromEngineSkill(s);
-          cardData.action = { type: 'none' };
-          return renderSkillCard(cardData);
-        }).join('')}
+        ${widgetExtensions
+          .map((s) => {
+            const cardData = fromEngineSkill(s);
+            cardData.action = { type: 'none' };
+            return renderSkillCard(cardData);
+          })
+          .join('')}
       </div>
     </div>`;
   }

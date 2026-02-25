@@ -23,7 +23,7 @@ You can search past session logs using the `rg` (ripgrep) binary.
 
 ## Advanced patterns
 - `rg "error|warning|fail" logs/` — search multiple terms (OR)
-- `rg "user_id:\s*\d+" logs/` — regex pattern matching
+- `rg "user_id:\\s*\\d+" logs/` — regex pattern matching
 - `rg "error" logs/ --after "2025-01-01"` — filter by date (via file modification time)
 - `rg "term" logs/ -g "*.json"` — search only JSON log files
 - `rg "term" logs/ --max-count 5` — limit to 5 matches per file

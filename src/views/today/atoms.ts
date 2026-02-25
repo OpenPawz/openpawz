@@ -193,7 +193,10 @@ export function buildCapabilityGroups(skills: EngineSkillStatus[]): CapabilityGr
 
   return Array.from(groups.entries())
     .map(([cat, descriptions]) => {
-      const meta = CATEGORY_META[cat] || { icon: 'extension', label: cat.charAt(0).toUpperCase() + cat.slice(1) };
+      const meta = CATEGORY_META[cat] || {
+        icon: 'extension',
+        label: cat.charAt(0).toUpperCase() + cat.slice(1),
+      };
       return {
         label: meta.label,
         icon: meta.icon,
@@ -206,7 +209,7 @@ export function buildCapabilityGroups(skills: EngineSkillStatus[]): CapabilityGr
 // ── Tour Step Definitions ─────────────────────────────────────────────
 
 export interface TourStep {
-  target: string;       // CSS selector
+  target: string; // CSS selector
   title: string;
   description: string;
   position: 'right' | 'bottom' | 'left';
@@ -216,19 +219,22 @@ export const TOUR_STEPS: TourStep[] = [
   {
     target: '[data-view="chat"]',
     title: 'Chat with AI',
-    description: 'Talk to your agents, ask questions, and get tasks done through natural conversation.',
+    description:
+      'Talk to your agents, ask questions, and get tasks done through natural conversation.',
     position: 'right',
   },
   {
     target: '[data-view="agents"]',
     title: 'Your Agent Fleet',
-    description: 'Create AI agents with unique personas, specialized tools, and custom instructions.',
+    description:
+      'Create AI agents with unique personas, specialized tools, and custom instructions.',
     position: 'right',
   },
   {
     target: '[data-view="settings-skills"]',
     title: 'Skills & Integrations',
-    description: 'Enable capabilities like email, web browsing, coding, trading, and hundreds more.',
+    description:
+      'Enable capabilities like email, web browsing, coding, trading, and hundreds more.',
     position: 'right',
   },
   {
@@ -271,10 +277,30 @@ export function buildShowcaseData(): ShowcaseData {
       { name: 'Forge', avatar: 'default', lastUsed: new Date(now - 600_000).toISOString() },
     ],
     tasks: [
-      { id: 'demo-1', text: 'Review pull request #42', done: false, createdAt: new Date(now - 3600_000).toISOString() },
-      { id: 'demo-2', text: 'Draft weekly standup notes', done: false, createdAt: new Date(now - 7200_000).toISOString() },
-      { id: 'demo-3', text: 'Research competitor pricing', done: true, createdAt: new Date(now - 1800_000).toISOString() },
-      { id: 'demo-4', text: 'Update API documentation', done: false, createdAt: new Date(now - 5400_000).toISOString() },
+      {
+        id: 'demo-1',
+        text: 'Review pull request #42',
+        done: false,
+        createdAt: new Date(now - 3600_000).toISOString(),
+      },
+      {
+        id: 'demo-2',
+        text: 'Draft weekly standup notes',
+        done: false,
+        createdAt: new Date(now - 7200_000).toISOString(),
+      },
+      {
+        id: 'demo-3',
+        text: 'Research competitor pricing',
+        done: true,
+        createdAt: new Date(now - 1800_000).toISOString(),
+      },
+      {
+        id: 'demo-4',
+        text: 'Update API documentation',
+        done: false,
+        createdAt: new Date(now - 5400_000).toISOString(),
+      },
     ],
     skillNames: ['Email', 'Browser', 'GitHub', 'File System', 'Shell', 'Web Search', 'Calendar'],
     tokenCount: 48_720,

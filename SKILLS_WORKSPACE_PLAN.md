@@ -176,7 +176,7 @@ Each card should show at a glance:
 ### Install Flow
 
 ```
-Browse PawzHub → Click "Install" → Skill appears in My Skills → 
+Browse PawzHub → Click "Install" → Skill appears in My Skills →
   → If needs credentials: opens Configure modal
   → If prompt-only: immediately active
   → If MCP: starts server, shows connected status

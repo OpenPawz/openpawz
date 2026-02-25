@@ -3,7 +3,13 @@
 // Re-uses the existing renderSkillsPage / card rendering from molecules.ts.
 
 import type { EngineSkillStatus } from '../../engine';
-import { renderSkillsPage, bindFilterEvents, bindSearchEvents, bindSkillEvents, setMoleculesState } from './molecules';
+import {
+  renderSkillsPage,
+  bindFilterEvents,
+  bindSearchEvents,
+  bindSkillEvents,
+  setMoleculesState,
+} from './molecules';
 
 // ── Render ─────────────────────────────────────────────────────────────
 
@@ -13,7 +19,8 @@ export function renderIntegrationsTab(
 ): string {
   // Filter to integrations: skills with credentials (tier = integration) or extensions
   const integrations = skills.filter(
-    (s) => s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
+    (s) =>
+      s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
   );
 
   if (integrations.length === 0) {

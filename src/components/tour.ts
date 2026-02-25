@@ -71,7 +71,12 @@ function renderStep() {
   tooltip?.focus();
 }
 
-function buildOverlayHTML(step: TourStep, idx: number, total: number, target: HTMLElement | null): string {
+function buildOverlayHTML(
+  step: TourStep,
+  idx: number,
+  total: number,
+  target: HTMLElement | null,
+): string {
   const isFirst = idx === 0;
   const isLast = idx === total - 1;
   const stepNum = idx + 1;
@@ -107,13 +112,16 @@ function buildOverlayHTML(step: TourStep, idx: number, total: number, target: HT
       <div class="tour-tooltip-desc">${step.description}</div>
       <div class="tour-tooltip-actions">
         ${!isFirst ? '<button class="tour-back btn btn-ghost btn-sm">Back</button>' : '<span></span>'}
-        ${isLast
-          ? '<button class="tour-finish btn btn-primary btn-sm">Get Started</button>'
-          : '<button class="tour-next btn btn-primary btn-sm">Next</button>'}
+        ${
+          isLast
+            ? '<button class="tour-finish btn btn-primary btn-sm">Get Started</button>'
+            : '<button class="tour-next btn btn-primary btn-sm">Next</button>'
+        }
       </div>
       <div class="tour-dots">
-        ${Array.from({ length: total }, (_, i) =>
-          `<span class="tour-dot${i === idx ? ' active' : ''}"></span>`
+        ${Array.from(
+          { length: total },
+          (_, i) => `<span class="tour-dot${i === idx ? ' active' : ''}"></span>`,
         ).join('')}
       </div>
     </div>

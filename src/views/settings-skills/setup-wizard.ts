@@ -76,13 +76,20 @@ const FINANCE_SKILL_IDS = ['coinbase', 'dex', 'solana_dex'];
 
 // Communication is also under "vault" but we distinguish by skill IDs
 const COMMUNICATION_SKILL_IDS = [
-  'email', 'slack', 'telegram', 'discord', 'whatsapp', 'imessage', 'webhook',
+  'email',
+  'slack',
+  'telegram',
+  'discord',
+  'whatsapp',
+  'imessage',
+  'webhook',
 ];
 
 // ── Render ──────────────────────────────────────────────────────────────────
 
 export function renderSetupWizard(): string {
-  const categoryCards = WIZARD_CATEGORIES.map((cat) => `
+  const categoryCards = WIZARD_CATEGORIES.map(
+    (cat) => `
     <label class="sw-category-card" data-category="${cat.id}">
       <input type="checkbox" class="sw-category-check" value="${cat.id}" />
       <div class="sw-category-content">
@@ -93,7 +100,8 @@ export function renderSetupWizard(): string {
         </div>
       </div>
     </label>
-  `).join('');
+  `,
+  ).join('');
 
   return `
   <div class="sw-overlay">
@@ -127,7 +135,9 @@ export function bindSetupWizardEvents(
 ): void {
   const startBtn = document.querySelector('.sw-start-btn') as HTMLButtonElement | null;
   const skipBtn = document.querySelector('.sw-skip-btn') as HTMLButtonElement | null;
-  const checkboxes = document.querySelectorAll('.sw-category-check') as NodeListOf<HTMLInputElement>;
+  const checkboxes = document.querySelectorAll(
+    '.sw-category-check',
+  ) as NodeListOf<HTMLInputElement>;
 
   // Toggle card visual + enable/disable start button
   checkboxes.forEach((cb) => {
@@ -144,7 +154,8 @@ export function bindSetupWizardEvents(
   // Get Started → bulk enable selected categories
   startBtn?.addEventListener('click', async () => {
     startBtn.disabled = true;
-    startBtn.innerHTML = '<span class="wa-spinner" style="width:14px;height:14px"></span> Setting up...';
+    startBtn.innerHTML =
+      '<span class="wa-spinner" style="width:14px;height:14px"></span> Setting up...';
 
     const selectedCategories = Array.from(checkboxes)
       .filter((c) => c.checked)

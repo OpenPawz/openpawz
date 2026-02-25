@@ -1,11 +1,20 @@
 // My Skills — Tools Tab
 // Shows MCP servers (promoted from Settings) + prompt-only skills (tier = 'skill').
 
-import { pawEngine, type EngineSkillStatus, type McpServerConfig, type McpServerStatus } from '../../engine';
+import {
+  pawEngine,
+  type EngineSkillStatus,
+  type McpServerConfig,
+  type McpServerStatus,
+} from '../../engine';
 import { escHtml, confirmModal } from '../../components/helpers';
 import { showToast } from '../../components/toast';
 import { msIcon } from './atoms';
-import { renderSkillCard, fromMcpServer, fromEngineSkill } from '../../components/molecules/skill-card';
+import {
+  renderSkillCard,
+  fromMcpServer,
+  fromEngineSkill,
+} from '../../components/molecules/skill-card';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -177,15 +186,27 @@ function showAddForm(): void {
 
   document.getElementById('tools-mcp-save')?.addEventListener('click', async () => {
     const name = (document.getElementById('tools-mcp-name') as HTMLInputElement)?.value?.trim();
-    if (!name) { showToast('Server name is required', 'error'); return; }
+    if (!name) {
+      showToast('Server name is required', 'error');
+      return;
+    }
 
-    const transport = (document.getElementById('tools-mcp-transport') as HTMLSelectElement)?.value as 'stdio' | 'sse';
-    const command = (document.getElementById('tools-mcp-command') as HTMLInputElement)?.value?.trim() ?? '';
-    const argsText = (document.getElementById('tools-mcp-args') as HTMLTextAreaElement)?.value?.trim() ?? '';
+    const transport = (document.getElementById('tools-mcp-transport') as HTMLSelectElement)
+      ?.value as 'stdio' | 'sse';
+    const command =
+      (document.getElementById('tools-mcp-command') as HTMLInputElement)?.value?.trim() ?? '';
+    const argsText =
+      (document.getElementById('tools-mcp-args') as HTMLTextAreaElement)?.value?.trim() ?? '';
     const url = (document.getElementById('tools-mcp-url') as HTMLInputElement)?.value?.trim() ?? '';
 
-    if (transport === 'stdio' && !command) { showToast('Command is required for Stdio', 'error'); return; }
-    if (transport === 'sse' && !url) { showToast('URL is required for SSE', 'error'); return; }
+    if (transport === 'stdio' && !command) {
+      showToast('Command is required for Stdio', 'error');
+      return;
+    }
+    if (transport === 'sse' && !url) {
+      showToast('URL is required for SSE', 'error');
+      return;
+    }
 
     const config: McpServerConfig = {
       id: crypto.randomUUID(),

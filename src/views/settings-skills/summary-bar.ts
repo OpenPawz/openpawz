@@ -43,13 +43,16 @@ export function renderSummaryBar(data: SummaryData): string {
 }
 
 /** Update tab counts in the tab bar. */
-export function updateTabCounts(data: SummaryData & { integrationCount: number; toolCount: number; extensionCount: number }): void {
+export function updateTabCounts(
+  data: SummaryData & { integrationCount: number; toolCount: number; extensionCount: number },
+): void {
   const setCount = (id: string, count: number) => {
     const el = document.getElementById(id);
     if (el) el.textContent = count > 0 ? `(${count})` : '';
   };
 
-  const activeCount = data.skills.filter((s) => s.enabled).length +
+  const activeCount =
+    data.skills.filter((s) => s.enabled).length +
     data.mcpStatuses.filter((s) => s.connected).length;
 
   setCount('tab-count-active', activeCount);

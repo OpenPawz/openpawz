@@ -73,9 +73,7 @@ export function renderEmptyState(cfg: EmptyStateConfig): string {
       </div>`
     : '';
 
-  const hintHtml = cfg.hint
-    ? `<div class="empty-hint">${escHtml(cfg.hint)}</div>`
-    : '';
+  const hintHtml = cfg.hint ? `<div class="empty-hint">${escHtml(cfg.hint)}</div>` : '';
 
   return `<div class="empty-state">
     <div class="empty-icon"><span class="ms">${cfg.icon}</span></div>

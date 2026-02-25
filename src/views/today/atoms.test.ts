@@ -280,8 +280,18 @@ describe('buildCapabilityGroups', () => {
 
   it('groups skills by category', () => {
     const skills = [
-      makeSkill({ id: 's1', name: 'Email', description: 'Send and receive email', category: 'communication' }),
-      makeSkill({ id: 's2', name: 'Slack', description: 'Post to Slack', category: 'communication' }),
+      makeSkill({
+        id: 's1',
+        name: 'Email',
+        description: 'Send and receive email',
+        category: 'communication',
+      }),
+      makeSkill({
+        id: 's2',
+        name: 'Slack',
+        description: 'Post to Slack',
+        category: 'communication',
+      }),
       makeSkill({ id: 's3', name: 'Browser', description: 'Browse the web', category: 'web' }),
     ];
     const groups = buildCapabilityGroups(skills);

@@ -2,7 +2,11 @@
 // Shows all currently enabled/connected items: skills, integrations, MCP servers, extensions.
 
 import type { EngineSkillStatus, McpServerStatus } from '../../engine';
-import { renderSkillCard, fromEngineSkill, type SkillCardData } from '../../components/molecules/skill-card';
+import {
+  renderSkillCard,
+  fromEngineSkill,
+  type SkillCardData,
+} from '../../components/molecules/skill-card';
 
 // ── Types ──────────────────────────────────────────────────────────────
 

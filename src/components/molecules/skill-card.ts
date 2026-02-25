@@ -47,10 +47,10 @@ export interface SkillCardData {
 }
 
 export type CardStatus =
-  | 'active'    // 🟢 green — running, connected, configured
-  | 'warning'   // 🟡 yellow — needs setup (missing creds/binaries/env)
-  | 'disabled'  // ⚪ grey — installed but off
-  | 'error'     // 🔴 red — disconnected, binary missing, failed
+  | 'active' // 🟢 green — running, connected, configured
+  | 'warning' // 🟡 yellow — needs setup (missing creds/binaries/env)
+  | 'disabled' // ⚪ grey — installed but off
+  | 'error' // 🔴 red — disconnected, binary missing, failed
   | 'available'; // ⬡ neutral — not installed yet (PawzHub)
 
 export type CardAction =
@@ -66,18 +66,18 @@ export type CardAction =
 // ── Constants ──────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<CardStatus, { icon: string; cssClass: string; label: string }> = {
-  active:    { icon: 'check_circle',           cssClass: 'uc-status-active',    label: 'Active' },
-  warning:   { icon: 'warning',                cssClass: 'uc-status-warning',   label: 'Needs setup' },
-  disabled:  { icon: 'radio_button_unchecked', cssClass: 'uc-status-disabled',  label: 'Disabled' },
-  error:     { icon: 'error',                  cssClass: 'uc-status-error',     label: 'Error' },
-  available: { icon: 'cloud_download',         cssClass: 'uc-status-available', label: 'Available' },
+  active: { icon: 'check_circle', cssClass: 'uc-status-active', label: 'Active' },
+  warning: { icon: 'warning', cssClass: 'uc-status-warning', label: 'Needs setup' },
+  disabled: { icon: 'radio_button_unchecked', cssClass: 'uc-status-disabled', label: 'Disabled' },
+  error: { icon: 'error', cssClass: 'uc-status-error', label: 'Error' },
+  available: { icon: 'cloud_download', cssClass: 'uc-status-available', label: 'Available' },
 };
 
 const TIER_CONFIG: Record<string, { label: string; cssClass: string }> = {
-  skill:       { label: 'Skill',       cssClass: 'uc-tier-skill' },
+  skill: { label: 'Skill', cssClass: 'uc-tier-skill' },
   integration: { label: 'Integration', cssClass: 'uc-tier-integration' },
-  extension:   { label: 'Extension',   cssClass: 'uc-tier-extension' },
-  mcp:         { label: 'MCP Server',  cssClass: 'uc-tier-mcp' },
+  extension: { label: 'Extension', cssClass: 'uc-tier-extension' },
+  mcp: { label: 'MCP Server', cssClass: 'uc-tier-mcp' },
 };
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -117,7 +117,9 @@ export function renderSkillCard(data: SkillCardData): string {
   // Capability badges
   const capBadges: string[] = [];
   if (data.toolCount > 0) {
-    capBadges.push(`<span class="uc-cap-badge">${ms('build')} ${data.toolCount} tool${data.toolCount !== 1 ? 's' : ''}</span>`);
+    capBadges.push(
+      `<span class="uc-cap-badge">${ms('build')} ${data.toolCount} tool${data.toolCount !== 1 ? 's' : ''}</span>`,
+    );
   }
   if (data.hasWidget) {
     capBadges.push(`<span class="uc-cap-badge">${ms('dashboard')} Widget</span>`);
@@ -232,14 +234,35 @@ import type {
 
 // Icon mapping (emoji → Material Symbol)
 const ICON_MAP: Record<string, string> = {
-  '📧': 'mail', '✉️': 'mail', '💬': 'chat', '🔔': 'notifications',
-  '📋': 'assignment', '📝': 'edit_note', '📅': 'calendar_today',
-  '🔌': 'power', '🌐': 'language', '🔗': 'link', '🛠️': 'build',
-  '💻': 'code', '🔧': 'build', '🎬': 'movie', '🎵': 'music_note',
-  '📸': 'photo_camera', '🎙️': 'mic', '🏠': 'home', '💡': 'lightbulb',
-  '⌨️': 'terminal', '🖥️': 'computer', '📦': 'inventory_2',
-  '🔐': 'lock', '🔑': 'key', '🐙': 'code', '📊': 'analytics',
-  '🤖': 'smart_toy', '⚡': 'bolt', '🔍': 'search',
+  '📧': 'mail',
+  '✉️': 'mail',
+  '💬': 'chat',
+  '🔔': 'notifications',
+  '📋': 'assignment',
+  '📝': 'edit_note',
+  '📅': 'calendar_today',
+  '🔌': 'power',
+  '🌐': 'language',
+  '🔗': 'link',
+  '🛠️': 'build',
+  '💻': 'code',
+  '🔧': 'build',
+  '🎬': 'movie',
+  '🎵': 'music_note',
+  '📸': 'photo_camera',
+  '🎙️': 'mic',
+  '🏠': 'home',
+  '💡': 'lightbulb',
+  '⌨️': 'terminal',
+  '🖥️': 'computer',
+  '📦': 'inventory_2',
+  '🔐': 'lock',
+  '🔑': 'key',
+  '🐙': 'code',
+  '📊': 'analytics',
+  '🤖': 'smart_toy',
+  '⚡': 'bolt',
+  '🔍': 'search',
 };
 
 function resolveIcon(raw: string): string {
@@ -249,9 +272,12 @@ function resolveIcon(raw: string): string {
 /** Determine status for an EngineSkillStatus. */
 function engineSkillStatus(s: EngineSkillStatus): { status: CardStatus; label: string } {
   if (s.is_ready) return { status: 'active', label: 'Ready' };
-  if (s.enabled && s.missing_binaries.length > 0) return { status: 'error', label: 'Missing binaries' };
-  if (s.enabled && s.missing_credentials.length > 0) return { status: 'warning', label: 'Missing credentials' };
-  if (s.enabled && s.missing_env_vars.length > 0) return { status: 'warning', label: 'Missing env vars' };
+  if (s.enabled && s.missing_binaries.length > 0)
+    return { status: 'error', label: 'Missing binaries' };
+  if (s.enabled && s.missing_credentials.length > 0)
+    return { status: 'warning', label: 'Missing credentials' };
+  if (s.enabled && s.missing_env_vars.length > 0)
+    return { status: 'warning', label: 'Missing env vars' };
   if (s.enabled) return { status: 'warning', label: 'Setup incomplete' };
   return { status: 'disabled', label: 'Disabled' };
 }
@@ -313,9 +339,8 @@ export function fromMcpServer(server: McpServerConfig, status?: McpServerStatus)
   const connected = status?.connected ?? false;
   const toolCount = status?.tool_count ?? 0;
   const transport = server.transport === 'stdio' ? 'Stdio' : 'SSE';
-  const endpoint = server.transport === 'stdio'
-    ? `${server.command} ${server.args.join(' ')}`.trim()
-    : server.url;
+  const endpoint =
+    server.transport === 'stdio' ? `${server.command} ${server.args.join(' ')}`.trim() : server.url;
 
   let cardStatus: CardStatus;
   let statusLabel: string;
@@ -335,7 +360,10 @@ export function fromMcpServer(server: McpServerConfig, status?: McpServerStatus)
     action = { type: 'connect', serverId: server.id };
   }
 
-  const extraBadges = [`${ms('terminal')} ${transport}`, `<code style="font-size:10px">${escHtml(endpoint)}</code>`];
+  const extraBadges = [
+    `${ms('terminal')} ${transport}`,
+    `<code style="font-size:10px">${escHtml(endpoint)}</code>`,
+  ];
 
   const errorDetail = status?.error
     ? `<div style="color:var(--accent-danger);font-size:11px;margin-top:4px">${ms('error')} ${escHtml(status.error)}</div>`
@@ -378,18 +406,16 @@ export function fromDiscoveredSkill(skill: DiscoveredSkill): SkillCardData {
     action: skill.installed
       ? { type: 'installed' }
       : { type: 'install', skillId: skill.id, source: skill.source, path: skill.path },
-    extraBadges: skill.installs > 0
-      ? [`${ms('download')} ${formatInstallsShort(skill.installs)}`]
-      : undefined,
+    extraBadges:
+      skill.installs > 0 ? [`${ms('download')} ${formatInstallsShort(skill.installs)}`] : undefined,
     dataAttrs: { 'community-id': skill.id },
   };
 }
 
 /** Adapt an installed community skill to SkillCardData. */
 export function fromCommunitySkill(skill: CommunitySkill): SkillCardData {
-  const agentLabel = !skill.agent_ids || skill.agent_ids.length === 0
-    ? 'All Agents'
-    : skill.agent_ids.join(', ');
+  const agentLabel =
+    !skill.agent_ids || skill.agent_ids.length === 0 ? 'All Agents' : skill.agent_ids.join(', ');
 
   return {
     id: skill.id,
