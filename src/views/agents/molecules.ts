@@ -20,6 +20,29 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
   console.debug('[agents] grid element:', grid);
   if (!grid) return;
 
+  // Guided empty state when no agents exist
+  if (agents.length === 0) {
+    grid.innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <div class="empty-icon"><span class="ms" style="font-size:48px">smart_toy</span></div>
+        <div class="empty-title">Create your first AI agent</div>
+        <div class="empty-subtitle">Agents are AI personas you configure with a model, personality, skills, and boundaries. Each agent can handle different tasks.</div>
+        <div class="empty-features">
+          <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Choose from templates: general, research, creative, technical</div>
+          <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Assign tools and skills per agent</div>
+          <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Set personality and communication style</div>
+          <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Add boundaries and safety rules</div>
+        </div>
+        <div class="empty-actions">
+          <button class="btn btn-primary" id="agents-empty-create"><span class="ms ms-sm">add</span> Create Agent</button>
+        </div>
+        <div class="empty-hint">You'll need an AI provider configured in Settings first</div>
+      </div>
+    `;
+    grid.querySelector('#agents-empty-create')?.addEventListener('click', () => cbs.onCreate());
+    return;
+  }
+
   grid.innerHTML = `${agents
     .map(
       (agent) => `

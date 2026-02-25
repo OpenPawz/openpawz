@@ -38,6 +38,16 @@ export function setMoleculesState(s: MoleculesState) {
 
 export function renderBoard() {
   const tasks = _state.getTasks();
+
+  // Toggle empty state overlay
+  const emptyEl = document.getElementById('tasks-empty');
+  const boardEl = document.getElementById('tasks-board');
+  if (emptyEl && boardEl) {
+    const hasAnyTasks = tasks.length > 0;
+    emptyEl.style.display = hasAnyTasks ? 'none' : 'flex';
+    boardEl.style.display = hasAnyTasks ? '' : 'none';
+  }
+
   for (const status of COLUMNS) {
     const container = $(`tasks-cards-${status}`);
     const countEl = $(`tasks-count-${status}`);

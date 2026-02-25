@@ -122,6 +122,9 @@ export function bindTaskEvents() {
   // New task button
   $('tasks-add-btn')?.addEventListener('click', () => openTaskModal());
 
+  // Empty state create button
+  $('tasks-empty-create')?.addEventListener('click', () => openTaskModal());
+
   // Column add buttons
   document.querySelectorAll<HTMLElement>('.tasks-column-add').forEach((btn) => {
     btn.addEventListener('click', () => openTaskModal());

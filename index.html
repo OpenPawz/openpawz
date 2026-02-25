@@ -400,6 +400,22 @@
 
           <!-- Tab: Board (Kanban) -->
           <div class="tasks-tab-panel active" id="tasks-tab-board">
+            <!-- Empty state (shown when zero tasks) -->
+            <div class="empty-state" id="tasks-empty" style="display:none">
+              <div class="empty-icon"><span class="ms" style="font-size:48px">task_alt</span></div>
+              <div class="empty-title">Your task board is empty</div>
+              <div class="empty-subtitle">Create tasks and assign them to your AI agents. They'll move through columns as agents work on them.</div>
+              <div class="empty-features">
+                <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Drag-and-drop Kanban board</div>
+                <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Assign tasks to single or multiple agents</div>
+                <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Schedule recurring tasks with cron</div>
+                <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Track activity and agent progress</div>
+              </div>
+              <div class="empty-actions">
+                <button class="btn btn-primary" id="tasks-empty-create"><span class="ms ms-sm">add</span> Create First Task</button>
+              </div>
+              <div class="empty-hint">Tip: Agents need to be configured before they can run tasks</div>
+            </div>
             <div class="tasks-body">
               <!-- Kanban columns -->
               <div class="tasks-board" id="tasks-board">
@@ -932,9 +948,15 @@
               <div class="empty-subtitle">
                 Create a squad to coordinate teams of agents on a shared goal
               </div>
+              <div class="empty-features">
+                <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Multi-agent coordination with shared goals</div>
+                <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Broadcast messages between squad members</div>
+                <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Real-time activity feed per squad</div>
+              </div>
               <button class="btn btn-primary" id="squads-empty-create" style="margin-top: 16px">
                 Create Squad
               </button>
+              <div class="empty-hint">You'll need at least 2 agents configured to create a squad</div>
             </div>
             <div id="squads-detail" style="display: none"></div>
           </div>
@@ -1088,9 +1110,15 @@
                 <div class="empty-subtitle">
                   Create blog posts, marketing copy, documentation — with AI assistance
                 </div>
+                <div class="empty-features">
+                  <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> AI-powered writing and editing</div>
+                  <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Blog posts, docs, marketing copy</div>
+                  <div class="empty-feature-item"><span class="ms ms-sm">check_circle</span> Schedule automated content generation</div>
+                </div>
                 <button class="btn btn-primary" id="content-create-first" style="margin-top: 16px">
                   Create Document
                 </button>
+                <div class="empty-hint">Configure an AI provider in Settings for AI-assisted writing</div>
               </div>
               <textarea
                 class="studio-content-editor"
@@ -1370,6 +1398,14 @@
               <div class="empty-title">Trading Dashboard</div>
               <div class="empty-subtitle">
                 Enable the Coinbase skill and let your agents trade. Activity will appear here.
+              </div>
+              <div class="empty-prereqs" style="margin-top:16px">
+                <div class="empty-prereqs-title">Prerequisites</div>
+                <div class="empty-prereq-item"><span class="ms ms-sm">radio_button_unchecked</span> Enable the Coinbase skill</div>
+                <div class="empty-prereq-item"><span class="ms ms-sm">radio_button_unchecked</span> Add Coinbase API keys</div>
+              </div>
+              <div class="empty-actions" style="margin-top:16px">
+                <button class="btn btn-primary" id="trading-goto-skills"><span class="ms ms-sm">bolt</span> Go to Skills</button>
               </div>
             </div>
           </div>
@@ -2003,6 +2039,9 @@
               <div class="empty-title">No models available</div>
               <div class="empty-subtitle">
                 Configure your AI provider in Settings to see available models
+              </div>
+              <div class="empty-actions" style="margin-top:16px">
+                <button class="btn btn-primary" id="foundry-goto-settings"><span class="ms ms-sm">settings</span> Go to Settings</button>
               </div>
             </div>
             <div class="view-loading" id="models-loading" style="display: none">

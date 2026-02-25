@@ -36,6 +36,16 @@ export async function loadTrading() {
   const container = $('trading-content');
   if (!container) return;
 
+  // Bind empty state navigation
+  const goToSkillsBtn = container.querySelector('#trading-goto-skills');
+  if (goToSkillsBtn && !goToSkillsBtn.hasAttribute('data-bound')) {
+    goToSkillsBtn.setAttribute('data-bound', '1');
+    goToSkillsBtn.addEventListener('click', () => {
+      const settingsNav = document.querySelector('[data-view="settings"]') as HTMLElement;
+      settingsNav?.click();
+    });
+  }
+
   try {
     const [trades, summary, policy, positions] = await Promise.all([
       pawEngine.tradingHistory(100),

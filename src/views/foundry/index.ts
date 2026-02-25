@@ -40,6 +40,12 @@ export function initFoundryEvents() {
     loadModes();
   });
 
+  // Empty state: navigate to settings
+  $('foundry-goto-settings')?.addEventListener('click', () => {
+    const settingsNav = document.querySelector('[data-view="settings"]') as HTMLElement;
+    settingsNav?.click();
+  });
+
   // Foundry tab switching (Models / Chat Modes)
   document.querySelectorAll('.foundry-tab').forEach((tab) => {
     tab.addEventListener('click', () => {
