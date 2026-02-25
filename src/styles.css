@@ -4455,6 +4455,103 @@ button:focus:not(:focus-visible) {
   flex-direction: column;
   gap: 16px;
 }
+
+/* ── Command Center Grid ───────────────────────────────────── */
+.cmd-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 800px) {
+  .cmd-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.cmd-card {
+  display: flex;
+  flex-direction: column;
+}
+.cmd-card-full {
+  grid-column: 1 / -1;
+}
+
+/* Fleet Status */
+.cmd-fleet-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.cmd-fleet-item:last-child {
+  border-bottom: none;
+}
+.cmd-fleet-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex-shrink: 0;
+  image-rendering: auto;
+}
+.cmd-fleet-avatar img {
+  image-rendering: auto;
+}
+.cmd-fleet-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.cmd-fleet-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
+
+/* Usage Stats */
+.cmd-usage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.cmd-stat-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.cmd-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Skills */
+.cmd-skills-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.cmd-skill-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+.cmd-skill-icon {
+  font-size: 14px;
+}
+.cmd-skills-more {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 8px;
+}
 .today-card {
   background: var(--bg-secondary);
   border: 1px solid var(--border);

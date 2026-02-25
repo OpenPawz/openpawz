@@ -1,6 +1,6 @@
 // Today View — Pure helpers (no DOM, no IPC)
 
-import type { EngineTask, TaskStatus } from '../../engine/atoms/types';
+import type { EngineTask, TaskStatus, EngineTaskActivity } from '../../engine/atoms/types';
 
 export interface Task {
   id: string;
@@ -131,4 +131,49 @@ export function relativeTime(isoStr: string): string {
 export function truncateContent(content: string, maxLen: number): string {
   if (content.length <= maxLen) return content;
   return `${content.slice(0, maxLen)}…`;
+}
+
+// ── Command Center Helpers ────────────────────────────────────────────
+
+/** Format a token count to a compact string (e.g. 14200 → "14.2k"). */
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
+  return n.toString();
+}
+
+/** Format cost in dollars with 2 decimal precision. */
+export function formatCost(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+/** Determine agent status from its last activity timestamp. */
+export function agentStatus(lastUsed?: string): 'active' | 'idle' | 'offline' {
+  if (!lastUsed) return 'offline';
+  const diffMs = Date.now() - new Date(lastUsed).getTime();
+  if (diffMs < 60_000) return 'active'; // active within last minute
+  return 'idle';
+}
+
+/** Build 30-day activity data from task activity items. */
+export function buildHeatmapData(
+  activities: EngineTaskActivity[],
+): { date: string; count: number }[] {
+  const days: { date: string; count: number }[] = [];
+  const today = new Date();
+  const counts = new Map<string, number>();
+
+  for (const a of activities) {
+    const d = a.created_at.slice(0, 10); // "YYYY-MM-DD"
+    counts.set(d, (counts.get(d) ?? 0) + 1);
+  }
+
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - i);
+    const key = d.toISOString().slice(0, 10);
+    days.push({ date: key, count: counts.get(key) ?? 0 });
+  }
+
+  return days;
 }

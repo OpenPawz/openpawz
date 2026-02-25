@@ -1,7 +1,7 @@
-// Today View — DOM rendering + IPC
+// Today View — DOM rendering + IPC (Command Center)
 
 import { pawEngine } from '../../engine';
-import { getCurrentAgent, spriteAvatar } from '../agents';
+import { getAgents, spriteAvatar } from '../agents';
 import { switchView } from '../router';
 import { $, escHtml } from '../../components/helpers';
 import { showToast } from '../../components/toast';
@@ -9,14 +9,19 @@ import {
   type Task,
   getWeatherIcon,
   getGreeting,
-  getPawzMessage,
   isToday,
   engineTaskToToday,
   filterTodayTasks,
   toggledStatus,
+  formatTokens,
+  formatCost,
+  agentStatus,
+  buildHeatmapData,
 } from './atoms';
 import { renderSkillWidgets } from '../../components/molecules/skill-widget';
-import type { SkillOutput } from '../../engine/atoms/types';
+import type { SkillOutput, EngineSkillStatus } from '../../engine/atoms/types';
+import { appState } from '../../state';
+import { heatmapStrip, statusDot } from '../../components/molecules/data-viz';
 
 // ── Tauri bridge (no pawEngine equivalent for these commands) ──────────
 interface TauriWindow {
@@ -213,10 +218,9 @@ export async function fetchUnreadEmails() {
   }
 }
 
-// ── Dashboard Render ──────────────────────────────────────────────────
-
-/** Cached skill outputs for rendering during synchronous renderToday(). */
+// ── Cached data for synchronous render ────────────────────────────────
 let _skillOutputs: SkillOutput[] = [];
+let _activeSkills: EngineSkillStatus[] = [];
 
 /** Fetch skill outputs from backend and re-render if any found. */
 export async function fetchSkillOutputs() {
@@ -224,7 +228,6 @@ export async function fetchSkillOutputs() {
     const outputs = await pawEngine.listSkillOutputs();
     _skillOutputs = outputs ?? [];
 
-    // Inject widget HTML into the today-main column
     const widgetContainer = document.getElementById('today-skill-widgets');
     if (widgetContainer) {
       widgetContainer.innerHTML = renderSkillWidgets(_skillOutputs);
@@ -232,6 +235,89 @@ export async function fetchSkillOutputs() {
   } catch (e) {
     console.warn('[today] Skill outputs fetch failed:', e);
     _skillOutputs = [];
+  }
+}
+
+/** Fetch enabled skills list and populate the Active Skills card. */
+export async function fetchActiveSkills() {
+  try {
+    const all = await pawEngine.skillsList();
+    _activeSkills = all.filter((s) => s.enabled);
+
+    const container = $('cmd-skills-body');
+    if (!container) return;
+
+    const countEl = $('cmd-skills-count');
+    if (countEl) countEl.textContent = String(_activeSkills.length);
+
+    if (_activeSkills.length === 0) {
+      container.innerHTML = `<div class="today-section-empty">No skills enabled — add some in Settings → Skills</div>`;
+      return;
+    }
+
+    const shown = _activeSkills.slice(0, 8);
+    const remaining = _activeSkills.length - shown.length;
+
+    container.innerHTML = `
+      <div class="cmd-skills-grid">
+        ${shown
+          .map(
+            (s) =>
+              `<span class="cmd-skill-chip" title="${escHtml(s.name)}">
+                ${s.icon ? `<span class="cmd-skill-icon">${escHtml(s.icon)}</span>` : ''}
+                ${escHtml(s.name)}
+                ${s.is_ready ? statusDot('active') : statusDot('idle')}
+              </span>`,
+          )
+          .join('')}
+      </div>
+      ${remaining > 0 ? `<div class="cmd-skills-more">+ ${remaining} more</div>` : ''}
+    `;
+  } catch (e) {
+    console.warn('[today] Skills list fetch failed:', e);
+  }
+}
+
+/** Populate the agent fleet status card. */
+export async function fetchFleetStatus() {
+  const container = $('cmd-fleet-body');
+  if (!container) return;
+
+  try {
+    const agents = getAgents();
+    if (agents.length === 0) {
+      container.innerHTML = `<div class="today-section-empty">No agents configured</div>`;
+      return;
+    }
+
+    container.innerHTML = agents
+      .map((a) => {
+        const status = agentStatus(a.lastUsed);
+        return `<div class="cmd-fleet-item">
+          <div class="cmd-fleet-avatar">${spriteAvatar(a.avatar, 28)}</div>
+          <span class="cmd-fleet-name">${escHtml(a.name)}</span>
+          ${statusDot(status)}
+          <span class="cmd-fleet-status">${status}</span>
+        </div>`;
+      })
+      .join('');
+  } catch (e) {
+    console.warn('[today] Fleet status failed:', e);
+  }
+}
+
+/** Populate the 30-day activity heatmap card. */
+export async function fetchHeatmap() {
+  const container = $('cmd-heatmap-body');
+  if (!container) return;
+
+  try {
+    const items = await pawEngine.taskActivity(undefined, 500);
+    const days = buildHeatmapData(items);
+    container.innerHTML = heatmapStrip(days);
+  } catch (e) {
+    console.warn('[today] Heatmap fetch failed:', e);
+    container.innerHTML = `<div class="today-section-empty">No activity data</div>`;
   }
 }
 
@@ -252,9 +338,9 @@ export function renderToday() {
   const pendingTasks = tasks.filter((t) => !t.done);
   const completedToday = tasks.filter((t) => t.done && isToday(t.createdAt));
 
-  const mainAgent = getCurrentAgent();
-  const agentName = mainAgent?.name ?? 'Agent';
-  const agentAvatar = mainAgent ? spriteAvatar(mainAgent.avatar, 48) : spriteAvatar('5', 48);
+  // Usage stats from appState
+  const tokensUsed = appState.sessionTokensUsed;
+  const cost = appState.sessionCost;
 
   container.innerHTML = `
     <div class="today-header">
@@ -262,118 +348,149 @@ export function renderToday() {
       <div class="today-date">${dateStr}</div>
     </div>
 
-    <div class="today-grid">
-      <div class="today-main">
-        <!-- Agent Summary -->
-        <div class="today-card today-dave-card">
-          <div class="today-dave-header">
-            <div class="today-dave-avatar">${agentAvatar}</div>
-            <div class="today-dave-intro">
-              <div class="today-dave-name">${escHtml(agentName)}</div>
-              <div class="today-dave-role">Your AI Agent</div>
+    <div class="cmd-grid">
+      <!-- Row 1: Fleet + Usage -->
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">smart_toy</span></span>
+          <span class="today-card-title">Agent Fleet</span>
+        </div>
+        <div class="today-card-body" id="cmd-fleet-body">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">bar_chart</span></span>
+          <span class="today-card-title">Usage Today</span>
+        </div>
+        <div class="today-card-body cmd-usage-body">
+          <div class="cmd-stat-row">
+            <div class="cmd-stat">
+              <span class="stat-value" id="cmd-tokens">${formatTokens(tokensUsed)}</span>
+              <span class="stat-label">Tokens</span>
+            </div>
+            <div class="cmd-stat">
+              <span class="stat-value" id="cmd-cost">${formatCost(cost)}</span>
+              <span class="stat-label">Cost</span>
+            </div>
+            <div class="cmd-stat">
+              <span class="stat-value" id="cmd-input-tokens">${formatTokens(appState.sessionInputTokens)}</span>
+              <span class="stat-label">Input</span>
+            </div>
+            <div class="cmd-stat">
+              <span class="stat-value" id="cmd-output-tokens">${formatTokens(appState.sessionOutputTokens)}</span>
+              <span class="stat-label">Output</span>
             </div>
           </div>
-          <div class="today-dave-message" id="today-dave-message">
-            ${getPawzMessage(pendingTasks.length, completedToday.length)}
-          </div>
         </div>
+      </div>
 
-        <!-- Weather -->
-        <div class="today-card">
-          <div class="today-card-header">
-            <span class="today-card-icon"><span class="ms">partly_cloudy_day</span></span>
-            <span class="today-card-title">Weather</span>
-          </div>
-          <div class="today-card-body" id="today-weather">
-            <span class="today-loading">Loading...</span>
-          </div>
+      <!-- Row 2: Active Skills + Weather -->
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">bolt</span></span>
+          <span class="today-card-title">Active Skills</span>
+          <span class="today-card-count" id="cmd-skills-count">…</span>
         </div>
+        <div class="today-card-body" id="cmd-skills-body">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
 
-        <!-- Tasks -->
-        <div class="today-card today-card-tasks">
-          <div class="today-card-header">
-            <span class="today-card-icon"><span class="ms">task_alt</span></span>
-            <span class="today-card-title">Tasks</span>
-            <span class="today-card-count">${pendingTasks.length}</span>
-            <button class="btn btn-ghost btn-sm today-add-task-btn">+ Add</button>
-          </div>
-          <div class="today-card-body">
-            <div class="today-tasks" id="today-tasks">
-              ${
-                pendingTasks.length === 0
-                  ? `
-                <div class="today-section-empty">No tasks yet. Add one to get started!</div>
-              `
-                  : pendingTasks
-                      .map(
-                        (task) => `
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">partly_cloudy_day</span></span>
+          <span class="today-card-title">Weather</span>
+        </div>
+        <div class="today-card-body" id="today-weather">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Row 3: Tasks (full width) -->
+      <div class="card-elevated cmd-card cmd-card-full">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">task_alt</span></span>
+          <span class="today-card-title">Tasks</span>
+          <span class="today-card-count">${pendingTasks.length}</span>
+          <button class="btn btn-ghost btn-sm today-add-task-btn">+ Add</button>
+        </div>
+        <div class="today-card-body">
+          <div class="today-tasks" id="today-tasks">
+            ${
+              pendingTasks.length === 0
+                ? `<div class="today-section-empty">No tasks yet. Add one to get started!</div>`
+                : pendingTasks
+                    .map(
+                      (task) => `
                 <div class="today-task" data-id="${task.id}">
                   <input type="checkbox" class="today-task-check" ${task.done ? 'checked' : ''}>
                   <span class="today-task-text">${escHtml(task.text)}</span>
                   <button class="today-task-delete" title="Delete">×</button>
-                </div>
-              `,
-                      )
-                      .join('')
-              }
-            </div>
-            ${
-              completedToday.length > 0
-                ? `
-              <div class="today-completed-label">${completedToday.length} completed today</div>
-            `
-                : ''
+                </div>`,
+                    )
+                    .join('')
             }
           </div>
-        </div>
-
-        <!-- Unread Emails -->
-        <div class="today-card">
-          <div class="today-card-header">
-            <span class="today-card-icon"><span class="ms">mail</span></span>
-            <span class="today-card-title">Unread Emails</span>
-          </div>
-          <div class="today-card-body" id="today-emails">
-            <span class="today-loading">Loading...</span>
-          </div>
-        </div>
-
-        <!-- Skill Widgets (Phase F.2) -->
-        <div id="today-skill-widgets">
-          ${renderSkillWidgets(_skillOutputs)}
+          ${completedToday.length > 0 ? `<div class="today-completed-label">${completedToday.length} completed today</div>` : ''}
         </div>
       </div>
 
-      <div class="today-sidebar">
-        <!-- Quick Actions -->
-        <div class="today-card">
-          <div class="today-card-header">
-            <span class="today-card-icon"><span class="ms">bolt</span></span>
-            <span class="today-card-title">Quick Actions</span>
-          </div>
-          <div class="today-card-body">
-            <button class="today-quick-action" id="today-briefing-btn">
-              <span class="ms">campaign</span> Morning Briefing
-            </button>
-            <button class="today-quick-action" id="today-summarize-btn">
-              <span class="ms">summarize</span> Summarize Inbox
-            </button>
-            <button class="today-quick-action" id="today-schedule-btn">
-              <span class="ms">calendar_today</span> What's on today?
-            </button>
-          </div>
+      <!-- Row 4: Activity + Heatmap -->
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">timeline</span></span>
+          <span class="today-card-title">Activity</span>
         </div>
+        <div class="today-card-body" id="today-activity">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
 
-        <!-- Activity Feed -->
-        <div class="today-card">
-          <div class="today-card-header">
-            <span class="today-card-icon"><span class="ms">timeline</span></span>
-            <span class="today-card-title">Activity</span>
-          </div>
-          <div class="today-card-body" id="today-activity">
-            <span class="today-loading">Loading…</span>
-          </div>
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">calendar_month</span></span>
+          <span class="today-card-title">30-Day Activity</span>
         </div>
+        <div class="today-card-body" id="cmd-heatmap-body">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Row 5: Quick Actions + Emails -->
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">rocket_launch</span></span>
+          <span class="today-card-title">Quick Actions</span>
+        </div>
+        <div class="today-card-body">
+          <button class="today-quick-action" id="today-briefing-btn">
+            <span class="ms">campaign</span> Morning Briefing
+          </button>
+          <button class="today-quick-action" id="today-summarize-btn">
+            <span class="ms">summarize</span> Summarize Inbox
+          </button>
+          <button class="today-quick-action" id="today-schedule-btn">
+            <span class="ms">calendar_today</span> What's on today?
+          </button>
+        </div>
+      </div>
+
+      <div class="card-elevated cmd-card">
+        <div class="today-card-header">
+          <span class="today-card-icon"><span class="ms">mail</span></span>
+          <span class="today-card-title">Unread Emails</span>
+        </div>
+        <div class="today-card-body" id="today-emails">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Skill Widgets -->
+      <div class="cmd-card-full" id="today-skill-widgets">
+        ${renderSkillWidgets(_skillOutputs)}
       </div>
     </div>
   `;

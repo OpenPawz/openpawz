@@ -6,6 +6,9 @@ import {
   fetchWeather,
   fetchUnreadEmails,
   fetchSkillOutputs,
+  fetchActiveSkills,
+  fetchFleetStatus,
+  fetchHeatmap,
   renderToday,
   reloadTodayTasks,
 } from './molecules';
@@ -41,6 +44,9 @@ export async function loadToday() {
     fetchWeather(),
     fetchUnreadEmails(),
     fetchSkillOutputs(),
+    fetchFleetStatus(),
+    fetchActiveSkills(),
+    fetchHeatmap(),
     fetchAndRenderActivity(),
   ]);
 }
