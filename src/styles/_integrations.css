@@ -384,10 +384,14 @@
 }
 
 /* ── Integrations Matrix (compact 2-column grid) ── */
+.integrations-grid.integrations-matrix-mode {
+  display: block;
+}
 .matrix-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   gap: 6px;
+  width: 100%;
 }
 @media (max-width: 700px) {
   .matrix-grid { grid-template-columns: 1fr; }
@@ -396,7 +400,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
+  padding: 10px 14px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   cursor: pointer;
@@ -406,8 +410,10 @@
   border-color: var(--accent);
 }
 .matrix-row-icon {
-  font-size: 18px;
+  font-size: 20px;
   flex-shrink: 0;
+  width: 24px;
+  text-align: center;
 }
 .matrix-row-info {
   flex: 1;
@@ -417,7 +423,7 @@
   gap: 1px;
 }
 .matrix-row-name {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 600;
   color: var(--text-primary);
   white-space: nowrap;
@@ -434,6 +440,8 @@
   flex-shrink: 0;
   font-size: 0.72rem;
   font-family: var(--font-mono);
+  min-width: 32px;
+  text-align: right;
 }
 .matrix-on { color: var(--kinetic-sage); font-weight: 600; }
 .matrix-off { color: var(--text-muted); }
@@ -441,12 +449,12 @@
   flex-shrink: 0;
 }
 .matrix-footer {
-  padding: 8px 12px;
+  padding: 10px 0 0;
   font-size: var(--type-micro);
   font-family: var(--font-mono);
   color: var(--text-muted);
   border-top: 1px solid var(--border);
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .integrations-matrix-mode .integrations-card { display: none; }
 
