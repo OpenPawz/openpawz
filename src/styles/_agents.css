@@ -193,11 +193,10 @@
   border-collapse: collapse;
   font-size: 12px;
   font-family: var(--font-mono);
-  table-layout: fixed;
 }
 .agents-roster thead th {
   text-align: left;
-  padding: 6px 12px;
+  padding: 8px 12px;
   font-size: var(--type-micro);
   font-weight: 700;
   text-transform: uppercase;
@@ -206,13 +205,6 @@
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
-/* Column widths for proper alignment */
-.agents-roster thead th:nth-child(1) { width: 50px; }  /* STAT */
-.agents-roster thead th:nth-child(2) { width: auto; }  /* AGENT — takes remaining space */
-.agents-roster thead th:nth-child(3) { width: 180px; } /* MODEL */
-.agents-roster thead th:nth-child(4) { width: 60px; }  /* TOOLS */
-.agents-roster thead th:nth-child(5) { width: 100px; } /* LAST ACTIVE */
-.agents-roster thead th:nth-child(6) { width: 130px; } /* actions */
 .agents-roster-row {
   border-bottom: 1px solid var(--border-subtle);
   transition: background var(--transition-fast);
@@ -222,19 +214,30 @@
   background: var(--bg-hover);
 }
 .agents-roster-row td {
-  padding: 8px 12px;
+  padding: 10px 12px;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 0;
 }
-.roster-stat { width: 30px; text-align: center; }
+.roster-stat { width: 40px; text-align: center; }
 .roster-dot-active { color: var(--accent); font-size: 16px; }
 .roster-dot-idle { color: var(--text-muted); font-size: 16px; }
-.roster-name { font-weight: 500; color: var(--text-primary); }
-.roster-model { color: var(--text-secondary); }
-.roster-tools { color: var(--text-secondary); text-align: center; }
-.roster-time { color: var(--text-muted); }
+.roster-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  width: 30%;
+}
+.roster-model {
+  color: var(--text-secondary);
+  width: 22%;
+}
+.roster-tools { color: var(--text-secondary); text-align: center; width: 60px; }
+.roster-time { color: var(--text-muted); width: 100px; }
 .roster-actions {
   display: flex;
   gap: 4px;
+  width: 120px;
 }
 .agents-roster-footer-row td {
   padding: 10px 12px;

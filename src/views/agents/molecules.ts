@@ -80,7 +80,7 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
             ? _timeAgo(new Date(agent.lastUsed))
             : '—';
           const isActive = agent.lastUsed && (Date.now() - new Date(agent.lastUsed).getTime()) < 600000;
-          return `<tr class="agents-roster-row k-row k-spring" data-id="${agent.id}">
+          return `<tr class="agents-roster-row" data-id="${agent.id}">
             <td class="roster-stat">${isActive ? '<span class="roster-dot-active">◉</span>' : '<span class="roster-dot-idle">○</span>'}</td>
             <td class="roster-name">${escHtml(agent.name)}</td>
             <td class="roster-model">${escHtml(agent.model || '—')}</td>
@@ -149,12 +149,7 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
     });
   }
 
-  // Apply kinetic to roster rows
-  grid.querySelectorAll('.agents-roster-row.k-row').forEach(row => {
-    kineticRow(row as HTMLElement, { spring: true });
-  });
-
-  // Apply kinetic to grid cards
+  // Apply kinetic to grid cards (not roster rows — k-row breaks on <tr>)
   grid.querySelectorAll('.agent-card.k-row').forEach(card => {
     kineticRow(card as HTMLElement, { spring: true, materialise: true });
   });
