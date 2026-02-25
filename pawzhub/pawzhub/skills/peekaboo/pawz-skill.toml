@@ -1,0 +1,52 @@
+[skill]
+id = "peekaboo"
+name = "Peekaboo"
+version = "1.0.0"
+author = "openpawz"
+category = "system"
+icon = "visibility"
+description = "Capture and automate macOS UI"
+install_hint = "No credentials needed. Requires macOS. The 'peekaboo' CLI binary must be installed and granted Accessibility permissions in System Settings → Privacy & Security → Accessibility."
+
+[instructions]
+text = """
+You can capture and automate the macOS UI using the `peekaboo` CLI binary.
+
+## Screen capture
+- `peekaboo screenshot` — capture the entire screen
+- `peekaboo screenshot --window "App Name"` — capture a specific window
+- `peekaboo screenshot --region "x,y,w,h"` — capture a specific region
+- `peekaboo screenshot --output screenshot.png` — save to specific path
+
+## UI inspection
+- `peekaboo list-windows` — list all open windows
+- `peekaboo list-apps` — list running applications
+- `peekaboo inspect "App Name"` — inspect UI elements of an app
+- `peekaboo inspect --point "x,y"` — inspect element at screen coordinates
+
+## UI automation
+- `peekaboo click "x,y"` — click at screen coordinates
+- `peekaboo click --element "Button Name" --app "App Name"` — click a named UI element
+- `peekaboo type "text to type"` — type text at current cursor position
+- `peekaboo key "cmd+c"` — send keyboard shortcut
+- `peekaboo key "enter"` — press Enter
+
+## Window management
+- `peekaboo focus "App Name"` — bring app to front
+- `peekaboo resize "App Name" --size "800,600"` — resize a window
+- `peekaboo move "App Name" --position "100,100"` — move a window
+
+## Error handling
+- "accessibility not granted": Grant access in System Settings → Privacy & Security → Accessibility
+- "app not found": List apps to find exact names — `peekaboo list-apps`
+- "element not found": Inspect the app to find available UI elements
+- "screen recording not granted": Grant in System Settings → Privacy → Screen Recording
+- Binary not found: Install peekaboo via the Pawz skill installer
+
+## Best practices
+- Always inspect before automating to find correct element names
+- Use element-based clicking over coordinates when possible
+- Add small delays between automation steps for reliability
+- Capture screenshots to verify automation results
+- Use this skill cautiously — UI automation can have unintended effects
+"""

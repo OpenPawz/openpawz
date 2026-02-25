@@ -1,0 +1,44 @@
+[skill]
+id = "apple-notes"
+name = "Apple Notes"
+version = "1.0.0"
+author = "openpawz"
+category = "productivity"
+icon = "note"
+description = "Manage Apple Notes on macOS"
+install_hint = "No credentials needed. Requires macOS with Apple Notes app. The 'memo' CLI binary must be installed."
+
+[instructions]
+text = """
+You can manage Apple Notes on macOS using the `memo` CLI binary.
+
+## Commands
+- `memo list` — list all notes (title, folder, last modified)
+- `memo list --folder "My Folder"` — list notes in a specific folder
+- `memo show {note_id}` — display full note content
+- `memo search "query"` — search notes by text content
+- `memo create --title "Title" --body "Content"` — create a new note
+- `memo create --title "Title" --body "Content" --folder "Folder"` — create in specific folder
+- `memo edit {note_id} --body "New content"` — update note content
+- `memo edit {note_id} --title "New Title"` — rename a note
+- `memo delete {note_id}` — delete a note (moves to Recently Deleted)
+- `memo folders` — list all folders
+- `memo folder create "Folder Name"` — create a new folder
+
+## Note format
+- Notes support plain text and basic HTML formatting
+- Use \\n for line breaks in the body
+- Images and attachments are not supported via CLI
+
+## Error handling
+- "note not found": The note_id is invalid — list notes to get valid IDs
+- "folder not found": Folder doesn't exist — list folders first
+- Permission denied: Grant Terminal/app access to Notes in System Settings → Privacy & Security
+- Binary not found: Install memo via the Pawz skill installer
+
+## Best practices
+- List notes or search before trying to access a specific note
+- Use folders to organize notes by topic or project
+- Confirm before deleting notes
+- Note IDs may change if notes are synced via iCloud
+"""

@@ -1,0 +1,58 @@
+[skill]
+id = "slack"
+name = "Slack"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "chat"
+description = "Send messages to Slack channels and DMs"
+install_hint = "Create a Slack Bot at api.slack.com/apps → OAuth & Permissions → add chat:write, channels:read, channels:history scopes → Install to Workspace → copy the Bot User OAuth Token."
+
+[[credentials]]
+key = "SLACK_BOT_TOKEN"
+label = "Slack Bot Token"
+description = "Bot User OAuth Token starting with xoxb-"
+required = true
+placeholder = "xoxb-your-slack-bot-token"
+
+[[credentials]]
+key = "SLACK_DEFAULT_CHANNEL"
+label = "Default Channel"
+description = "Default channel to send messages to (without #)"
+required = false
+placeholder = "general"
+
+[instructions]
+text = """
+You can send and read Slack messages using the slack_send and slack_read tools.
+
+## Sending messages
+Use the `slack_send` tool with:
+- `channel`: Channel name or ID (defaults to {SLACK_DEFAULT_CHANNEL} if set)
+- `text`: Message text (supports Slack mrkdwn formatting)
+- `thread_ts` (optional): Thread timestamp to reply in a thread
+
+## Reading messages
+Use the `slack_read` tool to fetch recent messages:
+- `channel`: Channel name or ID
+- `count`: Number of messages to fetch (default: 10)
+
+## Authentication
+All API calls use the Bot Token: `Authorization: Bearer {SLACK_BOT_TOKEN}`
+
+## Slack mrkdwn formatting
+- *bold*, _italic_, ~strikethrough~, `code`, ```code block```
+- <@USER_ID> to mention a user, <#CHANNEL_ID> to link a channel
+- Use blocks for rich layouts when needed
+
+## Error handling
+- `not_in_channel`: Bot must be invited to the channel first (/invite @botname)
+- `channel_not_found`: Verify channel name or use channel ID
+- `invalid_auth`: Token is invalid or expired — regenerate at api.slack.com
+- `missing_scope`: Bot needs additional OAuth scopes — update in app settings
+
+## Best practices
+- Prefer channel names over IDs for readability, but use IDs for reliability
+- Keep messages concise; use threads for follow-ups
+- Use the default channel when the user doesn't specify one
+"""

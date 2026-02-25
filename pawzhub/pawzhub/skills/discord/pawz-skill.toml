@@ -1,0 +1,75 @@
+[skill]
+id = "discord"
+name = "Discord"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "sports_esports"
+description = "Full Discord server management — 23 tools"
+install_hint = "Create a Discord Bot at discord.com/developers → Applications → New Application → Bot → copy the token. Enable Message Content Intent, Server Members Intent, and Presence Intent. Invite bot with appropriate permissions."
+
+[[credentials]]
+key = "DISCORD_BOT_TOKEN"
+label = "Discord Bot Token"
+description = "Bot token from Discord Developer Portal"
+required = true
+placeholder = "your-discord-bot-token"
+
+[[credentials]]
+key = "DISCORD_DEFAULT_CHANNEL"
+label = "Default Channel ID"
+description = "Default channel ID for sending messages"
+required = false
+placeholder = "1234567890123456789"
+
+[[credentials]]
+key = "DISCORD_SERVER_ID"
+label = "Server (Guild) ID"
+description = "Default server/guild ID for server-specific operations"
+required = false
+placeholder = "9876543210987654321"
+
+[instructions]
+text = """
+You have full Discord server management capabilities with 23 tools.
+
+## Authentication
+All Discord API calls use: `Authorization: Bot {DISCORD_BOT_TOKEN}`
+Base URL: `https://discord.com/api/v10`
+
+## Core messaging
+- Send messages to channels (text, embeds, files)
+- Read message history from channels
+- Reply to specific messages, edit, and delete messages
+- Send DMs to users
+
+## Channel management
+- List, create, edit, and delete channels
+- Manage channel permissions and categories
+- Set channel topics and slowmode
+
+## Server management
+- List server members and roles
+- Manage roles (create, assign, remove)
+- Get server info and settings
+- Manage invites
+
+## Reactions & threads
+- Add and remove reactions
+- Create and manage threads
+- Pin and unpin messages
+
+## Error handling
+- 401: Invalid bot token — regenerate in Developer Portal
+- 403: Missing permissions — check bot role permissions in server settings
+- 404: Channel/message not found — verify IDs
+- 429: Rate limited — respect the `Retry-After` header and wait
+- 50001: Missing Access — bot not in the server or lacks channel permissions
+
+## Best practices
+- Use channel IDs (not names) for reliability
+- Default to {DISCORD_DEFAULT_CHANNEL} when user doesn't specify
+- Use embeds for rich, structured messages
+- Respect rate limits (especially on bulk operations)
+- Use threads for extended conversations to keep channels clean
+"""

@@ -1,0 +1,48 @@
+[skill]
+id = "whatsapp"
+name = "WhatsApp"
+version = "1.0.0"
+author = "openpawz"
+category = "communication"
+icon = "chat_bubble"
+description = "Send WhatsApp messages"
+install_hint = "No credentials needed. The 'wacli' binary must be installed and linked to your WhatsApp account via QR code during initial setup."
+
+[instructions]
+text = """
+You can send WhatsApp messages using the `wacli` CLI binary.
+
+## Sending messages
+- `wacli send "+1234567890" "Hello!"` — send a text message
+- `wacli send "+1234567890" "Hello!" --media photo.jpg` — send with image
+- `wacli send "+1234567890" "Document" --media report.pdf` — send with document
+- `wacli send --group "Family" "Hello everyone!"` — send to a group
+
+## Reading messages
+- `wacli read "+1234567890"` — read recent messages from a contact
+- `wacli read "+1234567890" --count 20` — read last 20 messages
+- `wacli read --group "Work"` — read group messages
+- `wacli unread` — list conversations with unread messages
+
+## Contacts & groups
+- `wacli contacts` — list all contacts
+- `wacli groups` — list all groups
+- `wacli search "John"` — search contacts by name
+
+## Status
+- `wacli status` — check connection status
+
+## Error handling
+- "not connected": Re-link WhatsApp via QR code — `wacli link`
+- "contact not found": Use full international phone number format (+country code)
+- "group not found": List groups to find the exact name
+- "media too large": WhatsApp limits: 16 MB for media, 100 MB for documents
+- Binary not found: Install wacli via the Pawz skill installer
+
+## Best practices
+- Use international phone number format (+1234567890)
+- Confirm recipient before sending messages
+- Keep messages concise — WhatsApp is a chat platform
+- Check unread messages when asked about new messages
+- For groups, use exact group name as shown in `wacli groups`
+"""

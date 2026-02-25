@@ -1,0 +1,140 @@
+[skill]
+id = "n8n"
+name = "n8n"
+version = "1.0.0"
+author = "openpawz"
+category = "api"
+icon = "account_tree"
+description = "Trigger, manage, and monitor n8n workflows from your Pawz agents via the n8n REST API"
+install_hint = "Get your API key from your n8n instance: Settings → API → Create API Key. You also need your n8n instance URL (e.g. http://localhost:5678 or https://your-n8n.example.com)."
+
+[[credentials]]
+key = "N8N_API_KEY"
+label = "n8n API Key"
+description = "API key from n8n Settings → API → Create API Key"
+required = true
+placeholder = "eyJhbGciOiJIUzI1NiIs..."
+
+[[credentials]]
+key = "N8N_BASE_URL"
+label = "n8n Instance URL"
+description = "Base URL of your n8n instance (no trailing slash)"
+required = true
+placeholder = "http://localhost:5678"
+
+[instructions]
+text = """
+You have access to an n8n workflow automation instance via the REST API.
+
+## Authentication
+All requests must include the header:
+- `X-N8N-API-KEY: {N8N_API_KEY}`
+
+Base URL for all API calls: `{N8N_BASE_URL}/api/v1`
+
+---
+
+## List all workflows
+Use `fetch` with:
+- Method: GET
+- URL: `{N8N_BASE_URL}/api/v1/workflows`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`
+
+Returns an array of workflow objects with `id`, `name`, `active`, `createdAt`, `updatedAt`.
+
+## Get a specific workflow
+Use `fetch` with:
+- Method: GET
+- URL: `{N8N_BASE_URL}/api/v1/workflows/{workflow_id}`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`
+
+Returns full workflow definition including nodes and connections.
+
+## Activate a workflow
+Use `fetch` with:
+- Method: PATCH
+- URL: `{N8N_BASE_URL}/api/v1/workflows/{workflow_id}`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`, `Content-Type: application/json`
+- Body: `{"active": true}`
+
+## Deactivate a workflow
+Use `fetch` with:
+- Method: PATCH
+- URL: `{N8N_BASE_URL}/api/v1/workflows/{workflow_id}`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`, `Content-Type: application/json`
+- Body: `{"active": false}`
+
+## Execute a workflow (trigger manually)
+Use `fetch` with:
+- Method: POST
+- URL: `{N8N_BASE_URL}/api/v1/workflows/{workflow_id}/run`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`, `Content-Type: application/json`
+- Body: `{}` (empty object) or `{"data": {"key": "value"}}` to pass input data
+
+Returns execution result with `executionId` and output data.
+
+## Trigger a workflow via webhook
+If the workflow starts with a Webhook node, use `fetch` with:
+- Method: POST
+- URL: `{N8N_BASE_URL}/webhook/{webhook_path}`
+- Headers: `Content-Type: application/json`
+- Body: JSON payload the workflow expects
+
+Note: Webhook triggers do NOT require the API key — authentication is handled by the webhook path being a secret URL.
+
+## List executions
+Use `fetch` with:
+- Method: GET
+- URL: `{N8N_BASE_URL}/api/v1/executions`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`
+- Query params: `?limit=10` (optional)
+
+Returns recent execution history with status (success/error/waiting), timing, and workflow reference.
+
+## Get a specific execution
+Use `fetch` with:
+- Method: GET
+- URL: `{N8N_BASE_URL}/api/v1/executions/{execution_id}`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`
+
+Returns full execution data including node-by-node results and any errors.
+
+## Delete an execution
+Use `fetch` with:
+- Method: DELETE
+- URL: `{N8N_BASE_URL}/api/v1/executions/{execution_id}`
+- Headers: `X-N8N-API-KEY: {N8N_API_KEY}`
+
+---
+
+## Error handling
+- 401: Invalid or expired API key — ask user to verify their key in Settings → API
+- 404: Workflow or execution not found — list workflows to confirm available IDs
+- 500: n8n internal error — check if the n8n instance is running
+
+## Best practices
+- Always list workflows first to get valid IDs before trying to execute or modify
+- When executing a workflow, summarize the output data for the user rather than dumping raw JSON
+- If a workflow execution fails, fetch the execution details to get the specific error message
+- Prefer webhook triggers over API execution when the workflow is designed for it (faster, no polling)
+"""
+
+[widget]
+type = "table"
+title = "n8n Workflows"
+refresh = "5m"
+
+[[widget.fields]]
+key = "name"
+label = "Workflow"
+type = "text"
+
+[[widget.fields]]
+key = "active"
+label = "Status"
+type = "badge"
+
+[[widget.fields]]
+key = "updatedAt"
+label = "Last Updated"
+type = "datetime"

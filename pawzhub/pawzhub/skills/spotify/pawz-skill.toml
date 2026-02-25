@@ -1,0 +1,58 @@
+[skill]
+id = "spotify"
+name = "Spotify"
+version = "1.0.0"
+author = "openpawz"
+category = "media"
+icon = "music_note"
+description = "Control Spotify playback and search"
+install_hint = "No credentials needed. The 'spotify_player' CLI binary must be installed and authenticated with your Spotify account."
+
+[instructions]
+text = """
+You can control Spotify playback and search using the `spotify_player` binary.
+
+## Playback control
+- `spotify_player playback play` — resume playback
+- `spotify_player playback pause` — pause playback
+- `spotify_player playback next` — skip to next track
+- `spotify_player playback previous` — go to previous track
+- `spotify_player playback shuffle` — toggle shuffle
+- `spotify_player playback repeat` — cycle repeat mode (off/track/context)
+- `spotify_player playback volume 75` — set volume (0-100)
+- `spotify_player playback seek 30` — seek to 30 seconds
+
+## Now playing
+- `spotify_player get key playback` — get current playback state (track, artist, progress)
+
+## Search
+- `spotify_player search "song name"` — search tracks
+- `spotify_player search "artist name" --type artist` — search artists
+- `spotify_player search "album name" --type album` — search albums
+- `spotify_player search "playlist name" --type playlist` — search playlists
+
+## Play specific content
+- `spotify_player play --name "Song Name" --type track` — play a specific track
+- `spotify_player play --name "Artist" --type artist` — play artist radio
+- `spotify_player play --name "Album" --type album` — play an album
+- `spotify_player play --name "Playlist" --type playlist` — play a playlist
+
+## Queue
+- `spotify_player playback queue --uri spotify:track:xxx` — add track to queue
+
+## Library
+- `spotify_player list --type liked` — list liked songs
+- `spotify_player list --type playlist` — list user playlists
+
+## Error handling
+- "No active device": Open Spotify on a device first
+- "Not authenticated": Re-authenticate spotify_player with your Spotify account
+- "Premium required": Some playback controls require Spotify Premium
+- Binary not found: Install spotify_player via the Pawz skill installer
+
+## Best practices
+- Check current playback state before making changes
+- Search for tracks to confirm the right song before playing
+- Use playlist or album play for continuous listening
+- Show track name and artist when reporting now playing
+"""

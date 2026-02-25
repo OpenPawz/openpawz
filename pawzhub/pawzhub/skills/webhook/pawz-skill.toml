@@ -1,0 +1,59 @@
+[skill]
+id = "webhook"
+name = "Webhook"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "webhook"
+description = "Send data to webhook URLs (Zapier, IFTTT, n8n, custom)"
+install_hint = "Paste the webhook URL from your automation platform (Zapier, IFTTT, n8n, Make, or any custom endpoint). Optionally add a webhook secret for HMAC signature verification."
+
+[[credentials]]
+key = "WEBHOOK_URL"
+label = "Webhook URL"
+description = "The full webhook endpoint URL"
+required = true
+placeholder = "https://hooks.zapier.com/hooks/catch/123456/abcdef/"
+
+[[credentials]]
+key = "WEBHOOK_SECRET"
+label = "Webhook Secret"
+description = "Optional shared secret for HMAC signature verification"
+required = false
+placeholder = "your-webhook-secret"
+
+[instructions]
+text = """
+You can send data to webhook URLs to trigger automations in external platforms.
+
+## Sending webhook payloads
+Use `fetch` with:
+- Method: POST
+- URL: `{WEBHOOK_URL}`
+- Headers: `Content-Type: application/json`
+- Body: JSON payload with the data to send
+
+If {WEBHOOK_SECRET} is configured, include an HMAC-SHA256 signature:
+- Header: `X-Webhook-Signature: sha256=<hex-digest>`
+- Computed over the raw JSON body using the secret
+
+## Common platforms
+- **Zapier**: Sends JSON; Zapier auto-parses top-level keys as fields
+- **IFTTT**: Use `value1`, `value2`, `value3` as JSON keys
+- **n8n**: Sends any JSON; n8n webhook node receives it as `body`
+- **Make (Integromat)**: Sends JSON; auto-mapped to modules
+- **Custom**: Follow the endpoint's expected schema
+
+## Error handling
+- 404: Webhook URL is invalid or has been deleted — ask user to verify
+- 410 Gone: Webhook has been deactivated on the platform
+- 500: Remote server error — retry after a short delay
+- Timeout: Webhook endpoint is slow — increase timeout or retry
+
+## Best practices
+- Always send valid JSON with Content-Type: application/json
+- Keep payloads concise — include only relevant data
+- Test with a simple payload first to verify connectivity
+- Log webhook responses for debugging failed automations
+- Include a timestamp and event type in payloads for traceability
+"""

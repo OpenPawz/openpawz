@@ -1,0 +1,54 @@
+[skill]
+id = "github"
+name = "GitHub"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "code"
+description = "Create issues, PRs, read repos via gh CLI and GitHub API"
+install_hint = "Create a Personal Access Token at github.com → Settings → Developer settings → Personal access tokens → Fine-grained tokens. Grant repo, issues, and pull request permissions."
+
+[[credentials]]
+key = "GITHUB_TOKEN"
+label = "GitHub Token"
+description = "Personal Access Token (classic or fine-grained) with repo access"
+required = true
+placeholder = "ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+[instructions]
+text = """
+You can interact with GitHub using the `github_api` tool and the `gh` CLI binary.
+
+## Using the gh CLI
+The `gh` binary is available and authenticated with {GITHUB_TOKEN}.
+
+Common commands:
+- `gh repo list [owner]` — list repositories
+- `gh repo view [owner/repo]` — view repo details
+- `gh issue list -R [owner/repo]` — list issues
+- `gh issue create -R [owner/repo] -t "title" -b "body"` — create issue
+- `gh pr list -R [owner/repo]` — list pull requests
+- `gh pr create -R [owner/repo] -t "title" -b "body"` — create PR
+- `gh pr view [number] -R [owner/repo]` — view PR details
+- `gh pr merge [number] -R [owner/repo]` — merge a PR
+- `gh api /repos/{owner}/{repo}/contents/{path}` — read file contents
+
+## Using the GitHub API directly
+Use the `github_api` tool for REST API calls:
+- Authentication header: `Authorization: Bearer {GITHUB_TOKEN}`
+- Base URL: `https://api.github.com`
+- Always include `Accept: application/vnd.github+json`
+
+## Error handling
+- 401 Unauthorized: Token is invalid or expired — regenerate at GitHub settings
+- 403 Forbidden: Token lacks required permissions — check scopes
+- 404 Not Found: Repo doesn't exist or token lacks access to private repos
+- 422 Unprocessable: Invalid request body — check required fields
+- Rate limit (403 with rate limit headers): Wait for reset or use conditional requests
+
+## Best practices
+- Use `gh` CLI for most operations — it's simpler and handles pagination
+- For complex queries, use the GraphQL API via `gh api graphql`
+- Always specify the repo with -R owner/repo when not in a git directory
+- Summarize issue/PR content for the user rather than raw JSON
+"""

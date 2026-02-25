@@ -1,0 +1,72 @@
+[skill]
+id = "dex"
+name = "DEX (Ethereum)"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "swap_horiz"
+description = "Self-custody Ethereum wallet with Uniswap V3 — 13 tools"
+install_hint = "Optionally configure an Ethereum RPC URL (defaults to public endpoints), your wallet private key for signing transactions, and your wallet address for read-only queries."
+
+[[credentials]]
+key = "DEX_RPC_URL"
+label = "Ethereum RPC URL"
+description = "JSON-RPC endpoint for Ethereum (Infura, Alchemy, or public)"
+required = false
+placeholder = "https://mainnet.infura.io/v3/YOUR_PROJECT_ID"
+
+[[credentials]]
+key = "DEX_PRIVATE_KEY"
+label = "Wallet Private Key"
+description = "Private key for signing transactions (keep secret!)"
+required = false
+placeholder = "0xabcdef1234567890..."
+
+[[credentials]]
+key = "DEX_WALLET_ADDRESS"
+label = "Wallet Address"
+description = "Ethereum wallet address for read-only queries"
+required = false
+placeholder = "0x1234...abcd"
+
+[instructions]
+text = """
+You have a self-custody Ethereum wallet with Uniswap V3 DEX integration — 13 tools available.
+
+## Wallet operations
+- **Check balances**: ETH and ERC-20 token balances for {DEX_WALLET_ADDRESS}
+- **Send ETH**: Transfer ETH to any address
+- **Send tokens**: Transfer ERC-20 tokens
+- **Transaction history**: View recent transactions
+
+## Uniswap V3 trading
+- **Get quotes**: Fetch swap quotes for any token pair
+- **Execute swaps**: Swap tokens via Uniswap V3 router
+- **Liquidity positions**: View, add, or remove liquidity
+- **Price lookups**: Get current pool prices and tick data
+
+## Token operations
+- **Approve tokens**: Approve token spending for DEX contracts
+- **Token info**: Look up token details by address or symbol
+- **Wrap/Unwrap**: Convert between ETH and WETH
+
+## Configuration
+- RPC: `{DEX_RPC_URL}` (defaults to public endpoint if not set)
+- Wallet: `{DEX_WALLET_ADDRESS}`
+- Transactions signed with `{DEX_PRIVATE_KEY}`
+
+## Error handling
+- Insufficient balance: Check ETH balance for gas + value
+- Slippage too high: Increase slippage tolerance or reduce trade size
+- Nonce too low: A pending transaction exists — wait or speed up
+- Gas estimation failed: Transaction would revert — check allowances and balances
+- RPC errors: Switch to a different RPC endpoint
+
+## Best practices
+- ALWAYS confirm swap details (tokens, amounts, slippage) before executing
+- Show estimated gas costs before transactions
+- Use read-only queries (balances, quotes) freely without confirmation
+- Never expose the private key in messages
+- Default slippage tolerance: 0.5% for stablecoins, 1-3% for volatile pairs
+- Check token allowances before swapping
+"""

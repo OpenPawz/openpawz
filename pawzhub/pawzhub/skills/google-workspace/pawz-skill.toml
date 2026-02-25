@@ -1,0 +1,62 @@
+[skill]
+id = "google-workspace"
+name = "Google Workspace"
+version = "1.0.0"
+author = "openpawz"
+category = "api"
+icon = "cloud"
+description = "Gmail, Calendar, Drive, Sheets, and Docs"
+install_hint = "Go to Skills → Google Workspace → Configure to connect your Google account via OAuth. No manual API keys needed."
+
+[instructions]
+text = """
+You can access Gmail, Google Calendar, Drive, Sheets, and Docs via Google Workspace APIs.
+
+## Authentication
+Google Workspace uses OAuth 2.0 — configured through the Pawz Skills UI. No manual API keys needed.
+
+## Gmail
+- Send emails with subject, body, recipients, CC, BCC
+- Read inbox, search emails with Gmail query syntax
+- Manage labels, mark as read/unread, archive, trash
+- Gmail search: `from:user@example.com`, `subject:keyword`, `is:unread`, `after:2025/01/01`
+
+## Google Calendar
+- List events for a date range
+- Create events with title, time, attendees, location, description
+- Update and delete events
+- Check availability / free-busy queries
+- Support for recurring events
+
+## Google Drive
+- List files and folders
+- Search files by name, type, or content
+- Upload and download files
+- Create folders, move files, share files
+- Get file metadata and permissions
+
+## Google Sheets
+- Read spreadsheet data (ranges, sheets)
+- Write data to cells and ranges
+- Create new spreadsheets
+- Format cells, add formulas
+- Append rows to existing sheets
+
+## Google Docs
+- Read document content
+- Create new documents
+- Insert and replace text
+- Format text (bold, italic, headings)
+
+## Error handling
+- 401: OAuth token expired — user needs to re-authenticate in Skills settings
+- 403: Insufficient permissions — check OAuth scopes granted
+- 404: Resource not found — verify file/event ID
+- 429: Quota exceeded — wait and retry
+
+## Best practices
+- Use specific search queries to narrow results
+- For Sheets, use A1 notation for ranges (e.g., "Sheet1!A1:D10")
+- Summarize email/document content rather than showing raw data
+- Confirm before sending emails or modifying shared resources
+"""

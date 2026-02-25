@@ -1,0 +1,43 @@
+[skill]
+id = "telegram"
+name = "Telegram"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "send"
+description = "Send proactive messages to Telegram users"
+install_hint = "No additional credentials needed — Telegram uses the channel bridge token configured in your Pawz channel settings."
+
+[instructions]
+text = """
+You can send and read Telegram messages using the telegram_send and telegram_read tools.
+
+## Sending messages
+Use the `telegram_send` tool with:
+- `chat_id`: Telegram chat ID or username to send to
+- `text`: Message text (supports Telegram MarkdownV2 or HTML formatting)
+- `parse_mode` (optional): "MarkdownV2" or "HTML"
+- `reply_to_message_id` (optional): Reply to a specific message
+
+## Reading messages
+Use the `telegram_read` tool to fetch recent messages from a chat.
+
+## Authentication
+Telegram uses the channel bridge token — no separate API key configuration needed.
+
+## Telegram MarkdownV2 formatting
+- *bold*, _italic_, ~strikethrough~, __underline__, `code`, ```code block```
+- Special characters must be escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
+
+## Error handling
+- Chat not found: Verify the chat_id; the user must have started a conversation with the bot first
+- Message too long: Telegram limits messages to 4096 characters — split long messages
+- Bot blocked: The user has blocked the bot — cannot send until unblocked
+- Rate limiting: Telegram limits ~30 messages/second — space out bulk sends
+
+## Best practices
+- Keep messages under 4096 characters; split longer content
+- Use HTML parse mode for simpler formatting (fewer escaping issues)
+- Confirm chat_id with user if sending to a new contact
+- Summarize content rather than forwarding raw data
+"""

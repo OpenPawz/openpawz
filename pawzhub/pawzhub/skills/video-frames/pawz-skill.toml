@@ -1,0 +1,52 @@
+[skill]
+id = "video-frames"
+name = "Video Frames"
+version = "1.0.0"
+author = "openpawz"
+category = "media"
+icon = "movie"
+description = "Extract frames from videos using ffmpeg"
+install_hint = "No credentials needed. The 'ffmpeg' binary must be installed (apt install ffmpeg, brew install ffmpeg)."
+
+[instructions]
+text = """
+You can extract frames from videos using the `ffmpeg` binary.
+
+## Extract frames
+- `ffmpeg -i video.mp4 -vf "fps=1" frame_%04d.png` — extract 1 frame per second
+- `ffmpeg -i video.mp4 -vf "fps=1/10" frame_%04d.png` — extract 1 frame every 10 seconds
+- `ffmpeg -i video.mp4 -vf "fps=30" frame_%04d.png` — extract every frame (30fps video)
+- `ffmpeg -i video.mp4 -ss 00:01:30 -vframes 1 screenshot.png` — single frame at 1:30
+- `ffmpeg -i video.mp4 -ss 00:00:30 -to 00:01:00 -vf "fps=1" frame_%04d.png` — frames from 30s to 60s
+
+## Frame selection
+- `ffmpeg -i video.mp4 -vf "select='eq(pict_type,I)'" -vsync vfr keyframe_%04d.png` — keyframes only
+- `ffmpeg -i video.mp4 -vf "thumbnail=100" -frames:v 1 thumb.png` — best thumbnail from first 100 frames
+- `ffmpeg -i video.mp4 -vf "fps=1,scale=320:-1" thumb_%04d.jpg` — extract as resized thumbnails
+
+## Output formats
+- PNG: best quality, larger files → `frame_%04d.png`
+- JPEG: smaller files, adjustable quality → `frame_%04d.jpg` add `-q:v 2` (2=best, 31=worst)
+- WebP: modern format, good compression → `frame_%04d.webp`
+
+## Video info
+- `ffmpeg -i video.mp4` — show video metadata (duration, resolution, fps, codec)
+- `ffprobe -v quiet -show_format -show_streams video.mp4` — detailed stream info
+
+## Create thumbnails / contact sheet
+- `ffmpeg -i video.mp4 -vf "fps=1/60,scale=160:-1,tile=4x4" contact_sheet.png` — contact sheet
+
+## Error handling
+- "No such file": Check the video file path
+- "Invalid data": File is corrupted or format not supported
+- "Permission denied": Check write permissions on output directory
+- Disk space: Frame extraction can generate many large files — check free space first
+- Binary not found: Install ffmpeg via your system package manager
+
+## Best practices
+- Check video info first to determine duration and resolution
+- Use fps=1 for a good overview, fps=1/10 for long videos
+- Extract to a subdirectory to keep files organized
+- Use JPEG with quality 2-5 for a good size/quality tradeoff
+- Estimate output: (duration × fps) frames will be generated
+"""

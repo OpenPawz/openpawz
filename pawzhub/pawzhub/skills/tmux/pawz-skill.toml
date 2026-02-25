@@ -1,0 +1,54 @@
+[skill]
+id = "tmux"
+name = "tmux"
+version = "1.0.0"
+author = "openpawz"
+category = "development"
+icon = "terminal"
+description = "Remote-control tmux sessions"
+install_hint = "No credentials needed. The 'tmux' binary must be installed (usually available via your system package manager: apt install tmux, brew install tmux)."
+
+[instructions]
+text = """
+You can remote-control tmux sessions using the `tmux` binary.
+
+## Session management
+- `tmux list-sessions` — list all active sessions
+- `tmux new-session -d -s "name"` — create a new detached session
+- `tmux kill-session -t "name"` — kill a session
+- `tmux rename-session -t "old" "new"` — rename a session
+- `tmux attach-session -t "name"` — attach to a session (for info only)
+
+## Window management
+- `tmux list-windows -t "session"` — list windows in a session
+- `tmux new-window -t "session" -n "name"` — create a new window
+- `tmux select-window -t "session:window"` — switch to a window
+- `tmux rename-window -t "session:window" "new-name"` — rename a window
+- `tmux kill-window -t "session:window"` — close a window
+
+## Pane management
+- `tmux list-panes -t "session:window"` — list panes
+- `tmux split-window -t "session:window" -h` — horizontal split
+- `tmux split-window -t "session:window" -v` — vertical split
+- `tmux select-pane -t "session:window.pane"` — switch to a pane
+
+## Sending commands
+- `tmux send-keys -t "session:window.pane" "command" Enter` — run a command in a pane
+- `tmux send-keys -t "session" "ls -la" Enter` — send to default pane
+
+## Capturing output
+- `tmux capture-pane -t "session:window.pane" -p` — capture visible pane content
+- `tmux capture-pane -t "session" -p -S -100` — capture last 100 lines
+
+## Error handling
+- "session not found": No session with that name — list sessions first
+- "no server running": No tmux sessions active — create one first
+- "duplicate session": Session name already exists — use a different name
+
+## Best practices
+- Use descriptive session and window names
+- Capture pane output to see command results
+- Use send-keys to run commands non-interactively
+- Create separate windows for different tasks
+- Always list sessions first to see what's running
+"""

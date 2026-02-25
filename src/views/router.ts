@@ -41,6 +41,7 @@ export const allViewIds = [
   'today-view',
   'trading-view',
   'squads-view',
+  'pawzhub-view',
 ];
 
 const viewMap: Record<string, string> = {
@@ -63,6 +64,7 @@ const viewMap: Record<string, string> = {
   orchestrator: 'tasks-view',
   trading: 'trading-view',
   squads: 'squads-view',
+  pawzhub: 'pawzhub-view',
 };
 
 /** Check whether the app has been initialised (engine mode active). */
@@ -163,6 +165,13 @@ export function switchView(viewName: string) {
     case 'squads':
       SquadsModule.loadSquads();
       break;
+    case 'pawzhub': {
+      const iframe = document.getElementById('pawzhub-iframe') as HTMLIFrameElement | null;
+      if (iframe && (!iframe.src || iframe.src === 'about:blank')) {
+        iframe.src = 'https://openpawz.mintlify.dev';
+      }
+      break;
+    }
     default:
       break;
   }

@@ -1,0 +1,51 @@
+[skill]
+id = "camsnap"
+name = "Camera Snap"
+version = "1.0.0"
+author = "openpawz"
+category = "smart_home"
+icon = "videocam"
+description = "Capture frames from IP cameras"
+install_hint = "No credentials needed. The 'camsnap' CLI binary must be installed. Configure your camera RTSP/HTTP URLs in the camsnap configuration."
+
+[instructions]
+text = """
+You can capture frames from IP cameras using the `camsnap` CLI binary.
+
+## Capture frames
+- `camsnap capture` — capture a frame from the default camera
+- `camsnap capture --camera "front_door"` — capture from a named camera
+- `camsnap capture --camera "backyard" --output snapshot.jpg` — save to specific file
+- `camsnap capture --all` — capture from all configured cameras
+
+## Camera management
+- `camsnap list` — list all configured cameras
+- `camsnap status` — show camera connection status
+- `camsnap add "camera_name" --url "rtsp://192.168.1.100:554/stream"` — add a camera
+- `camsnap remove "camera_name"` — remove a camera
+
+## Stream URLs
+Common formats:
+- RTSP: `rtsp://user:pass@192.168.1.100:554/stream1`
+- HTTP: `http://192.168.1.100/snap.jpg`
+- ONVIF: auto-discovered on local network
+
+## Output
+- Default output: JPEG image saved to current directory
+- Images include timestamp metadata
+- Can specify output directory with `--output-dir`
+
+## Error handling
+- "camera not found": List cameras to verify name — `camsnap list`
+- "connection refused": Camera is offline or URL is incorrect
+- "authentication failed": Check camera username/password in URL
+- "timeout": Camera is not responding — check network connectivity
+- Binary not found: Install camsnap via the Pawz skill installer
+
+## Best practices
+- List cameras first to see available feeds
+- Check camera status before capturing to avoid timeout errors
+- Use descriptive camera names (front_door, garage, backyard)
+- Captured images can be analyzed or shared with the user
+- For security monitoring, capture at regular intervals
+"""

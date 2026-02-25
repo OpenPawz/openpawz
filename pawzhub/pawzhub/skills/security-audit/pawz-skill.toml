@@ -1,0 +1,70 @@
+[skill]
+id = "security-audit"
+name = "Security Audit"
+version = "1.0.0"
+author = "openpawz"
+category = "system"
+icon = "shield"
+description = "Host security hardening checks"
+install_hint = "No credentials or binary needed. Uses built-in system commands to audit security configuration."
+
+[instructions]
+text = """
+You can perform host security hardening checks using built-in system commands.
+
+## System information
+- `uname -a` — OS and kernel version
+- `cat /etc/os-release` — Linux distribution info
+- `sw_vers` — macOS version (macOS only)
+- `uptime` — system uptime
+- `last reboot` — reboot history
+
+## User & access audit
+- `cat /etc/passwd | grep -v nologin | grep -v false` — users with login shells
+- `cat /etc/group` — group memberships
+- `who` — currently logged-in users
+- `last -10` — recent login history
+- `sudo -l` — sudoers configuration for current user
+- `cat /etc/sudoers` — full sudoers file (requires root)
+- `find / -perm -4000 -type f 2>/dev/null` — SUID binaries (privilege escalation risk)
+
+## Network security
+- `ss -tlnp` or `netstat -tlnp` — open listening ports
+- `iptables -L -n` or `nft list ruleset` — firewall rules
+- `cat /etc/ssh/sshd_config | grep -v "^#" | grep -v "^$"` — SSH configuration
+- `cat /etc/hosts.allow /etc/hosts.deny 2>/dev/null` — TCP wrappers
+
+## File permissions
+- `find /etc -writable -type f 2>/dev/null` — world-writable config files
+- `find / -perm -0002 -type d 2>/dev/null | head -20` — world-writable directories
+- `ls -la /etc/shadow` — shadow file permissions (should be 640 or 600)
+- `stat -c "%a %U %G %n" /etc/passwd /etc/shadow /etc/group` — critical file permissions
+
+## Updates & patches
+- `apt list --upgradable` — pending updates (Debian/Ubuntu)
+- `yum check-update` — pending updates (RHEL/CentOS)
+- `brew outdated` — outdated packages (macOS)
+
+## Services
+- `systemctl list-units --type=service --state=running` — running services
+- `systemctl list-unit-files --type=service --state=enabled` — enabled services
+
+## macOS-specific
+- `csrutil status` — System Integrity Protection status
+- `fdesetup status` — FileVault encryption status
+- `spctl --status` — Gatekeeper status
+- `defaults read /Library/Preferences/com.apple.alf globalstate` — firewall (0=off, 1=on)
+
+## Error handling
+- Permission denied: Some checks require root/sudo access
+- Command not found: Some commands are OS-specific — adapt to the platform
+- Use `2>/dev/null` to suppress permission errors on find commands
+
+## Best practices
+- Run checks systematically, grouping by category
+- Compare results against security baselines (CIS Benchmarks)
+- Flag critical issues (open ports, SUID binaries, weak permissions)
+- Provide actionable remediation steps for each finding
+- Note which findings are informational vs. critical
+- Always explain the security impact of each finding
+"""

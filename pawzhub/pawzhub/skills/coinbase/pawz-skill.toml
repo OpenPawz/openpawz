@@ -1,0 +1,66 @@
+[skill]
+id = "coinbase"
+name = "Coinbase"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "currency_bitcoin"
+description = "Trade crypto via Coinbase Developer Platform"
+install_hint = "Create API keys at portal.cdp.coinbase.com → API Keys → Create API Key. Save both the key name and private key securely."
+
+[[credentials]]
+key = "CDP_API_KEY_NAME"
+label = "CDP API Key Name"
+description = "API key name from the Coinbase Developer Platform"
+required = true
+placeholder = "organizations/xxx/apiKeys/yyy"
+
+[[credentials]]
+key = "CDP_API_KEY_SECRET"
+label = "CDP API Key Secret"
+description = "Private key (EC) associated with the API key"
+required = true
+placeholder = "-----BEGIN EC PRIVATE KEY-----\n...\n-----END EC PRIVATE KEY-----"
+
+[instructions]
+text = """
+You can trade cryptocurrency and manage wallets via the Coinbase Developer Platform (CDP).
+
+## Authentication
+CDP uses JWT authentication signed with the EC private key:
+- Key Name: `{CDP_API_KEY_NAME}`
+- Private Key: `{CDP_API_KEY_SECRET}`
+- Sign JWT with ES256 algorithm, include key name in `kid` header
+
+## Core capabilities
+- **List accounts**: View balances across all wallets
+- **Get prices**: Current spot/buy/sell prices for crypto pairs
+- **Place orders**: Market and limit orders for supported trading pairs
+- **Transaction history**: View past trades, sends, and receives
+- **Send crypto**: Transfer crypto to external addresses
+- **Create wallets**: Generate new wallets for supported networks
+
+## Common trading pairs
+BTC-USD, ETH-USD, SOL-USD, DOGE-USD, and many more.
+
+## API endpoints
+Base URL: `https://api.coinbase.com/api/v3/brokerage`
+- GET `/accounts` — list accounts
+- POST `/orders` — place an order
+- GET `/orders/historical` — order history
+- GET `/products/{product_id}` — product/pair info
+- GET `/products/{product_id}/ticker` — current price
+
+## Error handling
+- 401: Invalid API key or JWT signature — verify key name and secret
+- 403: Insufficient permissions — check API key scopes
+- 400: Invalid order parameters — verify amount, side (BUY/SELL), product_id
+- Rate limits: 10 requests/second — implement backoff
+
+## Best practices
+- Always confirm trade details (pair, amount, side) with the user before executing
+- Show current price before placing orders
+- Use limit orders for better price control
+- Never expose the private key in messages
+- Double-check wallet addresses before sending crypto
+"""

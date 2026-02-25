@@ -1,0 +1,62 @@
+[skill]
+id = "whisper-api"
+name = "Whisper API"
+version = "1.0.0"
+author = "openpawz"
+category = "media"
+icon = "cloud_upload"
+description = "Transcribe audio via OpenAI Whisper API"
+install_hint = "Get your OpenAI API key at platform.openai.com/api-keys. The Whisper API supports audio files up to 25 MB."
+
+[[credentials]]
+key = "OPENAI_API_KEY"
+label = "OpenAI API Key"
+description = "API key from platform.openai.com"
+required = true
+placeholder = "sk-..."
+
+[instructions]
+text = """
+You can transcribe audio using the OpenAI Whisper API (cloud-based, fast, accurate).
+
+## Transcription
+Use `fetch` or `curl` with:
+- Method: POST
+- URL: `https://api.openai.com/v1/audio/transcriptions`
+- Headers: `Authorization: Bearer {OPENAI_API_KEY}`
+- Body: multipart/form-data with:
+  - `file`: audio file (max 25 MB)
+  - `model`: `whisper-1`
+  - `language` (optional): ISO-639-1 code (e.g., "en", "es", "fr")
+  - `response_format` (optional): `json`, `text`, `srt`, `vtt`, `verbose_json`
+  - `temperature` (optional): 0-1, lower = more deterministic
+
+## Translation (to English)
+- URL: `https://api.openai.com/v1/audio/translations`
+- Same parameters as transcription
+- Translates any supported language to English
+
+## Supported formats
+MP3, MP4, MPEG, MPGA, M4A, WAV, WEBM — max 25 MB per file.
+
+## Response formats
+- `json` — `{"text": "transcribed text"}`
+- `verbose_json` — includes word-level timestamps, segments, language detection
+- `text` — plain text only
+- `srt` — SubRip subtitles with timestamps
+- `vtt` — WebVTT subtitles with timestamps
+
+## Error handling
+- 401: Invalid API key — check at platform.openai.com/api-keys
+- 413: File too large — must be under 25 MB; split larger files
+- 400: Unsupported format — convert to a supported format first
+- 429: Rate limited — wait and retry with backoff
+- Quota exceeded: Check billing at platform.openai.com/account/billing
+
+## Best practices
+- Use `verbose_json` for maximum detail (timestamps, confidence)
+- Specify language when known for better accuracy
+- Split long audio files into chunks under 25 MB
+- Use the translation endpoint for non-English audio when English output is needed
+- Prefer this over local Whisper for faster results when API access is available
+"""

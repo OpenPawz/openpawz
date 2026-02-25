@@ -1,0 +1,76 @@
+[skill]
+id = "solana-dex"
+name = "Solana DEX"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "sunny"
+description = "Solana wallet with Jupiter + PumpPortal — 7 tools"
+install_hint = "Optionally configure a Solana RPC URL (defaults to public mainnet-beta), your wallet private key for signing, and a Jupiter API key for priority routing."
+
+[[credentials]]
+key = "JUPITER_API_KEY"
+label = "Jupiter API Key"
+description = "API key for Jupiter aggregator (for priority access)"
+required = false
+placeholder = "your-jupiter-api-key"
+
+[[credentials]]
+key = "SOLANA_RPC_URL"
+label = "Solana RPC URL"
+description = "Solana JSON-RPC endpoint (Helius, QuickNode, or public)"
+required = false
+placeholder = "https://api.mainnet-beta.solana.com"
+
+[[credentials]]
+key = "SOLANA_PRIVATE_KEY"
+label = "Wallet Private Key"
+description = "Base58-encoded private key for signing transactions"
+required = false
+placeholder = "5J..."
+
+[[credentials]]
+key = "SOLANA_WALLET_ADDRESS"
+label = "Wallet Address"
+description = "Solana wallet public key for read-only queries"
+required = false
+placeholder = "So1ana..."
+
+[instructions]
+text = """
+You have a Solana wallet with Jupiter aggregator and PumpPortal integration — 7 tools available.
+
+## Wallet operations
+- **Check balance**: SOL and SPL token balances for {SOLANA_WALLET_ADDRESS}
+- **Send SOL**: Transfer SOL to any address
+- **Send tokens**: Transfer SPL tokens
+
+## Jupiter swaps
+- **Get quotes**: Fetch best swap routes via Jupiter aggregator
+- **Execute swaps**: Swap any SPL token pair through Jupiter
+- Jupiter finds the best route across all Solana DEXes (Raydium, Orca, etc.)
+
+## PumpPortal
+- **Buy/sell on pump.fun**: Trade newly launched tokens via PumpPortal
+- Monitor and trade meme tokens on the pump.fun platform
+
+## Configuration
+- RPC: `{SOLANA_RPC_URL}` (defaults to mainnet-beta if not set)
+- Wallet: `{SOLANA_WALLET_ADDRESS}`
+- Jupiter API Key: `{JUPITER_API_KEY}` (optional, for priority routing)
+
+## Error handling
+- Insufficient SOL for rent: Solana accounts require rent-exempt minimum (~0.00203 SOL)
+- Transaction simulation failed: Check balances and token account existence
+- Blockhash expired: Retry the transaction with a fresh blockhash
+- Slippage exceeded: Increase slippage or reduce trade size
+- RPC rate limit: Switch to a paid RPC provider (Helius, QuickNode)
+
+## Best practices
+- ALWAYS confirm trade details with the user before executing swaps
+- Show Jupiter quote (price impact, route, minimum received) before executing
+- Warn about high price impact (>2%) trades
+- For pump.fun tokens, warn about extreme volatility and rug pull risks
+- Never expose the private key in messages
+- Use priority fees during network congestion
+"""

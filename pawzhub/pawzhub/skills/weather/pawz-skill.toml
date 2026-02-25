@@ -1,0 +1,58 @@
+[skill]
+id = "weather"
+name = "Weather"
+version = "1.0.0"
+author = "openpawz"
+category = "cli"
+icon = "cloud"
+description = "Get weather (no API key)"
+install_hint = "No credentials or binary needed. Uses free weather services that don't require an API key."
+
+[instructions]
+text = """
+You can get weather information without any API key using free weather services.
+
+## Using wttr.in (recommended)
+Use `curl` or `fetch` with wttr.in:
+- `curl -s "wttr.in/London"` — full weather report for London
+- `curl -s "wttr.in/London?format=3"` — one-line summary: "London: ⛅ +15°C"
+- `curl -s "wttr.in/London?format=j1"` — JSON format for parsing
+- `curl -s "wttr.in/New+York?m"` — metric units
+- `curl -s "wttr.in/Tokyo?u"` — US/imperial units
+- `curl -s "wttr.in/Paris?1"` — today only
+- `curl -s "wttr.in/Berlin?2"` — today and tomorrow
+
+## Format options for one-line output
+- `%c` — weather condition emoji
+- `%C` — weather condition text
+- `%t` — temperature
+- `%h` — humidity
+- `%w` — wind speed/direction
+- `%p` — precipitation
+- Example: `curl -s "wttr.in/London?format=%c+%t+%h+%w"`
+
+## JSON format (for structured data)
+`curl -s "wttr.in/London?format=j1"` returns:
+- `current_condition` — temperature, humidity, wind, description
+- `weather` — 3-day forecast with hourly breakdown
+- `nearest_area` — location info
+
+## Location formats
+- City name: `wttr.in/London`
+- City, Country: `wttr.in/London,UK`
+- Coordinates: `wttr.in/51.5,-0.1`
+- Airport code: `wttr.in/JFK`
+- IP-based (auto): `wttr.in/`
+
+## Error handling
+- "Unknown location": Try a more specific location name or coordinates
+- Network error: wttr.in requires internet connectivity
+- Rate limited: Wait a moment and retry (rare)
+
+## Best practices
+- Use JSON format (?format=j1) for reliable data parsing
+- Present weather in a friendly, readable format
+- Include temperature, conditions, and wind for a complete summary
+- Use the 3-day forecast from JSON for multi-day queries
+- Specify units based on the user's preference or locale
+"""

@@ -1,0 +1,65 @@
+[skill]
+id = "tts-elevenlabs"
+name = "ElevenLabs TTS"
+version = "1.0.0"
+author = "openpawz"
+category = "media"
+icon = "record_voice_over"
+description = "Text-to-speech via ElevenLabs"
+install_hint = "Get your ElevenLabs API key at elevenlabs.io → Profile → API Key. The 'sag' CLI binary must also be installed."
+
+[[credentials]]
+key = "ELEVENLABS_API_KEY"
+label = "ElevenLabs API Key"
+description = "API key from elevenlabs.io → Profile"
+required = true
+placeholder = "xi_..."
+
+[instructions]
+text = """
+You can convert text to speech using ElevenLabs via the `sag` CLI binary and the ElevenLabs API.
+
+## Using sag CLI
+- `sag speak "Hello, world!" --voice "Rachel"` — speak text with a named voice
+- `sag speak "Text" --voice "Rachel" --output speech.mp3` — save to file
+- `sag voices` — list available voices
+- `sag speak "Text" --voice "Rachel" --model "eleven_multilingual_v2"` — use multilingual model
+
+The `sag` binary uses {ELEVENLABS_API_KEY} automatically.
+
+## Using ElevenLabs API directly
+Base URL: `https://api.elevenlabs.io/v1`
+Auth header: `xi-api-key: {ELEVENLABS_API_KEY}`
+
+### Text to Speech
+POST `/text-to-speech/{voice_id}`
+- Headers: `Content-Type: application/json`, `xi-api-key: {ELEVENLABS_API_KEY}`
+- Body: `{"text": "Hello world", "model_id": "eleven_monolingual_v1"}`
+- Response: audio/mpeg stream — save to .mp3 file
+
+### List Voices
+GET `/voices` — returns available voices with IDs, names, and descriptions
+
+### Voice Settings
+Include in the body for fine-tuning:
+- `voice_settings.stability`: 0.0-1.0 (lower = more expressive)
+- `voice_settings.similarity_boost`: 0.0-1.0 (higher = closer to original voice)
+
+## Models
+- `eleven_monolingual_v1` — English only, fastest
+- `eleven_multilingual_v2` — 29 languages, highest quality
+- `eleven_turbo_v2` — low latency, good quality
+
+## Error handling
+- 401: Invalid API key — check at elevenlabs.io → Profile
+- 422: Text too long or invalid parameters
+- 429: Rate limited or quota exceeded — check usage at elevenlabs.io
+- Binary not found: Install sag via the Pawz skill installer
+
+## Best practices
+- Use sag CLI for simple text-to-speech tasks
+- List voices first to let users pick their preferred voice
+- Keep text segments under 5000 characters for best results
+- Use eleven_multilingual_v2 for non-English text
+- Save output as .mp3 for widest compatibility
+"""

@@ -1,0 +1,56 @@
+[skill]
+id = "blogwatcher"
+name = "Blog Watcher"
+version = "1.0.0"
+author = "openpawz"
+category = "cli"
+icon = "rss_feed"
+description = "Monitor blogs/RSS feeds"
+install_hint = "No credentials or binary needed. Uses curl to fetch RSS/Atom feeds and parse them."
+
+[instructions]
+text = """
+You can monitor blogs and RSS/Atom feeds for new content.
+
+## Fetching RSS/Atom feeds
+Use `curl` to fetch and parse feeds:
+- `curl -s "https://example.com/feed"` — fetch RSS feed
+- `curl -s "https://example.com/atom.xml"` — fetch Atom feed
+- `curl -s "https://example.com/feed.xml"` — common feed URL pattern
+
+## Common feed URL patterns
+- WordPress: `/feed/` or `/feed/rss/`
+- Medium: `/feed` on any Medium blog
+- Substack: `/feed`
+- Ghost: `/rss/`
+- GitHub releases: `https://github.com/{owner}/{repo}/releases.atom`
+- Reddit: `https://www.reddit.com/r/{subreddit}/.rss`
+- YouTube: `https://www.youtube.com/feeds/videos.xml?channel_id={CHANNEL_ID}`
+
+## Parsing feed content
+RSS feeds are XML. Key elements:
+- `<item>` or `<entry>` — individual posts
+- `<title>` — post title
+- `<link>` — post URL
+- `<pubDate>` or `<published>` — publication date
+- `<description>` or `<summary>` — post excerpt/content
+- `<author>` or `<dc:creator>` — author name
+
+## Monitoring for new posts
+1. Fetch the feed and parse the most recent items
+2. Compare publication dates against the last check
+3. Report any new items to the user
+
+## Error handling
+- 404: Feed URL is incorrect — try common patterns (/feed, /rss, /atom.xml)
+- Invalid XML: Site doesn't have an RSS feed — check for alternatives
+- Empty feed: Blog may have no recent posts
+- CORS/blocking: Some sites block automated requests — try with a User-Agent header
+
+## Best practices
+- Check feeds periodically for new content
+- Parse and summarize post titles, dates, and excerpts
+- Track which posts have been reported to avoid duplicates
+- Use `curl -s -L` to follow redirects
+- Sort by date (newest first) for relevance
+"""

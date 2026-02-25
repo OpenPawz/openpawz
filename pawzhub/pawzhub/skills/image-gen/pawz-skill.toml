@@ -1,0 +1,58 @@
+[skill]
+id = "image-gen"
+name = "Image Generation"
+version = "1.0.0"
+author = "openpawz"
+category = "media"
+icon = "image"
+description = "Generate images from text via Gemini"
+install_hint = "Get your Gemini API key at aistudio.google.com/apikey."
+
+[[credentials]]
+key = "GEMINI_API_KEY"
+label = "Gemini API Key"
+description = "API key from Google AI Studio (aistudio.google.com)"
+required = true
+placeholder = "AIzaSy..."
+
+[instructions]
+text = """
+You can generate images from text descriptions using Google's Gemini API.
+
+## Image generation
+Use `fetch` with:
+- Method: POST
+- URL: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={GEMINI_API_KEY}`
+- Headers: `Content-Type: application/json`
+- Body:
+```json
+{
+  "contents": [{"parts": [{"text": "Generate an image of: [description]"}]}],
+  "generationConfig": {"responseModalities": ["TEXT", "IMAGE"]}
+}
+```
+
+## Response handling
+The response includes base64-encoded image data in the parts array:
+- Check `candidates[0].content.parts` for image parts with `inlineData`
+- `inlineData.mimeType` contains the image format (e.g., "image/png")
+- `inlineData.data` contains the base64-encoded image
+
+## Prompt tips for better images
+- Be specific and descriptive: "A golden retriever playing in autumn leaves, soft sunlight, photorealistic"
+- Specify style: "digital art", "oil painting", "pencil sketch", "photorealistic", "watercolor"
+- Include composition details: "close-up", "wide angle", "top-down view"
+- Mention lighting: "soft natural light", "dramatic shadows", "golden hour"
+
+## Error handling
+- 400: Invalid prompt or content policy violation — rephrase the description
+- 403: API key invalid or Gemini API not enabled
+- 429: Rate limited — wait before retrying
+- Safety filters: Some prompts may be blocked — rephrase to be more specific and appropriate
+
+## Best practices
+- Write detailed, descriptive prompts for better results
+- Save generated images to a file for the user
+- Offer to refine the prompt if the first result isn't satisfactory
+- Respect content policies — avoid generating harmful or inappropriate imagery
+"""

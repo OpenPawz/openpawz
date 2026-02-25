@@ -7,9 +7,9 @@
 use crate::atoms::error::EngineResult;
 use serde::{Deserialize, Serialize};
 
-/// Registry URL: raw JSON from the PawzHub GitHub repo.
+/// Registry URL: raw JSON from the pawzhub/ directory in the main repo.
 const REGISTRY_URL: &str =
-    "https://raw.githubusercontent.com/OpenPawz/pawzhub/main/registry.json";
+    "https://raw.githubusercontent.com/OpenPawz/openpawz/main/pawzhub/registry.json";
 
 /// A single entry in the PawzHub registry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,7 +108,7 @@ pub async fn fetch_pawzhub_toml(
     // Try main branch first, then master
     for branch in &["main", "master"] {
         let url = format!(
-            "https://raw.githubusercontent.com/{}/{}/skills/{}/pawz-skill.toml",
+            "https://raw.githubusercontent.com/{}/{}/pawzhub/skills/{}/pawz-skill.toml",
             source_repo, branch, skill_id
         );
 

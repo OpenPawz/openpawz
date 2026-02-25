@@ -1,0 +1,73 @@
+[skill]
+id = "trello"
+name = "Trello"
+version = "1.0.0"
+author = "openpawz"
+category = "api"
+icon = "dashboard"
+description = "Manage Trello boards, lists, cards, labels — 28 tools"
+install_hint = "Get your API key at trello.com/app-key. Then generate a token by visiting the authorization URL shown on that page. You need both the key and token."
+
+[[credentials]]
+key = "TRELLO_API_KEY"
+label = "Trello API Key"
+description = "API key from trello.com/app-key"
+required = true
+placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+[[credentials]]
+key = "TRELLO_TOKEN"
+label = "Trello Token"
+description = "Authorization token generated from the API key page"
+required = true
+placeholder = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+
+[instructions]
+text = """
+You can manage Trello boards, lists, cards, and labels — 28 tools available.
+
+## Authentication
+All requests include query parameters: `?key={TRELLO_API_KEY}&token={TRELLO_TOKEN}`
+Base URL: `https://api.trello.com/1`
+
+## Boards
+- GET `/members/me/boards` — list your boards
+- GET `/boards/{id}` — get board details
+- GET `/boards/{id}/lists` — get lists on a board
+- GET `/boards/{id}/cards` — get all cards on a board
+
+## Lists
+- POST `/lists` — create a list (`name`, `idBoard`)
+- PUT `/lists/{id}` — update a list
+- PUT `/lists/{id}/closed` — archive a list
+
+## Cards
+- POST `/cards` — create a card (`name`, `idList`, optional: `desc`, `due`, `idLabels`)
+- GET `/cards/{id}` — get card details
+- PUT `/cards/{id}` — update a card (name, desc, due, idList for moving)
+- DELETE `/cards/{id}` — delete a card
+- POST `/cards/{id}/actions/comments` — add a comment
+- PUT `/cards/{id}/idList` — move card to another list
+
+## Labels
+- GET `/boards/{id}/labels` — list labels on a board
+- POST `/labels` — create a label (`name`, `color`, `idBoard`)
+- POST `/cards/{id}/idLabels` — add label to card
+- DELETE `/cards/{id}/idLabels/{idLabel}` — remove label from card
+
+## Checklists
+- POST `/checklists` — create checklist on a card (`idCard`, `name`)
+- POST `/checklists/{id}/checkItems` — add item to checklist
+
+## Error handling
+- 401: Invalid key or token — regenerate at trello.com/app-key
+- 404: Board/card not found — verify the ID
+- 429: Rate limited (300 requests per 10 seconds) — back off
+- "invalid id": Trello IDs are 24-character hex strings
+
+## Best practices
+- List boards first to get valid board IDs
+- Use board labels for consistent card categorization
+- Move cards between lists to update status (e.g., To Do → Doing → Done)
+- Add due dates and checklists for task tracking
+"""

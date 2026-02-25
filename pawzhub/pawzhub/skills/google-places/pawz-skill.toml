@@ -1,0 +1,58 @@
+[skill]
+id = "google-places"
+name = "Google Places"
+version = "1.0.0"
+author = "openpawz"
+category = "api"
+icon = "location_on"
+description = "Search places, reviews via Google Places API"
+install_hint = "Get a Google Places API key from console.cloud.google.com → APIs & Services → Credentials → Create API Key. Enable the Places API (New) in your project."
+
+[[credentials]]
+key = "GOOGLE_PLACES_API_KEY"
+label = "Google Places API Key"
+description = "API key from Google Cloud Console with Places API enabled"
+required = true
+placeholder = "AIzaSy..."
+
+[instructions]
+text = """
+You can search for places and read reviews using the Google Places API and the `goplaces` CLI binary.
+
+## Using goplaces CLI
+The `goplaces` binary is available for place searches and lookups:
+- `goplaces search "coffee shops near Times Square"` — text search
+- `goplaces nearby --lat 40.7580 --lng -73.9855 --type restaurant --radius 500` — nearby search
+- `goplaces details {place_id}` — get full place details
+- `goplaces reviews {place_id}` — get place reviews
+- `goplaces photos {place_id}` — get place photos
+
+The `goplaces` binary uses {GOOGLE_PLACES_API_KEY} automatically.
+
+## Google Places API (direct)
+Base URL: `https://places.googleapis.com/v1`
+Auth header: `X-Goog-Api-Key: {GOOGLE_PLACES_API_KEY}`
+
+### Text Search
+POST `/places:searchText`
+Body: `{"textQuery": "pizza in New York", "maxResultCount": 10}`
+Include: `X-Goog-FieldMask: places.displayName,places.formattedAddress,places.rating`
+
+### Nearby Search
+POST `/places:searchNearby`
+Body: `{"locationRestriction": {"circle": {"center": {"latitude": 40.7, "longitude": -73.9}, "radius": 500.0}}, "includedTypes": ["restaurant"]}`
+
+### Place Details
+GET `/places/{place_id}` with field mask header
+
+## Error handling
+- 400: Invalid request — check coordinates, place_id format
+- 403: API key invalid or Places API not enabled — verify in Cloud Console
+- OVER_QUERY_LIMIT: Daily quota exceeded — check billing/quota in Cloud Console
+
+## Best practices
+- Use field masks to reduce response size and API costs
+- Prefer text search for natural language queries
+- Use nearby search with coordinates for location-based queries
+- Cache place_ids for repeated lookups
+"""

@@ -81,6 +81,7 @@
             "pages": [
               "guides/integrations",
               "guides/extensions",
+              "guides/n8n",
               "guides/voice",
               "guides/email"
             ]

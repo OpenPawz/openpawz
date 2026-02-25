@@ -1,0 +1,72 @@
+[skill]
+id = "rest-api"
+name = "REST API"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "api"
+description = "Make authenticated API calls to any REST service"
+install_hint = "Configure the base URL and API key for the REST service you want to connect to. The auth header defaults to 'Authorization' with prefix 'Bearer'."
+
+[[credentials]]
+key = "API_BASE_URL"
+label = "API Base URL"
+description = "Base URL of the REST API (no trailing slash)"
+required = true
+placeholder = "https://api.example.com/v1"
+
+[[credentials]]
+key = "API_KEY"
+label = "API Key"
+description = "API key or token for authentication"
+required = true
+placeholder = "your-api-key"
+
+[[credentials]]
+key = "API_AUTH_HEADER"
+label = "Auth Header Name"
+description = "Name of the authentication header (default: Authorization)"
+required = false
+placeholder = "Authorization"
+
+[[credentials]]
+key = "API_AUTH_PREFIX"
+label = "Auth Prefix"
+description = "Prefix before the API key in the header value (default: Bearer)"
+required = false
+placeholder = "Bearer"
+
+[instructions]
+text = """
+You can make authenticated REST API calls to any configured service.
+
+## Making requests
+Use `fetch` or the appropriate API tool with:
+- Base URL: `{API_BASE_URL}`
+- Auth header: `{API_AUTH_HEADER}: {API_AUTH_PREFIX} {API_KEY}`
+  (defaults to `Authorization: Bearer {API_KEY}` if not customized)
+
+## Supported methods
+- GET: Retrieve resources
+- POST: Create resources (include Content-Type: application/json)
+- PUT/PATCH: Update resources
+- DELETE: Remove resources
+
+## Request format
+- Always include `Content-Type: application/json` for POST/PUT/PATCH
+- Include the authentication header on every request
+- Use query parameters for filtering/pagination on GET requests
+
+## Error handling
+- 401/403: Authentication failed — verify API key and header configuration
+- 404: Endpoint not found — check the base URL and path
+- 429: Rate limited — wait and retry with exponential backoff
+- 500+: Server error — retry after a short delay
+
+## Best practices
+- Start with a simple GET to verify connectivity and auth
+- Parse and summarize API responses for the user
+- Handle pagination (check for next_page, cursor, or Link headers)
+- Respect rate limits indicated in response headers
+- URL-encode query parameters properly
+"""

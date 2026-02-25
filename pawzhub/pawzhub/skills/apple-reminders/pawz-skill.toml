@@ -1,0 +1,44 @@
+[skill]
+id = "apple-reminders"
+name = "Apple Reminders"
+version = "1.0.0"
+author = "openpawz"
+category = "productivity"
+icon = "alarm"
+description = "Manage Apple Reminders on macOS"
+install_hint = "No credentials needed. Requires macOS with Apple Reminders app. The 'remindctl' CLI binary must be installed."
+
+[instructions]
+text = """
+You can manage Apple Reminders on macOS using the `remindctl` CLI binary.
+
+## Commands
+- `remindctl list` — list all reminder lists
+- `remindctl list "List Name"` — list reminders in a specific list
+- `remindctl show {reminder_id}` — show reminder details
+- `remindctl add "Remember to buy milk" --list "Shopping"` — add a reminder
+- `remindctl add "Call dentist" --list "Personal" --due "2025-03-01 10:00"` — add with due date
+- `remindctl add "Task" --list "Work" --priority high` — add with priority (low/medium/high)
+- `remindctl complete {reminder_id}` — mark as completed
+- `remindctl uncomplete {reminder_id}` — mark as incomplete
+- `remindctl delete {reminder_id}` — delete a reminder
+- `remindctl search "query"` — search across all lists
+- `remindctl overdue` — show overdue reminders
+
+## Reminder properties
+- Title, notes, due date/time, priority (low/medium/high)
+- List assignment, completion status
+- Flagged status
+
+## Error handling
+- "list not found": Invalid list name — run `remindctl list` to see available lists
+- "reminder not found": Invalid reminder_id — list reminders to get valid IDs
+- Permission denied: Grant Terminal/app access to Reminders in System Settings → Privacy & Security
+- Binary not found: Install remindctl via the Pawz skill installer
+
+## Best practices
+- List available reminder lists before creating or querying
+- Include due dates for time-sensitive reminders
+- Check overdue reminders proactively when the user asks about tasks
+- Confirm before deleting reminders
+"""

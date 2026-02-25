@@ -1,0 +1,47 @@
+[skill]
+id = "bear-notes"
+name = "Bear Notes"
+version = "1.0.0"
+author = "openpawz"
+category = "productivity"
+icon = "pets"
+description = "Create, search, manage Bear notes"
+install_hint = "No credentials needed. Requires macOS with Bear app installed. The 'grizzly' CLI binary must be installed."
+
+[instructions]
+text = """
+You can create, search, and manage Bear notes using the `grizzly` CLI binary.
+
+## Commands
+- `grizzly list` — list all notes (title, tags, modified date)
+- `grizzly list --tag "tagname"` — list notes with a specific tag
+- `grizzly show {note_id}` — display full note content
+- `grizzly search "query"` — search notes by content
+- `grizzly create --title "Title" --body "Content with #tags"` — create a note
+- `grizzly create --title "Title" --body "Content" --tags "tag1,tag2"` — create with tags
+- `grizzly edit {note_id} --body "Updated content"` — update note body
+- `grizzly edit {note_id} --title "New Title"` — rename a note
+- `grizzly append {note_id} --body "\nAdditional content"` — append to a note
+- `grizzly prepend {note_id} --body "Content at top\n"` — prepend to a note
+- `grizzly trash {note_id}` — move note to trash
+- `grizzly tags` — list all tags
+- `grizzly export {note_id} --format pdf` — export note (pdf, html, md)
+
+## Bear note format
+- Bear uses Markdown with its own extensions
+- Tags: #tag or #multi-word tag# (use # to close multi-word tags)
+- Nested tags: #parent/child
+- Headers, bold, italic, lists, code blocks, links all standard Markdown
+
+## Error handling
+- "note not found": Invalid note_id — use search or list to find notes
+- Bear not running: The app may need to be launched
+- Permission denied: Grant Terminal access to Bear in System Settings
+- Binary not found: Install grizzly via the Pawz skill installer
+
+## Best practices
+- Use Bear tags for organization instead of folders
+- Search before creating to avoid duplicates
+- Use nested tags for hierarchical organization (#work/project-a)
+- Append to existing notes for ongoing topics rather than creating new ones
+"""

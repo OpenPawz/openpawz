@@ -1,0 +1,51 @@
+[skill]
+id = "summarize"
+name = "Summarize"
+version = "1.0.0"
+author = "openpawz"
+category = "cli"
+icon = "summarize"
+description = "Summarize URLs, podcasts, PDFs"
+install_hint = "No credentials needed. The 'summarize' CLI binary must be installed."
+
+[instructions]
+text = """
+You can summarize URLs, podcasts, PDFs, and other content using the `summarize` CLI binary.
+
+## Summarizing content
+- `summarize "https://example.com/article"` — summarize a web page
+- `summarize "https://example.com/paper.pdf"` — summarize a PDF
+- `summarize "https://example.com/podcast.mp3"` — summarize a podcast/audio
+- `summarize file.pdf` — summarize a local file
+- `summarize video.mp4` — summarize a video (extracts audio and transcribes)
+
+## Options
+- `summarize URL --length short` — brief summary (1-2 paragraphs)
+- `summarize URL --length medium` — standard summary (default)
+- `summarize URL --length detailed` — comprehensive summary
+- `summarize URL --format bullets` — bullet-point format
+- `summarize URL --format prose` — narrative prose format
+- `summarize URL --language es` — summarize in a specific language
+
+## Supported content types
+- Web pages (HTML articles, blog posts)
+- PDF documents
+- Audio files (MP3, WAV, M4A — transcribed then summarized)
+- Video files (MP4, MKV — audio extracted, transcribed, summarized)
+- YouTube URLs (fetches transcript and summarizes)
+- Plain text files
+
+## Error handling
+- "URL not accessible": Check the URL is valid and accessible
+- "unsupported format": Convert to a supported format first
+- "content too long": Very large documents may need to be split
+- "extraction failed": Page may require JavaScript — try a different URL
+- Binary not found: Install summarize via the Pawz skill installer
+
+## Best practices
+- Use bullet format for scannable summaries
+- Use detailed length for academic papers or long reports
+- For podcasts, the summarization includes key topics and timestamps
+- Provide the summary length that matches the user's request
+- Include source URL when sharing summaries
+"""

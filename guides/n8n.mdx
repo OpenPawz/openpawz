@@ -1,0 +1,159 @@
+---
+title: "n8n"
+description: "Connect your Pawz agents to n8n workflow automation — trigger, manage, and monitor workflows via the REST API."
+---
+
+# n8n
+
+Connect your Pawz agents to [n8n](https://n8n.io) — the open-source workflow automation platform. Your agents can list, trigger, activate, and monitor n8n workflows using the n8n REST API.
+
+<Note>
+This is a **Tier 2 Integration** — it uses encrypted credentials and `fetch`-based API calls. No additional binaries required.
+</Note>
+
+---
+
+## Why n8n + OpenPawz?
+
+n8n is a visual workflow automation tool (like Zapier, but self-hosted and open-source). Combining it with OpenPawz gives you:
+
+- **Natural language workflow control** — tell your agent "run the weekly report workflow" instead of clicking through the n8n UI
+- **Bidirectional automation** — n8n triggers agents via webhooks, agents trigger n8n via the API
+- **Monitoring** — agents check execution history and report failures
+- **Dynamic orchestration** — agents activate/deactivate workflows based on context (e.g. "pause all marketing workflows until Monday")
+
+```mermaid actions={false}
+graph LR
+    subgraph OpenPawz
+        A["Agent"] -->|"fetch → n8n API"| B["n8n Integration"]
+    end
+    subgraph n8n
+        B -->|"List / Execute / Monitor"| C["Workflows"]
+        C -->|"Webhook trigger"| A
+    end
+```
+
+---
+
+## Setup
+
+### 1. Get your n8n API key
+
+1. Open your n8n instance (e.g. `http://localhost:5678`)
+2. Go to **Settings → API**
+3. Click **Create API Key**
+4. Copy the key
+
+### 2. Install the integration
+
+<Tabs>
+  <Tab title="From PawzHub">
+    1. Open the **Skills** tab in the sidebar
+    2. Search for **n8n**
+    3. Click **Install**
+  </Tab>
+  <Tab title="Manual">
+    Place the manifest at:
+    ```
+    ~/.paw/skills/n8n/pawz-skill.toml
+    ```
+  </Tab>
+</Tabs>
+
+### 3. Configure credentials
+
+1. Go to **Settings → Skills**
+2. Find the **n8n** integration
+3. Enter:
+   - **n8n API Key** — the key from step 1
+   - **n8n Instance URL** — your n8n base URL (e.g. `http://localhost:5678`, no trailing slash)
+
+### 4. Assign to an agent
+
+1. Open the **Agents** tab
+2. Select the agent you want to connect
+3. Go to the agent's **Skills** sub-tab
+4. Enable **n8n**
+
+---
+
+## What your agent can do
+
+| Action | Description |
+|--------|-------------|
+| **List workflows** | See all workflows with their active/inactive status |
+| **Execute a workflow** | Trigger any workflow by name or ID, optionally passing input data |
+| **Trigger via webhook** | Hit a workflow's webhook URL with a JSON payload |
+| **Activate / Deactivate** | Turn workflows on or off |
+| **Check executions** | View recent execution history, success/failure status |
+| **Debug failures** | Fetch execution details to see which node failed and why |
+
+---
+
+## Example prompts
+
+Once the integration is enabled, just talk to your agent:
+
+> "List all my n8n workflows"
+
+> "Run the 'Daily Report' workflow"
+
+> "Check if the last run of 'Email Digest' succeeded"
+
+> "Deactivate all workflows with 'test' in the name"
+
+> "Trigger the onboarding webhook with this data: {name: 'Alice', email: 'alice@example.com'}"
+
+---
+
+## Bidirectional: n8n triggering agents
+
+n8n can also trigger your Pawz agents using OpenPawz's built-in webhook server:
+
+1. **Enable the webhook server** in OpenPawz (Settings → Webhook)
+2. In n8n, add an **HTTP Request** node pointing to your Pawz webhook endpoint
+3. Send a JSON payload with the message and target agent
+
+This creates a full loop: agents trigger n8n workflows, and n8n workflows trigger agents.
+
+```mermaid actions={false}
+graph TD
+    A["User asks agent:\n'Run the daily report'"] --> B["Agent calls n8n API\nPOST /workflows/123/run"]
+    B --> C["n8n executes workflow\nCollects data, sends emails"]
+    C --> D["n8n hits Pawz webhook\n'Report complete: 42 records'"]
+    D --> E["Agent tells user:\n'Daily report done — 42 records processed'"]
+```
+
+---
+
+## Dashboard widget
+
+The integration includes a **Workflows** widget on the Dashboard showing:
+
+| Column | Description |
+|--------|-------------|
+| **Workflow** | Workflow name |
+| **Status** | Active (green) or Inactive (gray) |
+| **Last Updated** | When the workflow was last modified |
+
+The widget refreshes every 5 minutes.
+
+---
+
+## Troubleshooting
+
+| Problem | Solution |
+|---------|----------|
+| 401 Unauthorized | Verify your API key in Skills settings. Regenerate if expired. |
+| Connection refused | Check that your n8n instance is running and the URL is correct. |
+| Workflow not found | Ask the agent to list all workflows first to confirm available IDs. |
+| Execution fails | Ask the agent to fetch execution details — it will show which node errored. |
+| Webhook not working | Ensure the n8n workflow is **active** and the webhook path matches. |
+
+---
+
+## Security notes
+
+- Your n8n API key is **encrypted** in the Pawz vault (XOR, 32-byte key in OS keychain) — never stored in plain text
+- API calls go directly from your machine to your n8n instance — no cloud relay
+- The `fetch` domain allowlist applies — make sure your n8n domain is allowed if you have a blocklist configured

@@ -1,0 +1,60 @@
+[skill]
+id = "one-password"
+name = "1Password"
+version = "1.0.0"
+author = "openpawz"
+category = "system"
+icon = "lock"
+description = "Access 1Password vaults"
+install_hint = "No credentials needed in Pawz. The 'op' CLI binary must be installed and authenticated with your 1Password account (op signin)."
+
+[instructions]
+text = """
+You can access 1Password vaults using the `op` CLI binary.
+
+## Authentication
+- `op signin` — sign in (interactive, may require biometrics)
+- `op whoami` — check current authentication status
+
+## Listing items
+- `op item list` — list all items across vaults
+- `op item list --vault "Personal"` — list items in a specific vault
+- `op item list --categories Login` — list only logins
+- `op item list --tags "work"` — list items with a specific tag
+
+## Getting items
+- `op item get "Item Name"` — get full item details
+- `op item get "Item Name" --fields username,password` — get specific fields
+- `op item get "Item Name" --fields password --reveal` — reveal a password
+- `op item get "Item Name" --format json` — get as JSON
+
+## Vaults
+- `op vault list` — list all vaults
+- `op vault get "Vault Name"` — get vault details
+
+## Creating items
+- `op item create --category Login --title "Service" --vault "Personal"` — create a login
+- Use `--` followed by field assignments for custom fields
+
+## Searching
+- `op item list --favorite` — list favorites
+- `op item list | grep -i "search term"` — search by name
+
+## Documents
+- `op document list` — list stored documents
+- `op document get "Document Name" --output file.pdf` — download a document
+
+## Error handling
+- "not signed in": Run `op signin` to authenticate
+- "item not found": Check the exact item name — use `op item list` to find it
+- "vault not found": List vaults to get exact names
+- "session expired": Re-authenticate with `op signin`
+- Binary not found: Install 1Password CLI from 1password.com/downloads/command-line
+
+## IMPORTANT security rules
+- NEVER display passwords in plain text unless the user explicitly asks
+- Always use `--fields` to get only the specific data needed
+- Prefer showing usernames and URLs rather than passwords
+- When sharing credentials, suggest copying to clipboard instead of displaying
+- Never log or store retrieved passwords
+"""

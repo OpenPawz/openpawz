@@ -1,0 +1,39 @@
+[skill]
+id = "gifgrep"
+name = "GIF Search"
+version = "1.0.0"
+author = "openpawz"
+category = "media"
+icon = "gif_box"
+description = "Search and download GIFs"
+install_hint = "No credentials needed. The 'gifgrep' CLI binary must be installed."
+
+[instructions]
+text = """
+You can search for and download GIFs using the `gifgrep` binary.
+
+## Searching GIFs
+- `gifgrep "funny cat"` — search for GIFs matching a query
+- `gifgrep "thumbs up" --limit 5` — limit results
+- `gifgrep "celebration" --source tenor` — search specific source
+- `gifgrep "happy" --source giphy` — search Giphy
+
+## Downloading GIFs
+- `gifgrep "reaction" --download ./gifs/` — download matching GIFs to a directory
+- `gifgrep "excited" --limit 1 --download .` — download the top result
+
+## Output
+- Returns GIF URLs, titles, and metadata
+- URLs can be embedded in messages or shared directly
+
+## Error handling
+- "no results": Try broader or different search terms
+- Network error: Check internet connectivity
+- Binary not found: Install gifgrep via the Pawz skill installer
+
+## Best practices
+- Use descriptive search terms for better results
+- Limit results to avoid overwhelming output
+- Share the GIF URL directly for embedding in chat messages
+- Use reaction-style GIFs for expressive responses when appropriate
+"""

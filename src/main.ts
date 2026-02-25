@@ -348,6 +348,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     MailModule.initMailEvents();
 
     $('refresh-skills-btn')?.addEventListener('click', () => SkillsSettings.loadSkillsSettings());
+
+    // PawzHub embedded view buttons
+    $('pawzhub-reload-btn')?.addEventListener('click', () => {
+      const iframe = document.getElementById('pawzhub-iframe') as HTMLIFrameElement | null;
+      if (iframe) iframe.src = 'https://openpawz.mintlify.dev';
+    });
+    $('pawzhub-open-btn')?.addEventListener('click', () => {
+      window.open('https://openpawz.mintlify.dev', '_blank');
+    });
+
     FoundryModule.initFoundryEvents();
     ResearchModule.configure({ promptModal });
     ResearchModule.initResearchEvents();

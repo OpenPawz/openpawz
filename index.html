@@ -85,6 +85,10 @@
             <div class="nav-item" data-view="skills">
               <span>Skills</span>
             </div>
+            <div class="nav-item" data-view="pawzhub">
+              <span>PawzHub</span>
+              <span class="nav-badge">New</span>
+            </div>
             <div class="nav-item" data-view="foundry">
               <span>Foundry</span>
             </div>
@@ -1932,6 +1936,42 @@
               font-size: 13px;
             "
           ></div>
+        </div>
+
+        <!-- ═══ PawzHub View — Embedded Marketplace ═══ -->
+        <div class="view" id="pawzhub-view">
+          <div class="view-header">
+            <h1 class="view-title">
+              <span
+                class="ms ms-sm"
+                style="display: inline; vertical-align: middle; margin-right: 6px"
+                >storefront</span
+              >
+              PawzHub
+            </h1>
+            <div style="display: flex; gap: 6px">
+              <button class="btn btn-ghost btn-sm" id="pawzhub-reload-btn" title="Reload">
+                <span class="ms ms-sm">refresh</span>
+                Reload
+              </button>
+              <button class="btn btn-ghost btn-sm" id="pawzhub-open-btn" title="Open in browser">
+                <span class="ms ms-sm">open_in_new</span>
+                Open in Browser
+              </button>
+            </div>
+          </div>
+          <iframe
+            id="pawzhub-iframe"
+            src="about:blank"
+            style="
+              width: 100%;
+              height: calc(100vh - 80px);
+              border: none;
+              border-radius: 8px;
+              background: var(--bg-primary);
+            "
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
+          ></iframe>
         </div>
 
         <!-- ═══ Foundry View — Models & Modes ═══ -->

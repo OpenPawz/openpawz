@@ -1,0 +1,47 @@
+[skill]
+id = "session-logs"
+name = "Session Logs"
+version = "1.0.0"
+author = "openpawz"
+category = "development"
+icon = "history"
+description = "Search past session logs"
+install_hint = "No credentials needed. The 'rg' (ripgrep) binary must be installed for fast log searching."
+
+[instructions]
+text = """
+You can search past session logs using the `rg` (ripgrep) binary.
+
+## Searching logs
+- `rg "search term" ~/.local/share/pawz/sessions/` — search all session logs
+- `rg "error" ~/.local/share/pawz/sessions/ --type-add 'log:*.log' --type log` — search only log files
+- `rg "search term" ~/.local/share/pawz/sessions/ -l` — list files containing matches
+- `rg "search term" ~/.local/share/pawz/sessions/ -c` — count matches per file
+- `rg "search term" ~/.local/share/pawz/sessions/ -C 3` — show 3 lines of context around matches
+- `rg "search term" ~/.local/share/pawz/sessions/ --sort modified` — sort by modification time
+- `rg "search term" ~/.local/share/pawz/sessions/ -i` — case-insensitive search
+
+## Advanced patterns
+- `rg "error|warning|fail" logs/` — search multiple terms (OR)
+- `rg "user_id:\s*\d+" logs/` — regex pattern matching
+- `rg "error" logs/ --after "2025-01-01"` — filter by date (via file modification time)
+- `rg "term" logs/ -g "*.json"` — search only JSON log files
+- `rg "term" logs/ --max-count 5` — limit to 5 matches per file
+
+## Log analysis
+- `rg "error" logs/ -c | sort -t: -k2 -n -r | head -10` — top 10 files by error count
+- `rg "timestamp.*error" logs/ | tail -20` — most recent errors
+- `rg --json "error" logs/ | head -50` — structured JSON output for parsing
+
+## Error handling
+- "No files found": Check the log directory path
+- "regex parse error": Escape special regex characters or use -F for fixed strings
+- Binary not found: Install ripgrep (rg) via package manager
+
+## Best practices
+- Use `-l` (list files) first to scope your search before fetching full content
+- Use context lines (-C, -B, -A) to understand the surrounding log entries
+- Use case-insensitive search (-i) when unsure of casing
+- Pipe to `head` or `tail` to limit output for large result sets
+- Use `--sort modified` to see most recent matches first
+"""

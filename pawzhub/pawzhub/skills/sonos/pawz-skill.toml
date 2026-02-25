@@ -1,0 +1,55 @@
+[skill]
+id = "sonos"
+name = "Sonos"
+version = "1.0.0"
+author = "openpawz"
+category = "smart_home"
+icon = "speaker"
+description = "Control Sonos speakers"
+install_hint = "No credentials needed. The 'sonos' CLI binary must be installed. Sonos speakers must be on the same local network."
+
+[instructions]
+text = """
+You can control Sonos speakers using the `sonos` binary.
+
+## Playback control
+- `sonos play` — resume playback (default speaker)
+- `sonos pause` — pause playback
+- `sonos stop` — stop playback
+- `sonos next` — skip to next track
+- `sonos previous` — go to previous track
+- `sonos play --room "Living Room"` — play on a specific speaker
+- `sonos pause --room "Kitchen"` — pause a specific speaker
+
+## Volume
+- `sonos volume` — get current volume
+- `sonos volume 50` — set volume (0-100)
+- `sonos volume 50 --room "Bedroom"` — set volume for specific room
+- `sonos volume +10` — increase volume by 10
+- `sonos volume -10` — decrease volume by 10
+
+## Speaker info
+- `sonos list` — list all Sonos speakers/rooms
+- `sonos status` — current playback status (track, artist, volume, state)
+- `sonos status --room "Living Room"` — status for specific room
+
+## Grouping
+- `sonos group "Kitchen" "Living Room"` — group Kitchen with Living Room
+- `sonos ungroup "Kitchen"` — remove Kitchen from group
+
+## Favorites & playlists
+- `sonos favorites` — list Sonos favorites
+- `sonos play --favorite "My Playlist"` — play a favorite
+
+## Error handling
+- "no speakers found": Check that speakers are on the same network
+- "room not found": List speakers to get exact room names
+- "not playing": No active playback — start playback first
+- Binary not found: Install sonos CLI via the Pawz skill installer
+
+## Best practices
+- List speakers first to get correct room names
+- Check status before modifying playback
+- Use room names for multi-speaker households
+- Group speakers for whole-home audio
+"""

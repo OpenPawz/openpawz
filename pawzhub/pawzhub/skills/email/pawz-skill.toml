@@ -1,0 +1,86 @@
+[skill]
+id = "email"
+name = "Email"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "mail"
+description = "Send and read emails via IMAP/SMTP"
+install_hint = "Configure your SMTP and IMAP server settings. For Gmail, use smtp.gmail.com:587 and imap.gmail.com:993 with an App Password (not your regular password)."
+
+[[credentials]]
+key = "SMTP_HOST"
+label = "SMTP Host"
+description = "Hostname of your outgoing mail server"
+required = true
+placeholder = "smtp.gmail.com"
+
+[[credentials]]
+key = "SMTP_PORT"
+label = "SMTP Port"
+description = "Port for SMTP (typically 587 for TLS, 465 for SSL)"
+required = true
+placeholder = "587"
+
+[[credentials]]
+key = "SMTP_USER"
+label = "SMTP Username"
+description = "Username for SMTP authentication (usually your email address)"
+required = true
+placeholder = "you@example.com"
+
+[[credentials]]
+key = "SMTP_PASSWORD"
+label = "SMTP Password"
+description = "Password or App Password for SMTP authentication"
+required = true
+placeholder = "your-app-password"
+
+[[credentials]]
+key = "IMAP_HOST"
+label = "IMAP Host"
+description = "Hostname of your incoming mail server"
+required = true
+placeholder = "imap.gmail.com"
+
+[[credentials]]
+key = "IMAP_PORT"
+label = "IMAP Port"
+description = "Port for IMAP (typically 993 for SSL)"
+required = true
+placeholder = "993"
+
+[instructions]
+text = """
+You can send and read emails using the email_send and email_read tools.
+
+## Sending email
+Use the `email_send` tool with:
+- `to`: Recipient email address(es), comma-separated for multiple
+- `subject`: Email subject line
+- `body`: Email body (supports plain text and HTML)
+- `cc` (optional): CC recipients
+- `bcc` (optional): BCC recipients
+
+Authentication uses SMTP with the configured credentials: {SMTP_HOST}:{SMTP_PORT} with {SMTP_USER}.
+
+## Reading email
+Use the `email_read` tool to fetch emails from the inbox:
+- `folder`: Mailbox folder (default: INBOX)
+- `count`: Number of recent emails to fetch
+- `search`: Optional IMAP search criteria (e.g. "UNSEEN", "FROM sender@example.com")
+
+Authentication uses IMAP with the configured credentials: {IMAP_HOST}:{IMAP_PORT}.
+
+## Error handling
+- Authentication failed: Verify credentials; for Gmail use App Passwords, not regular passwords
+- Connection refused: Check host/port; ensure TLS/SSL settings match the port
+- Mailbox not found: List available folders first before accessing non-standard folders
+- Rate limiting: Space out bulk operations to avoid server throttling
+
+## Best practices
+- Always confirm recipient address with the user before sending
+- Summarize fetched emails concisely rather than dumping raw content
+- Use IMAP search to filter instead of fetching all messages
+- For Gmail, guide users to enable "Less secure apps" or create App Passwords
+"""

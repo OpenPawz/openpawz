@@ -1,0 +1,52 @@
+[skill]
+id = "things"
+name = "Things 3"
+version = "1.0.0"
+author = "openpawz"
+category = "productivity"
+icon = "check_circle"
+description = "Manage Things 3 tasks on macOS"
+install_hint = "No credentials needed. Requires macOS with Things 3 installed. The 'things' CLI binary must be installed."
+
+[instructions]
+text = """
+You can manage Things 3 tasks on macOS using the `things` CLI binary.
+
+## Commands
+- `things inbox` — list tasks in the Inbox
+- `things today` — list tasks scheduled for today
+- `things upcoming` — list upcoming scheduled tasks
+- `things anytime` — list tasks without a specific date
+- `things someday` — list someday tasks
+- `things completed` — list completed tasks
+- `things projects` — list all projects
+- `things project "Project Name"` — list tasks in a project
+- `things areas` — list all areas
+- `things tags` — list all tags
+- `things search "query"` — search tasks by title/notes
+- `things add "Task title"` — create a new task in Inbox
+- `things add "Task" --project "Project" --when today --tags "tag1,tag2"` — create with details
+- `things add "Task" --deadline "2025-03-01"` — create with deadline
+- `things add "Task" --checklist "Step 1,Step 2,Step 3"` — create with checklist
+- `things complete {task_id}` — mark task as complete
+- `things cancel {task_id}` — cancel a task
+- `things move {task_id} --to "Project Name"` — move to a project
+
+## Task properties
+- Title, notes, when (today/evening/tomorrow/date), deadline
+- Project, area, tags, checklist items
+- Heading within a project
+
+## Error handling
+- "task not found": Invalid task_id — search or list to get valid IDs
+- "project not found": Project doesn't exist — list projects first
+- Things 3 not running: The app may need to be launched
+- Binary not found: Install things CLI via the Pawz skill installer
+
+## Best practices
+- Use `things today` to show the user's current focus
+- Add tasks to appropriate projects rather than leaving everything in Inbox
+- Include deadlines for time-sensitive tasks
+- Use tags for cross-project categorization
+- Show upcoming and overdue tasks proactively
+"""

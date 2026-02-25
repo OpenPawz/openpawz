@@ -1,0 +1,51 @@
+[skill]
+id = "hue"
+name = "Philips Hue"
+version = "1.0.0"
+author = "openpawz"
+category = "smart_home"
+icon = "lightbulb"
+description = "Control Philips Hue lights and scenes"
+install_hint = "No credentials needed. The 'openhue' CLI binary must be installed and paired with your Hue Bridge (press the bridge button during initial setup)."
+
+[instructions]
+text = """
+You can control Philips Hue lights and scenes using the `openhue` CLI binary.
+
+## Light control
+- `openhue get lights` — list all lights with current state
+- `openhue set light "Light Name" --on` — turn on a light
+- `openhue set light "Light Name" --off` — turn off a light
+- `openhue set light "Light Name" --brightness 80` — set brightness (0-100)
+- `openhue set light "Light Name" --color red` — set color by name
+- `openhue set light "Light Name" --color "#FF5500"` — set color by hex
+- `openhue set light "Light Name" --ct 350` — set color temperature (153=cool to 500=warm)
+
+## Room/Group control
+- `openhue get rooms` — list all rooms
+- `openhue set room "Living Room" --on` — turn on all lights in a room
+- `openhue set room "Living Room" --off` — turn off all lights in a room
+- `openhue set room "Living Room" --brightness 50` — dim a room
+
+## Scenes
+- `openhue get scenes` — list available scenes
+- `openhue set scene "Relax"` — activate a scene
+- `openhue set scene "Concentrate" --room "Office"` — activate scene in specific room
+
+## Groups/Zones
+- `openhue get groups` — list all groups
+- `openhue set group "Group Name" --on --brightness 100` — control a group
+
+## Error handling
+- "light not found": Check exact name with `openhue get lights`
+- "bridge not found": Ensure Hue Bridge is on the same network
+- "not paired": Press the bridge button and re-run setup
+- Binary not found: Install openhue via the Pawz skill installer
+
+## Best practices
+- List lights/rooms first to get exact names
+- Use rooms for controlling multiple lights together
+- Use scenes for preset lighting moods
+- Brightness 0 is off, 100 is maximum
+- Color temperature: 153 (cool/blue) to 500 (warm/orange)
+"""

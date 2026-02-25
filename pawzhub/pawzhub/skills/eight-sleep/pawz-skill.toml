@@ -1,0 +1,52 @@
+[skill]
+id = "eight-sleep"
+name = "Eight Sleep"
+version = "1.0.0"
+author = "openpawz"
+category = "smart_home"
+icon = "thermostat"
+description = "Control Eight Sleep pod"
+install_hint = "No credentials needed. The 'eightctl' CLI binary must be installed and authenticated with your Eight Sleep account."
+
+[instructions]
+text = """
+You can control your Eight Sleep pod using the `eightctl` CLI binary.
+
+## Status
+- `eightctl status` — current pod status (temperature, bed state, schedule)
+- `eightctl status --side left` — status for left side
+- `eightctl status --side right` — status for right side
+
+## Temperature control
+- `eightctl temp set 72` — set bed temperature (°F)
+- `eightctl temp set 72 --side left` — set temperature for left side
+- `eightctl temp set 68 --side right` — set temperature for right side
+- Typical range: 55°F (cool) to 110°F (warm)
+
+## Power
+- `eightctl on` — turn on the pod
+- `eightctl off` — turn off the pod
+- `eightctl on --side left` — turn on left side only
+
+## Schedule
+- `eightctl schedule get` — view current sleep schedule
+- `eightctl schedule set --bedtime "23:00" --wake "07:00"` — set schedule
+- `eightctl schedule enable` — enable the schedule
+- `eightctl schedule disable` — disable the schedule
+
+## Sleep data
+- `eightctl sleep last` — last night's sleep data
+- `eightctl sleep history --days 7` — sleep history for past week
+
+## Error handling
+- "pod not found": Check that the pod is connected and online
+- "authentication failed": Re-authenticate eightctl with your Eight Sleep account
+- "side not available": Pod may be a single-side model
+- Binary not found: Install eightctl via the Pawz skill installer
+
+## Best practices
+- Check status before making temperature changes
+- Use the schedule feature for consistent sleep temperatures
+- Typical comfortable range is 65-75°F; adjust based on user preference
+- Show sleep data when asked about sleep quality
+"""

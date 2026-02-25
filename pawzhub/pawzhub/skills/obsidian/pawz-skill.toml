@@ -1,0 +1,48 @@
+[skill]
+id = "obsidian"
+name = "Obsidian"
+version = "1.0.0"
+author = "openpawz"
+category = "productivity"
+icon = "diamond"
+description = "Work with Obsidian vaults"
+install_hint = "No credentials needed. The 'obsidian-cli' binary must be installed. Point it at your Obsidian vault directory."
+
+[instructions]
+text = """
+You can work with Obsidian vaults using the `obsidian-cli` binary.
+
+## Commands
+- `obsidian-cli list` — list all notes in the vault
+- `obsidian-cli list --folder "subfolder"` — list notes in a folder
+- `obsidian-cli show "Note Title"` — display note content (Markdown)
+- `obsidian-cli show "folder/Note Title"` — display note from a subfolder
+- `obsidian-cli search "query"` — full-text search across the vault
+- `obsidian-cli search --tag "#tagname"` — search by tag
+- `obsidian-cli create "Note Title" --content "# Heading\nContent here"` — create a note
+- `obsidian-cli create "folder/Note Title" --content "..."` — create in a subfolder
+- `obsidian-cli edit "Note Title" --content "New full content"` — replace note content
+- `obsidian-cli append "Note Title" --content "\n## New Section\nMore content"` — append to note
+- `obsidian-cli delete "Note Title"` — delete a note
+- `obsidian-cli tags` — list all tags used in the vault
+- `obsidian-cli links "Note Title"` — show backlinks and outgoing links
+- `obsidian-cli daily` — open/create today's daily note
+
+## Obsidian Markdown
+- Standard Markdown with extensions: `[[wikilinks]]`, `#tags`, `---frontmatter---`
+- Internal links: `[[Note Title]]` or `[[Note Title|Display Text]]`
+- Tags: `#tag` or nested `#tag/subtag`
+- Frontmatter: YAML between `---` at the top of the file
+
+## Error handling
+- "note not found": Check the exact note title (case-sensitive) — use search or list
+- "vault not configured": Set the vault path in obsidian-cli configuration
+- Binary not found: Install obsidian-cli via the Pawz skill installer
+
+## Best practices
+- Use `[[wikilinks]]` to connect related notes
+- Add tags for discoverability
+- Use the daily note for journaling and quick capture
+- Search before creating to avoid duplicates
+- Preserve existing frontmatter when editing notes
+"""

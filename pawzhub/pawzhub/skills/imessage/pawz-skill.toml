@@ -1,0 +1,43 @@
+[skill]
+id = "imessage"
+name = "iMessage"
+version = "1.0.0"
+author = "openpawz"
+category = "communication"
+icon = "forum"
+description = "Send iMessages on macOS"
+install_hint = "No credentials needed. Requires macOS with Messages app configured. The 'imsg' CLI binary must be installed."
+
+[instructions]
+text = """
+You can send iMessages on macOS using the `imsg` CLI binary.
+
+## Sending messages
+- `imsg send "+1234567890" "Hello!"` — send to a phone number
+- `imsg send "user@icloud.com" "Hello!"` — send to an Apple ID email
+- `imsg send "+1234567890" "Check this" --attachment photo.jpg` — send with attachment
+
+## Reading messages
+- `imsg read "+1234567890"` — read recent messages from a contact
+- `imsg read "+1234567890" --count 20` — read last 20 messages
+- `imsg recent` — list recent conversations
+- `imsg unread` — show unread messages
+
+## Contacts
+- `imsg contacts` — list contacts
+- `imsg search "name"` — search contacts
+
+## Error handling
+- "Messages not configured": Sign into iCloud in System Settings → Apple ID
+- "contact not found": Use phone number or Apple ID email directly
+- "not delivered": Recipient may not have iMessage — falls back to SMS if available
+- Permission denied: Grant Terminal access to Messages in System Settings → Privacy
+- Binary not found: Install imsg via the Pawz skill installer
+
+## Best practices
+- Use phone number or email for reliable delivery
+- Confirm recipient before sending
+- Check recent/unread messages when asked about new messages
+- iMessage works across Apple devices — messages sync via iCloud
+- Keep messages concise and conversational
+"""

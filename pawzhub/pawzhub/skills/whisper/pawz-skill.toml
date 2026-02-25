@@ -1,0 +1,55 @@
+[skill]
+id = "whisper"
+name = "Whisper (Local)"
+version = "1.0.0"
+author = "openpawz"
+category = "media"
+icon = "mic"
+description = "Local speech-to-text (no API key)"
+install_hint = "No credentials needed. The 'whisper' binary must be installed locally. Install via: pip install openai-whisper, or use whisper.cpp for faster inference."
+
+[instructions]
+text = """
+You can perform local speech-to-text transcription using the `whisper` binary. No API key or internet connection required.
+
+## Basic transcription
+- `whisper audio.mp3` — transcribe audio file (auto-detects language)
+- `whisper audio.mp3 --language en` — transcribe with specified language
+- `whisper audio.mp3 --model medium` — use a specific model size
+- `whisper audio.wav --output_format txt` — output as plain text
+- `whisper audio.mp3 --output_format srt` — output as SRT subtitles
+- `whisper audio.mp3 --output_format vtt` — output as WebVTT subtitles
+- `whisper audio.mp3 --output_dir ./transcripts/` — save to specific directory
+
+## Model sizes
+- `tiny` — fastest, least accurate (~1GB VRAM)
+- `base` — fast, decent accuracy (~1GB VRAM)
+- `small` — good balance (~2GB VRAM)
+- `medium` — high accuracy (~5GB VRAM)
+- `large` — best accuracy (~10GB VRAM)
+
+## Supported audio formats
+MP3, WAV, FLAC, OGG, M4A, WMA, and most common audio formats.
+For video files, audio is extracted automatically.
+
+## Output formats
+- `txt` — plain text transcript
+- `srt` — SubRip subtitle format with timestamps
+- `vtt` — WebVTT subtitle format
+- `json` — detailed JSON with word-level timestamps
+- `tsv` — tab-separated values
+
+## Error handling
+- "model not found": Download the model first (auto-downloads on first use)
+- "CUDA out of memory": Use a smaller model or add `--device cpu`
+- "audio file not found": Check the file path
+- Slow transcription: Use `--device cpu` explicitly or try a smaller model
+- Binary not found: Install via pip install openai-whisper
+
+## Best practices
+- Start with the `base` model for quick transcriptions
+- Use `medium` or `large` for important or noisy audio
+- Specify the language if known for faster and more accurate results
+- Use SRT/VTT format for video subtitles
+- For long files (>30 min), expect processing time proportional to audio length
+"""
