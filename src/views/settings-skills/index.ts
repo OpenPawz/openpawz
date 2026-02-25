@@ -170,19 +170,19 @@ export async function loadSkillsSettings(): Promise<void> {
     _mcpServers = mcpServers;
     _mcpStatuses = mcpStatuses;
 
-    // Compute tab counts
-    const integrationCount = skills.filter(
-      (s) =>
-        s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
-    ).length;
-    const promptSkills = skills.filter((s) => s.tier === 'skill');
+    // Integration-tier skills live on the Integrations page — exclude from Skills
+    const nonIntegrationSkills = skills.filter((s) => s.tier !== 'integration');
+
+    // Compute tab counts (integrations excluded)
+    const integrationCount = 0; // no longer shown on Skills page
+    const promptSkills = nonIntegrationSkills.filter((s) => s.tier === 'skill');
     const toolCount = mcpServers.length + promptSkills.length;
-    const extensionCount = skills.filter((s) => s.tier === 'extension' || s.has_widget).length;
-    const enabledCount = skills.filter((s) => s.enabled).length;
+    const extensionCount = nonIntegrationSkills.filter((s) => s.tier === 'extension' || s.has_widget).length;
+    const enabledCount = nonIntegrationSkills.filter((s) => s.enabled).length;
     const mcpConnected = mcpStatuses.filter((s) => s.connected).length;
 
-    // Update hero stats
-    updateSkillsHeroStats(skills.length, enabledCount, mcpConnected);
+    // Update hero stats (skills count excludes integrations)
+    updateSkillsHeroStats(nonIntegrationSkills.length, enabledCount, mcpConnected);
 
     // Update tab counts
     updateTabCounts({ skills, mcpStatuses, integrationCount, toolCount, extensionCount });

@@ -18,7 +18,8 @@ export interface ActiveTabData {
 // ── Render ─────────────────────────────────────────────────────────────
 
 export function renderActiveTab(data: ActiveTabData): string {
-  const enabledSkills = data.skills.filter((s) => s.enabled);
+  // Exclude integration-tier skills — those live on the Integrations page
+  const enabledSkills = data.skills.filter((s) => s.enabled && s.tier !== 'integration');
   const connectedMcp = data.mcpStatuses.filter((s) => s.connected);
 
   if (enabledSkills.length === 0 && connectedMcp.length === 0) {
