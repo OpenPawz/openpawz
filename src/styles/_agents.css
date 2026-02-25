@@ -237,7 +237,9 @@
 .roster-actions {
   display: flex;
   gap: 4px;
-  width: 120px;
+  width: 140px;
+  overflow: visible;
+  max-width: none;
 }
 .agents-roster-footer-row td {
   padding: 10px 12px;
