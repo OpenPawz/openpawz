@@ -292,3 +292,5 @@
   margin-top: 4px;
 }
 .line-num {
+  display: block;
+}
