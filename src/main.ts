@@ -352,10 +352,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     // PawzHub embedded view buttons
     $('pawzhub-reload-btn')?.addEventListener('click', () => {
       const iframe = document.getElementById('pawzhub-iframe') as HTMLIFrameElement | null;
-      if (iframe) iframe.src = 'https://openpawz.mintlify.dev';
+      if (iframe) iframe.src = 'https://www.openpawz.ai';
     });
     $('pawzhub-open-btn')?.addEventListener('click', () => {
-      window.open('https://openpawz.mintlify.dev', '_blank');
+      window.open('https://www.openpawz.ai', '_blank');
     });
 
     FoundryModule.initFoundryEvents();

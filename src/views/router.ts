@@ -168,7 +168,7 @@ export function switchView(viewName: string) {
     case 'pawzhub': {
       const iframe = document.getElementById('pawzhub-iframe') as HTMLIFrameElement | null;
       if (iframe && (!iframe.src || iframe.src === 'about:blank')) {
-        iframe.src = 'https://openpawz.mintlify.dev';
+        iframe.src = 'https://www.openpawz.ai';
       }
       break;
     }

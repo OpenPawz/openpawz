@@ -241,7 +241,7 @@ OpenPawz is built by one developer and needs your help. Every contribution matte
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, code style, testing, PR guidelines |
 | [ENTERPRISE_PLAN.md](ENTERPRISE_PLAN.md) | Enterprise hardening audit — all phases with test counts |
 | [AUTONOMY_ROADMAP.md](AUTONOMY_ROADMAP.md) | Agent autonomy roadmap — auto-approve, webhooks, MCP, PawzHub |
-| [Docs Site](https://openpawz.mintlify.dev) | Full documentation with guides, channel setup, and API reference |
+| [Docs Site](https://www.openpawz.ai) | Full documentation with guides, channel setup, and API reference |
 
 ---
 
