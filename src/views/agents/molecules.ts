@@ -93,10 +93,16 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
           </tr>`;
         }).join('')}
       </tbody>
-    </table>
-    <div class="agents-roster-footer">
-      <button class="btn btn-ghost" id="agent-card-new">+ New Agent</button>
-    </div>`;
+      <tfoot>
+        <tr class="agents-roster-footer-row">
+          <td colspan="6">
+            <button class="btn btn-ghost btn-sm" id="agent-card-new">
+              <span class="ms ms-sm">add</span> New Agent
+            </button>
+          </td>
+        </tr>
+      </tfoot>
+    </table>`;
   } else {
     // Grid view (compact cards, no bio)
     grid.classList.remove('agents-grid-roster');

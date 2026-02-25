@@ -79,10 +79,10 @@
   flex: 1;
   overflow-y: auto;
   padding: 24px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-  min-height: 0;
+  min-width: 0;
+}
+.agents-main-col > * + * {
+  margin-top: 24px;
 }
 .agents-side-panel {
   width: 280px;
@@ -193,6 +193,7 @@
   border-collapse: collapse;
   font-size: 12px;
   font-family: var(--font-mono);
+  table-layout: fixed;
 }
 .agents-roster thead th {
   text-align: left;
@@ -205,6 +206,13 @@
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
+/* Column widths for proper alignment */
+.agents-roster thead th:nth-child(1) { width: 50px; }  /* STAT */
+.agents-roster thead th:nth-child(2) { width: auto; }  /* AGENT — takes remaining space */
+.agents-roster thead th:nth-child(3) { width: 180px; } /* MODEL */
+.agents-roster thead th:nth-child(4) { width: 60px; }  /* TOOLS */
+.agents-roster thead th:nth-child(5) { width: 100px; } /* LAST ACTIVE */
+.agents-roster thead th:nth-child(6) { width: 130px; } /* actions */
 .agents-roster-row {
   border-bottom: 1px solid var(--border-subtle);
   transition: background var(--transition-fast);
@@ -228,7 +236,7 @@
   display: flex;
   gap: 4px;
 }
-.agents-roster-footer {
+.agents-roster-footer-row td {
   padding: 10px 12px;
   border-top: 1px solid var(--border);
 }
