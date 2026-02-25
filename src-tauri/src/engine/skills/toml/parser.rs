@@ -81,6 +81,7 @@ pub fn manifest_to_definition(manifest: &SkillManifest) -> SkillDefinition {
         required_env_vars: manifest.skill.required_env_vars.clone(),
         install_hint: manifest.skill.install_hint.clone(),
         agent_instructions: instructions,
+        default_enabled: false,
     }
 }
 
