@@ -10,6 +10,14 @@ import { openAgentCreator, openAgentEditor } from './editor';
 import { openMiniChat as _openMiniChat, _miniChats } from './mini-chat';
 import { seedSoulFiles, refreshAvailableModels } from './helpers';
 import { renderAgentDock } from './dock';
+import {
+  updateAgentsHeroStats,
+  renderCapabilitiesList,
+  renderActivityList,
+  renderTemplateGrid,
+  initAgentsKinetic,
+  AGENT_TEMPLATE_CATALOG,
+} from '../../components/agents-panel';
 
 // ── Module state ────────────────────────────────────────────────────────────
 
@@ -77,6 +85,11 @@ function _renderAgents() {
     onEdit: (id) => openAgentEditor(id, makeEditorCallbacks()),
     onCreate: () => openAgentCreator(makeEditorCallbacks()),
   });
+
+  // Update hero stats, side panel cards
+  updateAgentsHeroStats(_agents);
+  renderCapabilitiesList(_agents);
+  renderActivityList(_agents);
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -275,6 +288,109 @@ function initProfileUpdateListener() {
 export function initAgents() {
   loadAgents();
   initProfileUpdateListener();
+
+  // Render template marketplace + kinetic animations
+  renderTemplateGrid((templateId) => _installTemplate(templateId));
+  initAgentsKinetic();
+
+  // Quick actions in side panel
+  document.getElementById('agents-qa-create')?.addEventListener('click', () => {
+    openAgentCreator(makeEditorCallbacks());
+  });
+  document.getElementById('agents-qa-export')?.addEventListener('click', () => {
+    _exportFleet();
+  });
+  document.getElementById('agents-qa-import')?.addEventListener('click', () => {
+    _importConfig();
+  });
+}
+
+/** Install an agent from a template */
+function _installTemplate(templateId: string) {
+  const tpl = AGENT_TEMPLATE_CATALOG.find(t => t.id === templateId);
+  if (!tpl) return;
+
+  // Create a new agent from the template
+  const agent: Agent = {
+    id: `${tpl.id}-${Date.now()}`,
+    name: tpl.name,
+    avatar: String(Math.floor(Math.random() * 25) + 1),
+    color: AVATAR_COLORS[_agents.length % AVATAR_COLORS.length],
+    bio: tpl.desc,
+    model: tpl.model || 'default',
+    template: 'custom',
+    personality: tpl.personality as Agent['personality'],
+    skills: tpl.skills,
+    boundaries: [],
+    systemPrompt: tpl.systemPrompt,
+    createdAt: new Date().toISOString(),
+    source: 'local',
+  };
+
+  _agents.push(agent);
+  saveAgents();
+  _renderAgents();
+
+  // Flash the install button as feedback
+  const btn = document.querySelector(`[data-tpl-id="${templateId}"]`) as HTMLElement | null;
+  if (btn) {
+    btn.textContent = '✓ Installed';
+    btn.style.background = 'var(--accent)';
+    btn.style.color = 'var(--bg-primary)';
+    btn.style.borderColor = 'var(--accent)';
+    setTimeout(() => {
+      btn.innerHTML = '<span class="ms ms-sm">download</span> Install';
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }, 2000);
+  }
+}
+
+/** Export all agents as JSON */
+function _exportFleet() {
+  const json = JSON.stringify(_agents, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'openpawz-fleet.json';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** Import agents from a JSON file */
+function _importConfig() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json';
+  input.addEventListener('change', () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const imported = JSON.parse(reader.result as string);
+        if (Array.isArray(imported)) {
+          let count = 0;
+          for (const a of imported) {
+            if (a.id && a.name && !_agents.find(e => e.id === a.id)) {
+              _agents.push(a);
+              count++;
+            }
+          }
+          if (count > 0) {
+            saveAgents();
+            _renderAgents();
+          }
+        }
+      } catch {
+        console.warn('[agents] Failed to import config');
+      }
+    };
+    reader.readAsText(file);
+  });
+  input.click();
 }
 
 // ── Re-exports (maintain public interface for existing callers) ────────────

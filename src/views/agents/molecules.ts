@@ -4,6 +4,7 @@
 import { $, escHtml } from '../../components/helpers';
 import { getAgentPolicy } from '../../features/agent-policies';
 import { type Agent, spriteAvatar } from './atoms';
+import { kineticRow } from '../../components/kinetic-row';
 
 let _createBtnBound = false;
 
@@ -46,18 +47,18 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
     return;
   }
 
-  // View toggle header
-  const toggleHtml = `<div class="agents-view-toggle">
-    <span class="agents-view-title">FLEET COMMAND</span>
-    <div class="agents-toggle-btns">
+  // Render toggle buttons into the section header slot
+  const toggleSlot = document.getElementById('agents-toggle-btns');
+  if (toggleSlot) {
+    toggleSlot.innerHTML = `
       <button class="agents-toggle-btn${_viewMode === 'roster' ? ' active' : ''}" data-mode="roster">Roster</button>
       <button class="agents-toggle-btn${_viewMode === 'grid' ? ' active' : ''}" data-mode="grid">Grid</button>
-    </div>
-  </div>`;
+    `;
+  }
 
   if (_viewMode === 'roster') {
     // Roster/table view (default)
-    grid.innerHTML = `${toggleHtml}
+    grid.innerHTML = `
     <table class="agents-roster">
       <thead>
         <tr>
@@ -77,7 +78,7 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
             ? _timeAgo(new Date(agent.lastUsed))
             : '—';
           const isActive = agent.lastUsed && (Date.now() - new Date(agent.lastUsed).getTime()) < 600000;
-          return `<tr class="agents-roster-row" data-id="${agent.id}">
+          return `<tr class="agents-roster-row k-row k-spring" data-id="${agent.id}">
             <td class="roster-stat">${isActive ? '<span class="roster-dot-active">◉</span>' : '<span class="roster-dot-idle">○</span>'}</td>
             <td class="roster-name">${escHtml(agent.name)}</td>
             <td class="roster-model">${escHtml(agent.model || '—')}</td>
@@ -96,10 +97,10 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
     </div>`;
   } else {
     // Grid view (compact cards, no bio)
-    grid.innerHTML = `${toggleHtml}${agents
+    grid.innerHTML = `${agents
       .map(
         (agent) => `
-      <div class="agent-card${agent.source === 'backend' ? ' agent-card-backend' : ''}" data-id="${agent.id}">
+      <div class="agent-card k-row k-spring k-materialise${agent.source === 'backend' ? ' agent-card-backend' : ''}" data-id="${agent.id}">
         <div class="agent-card-header">
           <div class="agent-avatar" style="background:${agent.color}">${spriteAvatar(agent.avatar, 48)}</div>
           <div class="agent-info">
@@ -124,15 +125,28 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
     `;
   }
 
-  // Bind view toggle
-  grid.querySelectorAll('.agents-toggle-btn').forEach((btn) => {
-    btn.addEventListener('click', (e) => {
-      const mode = (e.target as HTMLElement).getAttribute('data-mode');
-      if (mode === 'roster' || mode === 'grid') {
-        _viewMode = mode;
-        renderAgents(agents, cbs);
-      }
+  // Bind view toggle (buttons are in the section header, not in the grid)
+  const toggleContainer = document.getElementById('agents-toggle-btns');
+  if (toggleContainer) {
+    toggleContainer.querySelectorAll('.agents-toggle-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        const mode = (e.target as HTMLElement).getAttribute('data-mode');
+        if (mode === 'roster' || mode === 'grid') {
+          _viewMode = mode;
+          renderAgents(agents, cbs);
+        }
+      });
     });
+  }
+
+  // Apply kinetic to roster rows
+  grid.querySelectorAll('.agents-roster-row.k-row').forEach(row => {
+    kineticRow(row as HTMLElement, { spring: true });
+  });
+
+  // Apply kinetic to grid cards
+  grid.querySelectorAll('.agent-card.k-row').forEach(card => {
+    kineticRow(card as HTMLElement, { spring: true, materialise: true });
   });
 
   // Bind events
