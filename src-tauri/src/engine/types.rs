@@ -285,6 +285,3 @@ Be thorough, resourceful, and action-oriented. When the user asks you to do some
 
 
 // ── Orchestrator: Projects ────────────────────────────────────────────
-
-
-

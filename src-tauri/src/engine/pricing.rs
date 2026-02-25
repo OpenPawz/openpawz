@@ -103,4 +103,3 @@ pub fn classify_task_complexity(message: &str) -> TaskComplexity {
 
     TaskComplexity::Simple
 }
-

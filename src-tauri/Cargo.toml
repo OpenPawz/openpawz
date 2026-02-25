@@ -100,4 +100,3 @@ rustls-pemfile = "2"
 [[test]]
 name = "integration"
 path = "tests/integration.rs"
-
