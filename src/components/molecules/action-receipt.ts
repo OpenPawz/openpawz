@@ -118,9 +118,7 @@ export function renderBatchReceipt(logs: IntegrationActionLog[]): string {
   const failedCount = logs.filter((l) => l.status === 'failed').length;
   const services = [...new Set(logs.map((l) => l.serviceName))];
 
-  const header = `${successCount} action${successCount !== 1 ? 's' : ''} completed` +
-    (failedCount > 0 ? `, ${failedCount} failed` : '') +
-    ` across ${services.join(', ')}`;
+  const header = `${successCount} action${successCount !== 1 ? 's' : ''} completed${failedCount > 0 ? `, ${failedCount} failed` : ''} across ${services.join(', ')}`;
 
   const rows = logs.map((l) => renderReceipt(l, { compact: true })).join('');
 

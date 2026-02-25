@@ -6,10 +6,8 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import type { ServiceDefinition, ConnectedService } from './atoms';
-import type { IntegrationActionLog } from '../../engine/atoms/action-labels';
-import { formatDuration, timeAgo } from '../../engine/atoms/action-labels';
-import type { ServiceHealth } from '../../features/integration-health/atoms';
-import { statusIcon, statusColor, statusLabel, daysUntilExpiry } from '../../features/integration-health/atoms';
+import { type IntegrationActionLog, formatDuration, timeAgo } from '../../engine/atoms/action-labels';
+import { type ServiceHealth, statusIcon, statusColor, statusLabel, daysUntilExpiry } from '../../features/integration-health/atoms';
 
 // ── Types ──────────────────────────────────────────────────────────────
 

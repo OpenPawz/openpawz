@@ -244,7 +244,7 @@ function _str(input?: Record<string, unknown>, ...keys: string[]): string {
   for (const k of keys) {
     const v = input[k];
     if (typeof v === 'string' && v.length > 0) {
-      return v.length > 60 ? v.slice(0, 57) + '…' : v;
+      return v.length > 60 ? `${v.slice(0, 57)}…` : v;
     }
   }
   return '…';
