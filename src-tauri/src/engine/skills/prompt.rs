@@ -21,7 +21,10 @@ pub fn get_enabled_skill_instructions(store: &SessionStore, agent_id: &str) -> E
 
     // ── Built-in skills ────────────────────────────────────────────────
     for def in &definitions {
-        if !store.is_skill_enabled(&def.id)? { continue; }
+        // Use explicit user choice if set, otherwise fall back to definition default
+        let enabled = store.get_skill_enabled_state(&def.id)?
+            .unwrap_or(def.default_enabled);
+        if !enabled { continue; }
 
         // Use custom instructions if set, otherwise fall back to defaults
         let base_instructions = store.get_skill_custom_instructions(&def.id)?

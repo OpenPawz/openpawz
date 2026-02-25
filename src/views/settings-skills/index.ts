@@ -19,6 +19,7 @@ import { renderExtensionsTab, bindExtensionsTabEvents } from './tab-extensions';
 import { renderCreateTab, bindCreateTabEvents } from './tab-create';
 import { renderSummaryBar, updateTabCounts } from './summary-bar';
 import { setMoleculesState } from './molecules';
+import { renderSetupWizard, bindSetupWizardEvents } from './setup-wizard';
 
 // ── Re-exports (backward compat) ──────────────────────────────────────────
 
@@ -128,16 +129,25 @@ export async function loadSkillsSettings(): Promise<void> {
   try {
     if (loading) loading.style.display = '';
 
-    // Fetch all data in parallel
-    const [skills, , tomlSkills, mcpServers, mcpStatuses] = await Promise.all([
+    // Fetch all data in parallel (plus onboarding state)
+    const [skills, , tomlSkills, mcpServers, mcpStatuses, onboardingDone] = await Promise.all([
       pawEngine.skillsList(),
       pawEngine.communitySkillsList(), // pre-fetched for Phase 2 (PawzHub marketplace)
       pawEngine.tomlSkillsScan(),
       pawEngine.mcpListServers(),
       pawEngine.mcpStatus(),
+      pawEngine.isOnboardingComplete(),
     ]);
 
     if (loading) loading.style.display = 'none';
+
+    // Show setup wizard on first launch
+    if (!onboardingDone) {
+      const wizardContainer = document.createElement('div');
+      wizardContainer.innerHTML = renderSetupWizard();
+      document.body.appendChild(wizardContainer);
+      bindSetupWizardEvents(skills, loadSkillsSettings);
+    }
 
     // Cache data for tab rendering
     _skills = skills;

@@ -271,16 +271,33 @@ Browse PawzHub → Click "Install" → Skill appears in My Skills →
 ### Phase 4 — Modular Enable/Disable
 **Goal:** Skills are opt-in, not all-on-by-default.
 
-- [ ] New installs start with a "setup wizard" that asks which categories the user cares about
-- [ ] Built-in skills ship "available" but not "enabled" by default (except essentials like weather)
-- [ ] My Skills → Active tab only shows what the user chose
-- [ ] PawzHub shows "Install" even for built-in skills that aren't enabled
-- [ ] Persist enabled state in DB (already exists in vault, extend to non-credential skills)
+- [x] New installs start with a "setup wizard" that asks which categories the user cares about
+- [x] Built-in skills ship "available" but not "enabled" by default (except essentials like weather)
+- [x] My Skills → Active tab only shows what the user chose
+- [x] PawzHub shows "Install" even for built-in skills that aren't enabled
+- [x] Persist enabled state in DB (already exists in vault, extend to non-credential skills)
 
 **Backend changes:**
-- `src-tauri/src/engine/skills/vault.rs` — extend enabled/disabled to all skill types
-- `src-tauri/src/engine/skills/prompt.rs` — only inject enabled skills into agent prompt
-- `src-tauri/src/engine/skills/builtins.rs` — add `default_enabled: bool` field to definitions
+- `src-tauri/src/engine/skills/types.rs` — added `default_enabled: bool` to SkillDefinition + SkillStatus
+- `src-tauri/src/engine/skills/builtins.rs` — added `default_enabled` to all 40 definitions (weather/blogwatcher = true)
+- `src-tauri/src/engine/skills/vault.rs` — added `get_skill_enabled_state()` (Option<bool>), `bulk_set_skills_enabled()`, `is_onboarding_complete()`, `set_onboarding_complete()`
+- `src-tauri/src/engine/skills/status.rs` — uses `get_skill_enabled_state().unwrap_or(default_enabled)` fallback
+- `src-tauri/src/engine/skills/prompt.rs` — uses same default_enabled fallback for prompt injection
+- `src-tauri/src/engine/agent_loop/helpers.rs` — updated tool loading to use default_enabled
+- `src-tauri/src/engine/swarm.rs` — updated tool loading to use default_enabled
+- `src-tauri/src/engine/tools/mod.rs` — `get_skill_creds()` uses default_enabled fallback
+- `src-tauri/src/engine/tools/agents.rs` — self-info uses default_enabled fallback
+- `src-tauri/src/commands/skills.rs` — added `engine_skill_bulk_enable`, `engine_is_onboarding_complete`, `engine_set_onboarding_complete`
+- `src-tauri/src/lib.rs` — registered new commands
+
+**Frontend changes:**
+- `src/engine/atoms/types.ts` — added `default_enabled?: boolean` to EngineSkillStatus
+- `src/engine/molecules/ipc_client.ts` — added `skillBulkEnable()`, `isOnboardingComplete()`, `setOnboardingComplete()`
+- Created `src/views/settings-skills/setup-wizard.ts` — category picker wizard (7 categories, skip option)
+- `src/views/settings-skills/index.ts` — checks onboarding state, shows wizard on first launch
+- `src/views/pawzhub/molecules.ts` — added `renderBuiltinSkillsSection()`, `wireBuiltinEnableButtons()` for disabled built-ins
+- `src/views/pawzhub/index.ts` — fetches skill list, renders disabled built-ins as enableable
+- `src/styles.css` — added `sw-*` setup wizard CSS (overlay, dialog, category cards, animations)
 
 ---
 

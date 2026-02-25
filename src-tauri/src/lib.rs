@@ -176,11 +176,15 @@ pub fn run() {
             // ── Skill Vault ──
             commands::skills::engine_skills_list,
             commands::skills::engine_skill_set_enabled,
+            commands::skills::engine_skill_bulk_enable,
             commands::skills::engine_skill_set_credential,
             commands::skills::engine_skill_delete_credential,
             commands::skills::engine_skill_revoke_all,
             commands::skills::engine_skill_get_instructions,
             commands::skills::engine_skill_set_instructions,
+            // ── Onboarding (Phase 4) ──
+            commands::skills::engine_is_onboarding_complete,
+            commands::skills::engine_set_onboarding_complete,
             // ── Community Skills (skills.sh) ──
             commands::skills::engine_community_skills_list,
             commands::skills::engine_community_skills_browse,

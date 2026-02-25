@@ -25,6 +25,7 @@ pub fn builtin_skills() -> Vec<SkillDefinition> {
             tool_names: vec!["email_send".into(), "email_read".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: String::new(),
             agent_instructions: "You can send and read emails. Use email_send to compose and send messages. Use email_read to check inbox. Always confirm recipients before sending.".into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "slack".into(),
@@ -40,6 +41,7 @@ pub fn builtin_skills() -> Vec<SkillDefinition> {
             tool_names: vec!["slack_send".into(), "slack_read".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: String::new(),
             agent_instructions: "You can post to and read from Slack channels. Use slack_send to post messages. Use slack_read to fetch recent messages from a channel.".into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "telegram".into(),
@@ -52,6 +54,7 @@ pub fn builtin_skills() -> Vec<SkillDefinition> {
             tool_names: vec!["telegram_send".into(), "telegram_read".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: String::new(),
             agent_instructions: "You can send proactive messages to Telegram users. Use telegram_send to push messages — specify a username or it defaults to the owner. Use telegram_read to check bridge status and known users. The Telegram bot must be set up in channel settings first, and the user must have messaged the bot at least once.".into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "github".into(),
@@ -70,6 +73,7 @@ pub fn builtin_skills() -> Vec<SkillDefinition> {
 For quick operations use the `gh` CLI via exec: `gh issue list`, `gh pr create`, `gh repo view`, `gh api ...`.
 For complex API calls use github_api tool which sends authenticated requests to api.github.com.
 Available gh commands: issue (list/create/view/close), pr (list/create/view/merge/checkout), run (list/view/watch), repo (view/clone/fork), api (raw REST calls)."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "rest_api".into(),
@@ -87,6 +91,7 @@ Available gh commands: issue (list/create/view/close), pr (list/create/view/merg
             tool_names: vec!["rest_api_call".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: String::new(),
             agent_instructions: "You can make authenticated REST API calls to a pre-configured service. Use rest_api_call with method, path, and optional body/headers.".into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "webhook".into(),
@@ -102,6 +107,7 @@ Available gh commands: issue (list/create/view/close), pr (list/create/view/merg
             tool_names: vec!["webhook_send".into()],
             required_binaries: vec![], required_env_vars: vec![], install_hint: String::new(),
             agent_instructions: "You can send JSON payloads to configured webhooks. Use webhook_send with a JSON body. Great for triggering Zapier/IFTTT/n8n automations.".into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "discord".into(),
@@ -151,6 +157,7 @@ NEVER use discord_setup_channels to send messages.
 
 Server ID and channel IDs resolve automatically from credentials when not provided.
 Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "coinbase".into(),
@@ -189,6 +196,7 @@ Risk Management Rules:
 - Prefer limit orders over market orders when possible
 - Check balances before proposing any trade
 - If the user hasn't set risk parameters, ask before trading"#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "notion".into(),
@@ -212,6 +220,7 @@ Key endpoints:
 - POST /search — search across all pages/databases
 Headers: Authorization: Bearer {token}, Notion-Version: 2022-06-28, Content-Type: application/json
 Notion uses rich text blocks. Page content is a list of block objects (paragraph, heading_1, to_do, etc.)."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "trello".into(),
@@ -262,6 +271,7 @@ TOOL SELECTION RULES:
 - ADD multiple checklist items at once → trello_add_checklist_item with 'names' array
 - SEARCH across boards → trello_search
 Do NOT use fetch/exec/curl for Trello — use your built-in tools."#.into(),
+            default_enabled: false,
         },
 
         // ───── PRODUCTIVITY SKILLS ─────
@@ -281,6 +291,7 @@ Do NOT use fetch/exec/curl for Trello — use your built-in tools."#.into(),
 Commands: memo list, memo show <id>, memo create <title> --body <text>, memo edit <id> --body <text>,
 memo delete <id>, memo search <query>, memo export <id> --format md|html|txt.
 Notes are organized in folders. Use memo folders to list, memo create --folder <name>."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "apple_reminders".into(),
@@ -297,6 +308,7 @@ Notes are organized in folders. Use memo folders to list, memo create --folder <
 Commands: remindctl list [--list <name>], remindctl add <title> [--list <name>] [--due <date>] [--notes <text>],
 remindctl complete <id>, remindctl delete <id>, remindctl lists (show all lists).
 Date formats: YYYY-MM-DD, YYYY-MM-DD HH:MM, "tomorrow", "next monday"."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "things".into(),
@@ -312,6 +324,7 @@ Date formats: YYYY-MM-DD, YYYY-MM-DD HH:MM, "tomorrow", "next monday"."#.into(),
             agent_instructions: r#"You can manage Things 3 tasks via the `things` CLI.
 Commands: things list [inbox|today|upcoming|anytime|someday|logbook], things add <title> [--notes <text>] [--when <date>] [--deadline <date>] [--project <name>] [--tags <tag1,tag2>],
 things complete <id>, things search <query>, things projects, things tags."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "obsidian".into(),
@@ -329,6 +342,7 @@ For direct file ops, use read_file/write_file with Markdown in the vault directo
 CLI commands: obsidian-cli search <query> --vault <path>, obsidian-cli list --vault <path>,
 obsidian-cli create <name> --vault <path> --content <md>, obsidian-cli open <note>.
 Obsidian uses [[wikilinks]], #tags, and YAML frontmatter. Respect existing formatting."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "bear_notes".into(),
@@ -344,6 +358,7 @@ Obsidian uses [[wikilinks]], #tags, and YAML frontmatter. Respect existing forma
             agent_instructions: r#"You can manage Bear notes via the `grizzly` CLI.
 Commands: grizzly list, grizzly search <query>, grizzly show <id>, grizzly create --title <title> --body <md>,
 grizzly edit <id> --body <md>, grizzly trash <id>, grizzly tags. Bear uses #tags and Markdown."#.into(),
+            default_enabled: false,
         },
 
         // ───── DEVELOPMENT SKILLS ─────
@@ -367,6 +382,7 @@ Key patterns:
 - tmux kill-session -t <name> — stop session
 - tmux list-sessions — see running sessions
 Use this for interactive CLIs, REPLs, running servers, or anything that needs persistent state."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "session_logs".into(),
@@ -382,6 +398,7 @@ Use this for interactive CLIs, REPLs, running servers, or anything that needs pe
             agent_instructions: r#"You can search through past session logs using `rg` (ripgrep) and `jq`.
 Use rg to search conversation history files, and jq to parse JSON log entries.
 Example: rg "search term" ~/.paw/ --type json | jq '.content'"#.into(),
+            default_enabled: false,
         },
 
         // ───── MEDIA SKILLS ─────
@@ -401,6 +418,7 @@ Example: rg "search term" ~/.paw/ --type json | jq '.content'"#.into(),
 Usage: whisper <audio_file> --model small --language en --output_format txt
 Models: tiny, base, small, medium, large (larger = more accurate, slower).
 Supports: mp3, wav, m4a, flac, ogg, opus. Output: txt, vtt, srt, json."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "whisper_api".into(),
@@ -417,6 +435,7 @@ Supports: mp3, wav, m4a, flac, ogg, opus. Output: txt, vtt, srt, json."#.into(),
             agent_instructions: r#"You can transcribe audio using the OpenAI Whisper API.
 Use fetch to POST to https://api.openai.com/v1/audio/transcriptions with multipart form data.
 Include: file (audio binary), model: "whisper-1", optional: language, response_format (json|text|srt|vtt)."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "image_gen".into(),
@@ -434,6 +453,7 @@ Include: file (audio binary), model: "whisper-1", optional: language, response_f
 Call image_generate with a detailed prompt describing the image you want to create.
 The tool returns the file path of the generated image.
 Tip: Be descriptive — include style, lighting, composition, colors, and mood in your prompts for best results."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "video_frames".into(),
@@ -453,6 +473,7 @@ Key commands:
 - ffmpeg -i input.mp4 -vf fps=1 frames/%04d.png — extract 1 frame per second
 - ffprobe -v quiet -print_format json -show_format -show_streams input.mp4 — get metadata
 - ffmpeg -i input.mp4 -vf "thumbnail" -vframes 1 thumb.png — auto-select best thumbnail"#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "tts_sag".into(),
@@ -471,6 +492,7 @@ Key commands:
 Usage: sag "text to speak" [--voice <name>] [--model eleven_turbo_v2] [--output file.mp3]
 Or use the ElevenLabs API directly: POST https://api.elevenlabs.io/v1/text-to-speech/{voice_id}
 with {"text":"...", "model_id":"eleven_turbo_v2"}. Returns audio bytes."#.into(),
+            default_enabled: false,
         },
 
         // ───── SMART HOME & IoT ─────
@@ -490,6 +512,7 @@ with {"text":"...", "model_id":"eleven_turbo_v2"}. Returns audio bytes."#.into()
 Commands: openhue get lights, openhue set light <id> --on/--off --brightness <0-100> --color <hex>,
 openhue get rooms, openhue get scenes, openhue set scene <id>.
 First run: openhue setup (discovers bridge and creates API key)."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "sonos".into(),
@@ -506,6 +529,7 @@ First run: openhue setup (discovers bridge and creates API key)."#.into(),
 Commands: sonos status, sonos play, sonos pause, sonos next, sonos prev,
 sonos volume <0-100>, sonos group <room1> <room2>, sonos ungroup <room>,
 sonos rooms, sonos queue, sonos favorites."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "eight_sleep".into(),
@@ -521,6 +545,7 @@ sonos rooms, sonos queue, sonos favorites."#.into(),
             agent_instructions: r#"You can control Eight Sleep pods via `eightctl`.
 Commands: eightctl status, eightctl temp <-10 to 10>, eightctl alarm <HH:MM>,
 eightctl schedule list, eightctl schedule set <time> <temp>."#.into(),
+            default_enabled: false,
         },
 
         // ───── COMMUNICATION SKILLS ─────
@@ -540,6 +565,7 @@ eightctl schedule list, eightctl schedule set <time> <temp>."#.into(),
 Commands: wacli send <phone> <message>, wacli chats, wacli history <phone> [--limit 20],
 wacli search <query>, wacli sync.
 Phone numbers should include country code (e.g., +1234567890)."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "imessage".into(),
@@ -556,6 +582,7 @@ Phone numbers should include country code (e.g., +1234567890)."#.into(),
 Commands: imsg chats, imsg history <contact> [--limit 20], imsg send <contact> <message>,
 imsg search <query>, imsg watch (live stream new messages).
 Contacts can be phone numbers or email addresses."#.into(),
+            default_enabled: false,
         },
 
         // ───── CLI TOOLS ─────
@@ -574,6 +601,7 @@ Contacts can be phone numbers or email addresses."#.into(),
             agent_instructions: r#"You can get weather data without any special tools.
 Use web_search or fetch with: curl wttr.in/<city>?format=j1 (JSON) or curl wttr.in/<city> (text).
 Or use web_read on weather websites. For JSON: curl 'wttr.in/London?format=j1' gives detailed forecasts."#.into(),
+            default_enabled: true,
         },
         SkillDefinition {
             id: "blogwatcher".into(),
@@ -589,6 +617,7 @@ Or use web_read on weather websites. For JSON: curl 'wttr.in/London?format=j1' g
             agent_instructions: r#"You can monitor RSS/Atom feeds for updates.
 Use fetch to GET any RSS/Atom feed URL. Parse the XML to extract titles, links, dates, and summaries.
 Common feed URLs end in /feed, /rss, /atom.xml. You can also use web_read to scrape blog homepages."#.into(),
+            default_enabled: true,
         },
         SkillDefinition {
             id: "one_password".into(),
@@ -607,6 +636,7 @@ op item create --category login --title <name> --url <url>,
 op vault list, op document get <name>.
 IMPORTANT: Always use --fields to fetch specific fields, never dump full items.
 Enable desktop app integration for biometric unlock: Settings > Developer > CLI."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "spotify".into(),
@@ -624,6 +654,7 @@ Commands: spotify_player play <uri>, spotify_player pause, spotify_player next, 
 spotify_player search <query>, spotify_player devices, spotify_player volume <0-100>,
 spotify_player queue <uri>, spotify_player status.
 First run requires Spotify OAuth login."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "google_workspace".into(),
@@ -679,6 +710,7 @@ Tips:
 - Drive file IDs come from google_drive_list results.
 - For Sheets, the spreadsheet_id is the long string in the Google Sheets URL.
 - Calendar times must be RFC3339 format like 2026-02-24T10:00:00-05:00."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "google_places".into(),
@@ -697,6 +729,7 @@ Tips:
 Commands: goplaces search <query> [--location <lat,lng>] [--radius <meters>],
 goplaces details <place_id>, goplaces reviews <place_id>, goplaces resolve <name>.
 Or use the Places API directly via fetch with your API key."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "peekaboo".into(),
@@ -713,6 +746,7 @@ Or use the Places API directly via fetch with your API key."#.into(),
 Commands: peekaboo screenshot [--window <app>] [--screen], peekaboo list-windows,
 peekaboo click <x> <y>, peekaboo type <text>, peekaboo read [--window <app>].
 Requires Accessibility permission in System Preferences > Privacy."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "healthcheck".into(),
@@ -735,6 +769,7 @@ Use exec to run these checks:
 - Updates: softwareupdate -l (macOS), apt list --upgradable (Linux)
 - Users: dscl . -list /Users (macOS), cat /etc/passwd (Linux)
 Always ask before making changes. Report findings clearly."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "summarize".into(),
@@ -752,6 +787,7 @@ Commands: summarize <url> — works with YouTube videos, podcasts, articles, PDF
 summarize <file> — local audio/video files.
 Options: --format text|json|markdown, --length short|medium|long.
 Falls back to web_read for articles if summarize isn't available."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "gifgrep".into(),
@@ -767,6 +803,7 @@ Falls back to web_read for articles if summarize isn't available."#.into(),
             agent_instructions: r#"You can search for GIFs using `gifgrep`.
 Commands: gifgrep <query> [--provider giphy|tenor] [--limit 5] [--download <dir>],
 gifgrep --extract-stills <gif> — extract frames as PNGs."#.into(),
+            default_enabled: false,
         },
         SkillDefinition {
             id: "camsnap".into(),
@@ -783,6 +820,7 @@ gifgrep --extract-stills <gif> — extract frames as PNGs."#.into(),
 Commands: camsnap snap <url> [--output frame.jpg], camsnap discover (find cameras on network),
 camsnap stream <url> --frames 10 --interval 1s (capture multiple).
 Supports RTSP, ONVIF, and HTTP MJPEG streams."#.into(),
+            default_enabled: false,
         },
         // ── DEX / Uniswap Trading ──
         SkillDefinition {
@@ -842,6 +880,7 @@ Alpha Hunting Workflow:
 6. Use dex_watch_wallet on high-conviction wallets to see their full portfolio and recent moves
 7. Cross-reference: when multiple smart wallets accumulate the same token, that's a strong signal
 8. Execute: dex_quote first, then dex_swap with user approval"#.into(),
+            default_enabled: false,
         },
         // ── Solana DEX Trading (Jupiter + PumpPortal) ──
         SkillDefinition {
@@ -890,6 +929,7 @@ Trading Rules:
 - Use dex_search_token (from the Ethereum DEX skill) to discover new Solana tokens — DexScreener supports all chains
 - Use dex_trending with chain='solana' to find trending Solana tokens
 - If a sell fails on Jupiter, try again with higher slippage — PumpPortal fallback will kick in automatically"#.into(),
+            default_enabled: false,
         },
     ]
 }

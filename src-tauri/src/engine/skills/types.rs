@@ -62,6 +62,10 @@ pub struct SkillDefinition {
     /// Instructions injected into the agent's system prompt when enabled.
     /// This teaches the agent HOW to use the skill's CLI/API.
     pub agent_instructions: String,
+    /// Whether this skill is enabled by default on a fresh install.
+    /// Essential skills (weather, blogwatcher) are true; most are false.
+    #[serde(default)]
+    pub default_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,6 +140,9 @@ pub struct SkillStatus {
     /// Whether the skill declares a dashboard widget (TOML skills only).
     #[serde(default)]
     pub has_widget: bool,
+    /// Whether this skill is enabled by default on a fresh install.
+    #[serde(default)]
+    pub default_enabled: bool,
 }
 
 fn default_source() -> SkillSource {

@@ -7,6 +7,7 @@ import {
   type PawzHubEntry,
   type CommunitySkill,
   type DiscoveredSkill,
+  type EngineSkillStatus,
 } from '../../engine';
 import { $, escHtml, confirmModal } from '../../components/helpers';
 import { showToast } from '../../components/toast';
@@ -15,6 +16,7 @@ import {
   fromPawzHubEntry,
   fromDiscoveredSkill,
   fromCommunitySkill,
+  fromEngineSkill,
 } from '../../components/molecules/skill-card';
 import {
   PAWZHUB_CATEGORIES,
@@ -102,6 +104,70 @@ export function renderAllSkillsSection(entries: PawzHubEntry[]): string {
       ${entries.map((e) => renderSkillCard(fromPawzHubEntry(e))).join('')}
     </div>
   </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Built-in Skills — Available but not enabled
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function renderBuiltinSkillsSection(disabledSkills: EngineSkillStatus[]): string {
+  if (disabledSkills.length === 0) return '';
+
+  const cards = disabledSkills.map((skill) => {
+    const cardData = fromEngineSkill(skill);
+    // Override to show as "available" with an enable button
+    cardData.status = 'available';
+    cardData.statusLabel = 'Available';
+    cardData.source = 'builtin';
+    cardData.action = {
+      type: 'custom',
+      html: `<button class="btn btn-primary btn-sm uc-enable-builtin-btn" data-skill-id="${escHtml(skill.id)}" data-name="${escHtml(skill.name)}">
+        <span class="ms ms-sm">add_circle</span> Enable
+      </button>`,
+    };
+    return renderSkillCard(cardData);
+  });
+
+  return `
+  <div class="ph-section" style="margin-top:24px;padding-top:20px;border-top:1px solid var(--border-subtle)">
+    <h3 class="ph-section-title">
+      ${msIcon('inventory_2')} Built-in Skills
+      <span class="ph-section-count">${disabledSkills.length} available</span>
+    </h3>
+    <p style="color:var(--text-muted);font-size:12px;margin:0 0 12px;max-width:500px">
+      These skills are included with OpenPawz. Enable any to give your agent new capabilities.
+    </p>
+    <div class="skills-card-grid">
+      ${cards.join('')}
+    </div>
+  </div>`;
+}
+
+// ── Enable button wiring for built-in skills ───────────────────────────
+
+export function wireBuiltinEnableButtons(container: HTMLElement): void {
+  const reload = () => (_reloadFn ? _reloadFn() : Promise.resolve());
+
+  container.querySelectorAll('.uc-enable-builtin-btn').forEach((el) => {
+    el.addEventListener('click', async () => {
+      const btn = el as HTMLButtonElement;
+      const skillId = btn.dataset.skillId!;
+      const name = btn.dataset.name!;
+
+      btn.disabled = true;
+      btn.innerHTML = `<span class="wa-spinner" style="width:12px;height:12px"></span> Enabling...`;
+
+      try {
+        await pawEngine.skillSetEnabled(skillId, true);
+        showToast(`${name} enabled!`, 'success');
+        await reload();
+      } catch (err) {
+        showToast(`Failed: ${err}`, 'error');
+        btn.disabled = false;
+        btn.innerHTML = `<span class="ms ms-sm">add_circle</span> Enable`;
+      }
+    });
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

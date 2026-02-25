@@ -20,7 +20,9 @@ fn build_skill_status(
     has_mcp: bool,
     has_widget: bool,
 ) -> EngineResult<SkillStatus> {
-    let enabled = store.is_skill_enabled(&def.id)?;
+    // Use explicit user choice if set, otherwise fall back to definition default
+    let enabled = store.get_skill_enabled_state(&def.id)?
+        .unwrap_or(def.default_enabled);
     let configured_keys = store.list_skill_credential_keys(&def.id)?;
     let missing_creds: Vec<String> = def.required_credentials.iter()
         .filter(|c| c.required && !configured_keys.contains(&c.key))
@@ -77,6 +79,7 @@ fn build_skill_status(
         author,
         has_mcp,
         has_widget,
+        default_enabled: def.default_enabled,
     })
 }
 

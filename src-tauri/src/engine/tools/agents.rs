@@ -177,7 +177,7 @@ async fn execute_self_info(app_handle: &tauri::AppHandle) -> EngineResult<String
 
     let skills_list = crate::engine::skills::builtin_skills();
     let enabled_skills: Vec<String> = skills_list.iter()
-        .filter(|s| state.store.is_skill_enabled(&s.id).unwrap_or(false))
+        .filter(|s| state.store.get_skill_enabled_state(&s.id).unwrap_or(None).unwrap_or(s.default_enabled))
         .map(|s| format!("  - {} ({})", s.name, s.id))
         .collect();
 

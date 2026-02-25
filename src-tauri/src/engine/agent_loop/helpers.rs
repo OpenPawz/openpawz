@@ -145,7 +145,7 @@ pub fn refresh_tool_rag(
     let mut all_defs = ToolDefinition::builtins();
     let enabled_ids: Vec<String> = crate::engine::skills::builtin_skills()
         .iter()
-        .filter(|s| state.store.is_skill_enabled(&s.id).unwrap_or(false))
+        .filter(|s| state.store.get_skill_enabled_state(&s.id).unwrap_or(None).unwrap_or(s.default_enabled))
         .map(|s| s.id.clone())
         .collect();
     all_defs.extend(ToolDefinition::skill_tools(&enabled_ids));

@@ -431,3 +431,33 @@ pub async fn engine_google_gmail_send(
         .await
         .map_err(|e| e.to_string())
 }
+
+// ── Phase 4 — Modular Enable/Disable ───────────────────────────────────
+
+/// Bulk enable/disable a list of skill IDs (used by setup wizard).
+#[tauri::command]
+pub fn engine_skill_bulk_enable(
+    state: State<'_, EngineState>,
+    skill_ids: Vec<String>,
+    enabled: bool,
+) -> Result<(), String> {
+    info!("[engine] Bulk {} {} skills", if enabled { "enabling" } else { "disabling" }, skill_ids.len());
+    state.store.bulk_set_skills_enabled(&skill_ids, enabled).map_err(|e| e.to_string())
+}
+
+/// Check if the initial onboarding setup wizard has been completed.
+#[tauri::command]
+pub fn engine_is_onboarding_complete(
+    state: State<'_, EngineState>,
+) -> Result<bool, String> {
+    state.store.is_onboarding_complete().map_err(|e| e.to_string())
+}
+
+/// Mark the onboarding setup wizard as complete.
+#[tauri::command]
+pub fn engine_set_onboarding_complete(
+    state: State<'_, EngineState>,
+) -> Result<(), String> {
+    info!("[engine] Onboarding marked complete");
+    state.store.set_onboarding_complete().map_err(|e| e.to_string())
+}

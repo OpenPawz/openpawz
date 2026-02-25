@@ -5,16 +5,19 @@ import {
   pawEngine,
   type PawzHubEntry,
   type CommunitySkill,
+  type EngineSkillStatus,
 } from '../../engine';
 import { $ } from '../../components/helpers';
 import {
   renderHeroSection,
   renderFeaturedSection,
   renderAllSkillsSection,
+  renderBuiltinSkillsSection,
   renderCommunitySection,
   setReload,
   bindPawzHubEvents,
   bindCommunityEvents,
+  wireBuiltinEnableButtons,
 } from './molecules';
 
 // ── Public entry point ─────────────────────────────────────────────────────
@@ -32,11 +35,15 @@ export async function loadPawzHub(): Promise<void> {
   </div>`;
 
   try {
-    // Parallel fetch: registry + community skills
-    const [entries, communitySkills] = await Promise.all([
+    // Parallel fetch: registry + community skills + built-in skill statuses
+    const [entries, communitySkills, builtinSkills] = await Promise.all([
       fetchRegistryEntries(),
       fetchCommunitySkills(),
+      fetchBuiltinSkills(),
     ]);
+
+    // Filter built-in skills that aren't enabled (available to "install"/enable)
+    const disabledBuiltins = builtinSkills.filter((s) => !s.enabled);
 
     // Render full page
     container.innerHTML =
@@ -45,6 +52,7 @@ export async function loadPawzHub(): Promise<void> {
       renderFeaturedSection(entries) +
       renderAllSkillsSection(entries) +
       `</div>` +
+      renderBuiltinSkillsSection(disabledBuiltins) +
       renderCommunitySection(communitySkills);
 
     // Bind events
@@ -56,6 +64,9 @@ export async function loadPawzHub(): Promise<void> {
 
     // Wire install buttons for the initial render
     wireInitialInstallButtons(container, entries);
+
+    // Wire enable buttons for disabled built-in skills
+    wireBuiltinEnableButtons(container);
   } catch (err) {
     container.innerHTML = `
     <div style="text-align:center;padding:32px">
@@ -84,6 +95,15 @@ async function fetchCommunitySkills(): Promise<CommunitySkill[]> {
     return await pawEngine.communitySkillsList();
   } catch {
     console.warn('[PawzHub] Community skills list failed, returning empty');
+    return [];
+  }
+}
+
+async function fetchBuiltinSkills(): Promise<EngineSkillStatus[]> {
+  try {
+    return await pawEngine.skillsList();
+  } catch {
+    console.warn('[PawzHub] Skills list failed, returning empty');
     return [];
   }
 }

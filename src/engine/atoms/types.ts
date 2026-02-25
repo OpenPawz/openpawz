@@ -235,6 +235,8 @@ export interface EngineSkillStatus {
   has_mcp?: boolean;
   /** Whether the skill declares a dashboard widget */
   has_widget?: boolean;
+  /** Whether this skill is enabled by default on a fresh install */
+  default_enabled?: boolean;
 }
 
 export type SkillSource = 'builtin' | 'toml';

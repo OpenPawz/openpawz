@@ -117,6 +117,60 @@ impl SessionStore {
         }
     }
 
+    /// Get explicit enabled state, or None if never set by the user.
+    /// Callers can fall back to `SkillDefinition::default_enabled`.
+    pub fn get_skill_enabled_state(&self, skill_id: &str) -> EngineResult<Option<bool>> {
+        let conn = self.conn.lock();
+        let result = conn.query_row(
+            "SELECT enabled FROM skill_state WHERE skill_id = ?1",
+            rusqlite::params![skill_id],
+            |row: &rusqlite::Row| row.get::<_, i32>(0),
+        );
+        match result {
+            Ok(v) => Ok(Some(v != 0)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Bulk-enable a list of skills (used by setup wizard).
+    pub fn bulk_set_skills_enabled(&self, skill_ids: &[String], enabled: bool) -> EngineResult<()> {
+        let conn = self.conn.lock();
+        for skill_id in skill_ids {
+            conn.execute(
+                "INSERT INTO skill_state (skill_id, enabled, updated_at) VALUES (?1, ?2, datetime('now'))
+                 ON CONFLICT(skill_id) DO UPDATE SET enabled = ?2, updated_at = datetime('now')",
+                rusqlite::params![skill_id, enabled as i32],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Check if the user has completed the initial onboarding/setup wizard.
+    pub fn is_onboarding_complete(&self) -> EngineResult<bool> {
+        let conn = self.conn.lock();
+        let result = conn.query_row(
+            "SELECT 1 FROM skill_state WHERE skill_id = '__onboarding_complete__'",
+            [],
+            |_| Ok(()),
+        );
+        match result {
+            Ok(_) => Ok(true),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(false),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Mark onboarding as complete.
+    pub fn set_onboarding_complete(&self) -> EngineResult<()> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "INSERT OR IGNORE INTO skill_state (skill_id, enabled, updated_at) VALUES ('__onboarding_complete__', 1, datetime('now'))",
+            [],
+        )?;
+        Ok(())
+    }
+
     /// Get custom instructions for a skill (if any).
     pub fn get_skill_custom_instructions(&self, skill_id: &str) -> EngineResult<Option<String>> {
         let conn = self.conn.lock();

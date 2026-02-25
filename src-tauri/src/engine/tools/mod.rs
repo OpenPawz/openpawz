@@ -202,13 +202,18 @@ pub fn get_skill_creds(
     let state = app_handle.try_state::<EngineState>()
         .ok_or("Engine state not available")?;
 
-    if !state.store.is_skill_enabled(skill_id)? {
+    // Look up default_enabled from builtin definition
+    let defs = skills::builtin_skills();
+    let default_enabled = defs.iter().find(|d| d.id == skill_id).map(|d| d.default_enabled).unwrap_or(false);
+    let enabled = state.store.get_skill_enabled_state(skill_id)?
+        .unwrap_or(default_enabled);
+
+    if !enabled {
         return Err(format!("Skill '{}' is not enabled. Ask the user to enable it in Skills.", skill_id).into());
     }
 
     let creds = skills::get_skill_credentials(&state.store, skill_id)?;
 
-    let defs = skills::builtin_skills();
     if let Some(def) = defs.iter().find(|d| d.id == skill_id) {
         let missing: Vec<&str> = def.required_credentials.iter()
             .filter(|c| c.required && !creds.contains_key(&c.key))

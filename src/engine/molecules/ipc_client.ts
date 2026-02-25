@@ -338,6 +338,18 @@ export class PawEngineClient {
     return invoke('engine_skill_set_enabled', { skillId, enabled });
   }
 
+  async skillBulkEnable(skillIds: string[], enabled: boolean): Promise<void> {
+    return invoke('engine_skill_bulk_enable', { skillIds, enabled });
+  }
+
+  async isOnboardingComplete(): Promise<boolean> {
+    return invoke<boolean>('engine_is_onboarding_complete');
+  }
+
+  async setOnboardingComplete(): Promise<void> {
+    return invoke('engine_set_onboarding_complete');
+  }
+
   async skillSetCredential(skillId: string, key: string, value: string): Promise<void> {
     return invoke('engine_skill_set_credential', { skillId, key, value });
   }
