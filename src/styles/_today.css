@@ -81,9 +81,46 @@
   padding: 12px;
   border-right: 1px solid var(--border);
 }
+.today-header-right {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 320px;
+}
+.today-usage-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.today-usage-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+}
+.today-usage-val {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+.today-usage-lbl {
+  color: var(--text-muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.today-usage-sep {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
 .today-weather-cell {
-  width: 140px;
-  padding: 12px;
+  flex: 1;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -119,6 +156,10 @@
   .today-greeting-cell {
     border-right: none;
     border-bottom: 1px solid var(--border);
+  }
+  .today-header-right {
+    min-width: unset;
+    max-width: unset;
   }
   .today-weather-cell {
     width: auto;

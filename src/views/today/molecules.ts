@@ -370,7 +370,7 @@ function renderCapabilityGroups(groups: CapabilityGroup[], totalSkills: number):
 }
 
 /** Populate the agent fleet status card. */
-export async function fetchFleetStatus() {
+export async function fetchFleetStatus(retries = 3) {
   const container = $('cmd-fleet-body');
   if (!container) return;
 
@@ -393,9 +393,22 @@ export async function fetchFleetStatus() {
   }
 
   try {
-    const agents = getAgents();
+    let agents = getAgents();
+    // Agents may not be loaded yet — retry with delay
+    if (agents.length === 0 && retries > 0) {
+      await new Promise((r) => setTimeout(r, 600));
+      agents = getAgents();
+      if (agents.length === 0 && retries > 1) {
+        await new Promise((r) => setTimeout(r, 1000));
+        agents = getAgents();
+      }
+    }
     if (agents.length === 0) {
-      container.innerHTML = `<div class="today-section-empty">No agents configured</div>`;
+      container.innerHTML = `<div class="today-section-empty">No agents configured — <a href="#" data-view="agents" style="color:var(--accent)">create one</a></div>`;
+      container.querySelector('[data-view="agents"]')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchView('agents');
+      });
       return;
     }
 
@@ -460,13 +473,24 @@ export function renderToday() {
         <div class="today-greeting">${greeting}${userName ? `, ${escHtml(userName)}` : ''}</div>
         <div class="today-date">${dateStr}</div>
       </div>
-      <div class="today-weather-cell" id="today-weather">
-        <span class="today-loading">…</span>
+      <div class="today-header-right">
+        <div class="today-usage-strip">
+          <span class="today-usage-item"><span class="today-usage-val" id="cmd-tokens">${formatTokens(tokensUsed)}</span> <span class="today-usage-lbl">tokens</span></span>
+          <span class="today-usage-sep">·</span>
+          <span class="today-usage-item"><span class="today-usage-val" id="cmd-cost">${formatCost(cost)}</span> <span class="today-usage-lbl">cost</span></span>
+          <span class="today-usage-sep">·</span>
+          <span class="today-usage-item"><span class="today-usage-val" id="cmd-input-tokens">${formatTokens(appState.sessionInputTokens)}</span> <span class="today-usage-lbl">in</span></span>
+          <span class="today-usage-sep">·</span>
+          <span class="today-usage-item"><span class="today-usage-val" id="cmd-output-tokens">${formatTokens(appState.sessionOutputTokens)}</span> <span class="today-usage-lbl">out</span></span>
+        </div>
+        <div class="today-weather-cell" id="today-weather">
+          <span class="today-loading">…</span>
+        </div>
       </div>
     </div>
 
     <div class="cmd-grid bento-grid">
-      <!-- Row 1: Fleet + Usage + Skills + Emails -->
+      <!-- Row 1: Fleet + Skills + Emails -->
       <div class="cmd-card bento-cell bento-span-4">
         <div class="today-card-header">
           <span class="today-card-title">AGENT FLEET</span>
@@ -476,33 +500,7 @@ export function renderToday() {
         </div>
       </div>
 
-      <div class="cmd-card bento-cell bento-span-3">
-        <div class="today-card-header">
-          <span class="today-card-title">USAGE</span>
-        </div>
-        <div class="today-card-body cmd-usage-body">
-          <div class="cmd-stat-row">
-            <div class="cmd-stat">
-              <span class="stat-value" id="cmd-tokens">${formatTokens(tokensUsed)}</span>
-              <span class="stat-label">tokens</span>
-            </div>
-            <div class="cmd-stat">
-              <span class="stat-value" id="cmd-cost">${formatCost(cost)}</span>
-              <span class="stat-label">cost</span>
-            </div>
-            <div class="cmd-stat">
-              <span class="stat-value" id="cmd-input-tokens">${formatTokens(appState.sessionInputTokens)}</span>
-              <span class="stat-label">in</span>
-            </div>
-            <div class="cmd-stat">
-              <span class="stat-value" id="cmd-output-tokens">${formatTokens(appState.sessionOutputTokens)}</span>
-              <span class="stat-label">out</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="cmd-card bento-cell bento-span-2">
+      <div class="cmd-card bento-cell bento-span-4">
         <div class="today-card-header">
           <span class="today-card-title">SKILLS</span>
           <span class="today-card-count" id="cmd-skills-count">…</span>
@@ -512,7 +510,7 @@ export function renderToday() {
         </div>
       </div>
 
-      <div class="cmd-card bento-cell bento-span-3">
+      <div class="cmd-card bento-cell bento-span-4">
         <div class="today-card-header">
           <span class="today-card-title">UNREAD MAIL</span>
         </div>
@@ -800,11 +798,46 @@ async function loadIntegrationsDashboard() {
   if (!body) return;
 
   try {
-    const health = await loadServiceHealth();
-    const connectedIds = health.map((h) => h.service);
+    let health = await loadServiceHealth();
+
+    // Fallback: if health check returned nothing, try listing connected IDs directly
+    if (health.length === 0 && invoke) {
+      try {
+        const ids = await invoke<string[]>('engine_integrations_list_connected');
+        if (ids && ids.length > 0) {
+          health = ids.map((id) => ({
+            service: id,
+            serviceName: id.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+            icon: 'extension',
+            status: 'ok',
+            lastChecked: new Date().toISOString(),
+            message: null,
+            tokenExpiry: null,
+            daysUntilExpiry: null,
+            recentFailures: 0,
+            todayActions: 0,
+          } as never));
+        }
+      } catch { /* fallback failed, continue with empty */ }
+    }
+
+    const connectedIds = health.map((h: { service: string }) => h.service);
 
     if (countEl) {
       countEl.textContent = health.length > 0 ? String(health.length) : '0';
+    }
+
+    if (health.length === 0) {
+      body.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
+          <span class="ms ms-sm">hub</span>
+          <span>No services connected · <a href="#" class="integ-browse" style="color:var(--accent);text-decoration:none">Browse integrations</a></span>
+        </div>`;
+      body.querySelector('.integ-browse')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchView('integrations');
+      });
+      return;
     }
 
     const html = await renderDashboardIntegrations(connectedIds);
@@ -814,8 +847,12 @@ async function loadIntegrationsDashboard() {
     body.innerHTML = `
       <div style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-secondary)">
         <span class="ms ms-sm">hub</span>
-        <span>400+ services available · <a href="#" data-view="integrations" style="color:var(--accent);text-decoration:none">Browse all</a></span>
+        <span>400+ services available · <a href="#" class="integ-browse" style="color:var(--accent);text-decoration:none">Browse all</a></span>
       </div>`;
+    body.querySelector('.integ-browse')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      switchView('integrations');
+    });
     if (countEl) countEl.textContent = '0';
   }
 }
