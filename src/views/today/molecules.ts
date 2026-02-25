@@ -30,6 +30,7 @@ import {
 } from '../../features/integration-health';
 import { heatmapStrip } from '../../components/molecules/data-viz';
 import { isShowcaseActive, getShowcaseData } from '../../components/showcase';
+import { kineticRow, kineticStagger, kineticDot, type KineticStatus } from '../../components/kinetic-row';
 
 // ── Tauri bridge (no pawEngine equivalent for these commands) ──────────
 interface TauriWindow {
@@ -257,8 +258,8 @@ export async function fetchActiveSkills() {
     const countEl = $('cmd-skills-count');
     if (countEl) countEl.textContent = String(showcase.skillNames.length);
     container.innerHTML = `
-      <div class="cmd-skills-grid">
-        ${showcase.skillNames.map((n) => `<span class="cmd-skill-chip">◉ ${escHtml(n)}</span>`).join('')}
+      <div class="cmd-skills-grid k-stagger">
+        ${showcase.skillNames.map((n) => `<span class="cmd-skill-chip k-row k-breathe k-materialise k-status-healthy">${kineticDot()} ${escHtml(n)}</span>`).join('')}
       </div>
     `;
     return;
@@ -283,13 +284,15 @@ export async function fetchActiveSkills() {
     const remaining = _activeSkills.length - shown.length;
 
     container.innerHTML = `
-      <div class="cmd-skills-grid">
+      <div class="cmd-skills-grid k-stagger">
         ${shown
           .map(
-            (s) =>
-              `<span class="cmd-skill-chip" title="${escHtml(s.name)}">
-                ${s.is_ready ? '◉' : '○'} ${escHtml(s.name)}
-              </span>`,
+            (s) => {
+              const kStatus: KineticStatus = s.is_ready ? 'healthy' : 'idle';
+              return `<span class="cmd-skill-chip k-row k-breathe k-materialise k-status-${kStatus}" title="${escHtml(s.name)}">
+                ${kineticDot()} ${escHtml(s.name)}
+              </span>`;
+            },
           )
           .join('')}
       </div>
@@ -377,18 +380,17 @@ export async function fetchFleetStatus(retries = 3) {
   // Showcase mode — render demo agents
   const showcase = isShowcaseActive() ? getShowcaseData() : null;
   if (showcase) {
-    container.innerHTML = showcase.agents
+    container.innerHTML = `<div class="k-stagger">${showcase.agents
       .map((a) => {
         const status = agentStatus(a.lastUsed);
-        const dot = status === 'active' ? '◉' : '○';
-        const dotClass = status === 'active' ? 'fleet-dot-active' : 'fleet-dot-idle';
-        return `<div class="cmd-fleet-item">
-          <span class="${dotClass}">${dot}</span>
+        const kStatus: KineticStatus = status === 'active' ? 'healthy' : 'idle';
+        return `<div class="cmd-fleet-item k-row k-breathe k-materialise k-status-${kStatus}">
+          ${kineticDot()}
           <span class="cmd-fleet-name">${escHtml(a.name)}</span>
           <span class="cmd-fleet-status">[${status}]</span>
         </div>`;
       })
-      .join('');
+      .join('')}</div>`;
     return;
   }
 
@@ -412,18 +414,17 @@ export async function fetchFleetStatus(retries = 3) {
       return;
     }
 
-    container.innerHTML = agents
+    container.innerHTML = `<div class="k-stagger">${agents
       .map((a) => {
         const status = agentStatus(a.lastUsed);
-        const dot = status === 'active' ? '◉' : '○';
-        const dotClass = status === 'active' ? 'fleet-dot-active' : 'fleet-dot-idle';
-        return `<div class="cmd-fleet-item">
-          <span class="${dotClass}">${dot}</span>
+        const kStatus: KineticStatus = status === 'active' ? 'healthy' : 'idle';
+        return `<div class="cmd-fleet-item k-row k-breathe k-materialise k-status-${kStatus}">
+          ${kineticDot()}
           <span class="cmd-fleet-name">${escHtml(a.name)}</span>
           <span class="cmd-fleet-status">[${status}]</span>
         </div>`;
       })
-      .join('');
+      .join('')}</div>`;
   } catch (e) {
     console.warn('[today] Fleet status failed:', e);
   }
@@ -642,6 +643,18 @@ function bindEvents() {
   $('today-briefing-btn')?.addEventListener('click', () => triggerBriefing());
   $('today-summarize-btn')?.addEventListener('click', () => triggerInboxSummary());
   $('today-schedule-btn')?.addEventListener('click', () => triggerScheduleCheck());
+
+  // ── Kinetic: apply spring hover to bento cards ──
+  document.querySelectorAll('.cmd-card').forEach((card) => {
+    kineticRow(card as HTMLElement, { spring: true, springCard: true });
+  });
+
+  // ── Kinetic: stagger-materialise skill chips and fleet items ──
+  const fleetStagger = document.querySelector('#cmd-fleet-body .k-stagger');
+  if (fleetStagger) kineticStagger(fleetStagger as HTMLElement, '.cmd-fleet-item');
+
+  const skillsStagger = document.querySelector('#cmd-skills-body .k-stagger');
+  if (skillsStagger) kineticStagger(skillsStagger as HTMLElement, '.cmd-skill-chip');
 
   // Integration health dashboard wiring
   loadIntegrationsDashboard();

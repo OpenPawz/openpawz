@@ -8,6 +8,7 @@
 @import './_tokens.css';        /* Design tokens, CSS custom properties, light theme */
 @import './_reset.css';         /* Font-face, material symbols, universal reset, body */
 @import './_textures.css';      /* Grain overlay, halftone, kinetic pulse */
+@import './_kinetic.css';       /* Kinetic row system: breathing, signal wave, spring, materialise */
 @import './_cards.css';         /* Card system, typography utilities, data-viz atoms */
 @import './_icons.css';         /* Icon sizing, status indicators */
 @import './_layout.css';        /* App shell layout */

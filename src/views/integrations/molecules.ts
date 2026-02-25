@@ -12,6 +12,7 @@ import { SERVICE_CATALOG } from './catalog';
 import { openSetupGuide } from './setup-guide';
 import { loadAutomations, loadServiceTemplates } from './automations';
 import { loadQueryPanel, loadServiceQueries, setQueryConnectedIds } from './queries';
+import { kineticStagger, kineticDot } from '../../components/kinetic-row';
 
 // ── Module state (set by index.ts) ─────────────────────────────────────
 
@@ -200,9 +201,9 @@ function _renderCards(): void {
             const healthBar = Array.from({ length: 4 }, (_, i) =>
               `<span class="health-seg ${i < healthLevel ? (healthLevel <= 1 ? 'health-red' : healthLevel <= 2 ? 'health-gold' : 'health-sage') : 'health-dim'}"></span>`
             ).join('');
-            return `<tr class="matrix-row" data-service-id="${s.id}">
+            return `<tr class="matrix-row k-row${isConnected ? ' k-breathe k-status-' + (conn?.status === 'error' ? 'error' : conn?.status === 'expired' ? 'warning' : 'healthy') : ' k-status-idle'}" data-service-id="${s.id}">
               <td class="matrix-name"><span class="ms ms-sm" style="color:${s.color}">${s.icon}</span> ${escHtml(s.name)}</td>
-              <td class="matrix-state">${isConnected ? '<span class="matrix-on">● ON</span>' : '<span class="matrix-off">○ OFF</span>'}</td>
+              <td class="matrix-state">${isConnected ? `<span class="matrix-on">${kineticDot()} ON</span>` : '<span class="matrix-off">○ OFF</span>'}</td>
               <td class="matrix-health">${healthBar}</td>
               <td class="matrix-tools">${conn ? conn.toolCount : '—'}</td>
               <td class="matrix-actions">
@@ -216,6 +217,10 @@ function _renderCards(): void {
         </tbody>
       </table>
       <div class="matrix-footer">Showing ${ordered.length} of ${SERVICE_CATALOG.length} services</div>`;
+
+    // Stagger matrix rows
+    const tbody = grid.querySelector('tbody');
+    if (tbody) kineticStagger(tbody as HTMLElement, '.matrix-row');
     return;
   }
 
@@ -224,7 +229,7 @@ function _renderCards(): void {
     const isConnected = connectedIds.has(s.id);
     const conn = connected.find((c) => c.serviceId === s.id);
     return `
-      <div class="integrations-card ${isConnected ? 'integrations-card-connected' : ''}"
+      <div class="integrations-card k-row k-spring ${isConnected ? 'integrations-card-connected k-breathe k-oscillate k-status-healthy' : 'k-status-idle'}"
            data-service-id="${s.id}"
            style="--accent: ${s.color}">
         <div class="integrations-card-icon" style="background: ${s.color}15; color: ${s.color}">
@@ -248,6 +253,9 @@ function _renderCards(): void {
         </div>
       </div>`;
   }).join('');
+
+  // Apply staggered materialise to visible cards
+  kineticStagger(grid, '.integrations-card');
 }
 
 // ── Detail panel ───────────────────────────────────────────────────────

@@ -1,0 +1,231 @@
+/* ══════════════════════════════════════════════════════════════════
+   Kinetic Row System — VST-grade motion & signal processing
+   Breathing indicators, signal waves, spring hover, warm-up materialization
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 1. Breathing Indicator — continuous heartbeat for active/connected items ── */
+
+@keyframes k-breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.72; transform: scale(0.92); }
+}
+
+@keyframes k-breathe-dot {
+  0%, 100% { box-shadow: 0 0 0 0 var(--k-breathe-color, var(--accent)); opacity: 1; }
+  50%      { box-shadow: 0 0 6px 2px var(--k-breathe-color, var(--accent)); opacity: 0.65; }
+}
+
+.k-breathe {
+  --k-breathe-color: var(--accent);
+}
+
+.k-breathe .k-indicator {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--k-breathe-color);
+  animation: k-breathe-dot 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  flex-shrink: 0;
+}
+
+.k-breathe.k-status-healthy .k-indicator  { --k-breathe-color: var(--kinetic-sage, #8FB0A0); }
+.k-breathe.k-status-warning .k-indicator  { --k-breathe-color: var(--kinetic-gold, #C4A962); }
+.k-breathe.k-status-error .k-indicator    { --k-breathe-color: var(--kinetic-red, #D4654A); }
+.k-breathe.k-status-idle .k-indicator     { --k-breathe-color: var(--text-muted); animation: none; opacity: 0.4; }
+
+/* ── 2. Signal Wave — horizontal accent sweep on events ── */
+
+@keyframes k-signal-wave {
+  0%   { background-position: -100% 0; }
+  40%  { background-position: 100% 0; }
+  100% { background-position: 100% 0; opacity: 0; }
+}
+
+.k-row {
+  position: relative;
+  overflow: hidden;
+  /* Compositing layer for GPU acceleration */
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.k-row::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--k-signal-color, var(--kinetic-red, #D4654A)) 40%,
+    var(--k-signal-color, var(--kinetic-red, #D4654A)) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-position: -100% 0;
+  opacity: 0.08;
+  pointer-events: none;
+  z-index: 0;
+  /* Hidden until triggered */
+  animation: none;
+}
+
+.k-row.k-signal-fire::before {
+  animation: k-signal-wave 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Signal color variants */
+.k-row.k-signal-accent::before  { --k-signal-color: var(--accent); }
+.k-row.k-signal-success::before { --k-signal-color: var(--kinetic-sage, #8FB0A0); }
+.k-row.k-signal-warning::before { --k-signal-color: var(--kinetic-gold, #C4A962); }
+.k-row.k-signal-error::before   { --k-signal-color: var(--kinetic-red, #D4654A); }
+
+/* ── 3. Spring Hover — subtle scale with cubic-bezier spring ── */
+
+.k-spring {
+  transition:
+    transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.3s ease,
+    border-color 0.2s ease;
+}
+
+.k-spring:hover {
+  transform: scale(1.015) translateY(-1px);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1;
+}
+
+/* Stronger spring for cards (Today bento cells) */
+.k-spring-card {
+  transition:
+    transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.35s ease,
+    border-color 0.2s ease;
+}
+
+.k-spring-card:hover {
+  transform: scale(1.012) translateY(-1px);
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.12),
+    0 0 0 1px var(--accent-muted, rgba(212, 101, 74, 0.15));
+  border-color: var(--accent-muted, rgba(212, 101, 74, 0.3));
+}
+
+/* ── 4. Warm-Up Materialise — fade in through grain texture ── */
+
+@keyframes k-materialise {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+    filter: contrast(0.7) brightness(0.8);
+  }
+  40% {
+    filter: contrast(1.2) brightness(1.05);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: contrast(1) brightness(1);
+  }
+}
+
+@keyframes k-materialise-dot {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.5);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.k-materialise {
+  animation: k-materialise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.k-materialise .k-indicator {
+  animation: k-materialise-dot 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both,
+             k-breathe-dot 2.4s cubic-bezier(0.4, 0, 0.6, 1) 0.8s infinite;
+}
+
+/* Stagger children — use on parent container */
+.k-stagger > .k-materialise:nth-child(1)  { animation-delay: 0ms; }
+.k-stagger > .k-materialise:nth-child(2)  { animation-delay: 40ms; }
+.k-stagger > .k-materialise:nth-child(3)  { animation-delay: 80ms; }
+.k-stagger > .k-materialise:nth-child(4)  { animation-delay: 120ms; }
+.k-stagger > .k-materialise:nth-child(5)  { animation-delay: 160ms; }
+.k-stagger > .k-materialise:nth-child(6)  { animation-delay: 200ms; }
+.k-stagger > .k-materialise:nth-child(7)  { animation-delay: 240ms; }
+.k-stagger > .k-materialise:nth-child(8)  { animation-delay: 280ms; }
+.k-stagger > .k-materialise:nth-child(9)  { animation-delay: 320ms; }
+.k-stagger > .k-materialise:nth-child(10) { animation-delay: 360ms; }
+.k-stagger > .k-materialise:nth-child(11) { animation-delay: 400ms; }
+.k-stagger > .k-materialise:nth-child(12) { animation-delay: 440ms; }
+
+/* ── 5. Oscillating State — continuous modulation for connected items ── */
+
+@keyframes k-oscillate-border {
+  0%, 100% { border-color: var(--border); }
+  50%      { border-color: var(--k-oscillate-color, var(--accent-muted, rgba(212, 101, 74, 0.2))); }
+}
+
+.k-oscillate {
+  animation: k-oscillate-border 4s ease-in-out infinite;
+}
+
+.k-oscillate.k-status-healthy { --k-oscillate-color: rgba(143, 176, 160, 0.3); }
+.k-oscillate.k-status-warning { --k-oscillate-color: rgba(196, 169, 98, 0.3); }
+.k-oscillate.k-status-error   { --k-oscillate-color: rgba(212, 101, 74, 0.3); }
+
+/* ── 6. Halftone Pulse — dot pattern materialisation on active items ── */
+
+@keyframes k-halftone-reveal {
+  0%   { opacity: 0; background-size: 12px 12px; }
+  50%  { opacity: var(--halftone-opacity, 0.04); background-size: 6px 6px; }
+  100% { opacity: 0; background-size: 4px 4px; }
+}
+
+.k-halftone-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: radial-gradient(circle, var(--kinetic-red, #D4654A) 0.5px, transparent 0.5px);
+  background-size: 6px 6px;
+  opacity: 0;
+  z-index: 0;
+}
+
+.k-halftone-pulse.k-halftone-fire::after {
+  animation: k-halftone-reveal 1.2s ease-out forwards;
+}
+
+/* ── 7. Reduced Motion — respect accessibility preferences ── */
+
+@media (prefers-reduced-motion: reduce) {
+  .k-breathe .k-indicator,
+  .k-oscillate,
+  .k-materialise,
+  .k-materialise .k-indicator {
+    animation: none;
+  }
+
+  .k-spring:hover,
+  .k-spring-card:hover {
+    transform: none;
+  }
+
+  .k-row.k-signal-fire::before {
+    animation: none;
+  }
+
+  .k-halftone-pulse.k-halftone-fire::after {
+    animation: none;
+  }
+}

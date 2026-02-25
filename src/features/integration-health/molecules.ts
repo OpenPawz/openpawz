@@ -15,6 +15,7 @@ import {
   computeHealthSummary,
   generateSuggestions,
 } from './atoms';
+import { kineticDot, type KineticStatus } from '../../components/kinetic-row';
 
 // ── Connected Services Strip ───────────────────────────────────────────
 
@@ -29,15 +30,17 @@ export function renderConnectedStrip(services: ServiceHealth[]): string {
   const chips = services.map((s) => {
     const color = statusColor(s.status);
     const icon = statusIcon(s.status);
+    const kStatus: KineticStatus = s.status === 'healthy' ? 'healthy' : s.status === 'degraded' ? 'warning' : (s.status === 'error' || s.status === 'expired') ? 'error' : 'idle';
     return `
-      <div class="ihealth-chip ihealth-status-${s.status}" title="${_esc(s.serviceName)}: ${statusLabel(s.status)}">
+      <div class="ihealth-chip ihealth-status-${s.status} k-row k-breathe k-materialise k-status-${kStatus}" title="${_esc(s.serviceName)}: ${statusLabel(s.status)}">
+        ${kineticDot()}
         <span class="ms" style="font-size:16px">${_esc(s.icon)}</span>
         <span class="ihealth-chip-name">${_esc(s.serviceName)}</span>
         <span class="ms ihealth-chip-status" style="color:${color};font-size:12px">${icon}</span>
       </div>`;
   }).join('');
 
-  return `<div class="ihealth-strip">${chips}</div>`;
+  return `<div class="ihealth-strip k-stagger">${chips}</div>`;
 }
 
 // ── Health Warning Banner ──────────────────────────────────────────────
@@ -51,7 +54,7 @@ export function renderHealthWarning(summary: HealthSummary): string {
     const icon = statusIcon(s.status);
     const msg = s.message ?? statusLabel(s.status);
     return `
-      <div class="ihealth-warn-item">
+      <div class="ihealth-warn-item k-row k-materialise">
         <span class="ms" style="color:${color};font-size:16px">${icon}</span>
         <span><strong>${_esc(s.serviceName)}</strong>: ${_esc(msg)}</span>
         ${s.status === 'expired' ? `<button class="guardrail-btn guardrail-btn-approve ihealth-reauth-btn" data-service="${_esc(s.service)}"><span class="ms">refresh</span> Re-auth</button>` : ''}
@@ -74,7 +77,7 @@ export function renderSuggestions(suggestions: IntegrationSuggestion[]): string 
   if (!suggestions.length) return '';
 
   const cards = suggestions.map((s) => `
-    <div class="ihealth-suggestion" data-suggestion-id="${s.id}" data-action="${_esc(s.action)}">
+    <div class="ihealth-suggestion k-row k-spring k-materialise" data-suggestion-id="${s.id}" data-action="${_esc(s.action)}">
       <span class="ms" style="font-size:20px;color:var(--accent)">${_esc(s.icon)}</span>
       <div class="ihealth-suggestion-text">
         <span>${_esc(s.text)}</span>
@@ -85,7 +88,7 @@ export function renderSuggestions(suggestions: IntegrationSuggestion[]): string 
     </div>`).join('');
 
   return `
-    <div class="ihealth-suggestions">
+    <div class="ihealth-suggestions k-stagger">
       <div class="ihealth-suggestions-header">
         <span class="ms" style="font-size:18px;color:var(--accent)">auto_awesome</span>
         <span>Smart Suggestions</span>
@@ -106,7 +109,7 @@ export function renderChainRules(rules: ChainRule[]): string {
   }
 
   const rows = rules.map((r) => `
-    <div class="ihealth-chain-row">
+    <div class="ihealth-chain-row k-row k-spring k-materialise">
       <span class="ms" style="font-size:16px">link</span>
       <span class="ihealth-chain-name">${_esc(r.name)}</span>
       <span class="ihealth-chain-flow">
@@ -119,7 +122,7 @@ export function renderChainRules(rules: ChainRule[]): string {
     </div>`).join('');
 
   return `
-    <div class="ihealth-chains">
+    <div class="ihealth-chains k-stagger">
       <div class="ihealth-chains-header">
         <span class="ms" style="font-size:18px;color:var(--accent)">link</span>
         <span>Workflow Chains</span>
