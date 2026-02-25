@@ -306,75 +306,52 @@ body {
   letter-spacing: normal;
 }
 
-/* ── Card Elevation System ─────────────────────────────────────────────── */
-/* Three tiers: surface (containers), elevated (stats / key info), glass (hero) */
+/* ── Card System — Kinetic Bento ────────────────────────────────────────── */
+/* Flat border-based cards. No shadows on cards. Shadows reserved for floating elements only. */
 
 .card-surface {
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 1px 2px rgba(0, 0, 0, 0.15);
-  transition: box-shadow var(--transition-normal), border-color var(--transition-normal);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-normal);
 }
 .card-surface:hover {
   border-color: var(--border);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25), 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .card-elevated {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25), 0 2px 4px rgba(0, 0, 0, 0.15);
-  transition:
-    box-shadow var(--transition-smooth),
-    border-color var(--transition-smooth),
-    transform var(--transition-smooth);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-smooth);
 }
 .card-elevated:hover {
   border-color: var(--accent-muted);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--accent-lighter);
-  transform: translateY(-2px);
 }
 
 .card-glass {
-  background: linear-gradient(
-    135deg,
-    rgba(255, 255, 255, 0.04) 0%,
-    rgba(255, 255, 255, 0.01) 100%
-  );
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-xl);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-  transition:
-    box-shadow var(--transition-smooth),
-    border-color var(--transition-smooth);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-smooth);
 }
 .card-glass:hover {
-  border-color: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  border-color: var(--border-light);
 }
 
 /* Light-theme card overrides */
 [data-theme='light'] .card-surface {
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  border-color: var(--border-subtle);
 }
 [data-theme='light'] .card-elevated {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  border-color: var(--border);
 }
 [data-theme='light'] .card-elevated:hover {
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--accent-lighter);
+  border-color: var(--accent-muted);
 }
 [data-theme='light'] .card-glass {
-  background: linear-gradient(
-    135deg,
-    rgba(0, 0, 0, 0.02) 0%,
-    rgba(0, 0, 0, 0.005) 100%
-  );
-  border-color: rgba(0, 0, 0, 0.06);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.06);
+  background: var(--bg-secondary);
+  border-color: var(--border);
 }
 
 /* ── Typography Utilities ──────────────────────────────────────────────── */
@@ -461,7 +438,50 @@ body {
   50% { box-shadow: 0 0 0 4px currentColor; opacity: 0.6; }
 }
 
-/* CRT Scanline overlay — REMOVED (no longer retro CRT aesthetic) */
+/* ── Grain Overlay — film texture on void ──────────────────────────────── */
+.app::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9999;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+  mix-blend-mode: overlay;
+}
+
+/* ── Halftone Surface — selective dot pattern ──────────────────────────── */
+.halftone-surface {
+  position: relative;
+}
+.halftone-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle, var(--kinetic-red) 0.5px, transparent 0.5px);
+  background-size: 6px 6px;
+  opacity: var(--halftone-opacity);
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+/* ── Kinetic Pulse Animation ───────────────────────────────────────────── */
+@keyframes kinetic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: var(--pulse-glow); }
+}
+@keyframes kinetic-text-pulse {
+  0% { text-shadow: 0 0 0 transparent; }
+  50% { text-shadow: 0 0 6px var(--kinetic-red); }
+  100% { text-shadow: 0 0 0 transparent; }
+}
+.kinetic-pulse-active {
+  animation: kinetic-pulse 2s ease-in-out infinite;
+}
+.kinetic-text-pulse-active {
+  animation: kinetic-text-pulse 0.3s ease-out;
+}
 
 /* Light mode overrides for elements that need special handling */
 [data-theme='light'] body,
