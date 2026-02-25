@@ -9,16 +9,21 @@
   <body>
     <div class="app">
       <!-- Sidebar -->
-      <aside class="sidebar">
+      <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
           <div class="sidebar-brand">
             <div class="sidebar-logo"></div>
             <span class="sidebar-title">Pawz</span>
           </div>
-          <button class="sidebar-notification-btn" id="notification-bell" title="Notifications">
-            <span class="ms ms-sm">notifications</span>
-            <span class="notification-badge" id="notification-badge" style="display: none">0</span>
-          </button>
+          <div class="sidebar-header-actions">
+            <button class="sidebar-notification-btn" id="notification-bell" title="Notifications">
+              <span class="ms ms-sm">notifications</span>
+              <span class="notification-badge" id="notification-badge" style="display: none">0</span>
+            </button>
+            <button class="sidebar-collapse-btn" id="sidebar-collapse-btn" title="Collapse sidebar">
+              <span class="ms ms-sm">chevron_left</span>
+            </button>
+          </div>
         </div>
 
         <!-- Notification Drawer -->

@@ -223,6 +223,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     initTheme();
 
+    // ── Sidebar collapse toggle ──────────────────────────────────────────
+    const sidebar = document.getElementById('sidebar');
+    const collapseBtn = document.getElementById('sidebar-collapse-btn');
+    if (sidebar && collapseBtn) {
+      if (localStorage.getItem('paw-sidebar-collapsed') === 'true') {
+        sidebar.classList.add('collapsed');
+      }
+      collapseBtn.addEventListener('click', () => {
+        sidebar.classList.toggle('collapsed');
+        localStorage.setItem('paw-sidebar-collapsed', String(sidebar.classList.contains('collapsed')));
+      });
+    }
+
     try {
       const prevLog = localStorage.getItem('paw-crash-log');
       if (prevLog) {
