@@ -421,6 +421,17 @@ pub fn run() {
             commands::queries::engine_queries_execute,
             commands::queries::engine_queries_history,
             commands::queries::engine_queries_clear_history,
+            // ── Safety Guardrails (Phase 3.5) ──
+            commands::guardrails::engine_guardrails_get_rate_limits,
+            commands::guardrails::engine_guardrails_set_rate_limit,
+            commands::guardrails::engine_guardrails_get_permissions,
+            commands::guardrails::engine_guardrails_get_agent_permissions,
+            commands::guardrails::engine_guardrails_set_permission,
+            commands::guardrails::engine_guardrails_log_action,
+            commands::guardrails::engine_guardrails_get_audit_log,
+            commands::guardrails::engine_guardrails_clear_audit,
+            commands::guardrails::engine_guardrails_check_token_expiry,
+            commands::guardrails::engine_guardrails_update_token_info,
             // ── MCP Servers (Phase E) ──
             commands::mcp::engine_mcp_list_servers,
             commands::mcp::engine_mcp_save_server,

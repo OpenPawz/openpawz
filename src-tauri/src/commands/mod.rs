@@ -15,6 +15,7 @@ pub mod mcp;
 pub mod memory;
 pub mod n8n;
 pub mod project;
+pub mod guardrails;
 pub mod queries;
 pub mod skill_wizard;
 pub mod skills;
