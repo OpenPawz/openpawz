@@ -1,7 +1,6 @@
 /* ═══ Agents View ═══ */
 .agents-view {
   overflow: hidden;
-  display: flex;
   flex-direction: column;
   min-height: 0;
 }

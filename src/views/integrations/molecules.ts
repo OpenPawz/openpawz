@@ -201,7 +201,7 @@ function _renderCards(): void {
             const healthBar = Array.from({ length: 4 }, (_, i) =>
               `<span class="health-seg ${i < healthLevel ? (healthLevel <= 1 ? 'health-red' : healthLevel <= 2 ? 'health-gold' : 'health-sage') : 'health-dim'}"></span>`
             ).join('');
-            return `<tr class="matrix-row k-row${isConnected ? ' k-breathe k-status-' + (conn?.status === 'error' ? 'error' : conn?.status === 'expired' ? 'warning' : 'healthy') : ' k-status-idle'}" data-service-id="${s.id}">
+            return `<tr class="matrix-row k-row${isConnected ? ` k-breathe k-status-${conn?.status === 'error' ? 'error' : conn?.status === 'expired' ? 'warning' : 'healthy'}` : ' k-status-idle'}" data-service-id="${s.id}">
               <td class="matrix-name"><span class="ms ms-sm" style="color:${s.color}">${s.icon}</span> ${escHtml(s.name)}</td>
               <td class="matrix-state">${isConnected ? `<span class="matrix-on">${kineticDot()} ON</span>` : '<span class="matrix-off">○ OFF</span>'}</td>
               <td class="matrix-health">${healthBar}</td>
