@@ -97,10 +97,13 @@ async fn execute_exec(
             Ok(result) => return Ok(sandbox::format_sandbox_result(&result)),
             Err(e) => {
                 warn!(
-                    "[engine] Sandbox execution failed, falling back to host: {}",
+                    "[engine] Sandbox execution failed — refusing to fall back to host: {}",
                     e
                 );
-                // Fall through to host execution
+                return Err(format!(
+                    "Sandbox execution failed (host fallback is disabled for security): {}",
+                    e
+                ).into());
             }
         }
     }

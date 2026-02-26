@@ -70,6 +70,7 @@ fn save_log(
 
 /// Record an integration action.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn engine_action_log_record(
     app_handle: tauri::AppHandle,
     service: String,

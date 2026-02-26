@@ -1513,9 +1513,9 @@ export function initChatListeners(): void {
         popup.innerHTML = suggestions
           .map(
             (s, i) =>
-              `<div class="slash-ac-item${i === 0 ? ' selected' : ''}" data-command="${s.command}">
-            <span class="slash-ac-cmd">${s.command}</span>
-            <span class="slash-ac-desc">${s.description}</span>
+              `<div class="slash-ac-item${i === 0 ? ' selected' : ''}" data-command="${escHtml(s.command)}">
+            <span class="slash-ac-cmd">${escHtml(s.command)}</span>
+            <span class="slash-ac-desc">${escHtml(s.description)}</span>
           </div>`,
           )
           .join('');

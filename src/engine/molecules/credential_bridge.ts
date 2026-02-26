@@ -68,6 +68,29 @@ export async function handleCredentialRequired(event: CredentialRequiredEvent): 
 }
 
 /**
+ * Known safe retry action prefixes. The retryAction from a credential signal
+ * must start with one of these to be accepted. This prevents a prompt-injected
+ * AI from smuggling arbitrary commands through the credential flow.
+ */
+const SAFE_RETRY_PREFIXES = [
+  'post to ',
+  'send to ',
+  'connect to ',
+  'check ',
+  'list ',
+  'fetch ',
+  'get ',
+  'read ',
+  'search ',
+  'query ',
+];
+
+function isRetryActionSafe(action: string): boolean {
+  const lower = action.toLowerCase().trim();
+  return SAFE_RETRY_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+/**
  * Check if an assistant message contains a credential request signal.
  * Returns the parsed event if found, null otherwise.
  *
@@ -75,6 +98,9 @@ export async function handleCredentialRequired(event: CredentialRequiredEvent): 
  * ```
  * [CREDENTIAL_REQUIRED]{"service":"slack","retryAction":"post to #general"}
  * ```
+ *
+ * Security: retryAction is validated against a safe-prefix allowlist to prevent
+ * prompt injection from smuggling arbitrary commands through the credential flow.
  */
 export function parseCredentialSignal(message: string): CredentialRequiredEvent | null {
   const marker = '[CREDENTIAL_REQUIRED]';
@@ -86,7 +112,19 @@ export function parseCredentialSignal(message: string): CredentialRequiredEvent 
     // Take only the first line or JSON block
     const end = jsonStr.indexOf('\n');
     const raw = end > 0 ? jsonStr.substring(0, end) : jsonStr;
-    return JSON.parse(raw) as CredentialRequiredEvent;
+    const parsed = JSON.parse(raw) as CredentialRequiredEvent;
+
+    // Validate retryAction against safe prefixes
+    if (parsed.retryAction && !isRetryActionSafe(parsed.retryAction)) {
+      console.warn(
+        '[credential_bridge] Blocked unsafe retryAction from credential signal:',
+        parsed.retryAction,
+      );
+      parsed.retryAction = undefined;
+      parsed.retryPayload = undefined;
+    }
+
+    return parsed;
   } catch {
     return null;
   }

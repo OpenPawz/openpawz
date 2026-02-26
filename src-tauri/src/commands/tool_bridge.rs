@@ -91,8 +91,7 @@ const REMAP_TABLE: &[RemapEntry] = &[
 fn normalize_name(name: &str) -> String {
     name.to_lowercase()
         .replace("n8n_", "")
-        .replace('-', "_")
-        .replace(' ', "_")
+        .replace(['-', ' '], "_")
 }
 
 fn remap_tool_name(raw_name: &str) -> Option<&'static RemapEntry> {

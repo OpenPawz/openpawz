@@ -31,10 +31,11 @@ pub struct N8nEndpoint {
 }
 
 /// How the n8n engine was provisioned.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum N8nMode {
     /// Auto-managed Docker container (preferred).
+    #[default]
     Embedded,
     /// Managed child process via `npx n8n` (no-Docker fallback).
     Process,
@@ -42,12 +43,6 @@ pub enum N8nMode {
     Local,
     /// User-provided remote URL (teams, n8n Cloud).
     Remote,
-}
-
-impl Default for N8nMode {
-    fn default() -> Self {
-        Self::Embedded
-    }
 }
 
 /// Extended configuration that supersedes the Phase 1 N8nConfig.

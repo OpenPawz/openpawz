@@ -138,6 +138,40 @@ export function validateSandboxConfig(config: SandboxConfig): SandboxValidation 
     if (parts.length >= 3 && !['ro', 'rw'].includes(parts[2])) {
       errors.push(`Invalid mount mode in "${mount}" (must be "ro" or "rw")`);
     }
+    // Security: block sensitive host paths
+    if (parts.length >= 1) {
+      const hostPath = parts[0].replace(/\/+$/, ''); // normalize trailing slash
+      const DENIED_MOUNT_PATHS = [
+        '/',
+        '/etc',
+        '/var',
+        '/root',
+        '/boot',
+        '/sys',
+        '/proc',
+        '/dev',
+        '/usr',
+        '/sbin',
+        '/bin',
+        '/lib',
+        '/lib64',
+        '/tmp',
+      ];
+      const HOME_SENSITIVE = ['.ssh', '.gnupg', '.config', '.local'];
+      if (DENIED_MOUNT_PATHS.includes(hostPath)) {
+        errors.push(`Bind mount to sensitive host path blocked: "${hostPath}"`);
+      }
+      // Block home-directory sensitive subdirs (e.g. ~/.ssh)
+      for (const dir of HOME_SENSITIVE) {
+        if (hostPath.endsWith(`/${dir}`) || hostPath === `~/${dir}`) {
+          errors.push(`Bind mount to sensitive path blocked: "${hostPath}"`);
+        }
+      }
+      // Block mounting the entire home directory
+      if (/^(~|\$HOME|\/home\/[^/]+)$/.test(hostPath)) {
+        errors.push(`Bind mount to entire home directory blocked: "${hostPath}"`);
+      }
+    }
   }
 
   return {

@@ -398,12 +398,12 @@ const DEFAULT_SETTINGS: SecuritySettings = {
   autoDenyCritical: true,
   requireTypeToCritical: true,
   commandAllowlist: [
+    // ── Safe read-only / dev tools (auto-approved) ──
     '^git\\b',
     '^npm\\b',
     '^npx\\b',
     '^node\\b',
     '^python3?\\b',
-    '^pip3?\\b',
     '^cargo\\b',
     '^rustc\\b',
     '^rustup\\b',
@@ -415,11 +415,6 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '^ruby\\b',
     '^gem\\b',
     '^bundle\\b',
-    '^docker\\b',
-    '^docker-compose\\b',
-    '^kubectl\\b',
-    '^terraform\\b',
-    '^ansible\\b',
     '^make\\b',
     '^cmake\\b',
     '^gcc\\b',
@@ -440,19 +435,11 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '^mkdir\\b',
     '^touch\\b',
     '^cp\\b',
-    '^mv\\b',
-    '^chmod\\b',
-    '^chown\\b',
     '^ln\\b',
     '^tar\\b',
     '^zip\\b',
     '^unzip\\b',
     '^gzip\\b',
-    '^curl\\b',
-    '^wget\\b',
-    '^ssh\\b',
-    '^scp\\b',
-    '^rsync\\b',
     '^sed\\b',
     '^awk\\b',
     '^sort\\b',
@@ -485,24 +472,9 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '^gh\\b',
     '^jq\\b',
     '^yq\\b',
-    '^sqlite3\\b',
-    '^psql\\b',
-    '^mysql\\b',
-    '^redis-cli\\b',
-    '^mongosh\\b',
     '^code\\b',
     '^vim\\b',
     '^nano\\b',
-    '^apt\\b',
-    '^apt-get\\b',
-    '^brew\\b',
-    '^snap\\b',
-    '^pip\\b',
-    '^pip3\\b',
-    '^yarn\\b',
-    '^pnpm\\b',
-    '^bun\\b',
-    '^deno\\b',
     '^ollama\\b',
     '^ffmpeg\\b',
     '^convert\\b',
@@ -515,6 +487,12 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '^pbpaste\\b',
     '^xclip\\b',
     '^xsel\\b',
+    // ── Powerful tools below require HIL (NOT auto-approved) ──
+    // curl, wget, ssh, scp, rsync — network exfiltration risk
+    // docker, docker-compose, kubectl, terraform, ansible — privilege escalation
+    // pip, pip3, apt, apt-get, brew, snap, yarn, pnpm, bun, deno — supply chain
+    // mv, chmod, chown — destructive filesystem changes
+    // sqlite3, psql, mysql, redis-cli, mongosh — database access
   ],
   commandDenylist: [],
   sessionOverrideUntil: null,
@@ -603,14 +581,25 @@ export function extractCommandString(toolName: string, args?: Record<string, unk
 // ── Safe Regex Helpers (ReDoS mitigation) ─────────────────────────────────
 
 /**
- * Detect regex patterns with nested quantifiers that can cause catastrophic
- * backtracking (ReDoS). Rejects patterns like (a+)+, (a*)+, (a+)*, etc.
+ * Detect regex patterns that can cause catastrophic backtracking (ReDoS).
+ * Checks for:
+ *   - Nested quantifiers: (a+)+, (a*)+, (a+)*, (a*)*
+ *   - Overlapping alternation with .* on both sides
+ *   - Quantified groups with quantified content: (\w+\s*)+
+ *   - Alternation inside quantified groups with overlap: (a|a)+
  */
-const NESTED_QUANTIFIER_RE = /([+*])\s*\)[\s]*[+*?{]/;
+const NESTED_QUANTIFIER_RE = /([+*]|\{\d)\s*\)[\s]*[+*?{]/;
 const OVERLAPPING_ALTERNATION_RE = /(\.\*.*\|.*\.\*)/;
+const QUANTIFIED_GROUP_CONTENT_RE = /\([^)]*[+*][^)]*\)\s*[+*{]/;
+const REPEATED_ALTERNATION_RE = /\(([^|)]+)\|\1\)\s*[+*{]/;
 
 export function isReDoSRisk(pattern: string): boolean {
-  return NESTED_QUANTIFIER_RE.test(pattern) || OVERLAPPING_ALTERNATION_RE.test(pattern);
+  return (
+    NESTED_QUANTIFIER_RE.test(pattern) ||
+    OVERLAPPING_ALTERNATION_RE.test(pattern) ||
+    QUANTIFIED_GROUP_CONTENT_RE.test(pattern) ||
+    REPEATED_ALTERNATION_RE.test(pattern)
+  );
 }
 
 /**
