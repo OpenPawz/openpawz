@@ -1,7 +1,7 @@
 // Today View — DOM rendering + IPC (Command Center)
 
 import { pawEngine } from '../../engine';
-import { getAgents, loadAgents } from '../agents';
+import { getAgents, loadAgents, setSelectedAgent } from '../agents';
 import { switchView } from '../router';
 import { $, escHtml } from '../../components/helpers';
 import { showToast } from '../../components/toast';
@@ -468,13 +468,24 @@ export async function fetchFleetStatus(retries = 3) {
       .map((a) => {
         const status = agentStatus(a.lastUsed);
         const kStatus: KineticStatus = status === 'active' ? 'healthy' : 'idle';
-        return `<div class="cmd-fleet-item k-row k-breathe k-materialise k-status-${kStatus}">
+        return `<div class="cmd-fleet-item k-row k-breathe k-materialise k-status-${kStatus}" data-agent-id="${escHtml(a.id)}" title="Open chat with ${escHtml(a.name)}">
           ${kineticDot()}
           <span class="cmd-fleet-name">${escHtml(a.name)}</span>
           <span class="cmd-fleet-status">[${status}]</span>
         </div>`;
       })
       .join('')}</div>`;
+
+    // Wire click → open full chat with the selected agent
+    container.querySelectorAll<HTMLElement>('.cmd-fleet-item[data-agent-id]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const agentId = el.dataset.agentId;
+        if (agentId) {
+          setSelectedAgent(agentId);
+          switchView('chat');
+        }
+      });
+    });
   } catch (e) {
     console.warn('[today] Fleet status failed:', e);
     container.innerHTML = `<div class="today-section-empty">Could not load agents — try refreshing</div>`;

@@ -193,6 +193,12 @@
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.4;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background var(--transition-fast);
+}
+.cmd-fleet-item:hover {
+  background: var(--accent-subtle, rgba(255,255,255,0.04));
 }
 .fleet-dot-active {
   color: var(--accent);
@@ -303,6 +309,18 @@
 }
 .today-card-body {
   padding: 10px 12px;
+  overflow-y: auto;
+  max-height: 260px;
+}
+.today-card-body::-webkit-scrollbar {
+  width: 4px;
+}
+.today-card-body::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 2px;
+}
+.today-card-body::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 .today-loading {
   color: var(--text-muted);
