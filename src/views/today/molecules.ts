@@ -803,14 +803,66 @@ async function deleteTask(taskId: string) {
   }
 }
 
-/** Reload tasks from engine and re-render. */
-export async function reloadTodayTasks() {
+/** Reload tasks from engine and update in-place (or full re-render if called standalone). */
+export async function reloadTodayTasks(inPlace = false) {
   try {
     const all = await pawEngine.tasksList();
     const filtered = filterTodayTasks(all);
     const mapped = filtered.map(engineTaskToToday);
     _state.setTasks(mapped);
-    renderToday();
+
+    if (inPlace) {
+      // Update only the tasks section without destroying other cards' DOM
+      const tasksContainer = $('today-tasks');
+      if (!tasksContainer) return;
+
+      const pendingTasks = mapped.filter((t) => !t.done);
+      const completedToday = mapped.filter((t) => t.done && isToday(t.createdAt));
+
+      tasksContainer.innerHTML = pendingTasks.length === 0
+        ? `<div class="today-section-empty">No tasks yet. Add one to get started!</div>`
+        : pendingTasks
+            .map(
+              (task) => `
+            <div class="today-task" data-id="${task.id}">
+              <input type="checkbox" class="today-task-check" ${task.done ? 'checked' : ''}>
+              <span class="today-task-text">${escHtml(task.text)}</span>
+              <button class="today-task-delete" title="Delete">×</button>
+            </div>`,
+            )
+            .join('');
+
+      // Update count badge
+      const countEl = tasksContainer.closest('.cmd-card')?.querySelector('.today-card-count');
+      if (countEl) countEl.textContent = String(pendingTasks.length);
+
+      // Update completed label
+      const parent = tasksContainer.parentElement;
+      const existing = parent?.querySelector('.today-completed-label');
+      if (existing) existing.remove();
+      if (completedToday.length > 0 && parent) {
+        parent.insertAdjacentHTML('beforeend', `<div class="today-completed-label">${completedToday.length} completed today</div>`);
+      }
+
+      // Re-bind task events
+      tasksContainer.querySelectorAll('.today-task-check').forEach((checkbox) => {
+        checkbox.addEventListener('change', (e) => {
+          const taskEl = (e.target as HTMLElement).closest('.today-task');
+          const taskId = taskEl?.getAttribute('data-id');
+          if (taskId) toggleTask(taskId);
+        });
+      });
+      tasksContainer.querySelectorAll('.today-task-delete').forEach((btn) => {
+        btn.addEventListener('click', (e) => {
+          const taskEl = (e.target as HTMLElement).closest('.today-task');
+          const taskId = taskEl?.getAttribute('data-id');
+          if (taskId) deleteTask(taskId);
+        });
+      });
+    } else {
+      // Full re-render (used when called standalone, e.g. from task CRUD)
+      renderToday();
+    }
   } catch (e) {
     console.error('[today] reloadTodayTasks failed:', e);
   }

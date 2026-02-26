@@ -1,6 +1,6 @@
 // Today View — Orchestration, state, exports
 
-import type { Task } from './atoms';
+import { type Task, filterTodayTasks, engineTaskToToday } from './atoms';
 import {
   initMoleculesState,
   fetchWeather,
@@ -14,6 +14,7 @@ import {
   reloadTodayTasks,
 } from './molecules';
 import { fetchAndRenderActivity } from './activity';
+import { pawEngine } from '../../engine';
 
 // ── State ─────────────────────────────────────────────────────────────
 
@@ -53,12 +54,25 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 
 export async function loadToday() {
   console.debug('[today] loadToday called');
+
+  // 1. Load tasks FIRST so renderToday() has task data for the initial render
+  try {
+    const all = await pawEngine.tasksList();
+    const filtered = filterTodayTasks(all);
+    const mapped = filtered.map(engineTaskToToday);
+    _tasks = mapped;
+  } catch (e) {
+    console.warn('[today] Pre-load tasks failed (non-fatal):', e);
+  }
+
+  // 2. Render the full page (one-time, with task data baked in)
   renderToday();
 
-  // Use allSettled so one slow/failing card can't block the rest.
-  // Each fetch has a 20s safety timeout.
+  // 3. Fetch all card data in parallel — each updates its own DOM element.
+  //    reloadTodayTasks uses inPlace=true to avoid re-rendering the whole page.
+  //    allSettled ensures one failure/timeout can't block others.
   await Promise.allSettled([
-    withTimeout(reloadTodayTasks(), 20000, 'tasks'),
+    withTimeout(reloadTodayTasks(true), 20000, 'tasks'),
     withTimeout(fetchWeather(), 20000, 'weather'),
     withTimeout(fetchUnreadEmails(), 20000, 'emails'),
     withTimeout(fetchSkillOutputs(), 20000, 'skill-outputs'),
