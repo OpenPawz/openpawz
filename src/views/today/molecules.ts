@@ -71,12 +71,27 @@ export async function fetchWeather() {
   if (!weatherEl) return;
 
   try {
+    // Load saved location from integration credentials
+    let savedLocation: string | null = null;
+    try {
+      if (invoke) {
+        const creds = await invoke<Record<string, string>>(
+          'engine_integrations_get_credentials',
+          { serviceId: 'weather-api' },
+        );
+        if (creds?.location) savedLocation = creds.location;
+      }
+    } catch {
+      // No saved location — will fall back to IP geolocation
+    }
+
     let json: string | null = null;
 
     if (invoke) {
-      json = await invoke<string>('fetch_weather', { location: null });
+      json = await invoke<string>('fetch_weather', { location: savedLocation });
     } else {
-      const response = await fetch('https://wttr.in/?format=j1', {
+      const loc = savedLocation ? encodeURIComponent(savedLocation) : '';
+      const response = await fetch(`https://wttr.in/${loc}?format=j1`, {
         headers: { 'User-Agent': 'curl' },
         signal: AbortSignal.timeout(8000),
       });

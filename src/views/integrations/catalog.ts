@@ -4860,14 +4860,23 @@ const AUTO: ServiceDefinition[] = [
     'n8n-nodes-base.httpRequest',
     '',
     false,
-    [],
+    [
+      {
+        key: 'location',
+        label: 'Your Location',
+        type: 'text' as const,
+        placeholder: 'e.g. New York, London, Tokyo',
+        required: true,
+        helpText: 'City name or "City, Country" — used for your dashboard weather and agent queries.',
+      },
+    ],
     {
-      title: 'Weather — No Setup Required',
+      title: 'Set Your Location',
       steps: [
-        { instruction: 'Weather works out of the box using wttr.in — a free service with no API key.' },
-        { instruction: 'Just ask your agent about the weather in any city.' },
+        { instruction: 'No API key needed — weather is free via wttr.in.' },
+        { instruction: 'Just enter your city below and hit Save.' },
       ],
-      estimatedTime: 'Ready to use',
+      estimatedTime: '10 seconds',
     },
   ),
   svc(
