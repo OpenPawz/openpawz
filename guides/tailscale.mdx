@@ -51,3 +51,54 @@ Funnel makes your service accessible to anyone on the internet. Only use this if
 - **Webhook receiver** — let external services (GitHub, Stripe) send events to your agents
 - **Webchat** — run a public-facing chatbot powered by your Pawz agents
 - **API gateway** — expose agent APIs for other apps to consume
+
+## Webhook server
+
+Pawz includes a built-in webhook server that receives external events and routes them to agents. Combined with Tailscale, you can receive webhooks from services like GitHub, Stripe, or n8n without exposing your machine to the public internet.
+
+### How it works
+
+1. External service sends an HTTP POST to your webhook endpoint
+2. Pawz validates the request (auth token, rate limiting)
+3. The payload is routed to the assigned agent based on webhook routing rules
+4. The agent processes the event and can trigger tasks, send messages, or take actions
+
+### Configuration
+
+Configure webhooks in **Settings → Advanced → Webhooks**:
+
+| Setting | Description |
+|---------|-------------|
+| Webhook port | Local port for the webhook server (default: 3001) |
+| Auth token | Required token in the `Authorization` header |
+| Rate limit | Max requests per minute (default: 60) |
+| Agent routing | Which agent handles which webhook paths |
+
+### Using with Tailscale
+
+```bash
+# Expose the webhook server on your tailnet
+tailscale serve https /webhooks http://localhost:3001
+
+# Or expose publicly via Funnel (use with caution)
+tailscale funnel 443 http://localhost:3001
+```
+
+### Example: GitHub webhook
+
+1. In GitHub repo settings → **Webhooks** → **Add webhook**
+2. Set the URL to `https://your-machine.tail-net.ts.net/webhooks/github`
+3. Set the secret to match your Pawz webhook auth token
+4. Select events (push, PR, issues)
+5. In Pawz, route `/webhooks/github` to your development agent
+
+The agent receives the webhook payload and can create tasks, update project status, or notify you via channel bridges.
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Tailscale not connecting | Run `tailscale status` to verify authentication. Re-authenticate with `tailscale up`. |
+| Serve not working | Ensure the local service is running on the specified port before running `tailscale serve`. |
+| Funnel not available | Funnel requires Tailscale v1.40+ and must be enabled in your Tailscale admin console under **DNS → Funnel**. |
+| Webhooks not received | Check that the auth token matches and the webhook port is correct. Verify with `curl -X POST -H "Authorization: Bearer <token>" http://localhost:3001/test`. |

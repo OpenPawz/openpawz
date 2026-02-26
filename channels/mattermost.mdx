@@ -5,11 +5,11 @@ description: "Connect to a self-hosted Mattermost instance."
 
 # Mattermost
 
-Connect to a self-hosted Mattermost instance.
+Connect to a self-hosted Mattermost instance. Since Mattermost is self-hosted, all data stays within your infrastructure — combined with Pawz's local-first architecture, no data ever leaves your network.
 
 ## Setup
 
-1. In your Mattermost admin panel, create a bot account
+1. In your Mattermost admin panel, go to **Integrations → Bot Accounts** and create a bot
 2. Copy the bot token
 3. In Pawz, go to **Settings → Channels**
 4. Select **Mattermost**
@@ -24,19 +24,35 @@ Connect to a self-hosted Mattermost instance.
 |-------|----------|-------------|
 | Server URL | Yes | Mattermost instance URL |
 | Bot token | Yes | Bot access token |
-| DM policy | Yes | Who can message the bot |
+| DM policy | Yes | Who can message the bot (open, allowlist, or pairing) |
 | Allowed users | For allowlist | Mattermost usernames |
+
+## Connection
+
+Pawz connects via Mattermost's **WebSocket API** for real-time message delivery. The bot authenticates using the bot token and listens for new posts in channels it's been added to, as well as direct messages.
 
 ## Features
 
-- DMs and channel messages via WebSocket
-- Per-user sessions with memory
-- Prompt injection scanning
-- Agent routing via channel routing rules
-- Thread support
+- **DMs and channel messages** via WebSocket (real-time, no polling)
+- **Thread support** — replies stay in the correct thread context
+- **Per-user sessions** with persistent memory across conversations
+- **Prompt injection scanning** on all incoming messages
+- **Agent routing** via channel routing rules — different agents for different channels
+- **Channel-specific context** — lean context strategy for fast, low-cost responses
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Bot can't connect | Verify the server URL includes the protocol (`https://`) and the bot token is valid |
+| Bot doesn't respond in a channel | Add the bot to the channel via the Mattermost UI (invite to channel) |
+| Messages delayed | Check Mattermost WebSocket health in admin panel → **System Console → Environment → WebSocket** |
+| Authentication fails | Ensure bot accounts are enabled in **System Console → Integrations → Bot Accounts** |
 
 ## Tips
 
-- Self-hosted Mattermost gives you full control over data
-- Add the bot to specific channels via the Mattermost UI
-- Use channel routing to assign different agents to different Mattermost channels
+:::tip
+- **Self-hosted = full control** — Mattermost runs on your infrastructure, matching Pawz's privacy-first approach.
+- **Use channel routing** to assign different agents to different Mattermost channels (e.g., `#dev` → coding agent, `#support` → customer agent).
+- **Bot tokens don't expire** — unlike user sessions, bot tokens remain valid until explicitly revoked.
+:::

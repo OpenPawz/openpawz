@@ -236,6 +236,20 @@ High-risk credentials (Coinbase, DEX) are **server-side only** — they are neve
 
 Each skill can have custom instructions that override the defaults. These are injected into the agent's system prompt when the skill is enabled.
 
+## Smart prompt budgeting
+
+When an agent has many skills enabled, their combined instructions can consume a large portion of the context window. The Rust engine manages this with a **token budget system**:
+
+1. **Priority skills** get full instructions — skills the agent is actively using or that match the current task
+2. **Normal skills** are compressed to ~300 characters — a compact reference the agent can still use
+3. **Low-priority skills** are dropped entirely if the budget is exhausted
+
+This happens automatically before every agent turn. The result: agents have access to hundreds of tools without wasting context on irrelevant documentation. You never pay for token bloat from unused skill instructions.
+
+:::tip
+If you notice an agent forgetting how to use a specific tool, it may have been compressed or dropped due to budget limits. Either increase the agent's context window or disable skills the agent doesn't need.
+:::
+
 ## Readiness check
 
 The skill status indicator shows:

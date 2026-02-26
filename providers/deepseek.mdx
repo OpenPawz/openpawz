@@ -23,11 +23,23 @@ Use DeepSeek's reasoning and coding models.
 
 ## Models
 
-| Model | Best for |
-|-------|----------|
-| `deepseek-chat` | General conversation |
-| `deepseek-reasoner` | Complex reasoning |
+| Model | Context | Best for |
+|-------|---------|----------|
+| `deepseek-chat` | 64K | General conversation, coding, analysis |
+| `deepseek-reasoner` | 64K | Complex multi-step reasoning with chain-of-thought |
 
-## Notes
+## Reasoning tokens
 
-DeepSeek uses an OpenAI-compatible API, so it works through the standard `OpenAiProvider`.
+The `deepseek-reasoner` model uses extended "thinking" tokens during complex tasks. These reasoning tokens count toward your usage but produce significantly better results on math, logic, and multi-step problems. Pawz displays thinking content in a collapsible block in the chat UI.
+
+## Cost
+
+DeepSeek is one of the most affordable providers — significantly cheaper than OpenAI or Anthropic for comparable quality. A great choice as a `worker_model` in multi-agent orchestration.
+
+## Tips
+
+:::tip
+- **Use `deepseek-chat` as your `cheap_model`** — excellent quality at a fraction of frontier model pricing.
+- **Pair with Ollama** — test locally with Ollama, then use DeepSeek for production tasks that need a hosted model.
+- DeepSeek uses an OpenAI-compatible API, so it works through the standard `OpenAiProvider`.
+:::

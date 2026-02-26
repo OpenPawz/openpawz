@@ -23,11 +23,19 @@ Use xAI's Grok models.
 
 ## Models
 
-| Model | Best for |
-|-------|----------|
-| `grok-2` | General use |
-| `grok-2-mini` | Fast, cheaper |
+| Model | Context | Best for |
+|-------|---------|----------|
+| `grok-3` | 131K | Complex reasoning, analysis, coding |
+| `grok-3-mini` | 131K | Fast, affordable general use |
 
-## Notes
+## Prefix routing
 
-Grok uses an OpenAI-compatible API, so it works through the standard `OpenAiProvider`.
+Model names starting with `grok*` auto-route to the Grok provider.
+
+## Tips
+
+:::tip
+- **Real-time knowledge** — Grok models have access to more recent training data. Useful for current events and trending topics.
+- **Use `grok-3-mini` as a `worker_model`** — solid quality at lower cost for sub-agent tasks.
+- Grok uses an OpenAI-compatible API, so it works through the standard `OpenAiProvider`.
+:::

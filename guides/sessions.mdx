@@ -109,6 +109,50 @@ This is useful when you want to reclaim context space mid-conversation without w
 Use `/compact` proactively before starting a complex task in a long session. This gives the agent maximum context space to work with.
 :::
 
+## Live token meter
+
+Every chat session displays a real-time **token meter** in the header showing how much of the context window is in use.
+
+### Visual indicators
+
+| Context usage | Color | Meaning |
+|--------------|-------|---------|
+| 0–59% | Green | Plenty of room |
+| 60–79% | Yellow | Getting full — consider compacting soon |
+| 80–100% | Red | Near limit — compaction will trigger automatically |
+
+### Context breakdown
+
+Click the token meter to see a detailed breakdown of where tokens are going:
+
+- **System prompt** — base instructions, personality, soul files
+- **Skill instructions** — tool documentation injected into context
+- **Memory context** — auto-recalled memories
+- **Conversation** — message history
+- **Total** vs **Limit** — with percentage
+
+This helps you understand exactly what's consuming context and where to optimize.
+
+### Session cost
+
+The token meter also displays the running session cost (e.g. `$0.0042`). Cost is calculated using per-model pricing rates for input and output tokens separately. Input/output token counts are tracked in the **Mission Control** side panel along with total message count.
+
+## Configurable context window
+
+Each agent can have a custom context window size, configured in **Settings → Advanced → Context Window (tokens)**.
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| Context window | 32,000 | 4,000 – 1,000,000 | How much conversation history the agent sees per turn |
+
+**Why this matters:**
+- **Larger windows** = better topic tracking across long conversations, but higher cost per turn
+- **Smaller windows** = cheaper per turn, compaction kicks in sooner
+- Most models support 128K–1M tokens, so the default 32K is deliberately conservative to control costs
+- Increase for complex research tasks; decrease for simple Q&A bots
+
+The context window limit determines when the token meter turns yellow (60%) and red (80%), and when auto-compaction triggers.
+
 ## Session Settings UI
 
 Navigate to **Settings → Sessions** to manage all your sessions in one place:

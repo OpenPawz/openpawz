@@ -5,18 +5,19 @@ description: "Connect to Nextcloud Talk so users on your Nextcloud instance can 
 
 # Nextcloud
 
-Connect to Nextcloud Talk so users on your Nextcloud instance can chat with Pawz agents.
+Connect to Nextcloud Talk so users on your Nextcloud instance can chat with Pawz agents. Like Mattermost, Nextcloud is self-hosted — your conversations never leave your server.
 
 ## Setup
 
-1. Create a bot user on your Nextcloud instance
-2. In Pawz, go to **Settings → Channels**
-3. Select **Nextcloud**
-4. Enter:
+1. Create a dedicated bot user on your Nextcloud instance (admin panel → **Users**)
+2. Generate an **app password** for the bot user (user settings → **Security → Devices & sessions**)
+3. In Pawz, go to **Settings → Channels**
+4. Select **Nextcloud**
+5. Enter:
    - **Server URL** — e.g., `https://cloud.yourcompany.com`
    - **Username** — Nextcloud bot user
-   - **Password** — bot user password (or app password)
-5. Start the channel
+   - **Password** — app password (not the main password)
+6. Start the channel
 
 ## Configuration
 
@@ -24,19 +25,36 @@ Connect to Nextcloud Talk so users on your Nextcloud instance can chat with Pawz
 |-------|----------|-------------|
 | Server URL | Yes | Nextcloud instance URL |
 | Username | Yes | Bot account username |
-| Password | Yes | Bot account password |
-| DM policy | Yes | Who can message the bot |
+| Password | Yes | App password for the bot account |
+| DM policy | Yes | Who can message the bot (open, allowlist, or pairing) |
 | Allowed users | For allowlist | Nextcloud usernames |
+
+## How it works
+
+Pawz polls the Nextcloud Talk API for new messages. When a message arrives in a conversation the bot has joined, it's processed through the agent pipeline — prompt injection scan → agent routing → response → reply posted back to the conversation.
 
 ## Features
 
-- Nextcloud Talk conversations and DMs
-- Per-user sessions with memory
-- Prompt injection scanning
-- Agent routing via channel routing rules
+- **Nextcloud Talk conversations and DMs** — the bot participates in any conversation it's invited to
+- **Group conversations** — the bot can respond in group chats when mentioned or when DM policy allows
+- **Per-user sessions** with persistent memory across conversations
+- **Prompt injection scanning** on all incoming messages
+- **Agent routing** via channel routing rules
+- **Channel-specific context** — lean context for fast, affordable responses
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| Authentication fails | Use an **app password**, not the user's main password. Generate one in user settings → Security. |
+| Bot doesn't see messages | Invite the bot user to the Talk conversation first |
+| Connection refused | Verify the server URL is correct and includes `https://`. Check that Nextcloud Talk is enabled. |
+| Slow responses | Nextcloud Talk uses polling (not WebSocket). Response time depends on poll interval. |
 
 ## Tips
 
-- Use an app password instead of the main password for better security
-- The bot joins Talk conversations when invited
-- Ideal for organizations already using Nextcloud
+:::tip
+- **Always use an app password** instead of the main account password — it's more secure and can be revoked independently.
+- **The bot joins conversations when invited** — add it to specific Talk rooms via the Nextcloud UI.
+- **Ideal for organizations already on Nextcloud** — no additional infrastructure needed, just add a bot user.
+:::

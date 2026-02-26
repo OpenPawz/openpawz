@@ -100,6 +100,21 @@ Rules are evaluated **first-match-wins** — the first matching rule determines 
 - Access control is per-channel and per-user
 - Channel agents use `worker_model` by default (cheaper, faster)
 
+## Lean channel context
+
+Channel bridges use a **minimal context strategy** optimized for speed and low token cost:
+
+- **Core identity only** — the agent loads its identity, soul, and user files, but skips the full agent context (other agents, all tools, custom files)
+- **No memory recall overhead** — memory search (BM25 + vector) is skipped for channel messages to reduce latency. Memory is still available on-demand via the `memory_search` tool if the agent needs it.
+- **Minimal tool set** — channel agents only get the tools relevant to that bridge (~4 tools), not the full 400+ integration catalog
+- **Worker model** — channels default to `worker_model` (cheaper/faster) rather than the boss model
+
+This means a channel message costs a fraction of a full chat turn. An agent responding on Discord or Telegram uses ~2K–4K tokens of context instead of ~10K–30K for a full desktop chat. Over thousands of channel messages, this saves significantly on token costs.
+
+:::tip
+If you need a channel agent to have full capabilities (memory recall, all tools), configure it as a dedicated agent with a larger context window and full tool access in **Settings → Agents**.
+:::
+
 ## Provider fallback
 
 If the primary provider fails (billing, auth, or rate limit errors), Pawz automatically tries other configured providers before failing.

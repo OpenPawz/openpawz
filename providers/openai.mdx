@@ -1,11 +1,11 @@
 ---
 title: "OpenAI"
-description: "Use GPT-4o, o1, o3, and other OpenAI models."
+description: "Use GPT-4.1, o3, o4-mini, and other OpenAI models."
 ---
 
 # OpenAI
 
-Use GPT-4o, o1, o3, and other OpenAI models.
+Use GPT-4.1, o3, o4-mini, and other OpenAI models.
 
 ## Setup
 
@@ -23,13 +23,31 @@ Use GPT-4o, o1, o3, and other OpenAI models.
 
 ## Models
 
-| Model | Best for |
-|-------|----------|
-| `gpt-4o` | Best overall, multimodal |
-| `gpt-4o-mini` | Fast, cheap, good quality |
-| `o1` | Complex reasoning |
-| `o3-mini` | Reasoning, cheaper |
+| Model | Context | Best for |
+|-------|---------|----------|
+| `gpt-4.1` | 1M | Best overall — fast, smart, multimodal |
+| `gpt-4.1-mini` | 1M | Great balance of speed and cost |
+| `gpt-4.1-nano` | 1M | Ultra-cheap for simple tasks |
+| `o3` | 200K | Complex reasoning and multi-step analysis |
+| `o4-mini` | 200K | Reasoning at lower cost |
 
 ## Prefix routing
 
-Model names starting with `gpt*`, `o1*`, `o3*`, or `o4*` auto-route to OpenAI.
+Model names starting with `gpt*`, `o1*`, `o3*`, or `o4*` auto-route to OpenAI. You can also set per-agent model overrides in **Settings → Advanced**.
+
+## Streaming
+
+OpenAI responses stream via Server-Sent Events (SSE). Pawz processes tokens as they arrive — you'll see text appear word-by-word in the chat. Token usage (input/output) is reported at the end of each stream.
+
+## Tool calling
+
+OpenAI models support native function/tool calling. When an agent has tools enabled, Pawz sends tool definitions in the `tools` parameter and handles `tool_calls` responses automatically. The Human-in-the-Loop approval flow applies to any side-effect tools.
+
+## Tips
+
+:::tip
+- **Use `gpt-4.1-nano` as your `cheap_model`** — it's extremely affordable and handles simple queries well. Pair it with `auto_tier` to save 50%+ on token costs.
+- **Prompt caching** — OpenAI caches repeated prompt prefixes. Keep your system prompts consistent across sessions to benefit from cached input pricing.
+- **Set a daily budget** — OpenAI models can get expensive with long conversations. Use **Settings → Advanced → Daily budget** to cap spending.
+- **Context window** — GPT-4.1 supports 1M tokens, but Pawz defaults to a conservative 32K limit per agent. Increase in **Settings → Advanced → Context Window** if needed.
+:::
