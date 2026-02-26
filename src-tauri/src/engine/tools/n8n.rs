@@ -702,6 +702,9 @@ async fn execute_install_n8n_node(
 
     info!("[tool:n8n] Installing community package: {}", package_name);
 
+    // Lazy-start n8n if not running
+    lazy_ensure_n8n(app_handle).await?;
+
     // Install via the existing Tauri command
     let pkg = crate::commands::n8n::engine_n8n_community_packages_install(
         app_handle.clone(),
@@ -763,9 +766,32 @@ async fn execute_install_n8n_node(
     Ok(output)
 }
 
+/// Ensure n8n is running and the MCP bridge is connected.
+/// Called lazily when agent tools need n8n but it hasn't been started yet.
+async fn lazy_ensure_n8n(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    let state = app_handle
+        .try_state::<EngineState>()
+        .ok_or("Engine state not available")?;
+
+    // Check if already connected
+    {
+        let reg = state.mcp_registry.lock().await;
+        if reg.is_n8n_registered() {
+            return Ok(());
+        }
+    }
+
+    info!("[tool:n8n] n8n not connected — starting integration engine...");
+    crate::commands::n8n::engine_n8n_ensure_ready(app_handle.clone()).await?;
+    Ok(())
+}
+
 /// Refresh MCP tools from the n8n engine.
 async fn execute_mcp_refresh(app_handle: &tauri::AppHandle) -> Result<String, String> {
     info!("[tool:n8n] Refreshing MCP tools");
+
+    // Lazy-start n8n if not running
+    lazy_ensure_n8n(app_handle).await?;
 
     let state = app_handle
         .try_state::<EngineState>()
@@ -781,6 +807,6 @@ async fn execute_mcp_refresh(app_handle: &tauri::AppHandle) -> Result<String, St
             tool_count
         ))
     } else {
-        Err("n8n MCP bridge is not connected. Ensure n8n is running (engine_n8n_ensure_ready).".to_string())
+        Err("n8n MCP bridge is not connected. Failed to auto-start n8n engine.".to_string())
     }
 }

@@ -179,6 +179,14 @@ async function connectEngine(): Promise<boolean> {
       })
       .catch((e) => console.warn('[main] Ollama auto-init failed (non-fatal):', e));
 
+    // ── n8n integration engine auto-start (non-blocking) ─────────────────
+    pawEngine
+      .n8nEnsureReady()
+      .then((ep) =>
+        console.debug(`[main] n8n ready: ${ep.url} (mode=${ep.mode})`),
+      )
+      .catch((e) => console.debug('[main] n8n auto-start skipped:', e));
+
     return true;
   }
   console.warn('[main] connectEngine: engine mode should have handled it above');

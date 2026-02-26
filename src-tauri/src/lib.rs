@@ -108,6 +108,37 @@ pub fn run() {
                 });
             }
 
+            // ── n8n engine auto-start (background, non-blocking) ────────
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    // Wait for the app to finish initializing
+                    tokio::time::sleep(std::time::Duration::from_secs(8)).await;
+
+                    // Only auto-start if the user has previously enabled n8n
+                    let config = engine::n8n_engine::load_config(&app_handle)
+                        .unwrap_or_default();
+                    if !config.enabled {
+                        log::debug!("[n8n] Auto-start skipped — n8n not enabled");
+                        return;
+                    }
+
+                    log::info!("[n8n] Auto-starting integration engine...");
+                    match commands::n8n::engine_n8n_ensure_ready(app_handle).await {
+                        Ok(endpoint) => {
+                            log::info!(
+                                "[n8n] Integration engine ready at {} (mode={:?})",
+                                endpoint.url,
+                                endpoint.mode
+                            );
+                        }
+                        Err(e) => {
+                            log::warn!("[n8n] Auto-start failed (non-fatal): {}", e);
+                        }
+                    }
+                });
+            }
+
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
