@@ -75,93 +75,28 @@ These are done, committed, and pushed. No work needed.
 
 ## What Needs Building
 
-### Phase 3 — NCNodes Discovery (`search_ncnodes` tool)
+### ✅ Phase 3 — NCNodes Discovery (`search_ncnodes` tool)
 **Goal**: Agents can search 25,000+ community packages and evaluate them.
 
-#### 3.1 — NCNodes Search Backend
-**File**: `src-tauri/src/commands/n8n.rs`
+#### ✅ 3.1 — NCNodes Search Backend
+- [x] `engine_n8n_search_ncnodes` command — npm registry search with `n8n-community-node-package` keyword
+- [x] `NCNodeResult` struct — package_name, description, author, version, weekly_downloads, last_updated, repository_url, keywords
+- [x] Registered in `lib.rs`
 
-```rust
-/// Search ncnodes.com for community packages matching a query.
-/// Returns package name, description, GitHub stars, last updated.
-#[tauri::command]
-pub async fn engine_n8n_search_ncnodes(
-    query: String,
-    limit: Option<u32>,
-) -> Result<Vec<NCNodeResult>, String>
-```
+#### ✅ 3.2 — NCNodes Search as Agent Tool
+- [x] `search_ncnodes` tool definition in `tools/n8n.rs`
+- [x] Executor calls `engine_n8n_search_ncnodes` internally
+- [x] Added to SAFE_TOOLS in `agent_loop.rs` (read-only, no HIL)
 
-**Implementation**:
-- [ ] Scrape/API ncnodes.com search (investigate if they have an API, else parse HTML)
-- [ ] Fallback: npm registry search with `keywords:n8n-community-node-package`
-- [ ] Cache results for 1 hour (avoid rate limits)
-- [ ] Return: `package_name`, `description`, `stars`, `last_updated`, `author`, `weekly_downloads`
-- [ ] Register command in `lib.rs`
+#### ✅ 3.3 — Install Node as Agent Tool
+- [x] `install_n8n_node` tool definition
+- [x] Executor calls `engine_n8n_community_packages_install` + auto-deploys MCP workflow + auto-refreshes tools
+- [x] NOT in SAFE_TOOLS — requires HIL approval
 
-**Types** (add to `n8n.rs`):
-```rust
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NCNodeResult {
-    pub package_name: String,
-    pub description: String,
-    pub stars: u32,
-    pub last_updated: String,
-    pub author: String,
-    pub weekly_downloads: u64,
-    pub repository_url: Option<String>,
-    pub node_count: u32,
-}
-```
-
-#### 3.2 — NCNodes Search as Agent Tool
-**File**: `src-tauri/src/engine/tools/n8n.rs` (new file)
-
-Expose `search_ncnodes` as an agent-callable tool so the Architect can discover
-packages mid-conversation:
-
-```rust
-ToolDefinition {
-    name: "search_ncnodes",
-    description: "Search 25,000+ n8n community automation packages. Returns package name, stars, and description. Use this when you need a capability that isn't in the current tool set.",
-    parameters: { "query": "string", "limit": "number (optional, default 5)" }
-}
-```
-
-- [ ] Define tool in `tools/n8n.rs`
-- [ ] Wire `execute_tool` dispatch in `tools/mod.rs`
-- [ ] Tool calls `engine_n8n_search_ncnodes` internally
-- [ ] Add to SAFE_TOOLS in `agent_loop.rs` (read-only, no HIL needed)
-
-#### 3.3 — Install Node as Agent Tool
-**File**: `src-tauri/src/engine/tools/n8n.rs`
-
-```rust
-ToolDefinition {
-    name: "install_n8n_node",
-    description: "Install an n8n community package by npm name. Requires user approval (HIL). After install, use mcp_refresh to get new tools.",
-    parameters: { "package_name": "string" }
-}
-```
-
-- [ ] Define tool
-- [ ] Wire dispatch — calls `engine_n8n_community_packages_install`
-- [ ] **NOT** in SAFE_TOOLS — requires HIL approval (installs code from npm)
-- [ ] After successful install, auto-call `engine_n8n_deploy_mcp_workflow`
-- [ ] Then auto-call `engine_n8n_mcp_refresh` to expose new tools
-
-#### 3.4 — MCP Refresh as Agent Tool
-
-```rust
-ToolDefinition {
-    name: "mcp_refresh",
-    description: "Refresh the MCP tool list from all connected servers. Use after installing a new n8n node.",
-    parameters: {}
-}
-```
-
-- [ ] Define tool
-- [ ] Wire dispatch — calls `engine_n8n_mcp_refresh`
-- [ ] Add to SAFE_TOOLS
+#### ✅ 3.4 — MCP Refresh as Agent Tool
+- [x] `mcp_refresh` tool definition
+- [x] Executor refreshes tools from MCP registry
+- [x] Added to SAFE_TOOLS
 
 ---
 
