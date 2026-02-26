@@ -281,6 +281,18 @@ function _wireEvents(overlay: HTMLElement, req: CredentialRequest): void {
           serviceId: req.service,
           credentials: creds,
         });
+
+        // Bridge integration creds → skill vault & auto-enable skill
+        // Pass credentials directly to avoid config-store roundtrip
+        try {
+          await invoke('engine_integrations_provision', {
+            serviceId: req.service,
+            credentials: creds,
+          });
+        } catch (e) {
+          console.error('[credential-prompt] provision FAILED — agent tools will not work:', e);
+        }
+
         _state = 'success';
         _successDetails = result.details ?? result.message;
       } else {

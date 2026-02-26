@@ -761,23 +761,42 @@ pub async fn engine_integrations_credential_status(
 
 /// Auto-provision agent tools after saving credentials.
 /// Bridges integration credentials → skill vault and auto-enables the skill.
+///
+/// If `credentials` is provided, uses them directly (preferred — avoids config-store roundtrip).
+/// Otherwise falls back to loading from `integration_creds_{service_id}` in the config store.
 #[tauri::command]
 pub fn engine_integrations_provision(
     app_handle: tauri::AppHandle,
     service_id: String,
+    credentials: Option<std::collections::HashMap<String, String>>,
 ) -> Result<String, String> {
-    // 1. Load integration credentials
-    let cred_key = format!("integration_creds_{}", service_id);
-    let creds: std::collections::HashMap<String, String> =
-        channels::load_channel_config(&app_handle, &cred_key)
-            .map_err(|e| format!("Failed to load credentials for {}: {}", service_id, e))?;
-
-    if creds.is_empty() {
-        return Err(format!(
-            "No credentials found for '{}'. Save credentials first.",
+    // 1. Use provided credentials or load from config store
+    let creds = if let Some(c) = credentials {
+        if c.is_empty() {
+            return Err(format!(
+                "No credentials provided for '{}'.",
+                service_id
+            ));
+        }
+        info!(
+            "[provision] Using {} directly-provided credentials for '{}'",
+            c.len(),
             service_id
-        ));
-    }
+        );
+        c
+    } else {
+        let cred_key = format!("integration_creds_{}", service_id);
+        let loaded: std::collections::HashMap<String, String> =
+            channels::load_channel_config(&app_handle, &cred_key)
+                .map_err(|e| format!("Failed to load credentials for {}: {}", service_id, e))?;
+        if loaded.is_empty() {
+            return Err(format!(
+                "No credentials found for '{}'. Save credentials first.",
+                service_id
+            ));
+        }
+        loaded
+    };
 
     // 2. Map integration credential keys → skill vault keys
     let (skill_id, mapped_creds) = map_integration_to_skill(&service_id, &creds);

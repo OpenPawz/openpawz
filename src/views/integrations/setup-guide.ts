@@ -303,19 +303,36 @@ function _wireGuideEvents(container: HTMLElement, service: ServiceDefinition): v
         btn.classList.add('btn-success');
       }
 
-      // ── Wire: connect service + bridge credentials → skill vault ──
+      // ── Wire: save creds, connect service, bridge → skill vault ──
+      try {
+        // Persist credentials to the integration config store
+        await invoke('engine_integrations_save_credentials', {
+          serviceId: service.id,
+          credentials,
+        });
+      } catch (e) {
+        console.warn('[setup-guide] save_credentials:', e);
+      }
+
       try {
         // Mark service as connected (updates connected list & health monitor)
         await invoke('engine_integrations_connect', {
           serviceId: service.id,
           toolCount: service.capabilities?.length ?? 1,
         });
+      } catch (e) {
+        console.warn('[setup-guide] connect:', e);
+      }
+
+      try {
         // Bridge integration creds → skill vault & auto-enable skill
+        // Pass credentials directly to avoid config-store roundtrip
         await invoke('engine_integrations_provision', {
           serviceId: service.id,
+          credentials,
         });
       } catch (e) {
-        console.warn('[setup-guide] Post-save wiring:', e);
+        console.error('[setup-guide] provision FAILED — agent tools will not work:', e);
       }
 
       // Notify parent
