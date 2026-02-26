@@ -79,6 +79,9 @@ pub fn run() {
         .install_default()
         .expect("Failed to install rustls CryptoProvider");
 
+    // Load custom data root from ~/.paw/storage.conf BEFORE opening the DB.
+    engine::paths::load_data_root_from_conf();
+
     let engine_state =
         commands::state::EngineState::new().expect("Failed to initialize Paw Agent Engine");
 
@@ -198,6 +201,9 @@ pub fn run() {
             commands::config::engine_remove_provider,
             commands::config::engine_status,
             commands::config::engine_auto_setup,
+            // ── Storage Paths ──
+            commands::config::engine_storage_get_paths,
+            commands::config::engine_storage_set_data_root,
             // ── Agent Files (Soul / Persona) ──
             commands::agent::engine_agent_file_list,
             commands::agent::engine_agent_file_get,

@@ -2982,6 +2982,9 @@
               </button>
 
               <div class="settings-nav-section">SYSTEM</div>
+              <button class="settings-nav-item" data-settings-tab="storage">
+                <span class="ms ms-sm">folder_open</span> Storage
+              </button>
               <button class="settings-nav-item" data-settings-tab="security">
                 <span class="ms ms-sm">security</span> Security
               </button>
@@ -3215,6 +3218,20 @@
             </div>
             <div class="settings-section">
               <div id="settings-mcp-content"></div>
+            </div>
+          </div>
+
+          <!-- ── Tab: Storage ── -->
+          <div class="settings-tab-panel" id="settings-panel-storage" style="display: none">
+            <div class="settings-panel-hero">
+              <span class="ms settings-panel-hero-icon">folder_open</span>
+              <div>
+                <h2 class="settings-panel-hero-title">Storage</h2>
+                <p class="settings-panel-hero-sub">Data locations, workspace path, and cloud sync</p>
+              </div>
+            </div>
+            <div class="settings-section" id="settings-storage-section">
+              <div id="settings-storage-content"></div>
             </div>
           </div>
 

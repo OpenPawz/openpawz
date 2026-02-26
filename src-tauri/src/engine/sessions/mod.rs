@@ -46,10 +46,7 @@ pub use skill_storage::SkillStorageItem;
 
 /// Get the path to the engine's SQLite database.
 pub fn engine_db_path() -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_default();
-    let dir = home.join(".paw");
-    std::fs::create_dir_all(&dir).ok();
-    dir.join("engine.db")
+    crate::engine::paths::engine_db_path()
 }
 
 /// Thread-safe database wrapper.

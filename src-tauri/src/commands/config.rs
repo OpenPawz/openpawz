@@ -318,3 +318,104 @@ pub async fn engine_auto_setup(state: State<'_, EngineState>) -> Result<serde_js
         "message": format!("Ollama detected! Set up with model '{}' — ready to chat.", model_name)
     }))
 }
+
+// ── Storage paths ──────────────────────────────────────────────────────
+
+/// Return current storage paths for display in Settings → Storage.
+#[tauri::command]
+pub fn engine_storage_get_paths(
+    state: State<'_, EngineState>,
+) -> Result<serde_json::Value, String> {
+    let data_root = crate::engine::paths::paw_data_dir();
+    let custom_root = crate::engine::paths::get_data_root_override();
+    let default_root = crate::engine::paths::default_data_dir()
+        .to_string_lossy()
+        .to_string();
+
+    // Compute approximate sizes
+    let engine_db = crate::engine::paths::engine_db_path();
+    let engine_db_size = std::fs::metadata(&engine_db).map(|m| m.len()).unwrap_or(0);
+
+    let workspaces_dir = crate::engine::paths::workspaces_base_dir();
+    let workspaces_size = dir_size(&workspaces_dir);
+
+    let skills_dir = crate::engine::paths::skills_dir().unwrap_or_default();
+    let skills_size = dir_size(&skills_dir);
+
+    let browser_dir = data_root.join("browser-profiles");
+    let browser_size = dir_size(&browser_dir);
+
+    // Get workspace path from frontend config (if stored in engine config)
+    let workspace_path = state
+        .store
+        .get_config("user_workspace_path")
+        .ok()
+        .flatten();
+
+    Ok(serde_json::json!({
+        "data_root": data_root.to_string_lossy(),
+        "default_root": default_root,
+        "is_custom": custom_root.is_some(),
+        "engine_db": engine_db.to_string_lossy(),
+        "engine_db_size": engine_db_size,
+        "workspaces_dir": workspaces_dir.to_string_lossy(),
+        "workspaces_size": workspaces_size,
+        "skills_dir": skills_dir.to_string_lossy(),
+        "skills_size": skills_size,
+        "browser_dir": browser_dir.to_string_lossy(),
+        "browser_size": browser_size,
+        "workspace_path": workspace_path,
+    }))
+}
+
+/// Set (or reset) the data root directory.
+/// Pass `null` to reset to default `~/.paw/`.
+/// Requires an app restart to take full effect.
+#[tauri::command]
+pub fn engine_storage_set_data_root(
+    _state: State<'_, EngineState>,
+    path: Option<String>,
+) -> Result<(), String> {
+    match &path {
+        Some(p) if !p.is_empty() => {
+            // Validate the path exists and is a directory (or can be created)
+            let pb = std::path::PathBuf::from(p);
+            std::fs::create_dir_all(&pb)
+                .map_err(|e| format!("Cannot create directory '{}': {}", p, e))?;
+            crate::engine::paths::save_data_root_to_conf(Some(p))?;
+            crate::engine::paths::set_data_root_override(Some(pb));
+            info!("[storage] Data root changed to: {}", p);
+        }
+        _ => {
+            crate::engine::paths::save_data_root_to_conf(None)?;
+            crate::engine::paths::set_data_root_override(None);
+            info!("[storage] Data root reset to default (~/.paw/)");
+        }
+    }
+    Ok(())
+}
+
+/// Recursive directory size in bytes.
+fn dir_size(path: &std::path::Path) -> u64 {
+    if !path.exists() {
+        return 0;
+    }
+    walkdir_calc(path)
+}
+
+fn walkdir_calc(path: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let meta = entry.metadata();
+            if let Ok(m) = meta {
+                if m.is_dir() {
+                    total += walkdir_calc(&entry.path());
+                } else {
+                    total += m.len();
+                }
+            }
+        }
+    }
+    total
+}

@@ -9,9 +9,9 @@ use std::path::{Path, PathBuf};
 
 // ── Path helpers ───────────────────────────────────────────────────────────
 
-/// Returns the skills directory path: `~/.paw/skills/`.
+/// Returns the skills directory path: `{data_root}/skills/`.
 pub fn skills_dir() -> Option<PathBuf> {
-    dirs::home_dir().map(|h| h.join(".paw").join("skills"))
+    crate::engine::paths::skills_dir()
 }
 
 // ── Scanner ────────────────────────────────────────────────────────────────

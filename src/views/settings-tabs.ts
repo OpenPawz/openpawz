@@ -12,6 +12,7 @@ import * as WebhookSettings from './settings-webhook';
 import * as N8nSettings from './settings-n8n';
 import * as McpSettings from './settings-mcp';
 import * as LogsSettings from './settings-logs';
+import * as StorageSettings from './settings-storage';
 import * as MemoryPalaceModule from './memory-palace';
 import * as NodesModule from './nodes';
 import { loadMemory } from './channels';
@@ -54,6 +55,9 @@ export function loadActiveSettingsTab() {
       break;
     case 'logs':
       LogsSettings.loadLogsSettings();
+      break;
+    case 'storage':
+      StorageSettings.loadStorageSettings();
       break;
     case 'memory': {
       const container = $('settings-memory-container');

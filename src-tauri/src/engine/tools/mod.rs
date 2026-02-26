@@ -203,10 +203,9 @@ pub async fn execute_tool(
 // ── Workspace helpers ──────────────────────────────────────────────────────
 
 /// Get the per-agent workspace directory path.
-/// Each agent gets its own isolated workspace at ~/.paw/workspaces/{agent_id}/
+/// Each agent gets its own isolated workspace under the Paw data root.
 pub fn agent_workspace(agent_id: &str) -> std::path::PathBuf {
-    let base = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    base.join(".paw").join("workspaces").join(agent_id)
+    crate::engine::paths::agent_workspace_dir(agent_id)
 }
 
 /// Ensure the agent's workspace directory exists.

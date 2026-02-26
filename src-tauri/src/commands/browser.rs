@@ -46,10 +46,7 @@ impl Default for BrowserConfig {
 }
 
 fn default_profile_dir(profile_id: &str) -> String {
-    let base = dirs::home_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    base.join(".paw")
-        .join("browser-profiles")
-        .join(profile_id)
+    crate::engine::paths::browser_profile_dir(profile_id)
         .to_string_lossy()
         .into()
 }
@@ -303,10 +300,7 @@ pub struct WorkspaceFile {
 /// List all agent workspaces with stats.
 #[tauri::command]
 pub fn engine_workspaces_list() -> Result<Vec<WorkspaceInfo>, String> {
-    let base = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".paw")
-        .join("workspaces");
+    let base = crate::engine::paths::workspaces_base_dir();
 
     if !base.exists() {
         return Ok(vec![]);
@@ -346,11 +340,7 @@ pub fn engine_workspace_files(
     agent_id: String,
     subdir: Option<String>,
 ) -> Result<Vec<WorkspaceFile>, String> {
-    let base = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".paw")
-        .join("workspaces")
-        .join(&agent_id);
+    let base = crate::engine::paths::agent_workspace_dir(&agent_id);
 
     let target = if let Some(ref sub) = subdir {
         base.join(sub)
@@ -401,11 +391,7 @@ pub fn engine_workspace_files(
 /// Delete an agent's workspace entirely.
 #[tauri::command]
 pub fn engine_workspace_delete(agent_id: String) -> Result<(), String> {
-    let base = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".paw")
-        .join("workspaces")
-        .join(&agent_id);
+    let base = crate::engine::paths::agent_workspace_dir(&agent_id);
 
     if base.exists() {
         std::fs::remove_dir_all(&base).map_err(|e| format!("Failed to delete workspace: {}", e))?;

@@ -341,8 +341,7 @@ fn resolve_profile_dir(app_handle: &tauri::AppHandle) -> Option<std::path::PathB
     if profile_id.is_empty() {
         return None;
     }
-    let home = dirs::home_dir()?;
-    let dir = home.join(".paw").join("browser-profiles").join(profile_id);
+    let dir = crate::engine::paths::browser_profile_dir(profile_id);
     if dir.exists() {
         Some(dir)
     } else {

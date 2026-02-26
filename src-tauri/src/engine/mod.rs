@@ -4,6 +4,7 @@
 
 pub mod agent_loop;
 pub mod http;
+pub mod paths;
 pub mod pricing;
 pub mod providers;
 pub mod sessions;

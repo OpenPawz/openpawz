@@ -1230,6 +1230,32 @@ export class PawEngineClient {
   async squadRemoveMember(squadId: string, agentId: string): Promise<void> {
     return invoke('engine_squad_remove_member', { squadId, agentId });
   }
+
+  // ── Storage Paths ──────────────────────────────────────────────────
+
+  async storageGetPaths(): Promise<StoragePaths> {
+    return invoke<StoragePaths>('engine_storage_get_paths');
+  }
+
+  async storageSetDataRoot(path: string | null): Promise<void> {
+    return invoke('engine_storage_set_data_root', { path });
+  }
+}
+
+/** Storage paths returned by the engine. */
+export interface StoragePaths {
+  data_root: string;
+  default_root: string;
+  is_custom: boolean;
+  engine_db: string;
+  engine_db_size: number;
+  workspaces_dir: string;
+  workspaces_size: number;
+  skills_dir: string;
+  skills_size: number;
+  browser_dir: string;
+  browser_size: number;
+  workspace_path: string | null;
 }
 
 /** Create a new engine client instance — useful for testing or custom wiring. */
