@@ -72,6 +72,13 @@ fn startup_housekeeping(state: &commands::state::EngineState) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Install the rustls crypto provider before any TLS usage.
+    // Required since rustls 0.23 — without this, agent tasks panic
+    // when they try to auto-detect the provider.
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls CryptoProvider");
+
     let engine_state =
         commands::state::EngineState::new().expect("Failed to initialize Paw Agent Engine");
 
