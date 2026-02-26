@@ -83,9 +83,10 @@ pub fn build_chat_tools(
     // If the agent policy explicitly lists skill tools, auto-include them
     // so users don't have to rely on request_tools for tools they manually enabled.
     let is_policy_allowed = |name: &str| tool_filter.is_some_and(|f| f.iter().any(|n| n == name));
-    // Foreman Protocol: exec and fetch are available via request_tools for
-    // legitimate local tasks, but NOT auto-included. External service access
-    // must go through mcp_* tools. The model discovers exec/fetch on demand.
+    // Auto-include exec and fetch when integration skills are enabled — these
+    // are needed for CLI tools (gh, git) and direct HTTP calls that skills rely on.
+    let has_integration_skills = !enabled_ids.is_empty();
+    let is_skill_required = |name: &str| has_integration_skills && matches!(name, "fetch" | "exec");
 
     let mut t: Vec<ToolDefinition> = all_tools
         .into_iter()
@@ -95,6 +96,7 @@ pub fn build_chat_tools(
                 || is_loaded(name)
                 || is_mcp(name)
                 || is_policy_allowed(name)
+                || is_skill_required(name)
         })
         .collect();
 
