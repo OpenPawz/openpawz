@@ -15,6 +15,7 @@ import {
 } from './atoms';
 import { SERVICE_CATALOG } from './catalog';
 import { openSetupGuide } from './setup-guide';
+import { refreshConnected } from './index';
 import { loadAutomations, loadServiceTemplates } from './automations';
 import { loadQueryPanel, loadServiceQueries, setQueryConnectedIds } from './queries';
 import { kineticStagger, kineticDot } from '../../components/kinetic-row';
@@ -436,7 +437,10 @@ function _openGuide(service: ServiceDefinition): void {
   if (!panel) return;
   panel.style.display = 'block';
   openSetupGuide(panel, service, {
-    onSave: () => renderIntegrations(),
+    onSave: () => {
+      // Re-fetch connected list from backend so cards show ON/Connected
+      refreshConnected();
+    },
     onClose: () => _renderDetail(service),
   });
 }

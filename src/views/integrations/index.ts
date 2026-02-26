@@ -89,6 +89,22 @@ export function getConnectedCount(): number {
   return _connected.length;
 }
 
+/** Re-fetch connected services from backend and re-render the view. */
+export async function refreshConnected(): Promise<void> {
+  if (isEngineMode()) {
+    try {
+      const details = await invoke<ConnectedService[]>('engine_integrations_get_connected');
+      _connected.length = 0;
+      _connected.push(...details);
+    } catch (e) {
+      console.warn('[integrations] refreshConnected failed:', e);
+    }
+  }
+  renderIntegrations();
+  updateIntegrationsHeroStats(_connected);
+  renderHealthList(_connected);
+}
+
 // ── Quick Action Bindings ──────────────────────────────────────────────
 
 function _wireQuickActions(): void {
