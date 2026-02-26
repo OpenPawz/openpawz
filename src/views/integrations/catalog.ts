@@ -4855,11 +4855,20 @@ const AUTO: ServiceDefinition[] = [
     'cloud',
     '#5BC0F8',
     'utility',
-    'Weather data and forecasts',
+    'Weather data and forecasts — no API key required',
     ['Get weather', 'Get forecast', 'Historical data'],
     'n8n-nodes-base.httpRequest',
     '',
     false,
+    [],
+    {
+      title: 'Weather — No Setup Required',
+      steps: [
+        { instruction: 'Weather works out of the box using wttr.in — a free service with no API key.' },
+        { instruction: 'Just ask your agent about the weather in any city.' },
+      ],
+      estimatedTime: 'Ready to use',
+    },
   ),
   svc(
     'url-shortener',
