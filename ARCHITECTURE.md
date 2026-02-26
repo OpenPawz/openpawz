@@ -1,6 +1,6 @@
 # Architecture
 
-> Pawz is a Tauri v2 native desktop app — Rust backend, TypeScript frontend, IPC bridge.  
+> Pawz is a Tauri v2 native desktop app — Rust backend, TypeScript frontend, IPC bridge.
 > ~86k LOC total (39k Rust + 35k TypeScript + 12k CSS) · 602 tests · 3-job CI · 0 clippy warnings
 
 ---

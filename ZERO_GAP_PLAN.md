@@ -339,18 +339,18 @@ When the Architect receives a task requiring automation:
 
 2. Search for the capability:
    search_ncnodes("puppeteer browser screenshot")
-   
+
 3. Evaluate results (in thinking block):
    - n8n-nodes-puppeteer: ⭐142, updated 2 months ago ✅
    - n8n-nodes-browserless: ⭐12, updated 2 years ago ❌
-   
+
 4. Issue Task Order to Foreman:
    delegate_task(
      agent_id: "foreman",
      task_description: "Install n8n-nodes-puppeteer and take a screenshot of https://example.com",
      context: "Package verified: 142 stars, maintained, safe to install."
    )
-   
+
 5. Monitor Foreman progress via check_agent_status
 </thinking>
 ```
@@ -436,7 +436,7 @@ N8N_MCP_SERVER_MODE=true                       # ✅ Shipped (via mcp_mode)
 Phase 3 (NCNodes Search)     — HIGH   — Unlocks discovery
 Phase 4 (Architect/Worker)   — HIGH   — Unlocks delegation
 Phase 5 (Tool Remapping)     — MEDIUM — Polish / UX
-Phase 6 (Browser UI)         — MEDIUM — User-facing convenience  
+Phase 6 (Browser UI)         — MEDIUM — User-facing convenience
 Phase 7 (E2E Verification)   — HIGH   — Proves it all works
 ```
 
