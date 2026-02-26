@@ -344,7 +344,7 @@ function _wireGuideEvents(container: HTMLElement, service: ServiceDefinition): v
           serviceName: service.name,
           n8nNodeType: service.n8nNodeType,
         });
-        console.log(`[setup-guide] MCP workflow deployed for ${service.id}`);
+        console.debug(`[setup-guide] MCP workflow deployed for ${service.id}`);
       } catch (e) {
         // Non-fatal: MCP is a bonus, not required for basic tool usage
         console.warn('[setup-guide] MCP workflow deploy (non-fatal):', e);

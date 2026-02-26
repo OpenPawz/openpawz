@@ -92,17 +92,14 @@ export function sortPackages(
 }
 
 /** Check if a package is in the installed list. */
-export function isInstalled(
-  pkg: CommunityPackage,
-  installed: InstalledPackage[],
-): boolean {
+export function isInstalled(pkg: CommunityPackage, installed: InstalledPackage[]): boolean {
   return installed.some((i) => i.packageName === pkg.package_name);
 }
 
 /** Strip the n8n-nodes- prefix for display. */
 export function displayName(packageName: string): string {
   return packageName
-    .replace(/^@[^/]+\//, '')  // strip scope
+    .replace(/^@[^/]+\//, '') // strip scope
     .replace(/^n8n-nodes-/, '')
     .replace(/-/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());

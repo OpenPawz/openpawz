@@ -19,7 +19,11 @@ import { refreshConnected } from './index';
 import { invoke } from '@tauri-apps/api/core';
 import { loadAutomations, loadServiceTemplates } from './automations';
 import { loadQueryPanel, loadServiceQueries, setQueryConnectedIds } from './queries';
-import { mountCommunityBrowser, getRequiredPackage, displayName as communityDisplayName } from './community';
+import {
+  mountCommunityBrowser,
+  getRequiredPackage,
+  displayName as communityDisplayName,
+} from './community';
 import { kineticStagger, kineticDot } from '../../components/kinetic-row';
 import type { EngineSkillStatus, McpServerConfig, McpServerStatus } from '../../engine';
 
@@ -97,7 +101,11 @@ export function renderIntegrations(): void {
   // Wire main tab switching
   container.querySelectorAll('.integrations-main-tab').forEach((btn) => {
     btn.addEventListener('click', () => {
-      _mainTab = (btn as HTMLElement).dataset.mainTab as 'services' | 'automations' | 'queries' | 'community';
+      _mainTab = (btn as HTMLElement).dataset.mainTab as
+        | 'services'
+        | 'automations'
+        | 'queries'
+        | 'community';
       renderIntegrations();
     });
   });
@@ -498,7 +506,9 @@ async function _renderCommunityBanner(service: ServiceDefinition): Promise<void>
         // Auto-deploy MCP workflow
         try {
           await invoke('engine_n8n_deploy_mcp_workflow');
-        } catch { /* best effort */ }
+        } catch {
+          /* best effort */
+        }
 
         // Re-render banner as installed
         _renderCommunityBanner(service);
@@ -550,7 +560,9 @@ async function _showAutoInstallPrompt(
   } catch {
     // n8n not running — skip check, proceed to guide directly
     openSetupGuide(panel, service, {
-      onSave: () => { refreshConnected(); },
+      onSave: () => {
+        refreshConnected();
+      },
       onClose: () => _renderDetail(service),
     });
     return;
@@ -559,7 +571,9 @@ async function _showAutoInstallPrompt(
   if (alreadyInstalled) {
     // Already installed — go straight to setup
     openSetupGuide(panel, service, {
-      onSave: () => { refreshConnected(); },
+      onSave: () => {
+        refreshConnected();
+      },
       onClose: () => _renderDetail(service),
     });
     return;
@@ -616,7 +630,9 @@ async function _showAutoInstallPrompt(
   // Skip button — proceed to guide without installing
   document.getElementById('auto-install-skip')?.addEventListener('click', () => {
     openSetupGuide(panel, service, {
-      onSave: () => { refreshConnected(); },
+      onSave: () => {
+        refreshConnected();
+      },
       onClose: () => _renderDetail(service),
     });
   });
@@ -629,11 +645,13 @@ async function _showAutoInstallPrompt(
     if (!btn) return;
 
     btn.disabled = true;
-    btn.innerHTML = '<span class="ms ms-sm k-spin">progress_activity</span> Installing… (this may take a minute)';
+    btn.innerHTML =
+      '<span class="ms ms-sm k-spin">progress_activity</span> Installing… (this may take a minute)';
     if (skipBtn) skipBtn.style.display = 'none';
     if (feedback) {
       feedback.style.display = 'block';
-      feedback.innerHTML = '<div class="setup-guide-fb setup-guide-fb-testing"><span class="ms ms-sm spin">progress_activity</span> Installing community package…</div>';
+      feedback.innerHTML =
+        '<div class="setup-guide-fb setup-guide-fb-testing"><span class="ms ms-sm spin">progress_activity</span> Installing community package…</div>';
     }
 
     try {
@@ -642,16 +660,21 @@ async function _showAutoInstallPrompt(
       // Auto-deploy MCP workflow
       try {
         await invoke('engine_n8n_deploy_mcp_workflow');
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
 
       if (feedback) {
-        feedback.innerHTML = '<div class="setup-guide-fb setup-guide-fb-success"><span class="ms ms-sm">check_circle</span> Package installed! Continuing to setup…</div>';
+        feedback.innerHTML =
+          '<div class="setup-guide-fb setup-guide-fb-success"><span class="ms ms-sm">check_circle</span> Package installed! Continuing to setup…</div>';
       }
 
       // Short delay so user sees the success, then proceed to setup guide
       setTimeout(() => {
         openSetupGuide(panel, service, {
-          onSave: () => { refreshConnected(); },
+          onSave: () => {
+            refreshConnected();
+          },
           onClose: () => _renderDetail(service),
         });
       }, 1200);

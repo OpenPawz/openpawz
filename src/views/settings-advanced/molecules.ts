@@ -187,7 +187,8 @@ export async function loadAdvancedSettings() {
       workerBtn.addEventListener('click', async () => {
         workerBtn.disabled = true;
         workerBtn.textContent = '⏳ Setting up…';
-        workerStatus.textContent = 'Pulling base model and creating worker… (this may take several minutes)';
+        workerStatus.textContent =
+          'Pulling base model and creating worker… (this may take several minutes)';
         workerStatus.style.color = 'var(--text-muted)';
         try {
           const { invoke } = await import('@tauri-apps/api/core');
