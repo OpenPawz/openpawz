@@ -1,7 +1,7 @@
 // Today View — DOM rendering + IPC (Command Center)
 
 import { pawEngine } from '../../engine';
-import { getAgents } from '../agents';
+import { getAgents, loadAgents } from '../agents';
 import { switchView } from '../router';
 import { $, escHtml } from '../../components/helpers';
 import { showToast } from '../../components/toast';
@@ -141,19 +141,34 @@ export async function fetchUnreadEmails() {
 
   try {
     let accounts: { name: string; email: string }[] = [];
-    if (invoke) {
-      try {
-        const toml = await invoke<string>('read_himalaya_config');
-        if (toml) {
-          const accountBlocks = toml.matchAll(
-            /\[accounts\.([^\]]+)\][\s\S]*?email\s*=\s*"([^"]+)"/g,
-          );
-          for (const match of accountBlocks) {
-            accounts.push({ name: match[1], email: match[2] });
-          }
+
+    // Primary: read config via pawEngine (consistent with Mail view)
+    try {
+      const toml = await pawEngine.mailReadConfig();
+      if (toml) {
+        const accountBlocks = toml.matchAll(
+          /\[accounts\.([^\]]+)\][\s\S]*?email\s*=\s*"([^"]+)"/g,
+        );
+        for (const match of accountBlocks) {
+          accounts.push({ name: match[1], email: match[2] });
         }
-      } catch {
-        /* no config yet */
+      }
+    } catch {
+      // Fallback: try direct Tauri invoke
+      if (invoke) {
+        try {
+          const toml = await invoke<string>('read_himalaya_config');
+          if (toml) {
+            const accountBlocks = toml.matchAll(
+              /\[accounts\.([^\]]+)\][\s\S]*?email\s*=\s*"([^"]+)"/g,
+            );
+            for (const match of accountBlocks) {
+              accounts.push({ name: match[1], email: match[2] });
+            }
+          }
+        } catch {
+          /* no config yet */
+        }
       }
     }
     if (accounts.length === 0) {
@@ -176,11 +191,12 @@ export async function fetchUnreadEmails() {
     }
 
     const accountName = accounts[0].name;
-    const jsonResult = await invoke<string>('fetch_emails', {
-      account: accountName,
-      folder: 'INBOX',
-      pageSize: 10,
-    });
+    // Fetch emails with a timeout to prevent hanging on slow IMAP connections
+    const fetchPromise = pawEngine.mailFetchEmails(accountName, 'INBOX', 10);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Email fetch timed out')), 15000),
+    );
+    const jsonResult = await Promise.race([fetchPromise, timeoutPromise]);
 
     interface EmailEnvelope {
       id: string;
@@ -403,9 +419,14 @@ export async function fetchFleetStatus(retries = 3) {
     if (agents.length === 0 && retries > 0) {
       await new Promise((r) => setTimeout(r, 600));
       agents = getAgents();
-      if (agents.length === 0 && retries > 1) {
-        await new Promise((r) => setTimeout(r, 1000));
+    }
+    // Still empty — force a full agent load (initAgents may not have finished)
+    if (agents.length === 0) {
+      try {
+        await loadAgents();
         agents = getAgents();
+      } catch (e) {
+        console.warn('[today] loadAgents fallback failed:', e);
       }
     }
     if (agents.length === 0) {
@@ -430,6 +451,7 @@ export async function fetchFleetStatus(retries = 3) {
       .join('')}</div>`;
   } catch (e) {
     console.warn('[today] Fleet status failed:', e);
+    container.innerHTML = `<div class="today-section-empty">Could not load agents — try refreshing</div>`;
   }
 }
 

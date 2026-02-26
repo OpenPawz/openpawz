@@ -454,6 +454,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     console.debug('[main] Pawz engine mode — starting...');
     await connectEngine();
+    // Ensure agents are loaded before rendering Today page
+    await AgentsModule.loadAgents();
     restoreShowcase();
     switchView('today');
 
