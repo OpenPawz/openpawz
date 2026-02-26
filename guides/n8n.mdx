@@ -1,26 +1,42 @@
 ---
 title: "n8n"
-description: "Connect your Pawz agents to n8n workflow automation — trigger, manage, and monitor workflows via the REST API."
+description: "OpenPawz embeds n8n as a local automation engine — auto-provisioned, MCP-bridged, with 25,000+ community node types available to your agents."
 ---
 
-# n8n
+# n8n — Embedded Automation Engine
 
-Connect your Pawz agents to [n8n](https://n8n.io) — the open-source workflow automation platform. Your agents can list, trigger, activate, and monitor n8n workflows using the n8n REST API.
+OpenPawz embeds [n8n](https://n8n.io) directly into the desktop app. It auto-provisions at launch (via Docker or npx), connects via the **Model Context Protocol (MCP)**, and exposes **25,000+ community node types** as agent tools. No manual setup required.
 
 <Note>
-This is a **Tier 2 Integration** — it uses encrypted credentials and `fetch`-based API calls. No additional binaries required.
+n8n in OpenPawz is **not a separate service you manage**. It's an embedded engine that starts automatically, runs locally, and is fully controlled by your agents via the MCP Bridge.
 </Note>
 
 ---
 
-## Why n8n + OpenPawz?
+## How It Works
 
-n8n is a visual workflow automation tool (like Zapier, but self-hosted and open-source). Combining it with OpenPawz gives you:
+OpenPawz uses n8n in two ways:
 
-- **Natural language workflow control** — tell your agent "run the weekly report workflow" instead of clicking through the n8n UI
-- **Bidirectional automation** — n8n triggers agents via webhooks, agents trigger n8n via the API
-- **Monitoring** — agents check execution history and report failures
-- **Dynamic orchestration** — agents activate/deactivate workflows based on context (e.g. "pause all marketing workflows until Monday")
+### 1. MCP Bridge (Primary — New)
+
+The MCP Bridge connects your agents to n8n's **25,000+ community node types** via the Model Context Protocol. Agents discover and execute n8n nodes automatically:
+
+```mermaid actions={false}
+graph LR
+    subgraph OpenPawz
+        A["Agent"] -->|"MCP Bridge"| B["Embedded n8n"]
+    end
+    subgraph n8n Engine
+        B -->|"SSE Transport"| C["25,000+ Node Types"]
+        C -->|"Auto-install"| D["Community Packages"]
+    end
+```
+
+See the [MCP Bridge guide](/guides/mcp-bridge) for the full architecture.
+
+### 2. REST API (Legacy — Still Supported)
+
+The traditional n8n REST API integration for managing workflows directly:
 
 ```mermaid actions={false}
 graph LR
@@ -37,7 +53,25 @@ graph LR
 
 ## Setup
 
-### 1. Get your n8n API key
+### Automatic (MCP Bridge — Recommended)
+
+n8n is **auto-provisioned** when you launch OpenPawz. No manual setup required.
+
+1. **Docker users**: n8n starts as a container via the `bollard` crate (port 5678)
+2. **No Docker**: n8n starts via `npx n8n start` as a child process
+3. The MCP Bridge connects automatically at `http://127.0.0.1:5678/mcp`
+
+Verify it's working by checking the logs:
+```
+[n8n] Starting embedded n8n engine...
+[mcp] Auto-registering n8n as MCP server at http://127.0.0.1:5678/mcp
+```
+
+### Manual (REST API — Optional)
+
+If you want to use the REST API integration with an **external** n8n instance:
+
+#### 1. Get your n8n API key
 
 1. Open your n8n instance (e.g. `http://localhost:5678`)
 2. Go to **Settings → API**

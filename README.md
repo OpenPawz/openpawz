@@ -24,7 +24,7 @@ A native desktop AI platform that runs fully offline, connects to any provider, 
 
 <div align="center">
 
-**Integration Hub** — 405+ services with category filters, connection health, and quick setup
+**Integration Hub** — 25,000+ services via MCP Bridge, with category filters, connection health, and quick setup
 
 <img src="images/screenshots/Integrations.png" alt="Integration Hub" width="800">
 
@@ -50,7 +50,7 @@ OpenPawz is a native Tauri v2 application with a pure Rust backend engine. It ru
 
 - **Private** — No cloud, no telemetry, no open ports. Credentials encrypted with AES-256-GCM in your OS keychain.
 - **Powerful** — Multi-agent orchestration, 11 channel bridges, hybrid memory, DeFi trading, browser automation, research workflows.
-- **Extensible** — 400+ integrations out of the box, unlimited providers, community skills via PawzHub, MCP server support, modular architecture.
+- **Extensible** — 25,000+ integrations via embedded MCP bridge to n8n's community node ecosystem, unlimited providers, community skills via PawzHub, local Ollama workers, modular architecture.
 - **Tiny** — ~5 MB native binary. Not a 200 MB Electron wrapper.
 
 ---
@@ -114,8 +114,22 @@ See [SECURITY.md](SECURITY.md) for the complete security architecture.
 - Per-agent chat sessions with persistent history and mini-chat popups
 - Agent dock with avatars (50 custom Pawz Boi sprites)
 
-### 400+ Integrations Out of the Box
-Every integration ships ready to use — no plugins to install, no marketplace to browse. Configure credentials once and assign integrations per-agent.
+### 25,000+ Integrations — Zero-Gap Automation
+
+OpenPawz ships with **400+ built-in integrations** compiled into the Rust binary. But the real breakthrough is the **MCP Bridge** — an embedded n8n engine that connects your agents to **25,000+ community node types** via the Model Context Protocol. No plugins to install, no marketplace to browse. Your agent discovers and installs integrations at runtime, on demand.
+
+#### How It Works
+
+```
+User: "Generate a QR code for my website"
+  → Agent calls request_tools("QR code generation")
+  → Librarian (Ollama) finds n8n-nodes-base.qrCode
+  → Auto-installs n8n community package (if needed)
+  → Executes via MCP bridge
+  → Returns QR code to user
+```
+
+#### Built-in (400+ native, compiled into binary)
 
 | Category | Count | Examples |
 |----------|-------|----------|
@@ -131,6 +145,16 @@ Every integration ships ready to use — no plugins to install, no marketplace t
 | AI & ML | 20+ | Hugging Face, Replicate, Stability AI, Pinecone, Weaviate |
 | CRM & Marketing | 30+ | Salesforce, HubSpot, Mailchimp, SendGrid, Intercom |
 | Miscellaneous | 55+ | Weather, RSS, Web Scraping, PDF, OCR, QR codes, Maps |
+
+#### MCP Bridge (25,000+ via embedded n8n)
+
+| Layer | What It Does |
+|-------|-------------|
+| **Embedded n8n** | Auto-provisioned via Docker or npx — starts at launch, zero config |
+| **MCP Transport** | SSE + Stdio transports connect to n8n's MCP server |
+| **Community Nodes** | 1,000+ npm packages with 25,000+ node types — auto-installed on demand |
+| **Tool RAG** | Local Ollama embeddings discover the right integration via semantic search |
+| **Local Worker** | Ollama `qwen2.5-coder:7b` executes MCP tool calls — no cloud costs |
 
 ### 10 AI Providers
 | Provider | Models |
@@ -159,7 +183,7 @@ Each bridge includes user approval flows, per-agent routing, and uniform start/s
 - Memory Palace visualization UI
 
 ### Built-in Tools & Skills
-- 400+ integrations across 12 categories with encrypted credential injection
+- 25,000+ integrations (400+ native + 25K community nodes via MCP bridge) with encrypted credential injection
 - Community skills from the [skills.sh](https://skills.sh) ecosystem and PawzHub marketplace
 - Three-tier extensibility: Skills (SKILL.md) → Integrations (pawz-skill.toml) → Extensions (custom views + storage)
 - Kanban task board with agent assignment, cron scheduling, and event-driven triggers
@@ -173,7 +197,11 @@ Each bridge includes user approval flows, per-agent routing, and uniform start/s
 - Dashboard widgets with skill output persistence
 - 15 slash commands with autocomplete
 
-### Webhooks & MCP
+### Webhooks & MCP Bridge
+- **Embedded n8n engine** — auto-provisioned at launch via Docker or npx, zero configuration
+- **MCP Bridge** — SSE + Stdio transports connect to n8n's MCP server, exposing 25,000+ community node types as agent tools
+- **On-demand auto-install** — agents discover and install n8n community packages at runtime via semantic search
+- **Local MCP workers** — Ollama `qwen2.5-coder:7b` executes MCP tool calls locally, $0 cost
 - Generic webhook server — receive external events and route to agents
 - MCP (Model Context Protocol) client — connect to any MCP server for additional tools
 - Per-agent MCP server assignment
@@ -214,7 +242,8 @@ flowchart LR
 
   subgraph Engine["Rust Engine"]
     Tauri["Tauri Commands"]
-    Integrations["400+ Integration Engine"]
+    Integrations["25,000+ Integration Engine"]
+    MCP["MCP Bridge · Embedded n8n"]
     Providers["AI Providers · Channel Bridges"]
     Tools["Tool Executor + HIL Approval"]
     DB["AES-256-GCM Encrypted SQLite"]

@@ -128,7 +128,7 @@ src-tauri/                    # Rust backend
 │       │   ├── agent_files.rs # Per-agent file tracking
 │       │   ├── agent_messages.rs # Inter-agent message persistence
 │       │   └── squads.rs     # Agent squad persistence
-│       ├── skills/           # Skill vault — 400+ built-in integrations
+│       ├── skills/           # Skill vault — 400+ built-in + 25,000+ via MCP bridge
 │       │   ├── mod.rs        # Skill loading, prompt injection
 │       │   ├── builtins.rs   # 400+ built-in skill definitions
 │       │   ├── crypto.rs     # Credential encryption (AES-256-GCM + keychain)
@@ -221,12 +221,14 @@ src-tauri/                    # Rust backend
 │       ├── twitch.rs         # Twitch bridge
 │       ├── web.rs            # Browser automation (headless Chrome)
 │       ├── events.rs         # Event-driven task trigger dispatcher
-│       ├── mcp/              # MCP (Model Context Protocol) client — 5 modules
+│       ├── mcp/              # MCP Bridge — 7 modules (Zero-Gap Automation)
 │       │   ├── mod.rs        # MCP session lifecycle
-│       │   ├── client.rs     # JSON-RPC transport
+│       │   ├── client.rs     # MCP client (JSON-RPC, initialize, tool listing)
+│       │   ├── transport.rs  # SSE + Stdio transports (688 lines)
 │       │   ├── types.rs      # MCP protocol types
-│       │   ├── tools.rs      # Tool schema conversion
-│       │   └── registry.rs   # Per-agent MCP server registry
+│       │   ├── tools.rs      # Tool schema ↔ Paw tool conversion
+│       │   ├── registry.rs   # Auto-registration, pascal_to_snake remapping
+│       │   └── n8n.rs        # n8n-specific: ensure_ready, auto-install, community nodes
 │       ├── toml/             # TOML skill manifest loader — 4 modules
 │       │   ├── mod.rs        # Public API
 │       │   ├── parser.rs     # TOML parsing and validation
@@ -346,7 +348,7 @@ Auto-recall injects relevant memories into agent context. Auto-capture extracts 
 
 ### Tool RAG — Intent-Stated Retrieval (`tool_index.rs`)
 
-Pawz uses **Tool RAG** (Retrieval-Augmented Generation for tools) to solve the "tool bloat" problem. Instead of dumping all 400+ tool definitions into every LLM request (~40,000 tokens), the agent discovers tools on demand via semantic search — like a library patron asking a librarian for the right book.
+Pawz uses **Tool RAG** (Retrieval-Augmented Generation for tools) to solve the "tool bloat" problem. Instead of dumping all 25,000+ tool definitions into every LLM request, the agent discovers tools on demand via semantic search — like a library patron asking a librarian for the right book.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -378,7 +380,7 @@ Pawz uses **Tool RAG** (Retrieval-Augmented Generation for tools) to solve the "
 ┌─────────────────────────────────────────────────────────────────┐
 │  LIBRARY  (ToolIndex — in-memory, ~230KB)                       │
 │                                                                  │
-│  400+ tool definitions stored as embedding vectors               │
+│  25,000+ tool definitions stored as embedding vectors              │
 │  Grouped into 17 skill domains:                                  │
 │    system, filesystem, web, identity, memory, agents,           │
 │    communication, squads, tasks, skills, dashboard, storage,    │
@@ -419,6 +421,68 @@ Round 3: Done ✅  (used 12 tools total, not 75)
 - `engine/agent_loop/mod.rs` — hot-loads newly discovered tools between rounds
 - `engine/state.rs` — `tool_index` + `loaded_tools` on `EngineState`
 
+### MCP Bridge — Zero-Gap Automation (`mcp/`)
+
+The MCP Bridge is the breakthrough that connects OpenPawz to **25,000+ integrations** via an embedded n8n engine. Instead of hard-coding tools, agents discover and execute any of n8n's community node types through the Model Context Protocol (MCP).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ARCHITECT  (Cloud LLM — Gemini / Claude / GPT)                 │
+│                                                                  │
+│  "I need to generate a QR code..."                              │
+│  → request_tools("QR code generation")                          │
+│  → Librarian finds n8n-nodes-base.qrCode                        │
+│  → Spawns local worker to execute via MCP                       │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │  MCP tool call
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  LOCAL WORKER  (Ollama qwen2.5-coder:7b — free, ~4.7 GB)       │
+│                                                                  │
+│  Executes MCP tool calls against n8n                            │
+│  No cloud API costs for tool execution                          │
+│  Handles structured input/output mapping                        │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │  JSON-RPC over SSE
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  EMBEDDED n8n  (Docker or npx — auto-provisioned)               │
+│                                                                  │
+│  Auto-starts at app launch (8s delay, background)               │
+│  Docker: bollard crate, container lifecycle management          │
+│  Fallback: npx n8n start                                        │
+│  MCP server at http://127.0.0.1:5678/mcp                       │
+│                                                                  │
+│  Community packages installed on-demand:                        │
+│  npm install n8n-nodes-<package> inside container/process       │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  25,000+ COMMUNITY NODE TYPES                                   │
+│                                                                  │
+│  1,000+ npm packages: QR codes, PDF, OCR, CRMs, ERPs,         │
+│  databases, IoT, messaging, analytics, AI services...           │
+│  Each package exposes multiple node types as MCP tools          │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Architecture decisions:**
+- **SSE transport** (`transport.rs`) — Server-Sent Events connection to n8n's MCP endpoint. Reconnects on disconnect. 688 lines handling the full MCP transport lifecycle.
+- **Auto-registration** (`registry.rs`) — `register_n8n()` + `N8N_MCP_SERVER_ID` auto-registers n8n as an MCP server. `pascal_to_snake()` remaps n8n's PascalCase tool names to snake_case for LLM compatibility.
+- **Lazy ensure-ready** (`n8n.rs`) — `lazy_ensure_n8n()` checks n8n health before every community node install or MCP refresh. Ensures n8n is always available.
+- **On-demand auto-install** — `COMMUNITY_PACKAGE_MAP` maps node types to npm packages. When an agent needs a tool, the package is installed automatically.
+- **Architect/Worker split** — Cloud LLMs plan; local Ollama `qwen2.5-coder:7b` executes MCP calls. Zero cloud cost for tool execution.
+
+**Files:**
+- `engine/mcp/transport.rs` — `SseTransport`, `StdioTransport`, `McpTransportHandle`
+- `engine/mcp/client.rs` — MCP client: initialize, list tools, call tools
+- `engine/mcp/registry.rs` — Auto-registration, `pascal_to_snake()`, tool remapping
+- `engine/mcp/n8n.rs` — `lazy_ensure_n8n()`, `ensure_n8n_ready()`, community node auto-install
+- `engine/tools/n8n.rs` — Agent tools: `search_ncnodes`, `install_n8n_node`, `mcp_refresh`
+- `engine/orchestrator/sub_agent.rs` — Worker agent spawning with MCP tool wiring
+- `commands/ollama.rs` — Worker model management (pull, status, Modelfile)
+
 ### Extensibility Tiers
 
 Pawz has a three-tier extensibility system:
@@ -429,7 +493,7 @@ Pawz has a three-tier extensibility system:
 | **Integration** (Tier 2) | `pawz-skill.toml` | Credentials + binary detection + agent tools + dashboard widgets |
 | **Extension** (Tier 3) | `pawz-skill.toml` | Custom sidebar views + persistent key-value storage |
 
-Built-in integrations are compiled into the Rust binary. Community skills use the [skills.sh](https://skills.sh) ecosystem. The TOML manifest system for Tier 2/3 community integrations and extensions is implemented — TOML loader, PawzHub registry browser, dashboard widgets, skill output persistence, and extension storage are all functional.
+Built-in integrations are compiled into the Rust binary (400+ native). The MCP Bridge extends this to **25,000+** via n8n community nodes. Community skills use the [skills.sh](https://skills.sh) ecosystem. The TOML manifest system for Tier 2/3 community integrations and extensions is implemented — TOML loader, PawzHub registry browser, dashboard widgets, skill output persistence, and extension storage are all functional.
 
 ### Community Skills (`skills/community/`)
 
