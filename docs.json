@@ -11,9 +11,7 @@
   "colors": {
     "primary": "#a855f7",
     "light": "#c084fc",
-    "dark": "#7c3aed",
-    "ultraLight": "#f3e8ff",
-    "ultraDark": "#1e1b4b"
+    "dark": "#7c3aed"
   },
   "background": {
     "decoration": "windows"
