@@ -275,6 +275,9 @@ pub fn compose_chat_system_prompt(
         parts.push(sp.to_string());
     }
     parts.push(build_platform_awareness());
+    // Foreman Protocol — always injected. This is the ONLY way external
+    // services work. The model must always know about MCP delegation.
+    parts.push(build_foreman_awareness().to_string());
     // Coding guidelines are heavy (~5K chars). Only inject when coding/dev skills
     // are actually enabled, to keep the system prompt lean for everyday tasks.
     if skill_instructions.contains("development") || skill_instructions.contains("## Code") {
