@@ -3,6 +3,7 @@
 use crate::atoms::constants::{DB_KEY_SERVICE, DB_KEY_USER};
 use log::{error, info};
 use serde::Serialize;
+use tauri::Manager;
 
 /// Check whether the OS keychain has a stored password for the given account.
 #[tauri::command]
@@ -213,18 +214,66 @@ pub async fn _geocode_query(
 }
 
 /// Fetch weather data via Open-Meteo (free, no API key, reliable).
-/// Two-step: geocode the location name → fetch forecast with lat/lon.
+///
+/// Location priority:
+///   1. `config.weather_location` (user-configured)
+///   2. Legacy integration credentials (`weather-api`)
+///   3. IP geolocation auto-detect
+///
+/// Two-step: geocode location → fetch forecast with lat/lon.
 #[tauri::command]
-pub async fn fetch_weather(location: Option<String>) -> Result<String, String> {
-    let loc = location.clone().unwrap_or_default();
-    log::info!("[weather] Fetching weather for location: {:?}", location);
-    if loc.is_empty() {
-        return Err("No location configured — set your city in Settings → Integrations → Weather API".into());
-    }
+pub async fn fetch_weather(app_handle: tauri::AppHandle) -> Result<String, String> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    // 1. Try config.weather_location
+    let mut loc = String::new();
+    if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
+        let cfg = state.config.lock();
+        if let Some(ref wl) = cfg.weather_location {
+            if !wl.is_empty() {
+                loc = wl.clone();
+            }
+        }
+    }
+
+    // 2. Legacy: try integration credentials
+    if loc.is_empty() {
+        if let Ok(creds) = crate::engine::channels::load_channel_config::<std::collections::HashMap<String, String>>(&app_handle, "integration_creds_weather-api") {
+            if let Some(l) = creds.get("location") {
+                if !l.is_empty() {
+                    loc = l.clone();
+                    log::info!("[weather] Using legacy integration credential location: {}", loc);
+                    // Migrate to config.weather_location for next time
+                    if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
+                        let mut cfg = state.config.lock();
+                        cfg.weather_location = Some(loc.clone());
+                        drop(cfg);
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. Auto-detect via IP geolocation
+    if loc.is_empty() {
+        log::info!("[weather] No location configured — auto-detecting via IP");
+        match auto_detect_location(&client).await {
+            Ok((lat, lon, city, country)) => {
+                log::info!("[weather] Auto-detected location: {}, {} ({}, {})", city, country, lat, lon);
+                // Go straight to weather fetch with known coords
+                return fetch_weather_by_coords(&client, lat, lon, &city, &country).await;
+            }
+            Err(e) => {
+                log::warn!("[weather] IP geolocation failed: {}", e);
+                return Err("No location set. Click the location on your dashboard to set your city.".into());
+            }
+        }
+    }
+
+    log::info!("[weather] Fetching weather for location: {}", loc);
 
     // Step 1: Geocode the location name to lat/lon
     let place = geocode_location(&client, &loc).await?;
@@ -237,7 +286,17 @@ pub async fn fetch_weather(location: Option<String>) -> Result<String, String> {
     let place_name = place["name"].as_str().unwrap_or("");
     let country = place["country"].as_str().unwrap_or("");
 
-    // Step 2: Fetch current weather from Open-Meteo
+    fetch_weather_by_coords(&client, lat, lon, place_name, country).await
+}
+
+/// Fetch weather from Open-Meteo using known lat/lon coordinates.
+async fn fetch_weather_by_coords(
+    client: &reqwest::Client,
+    lat: f64,
+    lon: f64,
+    place_name: &str,
+    country: &str,
+) -> Result<String, String> {
     let weather_url = format!(
         "https://api.open-meteo.com/v1/forecast?latitude={}&longitude={}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&wind_speed_unit=kmh",
         lat, lon
@@ -257,7 +316,6 @@ pub async fn fetch_weather(location: Option<String>) -> Result<String, String> {
     let mut wx: serde_json::Value =
         serde_json::from_str(&wx_text).map_err(|e| format!("Invalid weather JSON: {}", e))?;
 
-    // Merge location info into the response
     wx["location"] = serde_json::json!({
         "name": place_name,
         "country": country,
@@ -265,4 +323,39 @@ pub async fn fetch_weather(location: Option<String>) -> Result<String, String> {
 
     log::info!("[weather] Successfully fetched weather for {}, {}", place_name, country);
     serde_json::to_string(&wx).map_err(|e| format!("JSON serialization error: {}", e))
+}
+
+/// Auto-detect user location via IP geolocation (ipapi.co — free, no key).
+/// Returns (lat, lon, city, country).
+async fn auto_detect_location(
+    client: &reqwest::Client,
+) -> Result<(f64, f64, String, String), String> {
+    let resp = client
+        .get("https://ipapi.co/json/")
+        .header("User-Agent", "OpenPawz/1.0")
+        .send()
+        .await
+        .map_err(|e| format!("IP geolocation failed: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(format!("IP geolocation returned {}", resp.status()));
+    }
+    let text = resp
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read IP geo response: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("Invalid IP geo JSON: {}", e))?;
+
+    let lat = data["latitude"]
+        .as_f64()
+        .ok_or("IP geolocation missing latitude")?;
+    let lon = data["longitude"]
+        .as_f64()
+        .ok_or("IP geolocation missing longitude")?;
+    let city = data["city"].as_str().unwrap_or("Unknown").to_string();
+    let country = data["country_name"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    Ok((lat, lon, city, country))
 }

@@ -112,6 +112,21 @@ export async function loadAgentDefaultsSettings() {
     tzRow.appendChild(tzInp);
     toolSection.appendChild(tzRow);
 
+    // Weather Location
+    const weatherRow = formRow(
+      'Weather Location',
+      'City for your dashboard weather (e.g. New York, London). Auto-detected via IP if empty.',
+    );
+    const weatherInp = document.createElement('input');
+    weatherInp.className = 'form-input';
+    weatherInp.type = 'text';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    weatherInp.value = (config as any).weather_location ?? '';
+    weatherInp.placeholder = 'Auto-detect (leave empty) or enter city';
+    weatherInp.style.maxWidth = '240px';
+    weatherRow.appendChild(weatherInp);
+    toolSection.appendChild(weatherRow);
+
     container.appendChild(toolSection);
 
     // ── System Prompt ────────────────────────────────────────────────────
@@ -371,6 +386,8 @@ export async function loadAgentDefaultsSettings() {
             cfg.tool_timeout_secs = parseInt(timeoutInp.value) || 120;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (cfg as any).user_timezone = tzInp.value.trim() || 'America/Chicago';
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (cfg as any).weather_location = weatherInp.value.trim() || undefined;
             cfg.default_system_prompt = promptArea.value.trim() || undefined;
             await pawEngine.setConfig(cfg);
 

@@ -4861,37 +4861,6 @@ const AUTO: ServiceDefinition[] = [
     false,
   ),
   svc(
-    'weather-api',
-    'Weather API',
-    'cloud',
-    '#5BC0F8',
-    'utility',
-    'Weather data and forecasts — no API key required',
-    ['Get weather', 'Get forecast', 'Historical data'],
-    'n8n-nodes-base.httpRequest',
-    '',
-    false,
-    [
-      {
-        key: 'location',
-        label: 'Your Location',
-        type: 'text' as const,
-        placeholder: 'e.g. New York, London, Tokyo',
-        required: true,
-        helpText:
-          'City name or "City, Country" — used for your dashboard weather and agent queries.',
-      },
-    ],
-    {
-      title: 'Set Your Location',
-      steps: [
-        { instruction: 'No API key needed — weather is free via Open-Meteo.' },
-        { instruction: 'Just enter your city below and hit Save.' },
-      ],
-      estimatedTime: '10 seconds',
-    },
-  ),
-  svc(
     'url-shortener',
     'URL Shortener',
     'link',

@@ -36,6 +36,8 @@ export interface EngineConfig {
   daily_budget_usd?: number;
   /** Context window size in tokens. Controls how much conversation history the agent sees. Default: 32000 */
   context_window_tokens?: number;
+  /** Weather location for Today dashboard (e.g. "New York"). Auto-detected via IP if empty. */
+  weather_location?: string;
 }
 
 /** Model routing for multi-agent orchestration.

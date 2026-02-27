@@ -511,6 +511,10 @@ pub struct EngineConfig {
     /// Default 32K.  Models support 128K-1M, so this is conservative.
     #[serde(default = "default_context_window_tokens")]
     pub context_window_tokens: usize,
+    /// Weather location for the Today dashboard (e.g. "New York", "London, UK").
+    /// If empty, auto-detected via IP geolocation.
+    #[serde(default)]
+    pub weather_location: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

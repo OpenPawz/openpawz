@@ -66,44 +66,83 @@ export function initMoleculesState() {
 
 // ── Weather ───────────────────────────────────────────────────────────
 
+/** Save weather_location to engine config. */
+async function saveWeatherLocation(location: string) {
+  try {
+    const { pawEngine: pe } = await import('../../engine');
+    const cfg = await pe.getConfig();
+    cfg.weather_location = location;
+    await pe.setConfig(cfg);
+  } catch (e) {
+    console.warn('[today] Failed to save weather location:', e);
+  }
+}
+
+/** Show inline prompt to set/change location. */
+function showLocationEditor(weatherEl: HTMLElement, currentLocation: string) {
+  const editor = document.createElement('div');
+  editor.style.cssText = 'display:flex;gap:6px;align-items:center;margin-top:6px';
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.value = currentLocation;
+  inp.placeholder = 'Enter city (e.g. New York, London, Tokyo)';
+  inp.style.cssText =
+    'font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);width:200px';
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'btn btn-sm';
+  saveBtn.textContent = 'Save';
+  saveBtn.style.cssText = 'font-size:11px;padding:2px 10px';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className = 'btn btn-ghost btn-sm';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = 'font-size:11px;padding:2px 8px';
+  editor.appendChild(inp);
+  editor.appendChild(saveBtn);
+  editor.appendChild(cancelBtn);
+  weatherEl.appendChild(editor);
+  inp.focus();
+
+  const finish = async (save: boolean) => {
+    if (save && inp.value.trim()) {
+      await saveWeatherLocation(inp.value.trim());
+      fetchWeather(); // re-fetch with new location
+    } else {
+      editor.remove();
+    }
+  };
+  saveBtn.addEventListener('click', () => finish(true));
+  cancelBtn.addEventListener('click', () => finish(false));
+  inp.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
+  });
+}
+
 export async function fetchWeather() {
   const weatherEl = $('today-weather');
   if (!weatherEl) return;
 
   try {
-    // Load saved location from integration credentials
-    let savedLocation: string | null = null;
-    try {
-      if (invoke) {
-        const creds = await invoke<Record<string, string>>('engine_integrations_get_credentials', {
-          serviceId: 'weather-api',
-        });
-        if (creds?.location) savedLocation = creds.location;
-      }
-    } catch {
-      // No saved location — will fall back to IP geolocation
-    }
-
     let json: string | null = null;
 
     if (invoke) {
-      json = await invoke<string>('fetch_weather', { location: savedLocation });
+      // Desktop: backend reads config + auto-detects location
+      json = await invoke<string>('fetch_weather');
     } else {
-      // Browser fallback — geocode then fetch from Open-Meteo directly
-      const loc = savedLocation ? encodeURIComponent(savedLocation) : '';
-      const geoResp = await fetch(
-        `https://geocoding-api.open-meteo.com/v1/search?name=${loc}&count=1&language=en&format=json`,
-        { signal: AbortSignal.timeout(8000) },
-      );
-      const geo = await geoResp.json();
-      const place = geo.results?.[0];
-      if (!place) throw new Error('Location not found');
+      // Browser fallback — auto-detect via IP then fetch from Open-Meteo
+      const ipResp = await fetch('https://ipapi.co/json/', {
+        signal: AbortSignal.timeout(5000),
+      });
+      const ipData = await ipResp.json();
+      const lat = ipData.latitude;
+      const lon = ipData.longitude;
+      if (!lat || !lon) throw new Error('Could not detect location');
       const wxResp = await fetch(
-        `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&wind_speed_unit=kmh`,
+        `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&wind_speed_unit=kmh`,
         { signal: AbortSignal.timeout(8000) },
       );
       const wx = await wxResp.json();
-      wx.location = { name: place.name, country: place.country };
+      wx.location = { name: ipData.city ?? '', country: ipData.country_name ?? '' };
       json = JSON.stringify(wx);
     }
 
@@ -114,7 +153,7 @@ export async function fetchWeather() {
     if (!current) throw new Error('No current weather');
 
     const tempC = current.temperature_2m ?? '--';
-    const tempF = tempC !== '--' ? Math.round(tempC * 9 / 5 + 32) : '--';
+    const tempF = tempC !== '--' ? Math.round((tempC * 9) / 5 + 32) : '--';
     const code = String(current.weather_code ?? '');
     const feelsLikeC = current.apparent_temperature;
     const humidity = current.relative_humidity_2m;
@@ -123,24 +162,39 @@ export async function fetchWeather() {
 
     // WMO weather code to human-readable description
     const wmoDesc: Record<number, string> = {
-      0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
-      45: 'Fog', 48: 'Depositing rime fog',
-      51: 'Light drizzle', 53: 'Moderate drizzle', 55: 'Dense drizzle',
-      56: 'Freezing drizzle', 57: 'Dense freezing drizzle',
-      61: 'Slight rain', 63: 'Moderate rain', 65: 'Heavy rain',
-      66: 'Light freezing rain', 67: 'Heavy freezing rain',
-      71: 'Slight snow', 73: 'Moderate snow', 75: 'Heavy snow',
+      0: 'Clear sky',
+      1: 'Mainly clear',
+      2: 'Partly cloudy',
+      3: 'Overcast',
+      45: 'Fog',
+      48: 'Depositing rime fog',
+      51: 'Light drizzle',
+      53: 'Moderate drizzle',
+      55: 'Dense drizzle',
+      56: 'Freezing drizzle',
+      57: 'Dense freezing drizzle',
+      61: 'Slight rain',
+      63: 'Moderate rain',
+      65: 'Heavy rain',
+      66: 'Light freezing rain',
+      67: 'Heavy freezing rain',
+      71: 'Slight snow',
+      73: 'Moderate snow',
+      75: 'Heavy snow',
       77: 'Snow grains',
-      80: 'Slight rain showers', 81: 'Moderate rain showers', 82: 'Violent rain showers',
-      85: 'Slight snow showers', 86: 'Heavy snow showers',
-      95: 'Thunderstorm', 96: 'Thunderstorm with slight hail', 99: 'Thunderstorm with heavy hail',
+      80: 'Slight rain showers',
+      81: 'Moderate rain showers',
+      82: 'Violent rain showers',
+      85: 'Slight snow showers',
+      86: 'Heavy snow showers',
+      95: 'Thunderstorm',
+      96: 'Thunderstorm with slight hail',
+      99: 'Thunderstorm with heavy hail',
     };
     const desc = wmoDesc[current.weather_code] ?? '';
 
     const loc = data.location;
-    const location = loc
-      ? `${loc.name ?? ''}${loc.country ? `, ${loc.country}` : ''}`
-      : '';
+    const location = loc ? `${loc.name ?? ''}${loc.country ? `, ${loc.country}` : ''}` : '';
 
     weatherEl.innerHTML = `
       <div class="today-weather-main">
@@ -149,12 +203,20 @@ export async function fetchWeather() {
       </div>
       <div class="today-weather-desc">${desc}</div>
       <div class="today-weather-details">
-        ${feelsLikeC ? `<span>Feels like ${feelsLikeC}°C</span>` : ''}
-        ${humidity ? `<span><span class="ms ms-sm">water_drop</span> ${humidity}%</span>` : ''}
-        ${windKmph ? `<span><span class="ms ms-sm">air</span> ${windKmph} km/h</span>` : ''}
+        ${feelsLikeC != null ? `<span>Feels like ${feelsLikeC}°C</span>` : ''}
+        ${humidity != null ? `<span><span class="ms ms-sm">water_drop</span> ${humidity}%</span>` : ''}
+        ${windKmph != null ? `<span><span class="ms ms-sm">air</span> ${windKmph} km/h</span>` : ''}
       </div>
-      ${location ? `<div class="today-weather-location">${escHtml(location)}</div>` : ''}
+      ${location ? `<div class="today-weather-location" id="weather-location-text" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px" title="Click to change location"><span class="ms" style="font-size:14px">edit_location_alt</span> ${escHtml(location)}</div>` : ''}
     `;
+
+    // Wire location click → inline editor
+    const locEl = document.getElementById('weather-location-text');
+    if (locEl) {
+      locEl.addEventListener('click', () => {
+        showLocationEditor(weatherEl, loc?.name ?? '');
+      });
+    }
   } catch (e) {
     console.warn('[today] Weather fetch failed:', e);
     weatherEl.innerHTML = `
@@ -162,8 +224,17 @@ export async function fetchWeather() {
         <span class="today-weather-icon"><span class="ms ms-lg">cloud</span></span>
         <span class="today-weather-temp">--</span>
       </div>
-      <div class="today-weather-desc">Weather unavailable — check connection</div>
+      <div class="today-weather-desc" style="cursor:pointer" id="weather-set-location">
+        Click to set your location
+      </div>
     `;
+    // Wire "set location" click
+    const setEl = document.getElementById('weather-set-location');
+    if (setEl) {
+      setEl.addEventListener('click', () => {
+        showLocationEditor(weatherEl, '');
+      });
+    }
   }
 }
 

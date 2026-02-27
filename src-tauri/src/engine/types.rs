@@ -264,6 +264,7 @@ Be thorough, resourceful, and action-oriented. When the user asks you to do some
             max_concurrent_runs: default_max_concurrent_runs(),
             daily_budget_usd: default_daily_budget_usd(),
             context_window_tokens: default_context_window_tokens(),
+            weather_location: None,
         }
     }
 }
