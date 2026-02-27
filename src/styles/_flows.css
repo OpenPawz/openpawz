@@ -5,7 +5,7 @@
 
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 
-.flows-view {
+.flows-view.active {
   display: grid;
   grid-template-columns: 220px 1fr 240px;
   grid-template-rows: auto auto 1fr;
@@ -462,7 +462,7 @@
 /* ── Responsive ─────────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {
-  .flows-view {
+  .flows-view.active {
     grid-template-columns: 1fr;
     grid-template-rows: auto auto auto 1fr;
     grid-template-areas:
