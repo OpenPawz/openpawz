@@ -464,7 +464,6 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
                     similarity * 100.0
                 );
                 inject_loop_break(messages);
-                return;
             }
         }
     }
