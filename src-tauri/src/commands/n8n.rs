@@ -374,7 +374,7 @@ pub async fn engine_n8n_ensure_ready(
                         );
                     }
                     Err(e) => {
-                        log::warn!("[n8n] MCP bridge registration failed: {}", e);
+                        log::debug!("[n8n] MCP bridge not available (n8n MCP endpoint may not be enabled): {}", e);
                         // Not fatal — n8n itself is running, just MCP discovery unavailable
                     }
                 }

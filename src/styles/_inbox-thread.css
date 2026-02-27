@@ -28,6 +28,24 @@
   flex: 1;
 }
 
+/* Convlist toggle button in thread header */
+.inbox-convlist-toggle {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.inbox-convlist-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 .inbox-thread-avatar {
   width: 28px;
   height: 28px;

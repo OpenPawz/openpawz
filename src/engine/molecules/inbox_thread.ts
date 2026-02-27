@@ -34,6 +34,8 @@ export interface InboxThreadController {
 export interface InboxThreadCallbacks {
   /** Toggle sidebar visibility */
   onToggleSidebar: () => void;
+  /** Toggle conversation list (left panel) visibility */
+  onToggleConvlist?: () => void;
   /** Model select element for thread header */
   modelSelectEl?: HTMLSelectElement | null;
   /** Session select element for switching sessions */
@@ -77,6 +79,14 @@ export function createInboxThread(
   infoEl.appendChild(nameEl);
   infoEl.appendChild(statusEl);
 
+  // Toggle conv-list button (left panel)
+  const convlistToggle = document.createElement('button');
+  convlistToggle.className = 'inbox-convlist-toggle';
+  convlistToggle.title = 'Toggle agents panel';
+  convlistToggle.innerHTML = `<span class="ms" style="font-size:16px">left_panel_open</span>`;
+  convlistToggle.addEventListener('click', () => callbacks.onToggleConvlist?.());
+
+  identity.appendChild(convlistToggle);
   identity.appendChild(avatarEl);
   identity.appendChild(infoEl);
   header.appendChild(identity);

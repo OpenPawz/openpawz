@@ -35,7 +35,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     },
                     "domain": {
                         "type": "string",
-                        "description": "Optional: request all tools from a specific domain directly. One of: system, filesystem, web, identity, memory, agents, communication, squads, tasks, skills, dashboard, storage, email, messaging, github, integrations, trading"
+                        "description": "Optional: request all tools from a specific domain directly. One of: system, filesystem, web, identity, memory, agents, communication, squads, tasks, skills, dashboard, storage, email, messaging, discord, trello, github, google, integrations, coinbase, dex, solana"
                     }
                 },
                 "required": ["query"]
@@ -197,6 +197,7 @@ fn build_all_tools_for_index(state: &EngineState) -> Vec<ToolDefinition> {
         "solana_dex".to_string(),
         "google_workspace".to_string(),
         "discord".to_string(),
+        "trello".to_string(),
     ];
     tools.extend(ToolDefinition::skill_tools(&all_skill_ids));
 

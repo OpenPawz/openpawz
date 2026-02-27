@@ -23,6 +23,17 @@
   display: none;
 }
 
+/* Convlist (left panel) collapse */
+.inbox-layout.convlist-collapsed {
+  grid-template-columns: 0 1fr 280px;
+}
+.inbox-layout.convlist-collapsed.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+.inbox-layout.convlist-collapsed .inbox-conv-list {
+  display: none;
+}
+
 /* ─── Responsive ─── */
 
 @media (max-width: 1100px) {

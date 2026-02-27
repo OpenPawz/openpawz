@@ -13,6 +13,7 @@ import {
   type ConversationEntry,
   filterConversations,
   truncatePreview,
+  persistConvlistPref,
 } from '../atoms/inbox';
 import { createConversationList, type ConversationListController } from '../molecules/conversation_list';
 import { createInboxThread, type InboxThreadController } from '../molecules/inbox_thread';
@@ -66,6 +67,7 @@ export function mountInbox(): void {
 
   _thread = createInboxThread({
     onToggleSidebar: handleToggleSidebar,
+    onToggleConvlist: handleToggleConvlist,
     modelSelectEl: $('chat-model-select') as HTMLSelectElement | null,
     sessionSelectEl: $('chat-session-select') as HTMLSelectElement | null,
     onNewChat: handleNewChat,
@@ -128,6 +130,11 @@ export function mountInbox(): void {
   if (!appState.inbox.sidebarOpen) {
     layout.classList.add('sidebar-collapsed');
     _sidebar.toggle(false);
+  }
+
+  // Convlist (left panel) state from preferences
+  if (!appState.inbox.convlistOpen) {
+    layout.classList.add('convlist-collapsed');
   }
 
   _mounted = true;
@@ -552,6 +559,15 @@ function handleFilter(filter: string): void {
 function handleSearch(query: string): void {
   appState.inbox.searchQuery = query;
   handleFilter(appState.inbox.filter); // re-render with search
+}
+
+function handleToggleConvlist(): void {
+  appState.inbox.convlistOpen = !appState.inbox.convlistOpen;
+  const layout = $('inbox-layout');
+  if (layout) {
+    layout.classList.toggle('convlist-collapsed', !appState.inbox.convlistOpen);
+  }
+  persistConvlistPref(appState.inbox.convlistOpen);
 }
 
 function handleToggleSidebar(): void {

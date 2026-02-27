@@ -567,6 +567,35 @@ pub async fn run_agent_turn(
                 "squad_broadcast",
                 // ── Tool RAG (safe: only searches tool index, loads tools) ──
                 "request_tools",
+                // ── n8n / MCP (refresh tool list — read-only discovery) ──
+                "mcp_refresh",
+                "search_ncnodes",
+                "n8n_list_workflows",
+                // ── Trello (project management — boards, lists, cards) ──
+                "trello_list_boards",
+                "trello_get_board",
+                "trello_create_board",
+                "trello_update_board",
+                "trello_get_lists",
+                "trello_create_list",
+                "trello_update_list",
+                "trello_archive_list",
+                "trello_get_cards",
+                "trello_create_card",
+                "trello_get_card",
+                "trello_update_card",
+                "trello_move_card",
+                "trello_add_comment",
+                "trello_search",
+                "trello_get_labels",
+                "trello_create_label",
+                "trello_update_label",
+                "trello_add_label",
+                "trello_remove_label",
+                "trello_create_checklist",
+                "trello_add_checklist_item",
+                "trello_toggle_checklist_item",
+                "trello_get_members",
             ];
 
             // Trading write tools check the policy-based approval function

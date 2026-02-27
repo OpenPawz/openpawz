@@ -47,6 +47,7 @@ export interface InboxState {
   activeSessionKey: string | null;
   searchQuery: string;
   sidebarOpen: boolean;
+  convlistOpen: boolean;
   filter: 'all' | 'unread' | 'agents' | 'groups';
 }
 
@@ -56,6 +57,7 @@ export function createInboxState(): InboxState {
     activeSessionKey: null,
     searchQuery: '',
     sidebarOpen: loadSidebarPref(),
+    convlistOpen: loadConvlistPref(),
     filter: 'all',
   };
 }
@@ -204,6 +206,27 @@ export function removeConversation(
   sessionKey: string,
 ): ConversationEntry[] {
   return entries.filter((e) => e.sessionKey !== sessionKey);
+}
+
+// ── Convlist preference ──────────────────────────────────────────────────
+
+const CONVLIST_KEY = 'paw_inbox_convlist';
+
+function loadConvlistPref(): boolean {
+  try {
+    const v = localStorage.getItem(CONVLIST_KEY);
+    return v !== 'false'; // default open
+  } catch {
+    return true;
+  }
+}
+
+export function persistConvlistPref(open: boolean): void {
+  try {
+    localStorage.setItem(CONVLIST_KEY, String(open));
+  } catch {
+    /* ignore */
+  }
 }
 
 // ── Sidebar preference ───────────────────────────────────────────────────

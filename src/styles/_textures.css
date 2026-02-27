@@ -87,11 +87,14 @@
 
 /* Light mode overrides for elements that need special handling */
 [data-theme='light'] body,
-[data-theme='light'] .sidebar-title {
+[data-theme='light'] .sidebar-title,
+[data-theme='arctic'] body,
+[data-theme='arctic'] .sidebar-title {
   text-shadow: none;
 }
 
-[data-theme='light'] .sidebar-logo {
+[data-theme='light'] .sidebar-logo,
+[data-theme='arctic'] .sidebar-logo {
   filter: none;
   animation: none;
 }
@@ -100,6 +103,11 @@
   border-right-color: #C0B9B0;
 }
 
-[data-theme='light'] body {
+[data-theme='arctic'] .sidebar {
+  border-right-color: #C0CCD8;
+}
+
+[data-theme='light'] body,
+[data-theme='arctic'] body {
   -webkit-font-smoothing: antialiased;
 }

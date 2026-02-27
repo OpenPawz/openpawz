@@ -321,6 +321,42 @@ impl ToolIndex {
             return Ok(Vec::new());
         }
 
+        // ── Fast path: if the query is (or contains) a known domain name,
+        //    return the entire domain immediately. This fixes single-word
+        //    queries like "trello" that embedding models match poorly.
+        let query_lower = query.to_lowercase();
+        let known_domains: Vec<String> = {
+            let mut d: HashSet<String> = HashSet::new();
+            for t in &self.tools {
+                d.insert(t.domain.clone());
+            }
+            d.into_iter().collect()
+        };
+        for domain in &known_domains {
+            // Match "trello", "trello cards", "send trello card", etc.
+            if query_lower == *domain
+                || query_lower.starts_with(&format!("{} ", domain))
+                || query_lower.ends_with(&format!(" {}", domain))
+                || query_lower.contains(&format!(" {} ", domain))
+            {
+                let domain_tools: Vec<ToolDefinition> = self
+                    .tools
+                    .iter()
+                    .filter(|t| t.domain == *domain)
+                    .map(|t| t.definition.clone())
+                    .collect();
+                if !domain_tools.is_empty() {
+                    info!(
+                        "[tool-index] Domain keyword match: '{}' → {} tools from '{}' domain",
+                        query,
+                        domain_tools.len(),
+                        domain
+                    );
+                    return Ok(domain_tools);
+                }
+            }
+        }
+
         // Embed the query
         let query_vec = client.embed(query).await?;
 
