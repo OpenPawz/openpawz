@@ -24,6 +24,12 @@ A native desktop AI platform that runs fully offline, connects to any provider, 
 
 <div align="center">
 
+**OpenPawz in Action**
+
+https://github.com/OpenPawz/openpawz/raw/main/images/screenshots/Video_Generation_Complete.mp4
+
+<br>
+
 **Integration Hub** — 25,000+ services via MCP Bridge, with category filters, connection health, and quick setup
 
 <img src="images/screenshots/Integrations.png" alt="Integration Hub" width="800">
