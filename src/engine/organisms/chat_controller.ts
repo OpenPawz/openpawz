@@ -336,7 +336,6 @@ export async function switchToAgent(agentId: string): Promise<void> {
 
   const oldKey = appState.currentSessionKey ?? '';
   teardownStream(oldKey, 'Agent switched');
-  appState.streamingEl = null;
 
   AgentsModule.setSelectedAgent(agentId);
   const agent = AgentsModule.getCurrentAgent();
@@ -469,9 +468,12 @@ export function showStreamingMessage(): void {
 }
 
 export function appendStreamingDelta(text: string): void {
-  appState.streamingContent += text;
-  if (appState.streamingEl) {
-    rendererAppendDelta(appState.streamingEl, appState.streamingContent);
+  const key = appState.currentSessionKey ?? '';
+  const ss = appState.activeStreams.get(key);
+  if (!ss) return;
+  ss.content += text;
+  if (ss.el) {
+    rendererAppendDelta(ss.el, ss.content);
     scrollToBottom();
   }
 }

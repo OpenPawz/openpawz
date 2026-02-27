@@ -199,53 +199,6 @@ export const appState = {
   // Streaming pipeline — session-keyed for concurrent isolation
   activeStreams: new Map<string, StreamState>(),
 
-  // Legacy convenience accessors (delegate to current session's stream)
-  get streamingContent(): string {
-    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
-    return s?.content ?? '';
-  },
-  set streamingContent(v: string) {
-    const key = appState.currentSessionKey ?? '';
-    const s = appState.activeStreams.get(key);
-    if (s) s.content = v;
-  },
-  get streamingEl(): HTMLElement | null {
-    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
-    return s?.el ?? null;
-  },
-  set streamingEl(v: HTMLElement | null) {
-    const key = appState.currentSessionKey ?? '';
-    const s = appState.activeStreams.get(key);
-    if (s) s.el = v;
-  },
-  get streamingRunId(): string | null {
-    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
-    return s?.runId ?? null;
-  },
-  set streamingRunId(v: string | null) {
-    const key = appState.currentSessionKey ?? '';
-    const s = appState.activeStreams.get(key);
-    if (s) s.runId = v;
-  },
-  get streamingResolve(): ((text: string) => void) | null {
-    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
-    return s?.resolve ?? null;
-  },
-  set streamingResolve(v: ((text: string) => void) | null) {
-    const key = appState.currentSessionKey ?? '';
-    const s = appState.activeStreams.get(key);
-    if (s) s.resolve = v;
-  },
-  get streamingAgentId(): string | null {
-    const s = appState.activeStreams.get(appState.currentSessionKey ?? '');
-    return s?.agentId ?? null;
-  },
-  set streamingAgentId(v: string | null) {
-    const key = appState.currentSessionKey ?? '';
-    const s = appState.activeStreams.get(key);
-    if (s) s.agentId = v;
-  },
-
   // Attachments
   pendingAttachments: [] as File[],
 
