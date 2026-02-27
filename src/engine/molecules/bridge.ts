@@ -6,6 +6,7 @@ import { pawEngine } from './ipc_client';
 import type { EngineEvent, EngineChatRequest } from '../atoms/types';
 import { getAgentAllowedTools, ALL_TOOLS } from '../../features/agent-policies';
 import { getIntegrationHint } from './auto-discover-bridge';
+import { getUserApprovedTools } from '../../components/chat-mission-panel';
 import { appState } from '../../state';
 
 type AgentEventHandler = (payload: unknown) => void;
@@ -204,6 +205,7 @@ export async function engineChatSend(
     agent_id: agentId !== 'default' ? agentId : undefined,
     thinking_level: opts.thinkingLevel,
     auto_approve_all: !!opts.agentProfile?.autoApproveAll,
+    user_approved_tools: getUserApprovedTools(),
     attachments: opts.attachments?.map((a) => ({
       mimeType: a.mimeType,
       content: a.content,

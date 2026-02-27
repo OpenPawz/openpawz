@@ -402,6 +402,7 @@ async fn run_swarm_turn(
         Some(&daily_tokens),
         None, // thinking_level
         true, // auto_approve_all — swarm agents run autonomously
+        &[],  // user_approved_tools
         None, // yield_signal
     )
     .await

@@ -167,6 +167,7 @@ export function initMissionPanel(): void {
   updateMissionGauge(0, 128_000);
   renderActiveJobs();
   renderQuickPrompts();
+  renderApprovals();
   renderAutomations();
   renderQueries();
 
@@ -187,6 +188,164 @@ export function initMissionPanel(): void {
       _metricsCtrl = kineticRow(cards[1] as HTMLElement, {});
     }
   }
+}
+
+// ── Quick Prompts — pill buttons that inject into chat ──────────────────
+
+// ── Tool Approval Categories ───────────────────────────────────────────
+
+interface ApprovalCategory {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
+  /** Tool names belonging to this category */
+  tools: string[];
+}
+
+const APPROVAL_CATEGORIES: ApprovalCategory[] = [
+  {
+    id: 'email',
+    label: 'Email',
+    icon: 'mail',
+    description: 'Send emails, read inbox',
+    tools: ['email_send', 'google_gmail_send', 'email_read', 'google_gmail_list', 'google_gmail_read'],
+  },
+  {
+    id: 'browser',
+    label: 'Browser',
+    icon: 'travel_explore',
+    description: 'Web search, read pages, screenshots',
+    tools: ['web_search', 'web_read', 'web_browse', 'web_screenshot', 'fetch'],
+  },
+  {
+    id: 'files',
+    label: 'Files',
+    icon: 'folder',
+    description: 'Read / write / list files',
+    tools: ['read_file', 'write_file', 'list_directory'],
+  },
+  {
+    id: 'shell',
+    label: 'Shell',
+    icon: 'terminal',
+    description: 'Run terminal commands',
+    tools: ['exec', 'run_command'],
+  },
+  {
+    id: 'google',
+    label: 'Google',
+    icon: 'cloud',
+    description: 'Drive, Docs, Calendar, Sheets',
+    tools: [
+      'google_docs_create', 'google_drive_upload', 'google_drive_share',
+      'google_calendar_create', 'google_sheets_append', 'google_api',
+      'google_calendar_list', 'google_drive_list', 'google_drive_read', 'google_sheets_read',
+    ],
+  },
+  {
+    id: 'memory',
+    label: 'Memory',
+    icon: 'psychology',
+    description: 'Read / write agent memory',
+    tools: ['soul_read', 'soul_write', 'soul_list', 'memory_store', 'memory_search'],
+  },
+  {
+    id: 'tasks',
+    label: 'Tasks',
+    icon: 'task_alt',
+    description: 'Create and manage tasks',
+    tools: ['create_task', 'manage_task', 'list_tasks'],
+  },
+  {
+    id: 'messaging',
+    label: 'Messaging',
+    icon: 'forum',
+    description: 'Slack, Telegram, Discord, inter-agent',
+    tools: ['slack_read', 'slack_send', 'telegram_read', 'telegram_send', 'agent_send_message', 'agent_read_messages'],
+  },
+  {
+    id: 'trading',
+    label: 'Trading',
+    icon: 'candlestick_chart',
+    description: 'Crypto swap, transfer, wallets',
+    tools: ['sol_swap', 'sol_transfer', 'dex_swap', 'dex_transfer', 'coinbase_trade', 'coinbase_transfer'],
+  },
+  {
+    id: 'media',
+    label: 'Media',
+    icon: 'image',
+    description: 'Image generation',
+    tools: ['image_generate'],
+  },
+];
+
+const APPROVAL_STORAGE_KEY = 'paw-tool-approvals';
+
+/** Load user's approval preferences from localStorage */
+export function getApprovalPrefs(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(APPROVAL_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** Save approval preferences */
+function saveApprovalPrefs(prefs: Record<string, boolean>): void {
+  localStorage.setItem(APPROVAL_STORAGE_KEY, JSON.stringify(prefs));
+}
+
+/** Check if a specific tool is user-approved via the sidebar toggles */
+export function isToolUserApproved(toolName: string): boolean {
+  const prefs = getApprovalPrefs();
+  for (const cat of APPROVAL_CATEGORIES) {
+    if (cat.tools.includes(toolName)) {
+      return !!prefs[cat.id];
+    }
+  }
+  return false;
+}
+
+/** Get all tool names that are currently user-approved */
+export function getUserApprovedTools(): string[] {
+  const prefs = getApprovalPrefs();
+  const approved: string[] = [];
+  for (const cat of APPROVAL_CATEGORIES) {
+    if (prefs[cat.id]) {
+      approved.push(...cat.tools);
+    }
+  }
+  return approved;
+}
+
+function renderApprovals(): void {
+  const container = $('mission-approvals-list');
+  if (!container) return;
+
+  const prefs = getApprovalPrefs();
+
+  container.innerHTML = APPROVAL_CATEGORIES.map((cat) => {
+    const checked = prefs[cat.id] ? 'checked' : '';
+    return `
+      <label class="mission-approval-row" title="${escHtml(cat.description)}">
+        <span class="ms mission-approval-icon">${cat.icon}</span>
+        <span class="mission-approval-label">${escHtml(cat.label)}</span>
+        <input type="checkbox" class="mission-approval-toggle" data-category="${cat.id}" ${checked} />
+      </label>`;
+  }).join('');
+
+  // Wire toggle events
+  container.addEventListener('change', (e) => {
+    const input = e.target as HTMLInputElement;
+    if (!input.classList.contains('mission-approval-toggle')) return;
+    const catId = input.dataset.category;
+    if (!catId) return;
+    const currentPrefs = getApprovalPrefs();
+    currentPrefs[catId] = input.checked;
+    saveApprovalPrefs(currentPrefs);
+  });
 }
 
 // ── Quick Prompts — pill buttons that inject into chat ──────────────────

@@ -393,6 +393,7 @@ pub async fn run_channel_agent(
             Some(&daily_tokens_tracker),
             None,  // thinking_level
             false, // auto_approve_all — channels use safe default; Phase C adds per-channel policy
+            &[],   // user_approved_tools — not available from channels
             None,  // yield_signal
         )
         .await;
@@ -446,6 +447,7 @@ pub async fn run_channel_agent(
                         Some(&daily_tokens_tracker),
                         None,  // thinking_level
                         false, // auto_approve_all — channels: safe default
+                        &[],   // user_approved_tools
                         None,  // yield_signal
                     )
                     .await

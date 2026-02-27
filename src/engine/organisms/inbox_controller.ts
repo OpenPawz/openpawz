@@ -76,7 +76,6 @@ export function mountInbox(): void {
     onDelete: handleDelete,
     onClear: handleClear,
     onCompact: handleCompact,
-    onColorPick: handleColorPick,
     onSearch: handleSearchInConversation,
   });
 
@@ -111,9 +110,7 @@ export function mountInbox(): void {
     if (threadBody) threadBody.appendChild(abortBtn);
   }
 
-  // Hide old mission panel + header (we replace them)
-  const missionPanel = $('chat-mission-panel');
-  if (missionPanel) missionPanel.style.display = 'none';
+  // Hide old header + mission body (sidebar re-parents the panel)
   const chatHeader = chatView.querySelector('.chat-header') as HTMLElement | null;
   if (chatHeader) chatHeader.style.display = 'none';
   const chatMissionBody = chatView.querySelector('.chat-mission-body') as HTMLElement | null;
@@ -146,7 +143,6 @@ export function mountInbox(): void {
         appState.currentSessionKey,
         appState.inbox.filter,
       );
-      updateSidebarMetrics();
     }
   });
 
@@ -268,9 +264,7 @@ export function unmountInbox(): void {
   const layout = $('inbox-layout');
   if (layout) layout.remove();
 
-  // Restore hidden elements
-  const missionPanel = $('chat-mission-panel');
-  if (missionPanel) missionPanel.style.display = '';
+  // Restore hidden elements (sidebar.destroy() puts mission panel back)
   const chatView = $('chat-view');
   if (chatView) {
     const chatHeader = chatView.querySelector('.chat-header') as HTMLElement | null;
@@ -441,16 +435,7 @@ async function handleCompact(): Promise<void> {
   }
 }
 
-function handleColorPick(color: string): void {
-  // Update the agent color for this conversation visually
-  const key = appState.inbox.activeSessionKey;
-  if (!key) return;
-  const conv = appState.inbox.conversations.find((c) => c.sessionKey === key);
-  if (conv) {
-    conv.agentColor = color;
-    refreshConversationList();
-  }
-}
+
 
 function handleSearchInConversation(query: string): void {
   // Highlight matching messages in the thread
@@ -498,7 +483,7 @@ async function handleConversationAction(sessionKey: string, action: string): Pro
 // ── Private helpers ──────────────────────────────────────────────────────
 
 function updateThreadHeader(): void {
-  if (!_thread || !_sidebar) return;
+  if (!_thread) return;
   const key = appState.inbox.activeSessionKey ?? appState.currentSessionKey;
   if (!key) {
     _thread.showEmpty();
@@ -508,9 +493,6 @@ function updateThreadHeader(): void {
   const conv = appState.inbox.conversations.find((c) => c.sessionKey === key);
   if (!conv) return;
 
-  const agents = AgentsModule.getAgents();
-  const agent = agents.find((a) => a.id === conv.agentId);
-
   _thread.setAgent(
     conv.agentName,
     conv.agentAvatar,
@@ -519,14 +501,6 @@ function updateThreadHeader(): void {
   );
   _thread.setStreaming(conv.isStreaming);
 
-  // Update sidebar
-  _sidebar.setAgent(
-    conv.agentName,
-    conv.agentAvatar,
-    conv.agentColor,
-    agent?.bio ?? '',
-    appState.activeModelKey || '',
-  );
 }
 
 /**
@@ -556,26 +530,4 @@ export function notifyNewMessage(sessionKey: string): void {
   }
 }
 
-/**
- * Update sidebar metrics (called from token meter updates).
- */
-export function updateSidebarMetrics(): void {
-  if (!_sidebar || !_mounted) return;
-  _sidebar.setMetrics(
-    fmtK(appState.sessionInputTokens),
-    fmtK(appState.sessionOutputTokens),
-    appState.sessionCost > 0 ? `$${appState.sessionCost.toFixed(4)}` : '$0',
-    String(appState.messages.length),
-  );
-  const limit = appState.modelContextLimit || 128_000;
-  const pct = limit > 0 ? (appState.sessionTokensUsed / limit) * 100 : 0;
-  _sidebar.setContext(fmtK(appState.sessionTokensUsed), fmtK(limit), pct);
-}
 
-// ── Utility ──────────────────────────────────────────────────────────────
-
-function fmtK(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-  return String(n);
-}

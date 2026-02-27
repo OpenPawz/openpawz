@@ -469,6 +469,7 @@ pub async fn engine_chat_send(
     };
     let thinking_level = request.thinking_level.clone();
     let auto_approve_all = request.auto_approve_all;
+    let user_approved_tools = request.user_approved_tools.clone();
     let tool_timeout = {
         let cfg = state.config.lock();
         cfg.tool_timeout_secs
@@ -539,6 +540,7 @@ pub async fn engine_chat_send(
             Some(&daily_tokens),
             thinking_level.as_deref(),
             auto_approve_all,
+            &user_approved_tools,
             Some(&yield_signal_for_spawn),
         )
         .await

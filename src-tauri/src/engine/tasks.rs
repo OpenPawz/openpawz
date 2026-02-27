@@ -366,6 +366,7 @@ pub async fn execute_task(
                 Some(&task_daily_tokens_clone),
                 None,  // thinking_level
                 false, // auto_approve_all — tasks use safe default; opt-in is per-chat
+                &[],   // user_approved_tools
                 None,  // yield_signal
             )
             .await;

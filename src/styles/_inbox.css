@@ -423,291 +423,25 @@
   flex-direction: column;
   border-left: 1px solid var(--border);
   background: var(--bg-secondary);
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
   gap: 0;
 }
 
-/* Sidebar cards */
-.inbox-sidebar-card {
-  padding: 12px 14px;
-}
-
-.inbox-sidebar-card-bordered {
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.inbox-sidebar-card-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-}
-
-.inbox-sidebar-card-icon {
-  font-size: 15px;
-  color: var(--text-muted);
-}
-
-.inbox-sidebar-card-title {
-  font-family: var(--font-pixel);
-  font-size: var(--type-label);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-/* Agent profile */
-.inbox-sidebar-profile {
+/* When mission panel lives inside sidebar, fill and scroll */
+.inbox-sidebar .chat-mission-panel {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 16px 14px;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.inbox-sidebar-avatar {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 28px;
-  background: var(--bg-tertiary);
-  border: 2px solid var(--border);
-  overflow: hidden;
-}
-
-.inbox-sidebar-avatar img {
   width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
-}
-
-.inbox-sidebar-name {
-  font-size: var(--type-heading);
-  font-weight: 600;
-  color: var(--text-primary);
-  text-align: center;
-}
-
-.inbox-sidebar-bio {
-  font-size: var(--type-label);
-  color: var(--text-muted);
-  text-align: center;
-  line-height: 1.4;
-}
-
-.inbox-sidebar-model {
-  font-family: var(--font-pixel);
-  font-size: var(--type-micro);
-  color: var(--accent);
-  padding: 2px 8px;
-  border: 1px solid var(--accent-muted);
-  border-radius: var(--radius-pill);
-  background: var(--accent-subtle);
-}
-
-/* Colour swatches */
-.inbox-sidebar-swatches {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.inbox-sidebar-swatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  padding: 0;
-}
-
-.inbox-sidebar-swatch:hover {
-  transform: scale(1.15);
-  border-color: var(--text-muted);
-}
-
-/* Search input */
-.inbox-sidebar-search-input {
-  width: 100%;
-  padding: 5px 8px;
-  background: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  color: var(--text-primary);
-  font-size: var(--type-body);
-  outline: none;
-  box-sizing: border-box;
-}
-
-.inbox-sidebar-search-input:focus {
-  border-color: var(--accent-muted);
-}
-
-.inbox-sidebar-search-input::placeholder {
-  color: var(--text-muted);
-}
-
-/* Context gauge */
-.inbox-sidebar-gauge-row {
-  margin-bottom: 4px;
-}
-
-.inbox-sidebar-gauge {
-  width: 100%;
-  height: 6px;
-  background: var(--bg-tertiary);
-  border-radius: var(--radius-pill);
-  overflow: hidden;
-}
-
-.inbox-sidebar-gauge-fill {
-  height: 100%;
-  background: var(--accent);
-  border-radius: var(--radius-pill);
-  transition: width 0.4s ease;
-  width: 0%;
-}
-
-.inbox-sidebar-gauge-stats {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 4px;
-}
-
-.inbox-sidebar-gauge-label {
-  font-size: var(--type-label);
-  color: var(--text-muted);
-  font-family: var(--font-pixel);
-}
-
-/* Session metrics grid */
-.inbox-sidebar-metrics {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-
-.inbox-sidebar-metric {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-
-.inbox-sidebar-metric-val {
-  font-size: var(--type-body);
-  font-weight: 600;
-  color: var(--text-primary);
-  font-family: var(--font-pixel);
-}
-
-.inbox-sidebar-metric-lbl {
-  font-size: var(--type-micro);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-family: var(--font-pixel);
-}
-
-/* Active jobs */
-.inbox-sidebar-jobs-badge {
-  font-size: var(--type-label);
-  font-weight: 700;
-  color: var(--accent);
-  margin-left: 4px;
-  font-family: var(--font-pixel);
-}
-
-.inbox-sidebar-jobs-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.inbox-sidebar-jobs-empty {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--type-label);
-  color: var(--text-muted);
-  padding: 4px 0;
-}
-
-/* Quick actions */
-.inbox-sidebar-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-
-.inbox-sidebar-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border: 1px solid var(--border-subtle);
-  background: var(--bg-primary);
-  color: var(--text-secondary);
-  font-size: var(--type-label);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.inbox-sidebar-action-btn:hover {
-  background: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border);
-}
-
-.inbox-sidebar-action-btn .ms {
-  font-size: 14px;
-}
-
-.inbox-sidebar-header {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border-subtle);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-shrink: 0;
-}
-
-.inbox-sidebar-title {
-  font-family: var(--font-pixel);
-  font-size: var(--type-label);
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.inbox-sidebar-close {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
   border: none;
-  background: transparent;
-  color: var(--text-muted);
-  cursor: pointer;
-  border-radius: var(--radius-md);
-  transition: all var(--transition-fast);
+  border-radius: 0;
+  margin: 0;
+  min-height: 0;
 }
 
-.inbox-sidebar-close:hover {
-  background: var(--bg-hover);
-  color: var(--text-secondary);
-}
-
-/* Sidebar mission cards — reuse existing styles */
+/* Flatten mission cards inside sidebar */
 .inbox-sidebar .mission-card {
   margin: 0;
   border-radius: 0;
@@ -715,6 +449,107 @@
   border-left: none;
   border-right: none;
   border-top: none;
+}
+
+/* ─── Approvals card ─── */
+.mission-approval-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+}
+
+.mission-approval-icon {
+  font-size: 16px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.mission-approval-label {
+  flex: 1;
+  font-size: var(--type-label);
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.mission-approval-desc {
+  font-size: var(--type-micro);
+  color: var(--text-muted);
+  display: block;
+  line-height: 1.3;
+}
+
+/* Toggle switch */
+.mission-approval-toggle {
+  position: relative;
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.mission-approval-toggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.mission-approval-toggle .toggle-track {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.mission-approval-toggle .toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.mission-approval-toggle input:checked + .toggle-track {
+  background: var(--accent-subtle);
+  border-color: var(--accent-muted);
+}
+
+.mission-approval-toggle input:checked + .toggle-track::after {
+  transform: translateX(14px);
+  background: var(--accent);
+}
+
+/* ─── Search in Conversation ─── */
+.mission-search-conv-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+.mission-search-conv-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  outline: none;
+}
+
+.mission-search-conv-input::placeholder {
+  color: var(--text-muted);
 }
 
 /* ─── Responsive ─── */

@@ -76,6 +76,8 @@ export interface EngineChatRequest {
   thinking_level?: string;
   /** Phase A: If true, all tool calls auto-approved (no HIL popups). */
   auto_approve_all?: boolean;
+  /** Tool names the user has approved via the sidebar Approvals panel. */
+  user_approved_tools?: string[];
 }
 
 export interface EngineChatResponse {

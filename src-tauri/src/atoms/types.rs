@@ -243,6 +243,10 @@ pub struct ChatRequest {
     /// Set by frontend based on agent mode's `auto_approve_all` setting.
     #[serde(default)]
     pub auto_approve_all: bool,
+    /// Additional tool names the user has approved via the sidebar Approvals
+    /// panel. These are merged with the hardcoded `auto_approved_tools` list.
+    #[serde(default)]
+    pub user_approved_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

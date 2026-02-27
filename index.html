@@ -711,6 +711,20 @@
                 </div>
               </div>
 
+              <!-- Tool Approvals — per-category auto-approve toggles -->
+              <div class="mission-card k-row k-spring k-materialise">
+                <div class="mission-card-header mission-card-header-toggle" data-toggle="mission-approvals-body">
+                  <span class="ms mission-card-icon">verified_user</span>
+                  <span class="mission-card-title">APPROVALS</span>
+                  <span class="ms mission-card-chevron">expand_more</span>
+                </div>
+                <div class="mission-card-collapsible" id="mission-approvals-body">
+                  <div class="mission-approvals-list" id="mission-approvals-list">
+                    <!-- Populated by chat-mission-panel.ts -->
+                  </div>
+                </div>
+              </div>
+
               <!-- Quick Prompts — common asks, one-click to chat -->
               <div class="mission-card k-row k-spring k-materialise">
                 <div class="mission-card-header mission-card-header-toggle" data-toggle="mission-prompts-body">
@@ -751,6 +765,17 @@
                   <div class="mission-compact-list" id="mission-queries-list">
                     <!-- Populated by chat-mission-panel.ts -->
                   </div>
+                </div>
+              </div>
+
+              <!-- Search in conversation -->
+              <div class="mission-card k-row k-spring k-materialise">
+                <div class="mission-card-header">
+                  <span class="ms mission-card-icon">search</span>
+                  <span class="mission-card-title">SEARCH</span>
+                </div>
+                <div class="mission-search-conv-wrap">
+                  <input type="text" class="mission-search-conv-input" id="mission-search-conv" placeholder="Search messages…" />
                 </div>
               </div>
 

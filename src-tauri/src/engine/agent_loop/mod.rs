@@ -37,6 +37,7 @@ pub async fn run_agent_turn(
     daily_tokens: Option<&DailyTokenTracker>,
     thinking_level: Option<&str>,
     auto_approve_all: bool,
+    user_approved_tools: &[String],
     yield_signal: Option<&crate::engine::state::YieldSignal>,
 ) -> EngineResult<String> {
     let mut round = 0;
@@ -604,6 +605,7 @@ pub async fn run_agent_turn(
 
             let skip_hil = if auto_approve_all
                 || auto_approved_tools.contains(&tc.function.name.as_str())
+                || user_approved_tools.iter().any(|t| t == &tc.function.name)
             {
                 true
             } else if trading_write_tools.contains(&tc.function.name.as_str()) {
