@@ -1,16 +1,17 @@
 // src/engine/molecules/conversation_list.ts
-// Phase 11.1 — Conversation list molecule (left panel).
-// Renders the scrollable list of agent conversations.
+// Phase 11.1 — Agent list molecule (left panel).
+// Renders the scrollable list of agents (grouped from conversations).
+// Clicking an agent opens chat with that agent; session switching is via
+// a dropdown in the thread header.
 // Self-contained DOM — no global lookups.
 
 import {
-  sortConversations,
   filterConversations,
-  filterByTab,
   truncatePreview,
   formatRelativeTime,
   groupByAgent,
   type ConversationEntry,
+  type AgentGroup,
   type InboxState,
 } from '../atoms/inbox';
 import * as AgentsModule from '../../views/agents';
@@ -20,21 +21,21 @@ import * as AgentsModule from '../../views/agents';
 export interface ConversationListController {
   /** Root DOM element */
   el: HTMLElement;
-  /** Re-render the conversation list from current state */
-  render(conversations: ConversationEntry[], activeKey: string | null, filter: InboxState['filter']): void;
+  /** Re-render the agent list from current conversation state */
+  render(conversations: ConversationEntry[], activeAgentId: string | null, filter: InboxState['filter']): void;
   /** Update search query and re-filter */
   setSearch(query: string): void;
-  /** Set streaming state on a conversation row */
-  setStreaming(sessionKey: string, active: boolean): void;
-  /** Update unread badge for a specific conversation */
-  setUnread(sessionKey: string, count: number): void;
+  /** Set streaming state on an agent row (by agentId) */
+  setStreaming(agentId: string, active: boolean): void;
+  /** Update unread badge for a specific agent */
+  setUnread(agentId: string, count: number): void;
   /** Destroy + cleanup */
   destroy(): void;
 }
 
 export interface ConversationListCallbacks {
-  /** Conversation selected */
-  onSelect: (sessionKey: string) => void;
+  /** Agent selected — opens chat with this agent */
+  onSelect: (agentId: string) => void;
   /** New direct chat requested */
   onNewChat: () => void;
   /** New group chat requested */
@@ -44,7 +45,7 @@ export interface ConversationListCallbacks {
   /** Search query changed */
   onSearch: (query: string) => void;
   /** Context menu action */
-  onAction?: (sessionKey: string, action: 'rename' | 'delete' | 'pin') => void;
+  onAction?: (agentId: string, action: 'rename' | 'delete' | 'pin') => void;
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────
@@ -54,8 +55,7 @@ export function createConversationList(
 ): ConversationListController {
   let destroyed = false;
   let _conversations: ConversationEntry[] = [];
-  let _activeKey: string | null = null;
-  let _filter: InboxState['filter'] = 'all';
+  let _activeAgentId: string | null = null;
   let _searchQuery = '';
 
   // ── Build DOM ──────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ export function createConversationList(
   titleRow.className = 'inbox-conv-title-row';
   const title = document.createElement('span');
   title.className = 'inbox-conv-title';
-  title.textContent = 'Inbox';
+  title.textContent = 'Agents';
 
   // New chat button with dropdown
   const newBtnWrap = document.createElement('div');
@@ -132,7 +132,7 @@ export function createConversationList(
   searchWrap.innerHTML = `<span class="ms">search</span>`;
   const searchInput = document.createElement('input');
   searchInput.type = 'text';
-  searchInput.placeholder = 'Search conversations…';
+  searchInput.placeholder = 'Search agents…';
   searchInput.addEventListener('input', () => {
     _searchQuery = searchInput.value;
     callbacks.onSearch(_searchQuery);
@@ -141,147 +141,65 @@ export function createConversationList(
   searchWrap.appendChild(searchInput);
   header.appendChild(searchWrap);
 
-  // Filter tabs
-  const filters = document.createElement('div');
-  filters.className = 'inbox-filters';
-  const filterOptions: { key: InboxState['filter']; label: string }[] = [
-    { key: 'all', label: 'All' },
-    { key: 'unread', label: 'Unread' },
-    { key: 'agents', label: 'Agents' },
-    { key: 'groups', label: 'Groups' },
-  ];
-  for (const f of filterOptions) {
-    const btn = document.createElement('button');
-    btn.className = `inbox-filter-btn${f.key === 'all' ? ' active' : ''}`;
-    btn.textContent = f.label;
-    btn.dataset.filter = f.key;
-    btn.addEventListener('click', () => {
-      _filter = f.key;
-      filters.querySelectorAll('.inbox-filter-btn').forEach((b) => b.classList.remove('active'));
-      btn.classList.add('active');
-      callbacks.onFilter(f.key);
-      renderRows();
-    });
-    filters.appendChild(btn);
-  }
-  header.appendChild(filters);
   root.appendChild(header);
 
-  // Scrollable conversation list
+  // Scrollable agent list
   const scrollArea = document.createElement('div');
   scrollArea.className = 'inbox-conv-scroll';
   root.appendChild(scrollArea);
 
-  // ── Render rows ────────────────────────────────────────────────────────
-
-  /** Collapsed agents tracker (by agentId). */
-  const collapsedAgents = new Set<string>();
+  // ── Render agent rows ──────────────────────────────────────────────────
 
   function renderRows(): void {
     scrollArea.innerHTML = '';
 
-    let visible = filterByTab(_conversations, _filter);
-    visible = filterConversations(visible, _searchQuery);
-    visible = sortConversations(visible);
+    // Filter conversations first, then group by agent
+    let visible = _conversations;
+    if (_searchQuery) {
+      visible = filterConversations(visible, _searchQuery);
+    }
 
-    if (visible.length === 0) {
+    const groups = groupByAgent(visible);
+
+    if (groups.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'inbox-conv-empty';
-      empty.innerHTML = `<span class="ms">chat_bubble_outline</span><span>No conversations</span>`;
+      empty.innerHTML = `<span class="ms">smart_toy</span><span>No agents</span>`;
       scrollArea.appendChild(empty);
       return;
     }
 
-    // "Agents" tab → grouped by agent. Everything else → flat list.
-    if (_filter === 'agents') {
-      renderGroupedRows(visible);
-    } else {
-      renderFlatRows(visible);
-    }
-  }
-
-  function renderFlatRows(visible: ConversationEntry[]): void {
     const frag = document.createDocumentFragment();
     const now = Date.now();
-    for (const conv of visible) {
-      frag.appendChild(buildConvRow(conv, now));
-    }
-    scrollArea.appendChild(frag);
-  }
-
-  function renderGroupedRows(visible: ConversationEntry[]): void {
-    const groups = groupByAgent(visible);
-    const frag = document.createDocumentFragment();
-    const now = Date.now();
-
     for (const group of groups) {
-      // Agent group header
-      const header = document.createElement('div');
-      header.className = 'inbox-agent-group-header';
-      const isCollapsed = collapsedAgents.has(group.agentId);
-      if (isCollapsed) header.classList.add('collapsed');
-
-      const avatarHtml = AgentsModule.spriteAvatar(group.agentAvatar, 18);
-      const chevron = isCollapsed ? 'chevron_right' : 'expand_more';
-      header.innerHTML = `
-        <span class="ms inbox-agent-chevron" style="font-size:14px">${chevron}</span>
-        <span class="inbox-agent-group-avatar" style="border-color:${group.agentColor}">${avatarHtml}</span>
-        <span class="inbox-agent-group-name">${group.agentName}</span>
-        <span class="inbox-agent-group-count">${group.conversations.length}</span>
-        ${group.totalUnread > 0 ? `<span class="inbox-conv-badge">${group.totalUnread}</span>` : ''}
-      `;
-      header.addEventListener('click', () => {
-        if (collapsedAgents.has(group.agentId)) {
-          collapsedAgents.delete(group.agentId);
-        } else {
-          collapsedAgents.add(group.agentId);
-        }
-        renderRows();
-      });
-      frag.appendChild(header);
-
-      // Conversation rows for this agent (hidden if collapsed)
-      if (!isCollapsed) {
-        for (const conv of group.conversations) {
-          const row = buildConvRow(conv, now);
-          row.classList.add('inbox-grouped-row');
-          frag.appendChild(row);
-        }
-      }
+      frag.appendChild(buildAgentRow(group, now));
     }
     scrollArea.appendChild(frag);
   }
 
-  function buildConvRow(conv: ConversationEntry, now: number): HTMLElement {
+  function buildAgentRow(group: AgentGroup, now: number): HTMLElement {
     const row = document.createElement('div');
     row.className = 'inbox-conv-row';
-    if (conv.sessionKey === _activeKey) row.classList.add('active');
-    if (conv.unread > 0) row.classList.add('unread');
-    if (conv.kind === 'group') row.classList.add('group');
-    row.dataset.session = conv.sessionKey;
+    if (group.agentId === _activeAgentId) row.classList.add('active');
+    if (group.totalUnread > 0) row.classList.add('unread');
+    row.dataset.agent = group.agentId;
 
     // Avatar
     const avatar = document.createElement('div');
     avatar.className = 'inbox-conv-avatar';
-    avatar.style.borderColor = conv.agentColor;
-    const avatarContent = AgentsModule.spriteAvatar(conv.agentAvatar, 24);
+    avatar.style.borderColor = group.agentColor;
+    const avatarContent = AgentsModule.spriteAvatar(group.agentAvatar, 24);
     if (avatarContent.startsWith('<img') || avatarContent.startsWith('<svg')) {
       avatar.innerHTML = avatarContent;
     } else {
-      avatar.textContent = conv.agentAvatar;
+      avatar.textContent = group.agentAvatar;
     }
-    // Streaming dot
-    if (conv.isStreaming) {
+    // Streaming dot — show if any conversation for this agent is streaming
+    const isStreaming = group.conversations.some((c) => c.isStreaming);
+    if (isStreaming) {
       const dot = document.createElement('span');
       dot.className = 'streaming-dot';
       avatar.appendChild(dot);
-    }
-    // Group icon overlay
-    if (conv.kind === 'group') {
-      const groupIcon = document.createElement('span');
-      groupIcon.className = 'ms inbox-conv-group-icon';
-      groupIcon.textContent = 'group';
-      avatar.appendChild(groupIcon);
     }
     row.appendChild(avatar);
 
@@ -293,10 +211,10 @@ export function createConversationList(
     topRow.className = 'inbox-conv-top';
     const name = document.createElement('span');
     name.className = 'inbox-conv-name';
-    name.textContent = conv.label || conv.agentName;
+    name.textContent = group.agentName;
     const time = document.createElement('span');
     time.className = 'inbox-conv-time';
-    time.textContent = conv.lastTs ? formatRelativeTime(conv.lastTs, now) : '';
+    time.textContent = group.latestTs ? formatRelativeTime(group.latestTs, now) : '';
     topRow.appendChild(name);
     topRow.appendChild(time);
 
@@ -304,13 +222,20 @@ export function createConversationList(
     bottomRow.className = 'inbox-conv-bottom';
     const preview = document.createElement('span');
     preview.className = 'inbox-conv-preview';
-    const rolePrefix = conv.lastRole === 'user' ? 'You: ' : '';
-    preview.textContent = conv.lastMessage ? rolePrefix + truncatePreview(conv.lastMessage) : 'No messages yet';
+    // Show last message preview from the most recent conversation
+    const latest = group.conversations[0];
+    if (latest?.lastMessage) {
+      const rolePrefix = latest.lastRole === 'user' ? 'You: ' : '';
+      preview.textContent = rolePrefix + truncatePreview(latest.lastMessage);
+    } else {
+      const sessionCount = group.conversations.length;
+      preview.textContent = sessionCount === 1 ? '1 session' : `${sessionCount} sessions`;
+    }
     bottomRow.appendChild(preview);
-    if (conv.unread > 0) {
+    if (group.totalUnread > 0) {
       const badge = document.createElement('span');
       badge.className = 'inbox-conv-badge';
-      badge.textContent = String(conv.unread);
+      badge.textContent = String(group.totalUnread);
       bottomRow.appendChild(badge);
     }
 
@@ -318,8 +243,8 @@ export function createConversationList(
     body.appendChild(bottomRow);
     row.appendChild(body);
 
-    // Click handler
-    row.addEventListener('click', () => callbacks.onSelect(conv.sessionKey));
+    // Click handler — select agent
+    row.addEventListener('click', () => callbacks.onSelect(group.agentId));
 
     return row;
   }
@@ -329,15 +254,9 @@ export function createConversationList(
   const controller: ConversationListController = {
     el: root,
 
-    render(conversations, activeKey, filter) {
+    render(conversations, activeAgentId, _filter) {
       _conversations = conversations;
-      _activeKey = activeKey;
-      _filter = filter;
-      // Sync filter tab UI
-      filters.querySelectorAll('.inbox-filter-btn').forEach((b) => {
-        const btn = b as HTMLElement;
-        btn.classList.toggle('active', btn.dataset.filter === filter);
-      });
+      _activeAgentId = activeAgentId;
       renderRows();
     },
 
@@ -347,8 +266,8 @@ export function createConversationList(
       renderRows();
     },
 
-    setStreaming(sessionKey, active) {
-      const row = scrollArea.querySelector(`[data-session="${sessionKey}"]`);
+    setStreaming(agentId, active) {
+      const row = scrollArea.querySelector(`[data-agent="${agentId}"]`);
       if (!row) return;
       const avatar = row.querySelector('.inbox-conv-avatar');
       if (!avatar) return;
@@ -362,8 +281,8 @@ export function createConversationList(
       }
     },
 
-    setUnread(sessionKey, count) {
-      const row = scrollArea.querySelector(`[data-session="${sessionKey}"]`) as HTMLElement | null;
+    setUnread(agentId, count) {
+      const row = scrollArea.querySelector(`[data-agent="${agentId}"]`) as HTMLElement | null;
       if (!row) return;
       row.classList.toggle('unread', count > 0);
       const badge = row.querySelector('.inbox-conv-badge');

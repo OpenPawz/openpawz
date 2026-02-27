@@ -94,6 +94,30 @@
   color: var(--text-secondary);
 }
 
+/* Session select dropdown in thread header */
+.inbox-thread-actions select {
+  padding: 4px 8px;
+  background: var(--bg-input, var(--bg-secondary));
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--type-label);
+  font-family: var(--font-pixel);
+  cursor: pointer;
+  outline: none;
+  max-width: 180px;
+  text-overflow: ellipsis;
+}
+
+.inbox-thread-actions select:hover {
+  border-color: var(--accent-muted);
+  color: var(--text-primary);
+}
+
+.inbox-thread-actions select:focus {
+  border-color: var(--accent);
+}
+
 .inbox-thread-body {
   flex: 1;
   display: flex;

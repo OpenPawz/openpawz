@@ -11,9 +11,7 @@ import { confirmModal, promptModal } from '../../components/helpers';
 import * as AgentsModule from '../../views/agents';
 import {
   type ConversationEntry,
-  sortConversations,
   filterConversations,
-  filterByTab,
   truncatePreview,
 } from '../atoms/inbox';
 import { createConversationList, type ConversationListController } from '../molecules/conversation_list';
@@ -58,7 +56,7 @@ export function mountInbox(): void {
   // ── Build molecules ────────────────────────────────────────────────────
 
   _list = createConversationList({
-    onSelect: handleSelectConversation,
+    onSelect: handleSelectAgent,
     onNewChat: handleNewChat,
     onNewGroup: handleNewGroup,
     onFilter: handleFilter,
@@ -69,6 +67,7 @@ export function mountInbox(): void {
   _thread = createInboxThread({
     onToggleSidebar: handleToggleSidebar,
     modelSelectEl: $('chat-model-select') as HTMLSelectElement | null,
+    sessionSelectEl: $('chat-session-select') as HTMLSelectElement | null,
     onNewChat: handleNewChat,
     onSwapAgent: handleSwapAgent,
   });
@@ -133,19 +132,21 @@ export function mountInbox(): void {
 
   _mounted = true;
 
-  // Initial population — await so conversations are rendered before user sees empty state
+  // Initial population — await so agents are rendered before user sees empty state
   refreshConversationList().then(() => {
-    // Auto-select the current session if one is active
-    if (appState.currentSessionKey && _thread) {
+    // Auto-select the current agent if one is active
+    const currentAgent = AgentsModule.getCurrentAgent();
+    if (currentAgent && _thread) {
       appState.inbox.activeSessionKey = appState.currentSessionKey;
       _thread.showThread();
       updateThreadHeader();
       _list?.render(
-        sortConversations(filterByTab(appState.inbox.conversations, appState.inbox.filter)),
-        appState.currentSessionKey,
+        appState.inbox.conversations,
+        currentAgent.id,
         appState.inbox.filter,
       );
       updateSwapAgents();
+      renderSessionSelect();
     }
   });
 
@@ -234,14 +235,17 @@ export async function refreshConversationList(): Promise<void> {
 
     appState.inbox.conversations = entries;
 
-    // Apply filter + search
-    let filtered = filterByTab(entries, appState.inbox.filter);
+    // Pass all conversations — the list molecule groups by agent internally
+    let filtered = entries;
     if (appState.inbox.searchQuery) {
       filtered = filterConversations(filtered, appState.inbox.searchQuery);
     }
-    const sorted = sortConversations(filtered);
 
-    _list.render(sorted, appState.inbox.activeSessionKey, appState.inbox.filter);
+    // Determine active agent ID
+    const currentAgent = AgentsModule.getCurrentAgent();
+    const activeAgentId = currentAgent?.id ?? null;
+
+    _list.render(filtered, activeAgentId, appState.inbox.filter);
 
     // Update thread header if we have an active conversation
     updateThreadHeader();
@@ -289,45 +293,40 @@ export function isInboxMounted(): boolean {
 
 // ── Handlers ─────────────────────────────────────────────────────────────
 
-async function handleSelectConversation(sessionKey: string): Promise<void> {
+async function handleSelectAgent(agentId: string): Promise<void> {
   if (!_thread || !_sidebar) return;
 
-  appState.inbox.activeSessionKey = sessionKey;
-  appState.currentSessionKey = sessionKey;
-
-  // Find the conversation entry
-  const conv = appState.inbox.conversations.find((c) => c.sessionKey === sessionKey);
-  if (!conv) return;
-
-  // Switch agent if needed
+  // Switch to this agent (loads its last session or creates blank)
   const currentAgent = AgentsModule.getCurrentAgent();
-  if (currentAgent?.id !== conv.agentId) {
-    await switchToAgent(conv.agentId);
-  } else {
-    // Just load the history for this session
-    renderSessionSelect();
-    await loadChatHistory(sessionKey);
+  if (currentAgent?.id !== agentId) {
+    await switchToAgent(agentId);
   }
 
-  // Update agent-session map
-  agentSessionMap.set(conv.agentId, sessionKey);
-  persistAgentSessionMap();
+  // Render the session select dropdown so user can switch between sessions
+  renderSessionSelect();
+
+  // Update active session tracking
+  appState.inbox.activeSessionKey = appState.currentSessionKey;
 
   // Show thread
   _thread.showThread();
   updateThreadHeader();
 
-  // Refresh list to update active state
+  // Determine active agent ID and refresh list
+  const activeAgent = AgentsModule.getCurrentAgent();
   _list?.render(
-    sortConversations(filterByTab(appState.inbox.conversations, appState.inbox.filter)),
-    sessionKey,
+    appState.inbox.conversations,
+    activeAgent?.id ?? null,
     appState.inbox.filter,
   );
 
-  // Clear unread
-  const entry = appState.inbox.conversations.find((c) => c.sessionKey === sessionKey);
-  if (entry) entry.unread = 0;
-  _list?.setUnread(sessionKey, 0);
+  // Clear unread for all conversations belonging to this agent
+  for (const conv of appState.inbox.conversations) {
+    if (conv.agentId === agentId && conv.unread > 0) {
+      conv.unread = 0;
+    }
+  }
+  _list?.setUnread(agentId, 0);
 
   // Populate swap agent dropdown
   updateSwapAgents();
@@ -508,6 +507,7 @@ async function handleSwapAgent(agentId: string): Promise<void> {
 
   refreshConversationList();
   updateSwapAgents();
+  renderSessionSelect();
   showToast(`Swapped to ${agent?.name ?? agentId}`, 'success');
 }
 
@@ -524,11 +524,12 @@ function updateSwapAgents(): void {
 
 function handleFilter(filter: string): void {
   appState.inbox.filter = filter as 'all' | 'unread' | 'agents' | 'groups';
-  const filtered = filterByTab(appState.inbox.conversations, appState.inbox.filter);
-  const searched = appState.inbox.searchQuery
-    ? filterConversations(filtered, appState.inbox.searchQuery)
-    : filtered;
-  _list?.render(sortConversations(searched), appState.inbox.activeSessionKey, appState.inbox.filter);
+  let filtered = appState.inbox.conversations;
+  if (appState.inbox.searchQuery) {
+    filtered = filterConversations(filtered, appState.inbox.searchQuery);
+  }
+  const currentAgent = AgentsModule.getCurrentAgent();
+  _list?.render(filtered, currentAgent?.id ?? null, appState.inbox.filter);
 }
 
 function handleSearch(query: string): void {
@@ -684,8 +685,10 @@ function updateThreadHeader(): void {
 export function notifyStreamingChange(sessionKey: string, active: boolean): void {
   if (!_list || !_mounted) return;
   const conv = appState.inbox.conversations.find((c) => c.sessionKey === sessionKey);
-  if (conv) conv.isStreaming = active;
-  _list.setStreaming(sessionKey, active);
+  if (conv) {
+    conv.isStreaming = active;
+    _list.setStreaming(conv.agentId, active);
+  }
   if (sessionKey === appState.inbox.activeSessionKey) {
     _thread?.setStreaming(active);
   }
@@ -700,7 +703,11 @@ export function notifyNewMessage(sessionKey: string): void {
   const conv = appState.inbox.conversations.find((c) => c.sessionKey === sessionKey);
   if (conv) {
     conv.unread += 1;
-    _list.setUnread(sessionKey, conv.unread);
+    // Sum total unread for this agent
+    const agentUnread = appState.inbox.conversations
+      .filter((c) => c.agentId === conv.agentId)
+      .reduce((sum, c) => sum + c.unread, 0);
+    _list.setUnread(conv.agentId, agentUnread);
   }
 }
 

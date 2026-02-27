@@ -36,6 +36,8 @@ export interface InboxThreadCallbacks {
   onToggleSidebar: () => void;
   /** Model select element for thread header */
   modelSelectEl?: HTMLSelectElement | null;
+  /** Session select element for switching sessions */
+  sessionSelectEl?: HTMLSelectElement | null;
   /** New chat button */
   onNewChat?: () => void;
   /** Agent swap — called with the new agent ID */
@@ -109,6 +111,13 @@ export function createInboxThread(
   swapWrap.appendChild(swapBtn);
   swapWrap.appendChild(swapDropdown);
   actions.appendChild(swapWrap);
+
+  // Session select (switch between sessions for current agent)
+  if (callbacks.sessionSelectEl) {
+    callbacks.sessionSelectEl.style.maxWidth = '180px';
+    callbacks.sessionSelectEl.title = 'Switch session';
+    actions.appendChild(callbacks.sessionSelectEl);
+  }
 
   // Model select (moved to header)
   if (callbacks.modelSelectEl) {
