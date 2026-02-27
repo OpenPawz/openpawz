@@ -742,58 +742,8 @@ export function renderToday() {
     </div>
 
     <div class="cmd-grid bento-grid">
-      <!-- Row 1: Fleet + Skills + Emails -->
-      <div class="cmd-card bento-cell bento-span-4">
-        <div class="today-card-header">
-          <span class="today-card-title">AGENT FLEET</span>
-        </div>
-        <div class="today-card-body" id="cmd-fleet-body">
-          <span class="today-loading">Loading…</span>
-        </div>
-      </div>
-
-      <div class="cmd-card bento-cell bento-span-4">
-        <div class="today-card-header">
-          <span class="today-card-title">SKILLS</span>
-          <span class="today-card-count" id="cmd-skills-count">…</span>
-        </div>
-        <div class="today-card-body" id="cmd-skills-body">
-          <span class="today-loading">Loading…</span>
-        </div>
-      </div>
-
-      <!-- Row 2: Mail + Calendar -->
+      <!-- Row 1: Tasks + Calendar (your day) -->
       <div class="cmd-card bento-cell bento-span-6">
-        <div class="today-card-header">
-          <span class="today-card-title">UNREAD MAIL</span>
-        </div>
-        <div class="today-card-body" id="today-emails">
-          <span class="today-loading">Loading…</span>
-        </div>
-      </div>
-
-      <div class="cmd-card bento-cell bento-span-6">
-        <div class="today-card-header">
-          <span class="today-card-title">CALENDAR</span>
-        </div>
-        <div class="today-card-body" id="today-calendar">
-          <span class="today-loading">Loading…</span>
-        </div>
-      </div>
-
-      <!-- Integrations strip (full width) -->
-      <div class="cmd-card bento-cell bento-span-full">
-        <div class="today-card-header">
-          <span class="today-card-title">INTEGRATIONS</span>
-          <span class="today-card-count" id="cmd-integrations-count">…</span>
-        </div>
-        <div class="today-card-body" id="cmd-integrations-body">
-          <span class="today-loading">Loading…</span>
-        </div>
-      </div>
-
-      <!-- Tasks + Quick Actions side-by-side -->
-      <div class="cmd-card bento-cell bento-span-8">
         <div class="today-card-header">
           <span class="today-card-title">TASKS</span>
           <span class="today-card-count">${pendingTasks.length}</span>
@@ -820,7 +770,26 @@ export function renderToday() {
         </div>
       </div>
 
-      <div class="cmd-card bento-cell bento-span-4">
+      <div class="cmd-card bento-cell bento-span-6">
+        <div class="today-card-header">
+          <span class="today-card-title">CALENDAR</span>
+        </div>
+        <div class="today-card-body" id="today-calendar">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Row 2: Inbox + Quick Actions -->
+      <div class="cmd-card bento-cell bento-span-6">
+        <div class="today-card-header">
+          <span class="today-card-title">UNREAD MAIL</span>
+        </div>
+        <div class="today-card-body" id="today-emails">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <div class="cmd-card bento-cell bento-span-6">
         <div class="today-card-header">
           <span class="today-card-title">QUICK ACTIONS</span>
         </div>
@@ -837,8 +806,27 @@ export function renderToday() {
         </div>
       </div>
 
-      <!-- Activity + Heatmap -->
-      <div class="cmd-card bento-cell bento-span-6">
+      <!-- Row 3: Fleet + Skills + Activity -->
+      <div class="cmd-card bento-cell bento-span-4">
+        <div class="today-card-header">
+          <span class="today-card-title">AGENT FLEET</span>
+        </div>
+        <div class="today-card-body" id="cmd-fleet-body">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <div class="cmd-card bento-cell bento-span-4">
+        <div class="today-card-header">
+          <span class="today-card-title">SKILLS</span>
+          <span class="today-card-count" id="cmd-skills-count">…</span>
+        </div>
+        <div class="today-card-body" id="cmd-skills-body">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <div class="cmd-card bento-cell bento-span-4">
         <div class="today-card-header">
           <span class="today-card-title">ACTIVITY</span>
         </div>
@@ -847,6 +835,18 @@ export function renderToday() {
         </div>
       </div>
 
+      <!-- Integrations (full width) -->
+      <div class="cmd-card bento-cell bento-span-full">
+        <div class="today-card-header">
+          <span class="today-card-title">INTEGRATIONS</span>
+          <span class="today-card-count" id="cmd-integrations-count">…</span>
+        </div>
+        <div class="today-card-body" id="cmd-integrations-body">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <!-- Row 5: Heatmap + Capabilities -->
       <div class="cmd-card bento-cell bento-span-6">
         <div class="today-card-header">
           <span class="today-card-title">30-DAY HEATMAP</span>
@@ -856,8 +856,7 @@ export function renderToday() {
         </div>
       </div>
 
-      <!-- Capabilities (full width) -->
-      <div class="cmd-card bento-cell bento-span-full capabilities-card">
+      <div class="cmd-card bento-cell bento-span-6 capabilities-card">
         <div class="today-card-header">
           <span class="today-card-title">CAPABILITIES</span>
         </div>
