@@ -3,8 +3,7 @@
 // Factory function that constructs a complete mini-hub DOM tree and returns
 // a MiniHubController. Composes chat_renderer + chat_input molecules.
 
-import type { MiniHubConfig, MiniHubController } from '../atoms/mini-hub';
-import { buildSquadAgentMap } from '../atoms/mini-hub';
+import { buildSquadAgentMap, type MiniHubConfig, type MiniHubController } from '../atoms/mini-hub';
 import type { MessageWithAttachments } from '../../state/index';
 import { icon, populateModelSelect } from '../../components/helpers';
 import { spriteAvatar } from '../../views/agents/atoms';
