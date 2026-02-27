@@ -159,9 +159,13 @@ export function createConversationList(
       visible = filterConversations(visible, _searchQuery);
     }
 
-    const groups = groupByAgent(visible);
+    // Separate group chats from direct conversations
+    const directConvs = visible.filter((c) => c.kind !== 'group');
+    const groupConvs = visible.filter((c) => c.kind === 'group');
 
-    if (groups.length === 0) {
+    const agentGroups = groupByAgent(directConvs);
+
+    if (agentGroups.length === 0 && groupConvs.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'inbox-conv-empty';
       empty.innerHTML = `<span class="ms">smart_toy</span><span>No agents</span>`;
@@ -171,9 +175,24 @@ export function createConversationList(
 
     const frag = document.createDocumentFragment();
     const now = Date.now();
-    for (const group of groups) {
+
+    // Render agent rows
+    for (const group of agentGroups) {
       frag.appendChild(buildAgentRow(group, now));
     }
+
+    // Render group chat rows (separate section)
+    if (groupConvs.length > 0) {
+      const groupHeader = document.createElement('div');
+      groupHeader.className = 'inbox-section-header';
+      groupHeader.innerHTML = `<span class="ms" style="font-size:14px">group</span> Groups`;
+      frag.appendChild(groupHeader);
+
+      for (const conv of groupConvs) {
+        frag.appendChild(buildGroupRow(conv, now));
+      }
+    }
+
     scrollArea.appendChild(frag);
   }
 
@@ -245,6 +264,78 @@ export function createConversationList(
 
     // Click handler — select agent
     row.addEventListener('click', () => callbacks.onSelect(group.agentId));
+
+    return row;
+  }
+
+  function buildGroupRow(conv: ConversationEntry, now: number): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'inbox-conv-row group';
+    row.dataset.agent = conv.agentId;
+    if (conv.unread > 0) row.classList.add('unread');
+
+    // Avatar with group overlay
+    const avatar = document.createElement('div');
+    avatar.className = 'inbox-conv-avatar';
+    avatar.style.borderColor = conv.agentColor;
+    const avatarContent = AgentsModule.spriteAvatar(conv.agentAvatar, 24);
+    if (avatarContent.startsWith('<img') || avatarContent.startsWith('<svg')) {
+      avatar.innerHTML = avatarContent;
+    } else {
+      avatar.textContent = conv.agentAvatar;
+    }
+    // Group icon overlay
+    const groupIcon = document.createElement('span');
+    groupIcon.className = 'ms inbox-conv-group-icon';
+    groupIcon.textContent = 'group';
+    avatar.appendChild(groupIcon);
+    if (conv.isStreaming) {
+      const dot = document.createElement('span');
+      dot.className = 'streaming-dot';
+      avatar.appendChild(dot);
+    }
+    row.appendChild(avatar);
+
+    // Body
+    const body = document.createElement('div');
+    body.className = 'inbox-conv-body';
+
+    const topRow = document.createElement('div');
+    topRow.className = 'inbox-conv-top';
+    const name = document.createElement('span');
+    name.className = 'inbox-conv-name';
+    name.textContent = conv.label || 'Group Chat';
+    const time = document.createElement('span');
+    time.className = 'inbox-conv-time';
+    time.textContent = conv.lastTs ? formatRelativeTime(conv.lastTs, now) : '';
+    topRow.appendChild(name);
+    topRow.appendChild(time);
+
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'inbox-conv-bottom';
+    const preview = document.createElement('span');
+    preview.className = 'inbox-conv-preview';
+    if (conv.lastMessage) {
+      const rolePrefix = conv.lastRole === 'user' ? 'You: ' : '';
+      preview.textContent = rolePrefix + truncatePreview(conv.lastMessage);
+    } else {
+      const memberCount = conv.members?.length ?? 0;
+      preview.textContent = memberCount > 0 ? `${memberCount} agents` : 'No messages yet';
+    }
+    bottomRow.appendChild(preview);
+    if (conv.unread > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'inbox-conv-badge';
+      badge.textContent = String(conv.unread);
+      bottomRow.appendChild(badge);
+    }
+
+    body.appendChild(topRow);
+    body.appendChild(bottomRow);
+    row.appendChild(body);
+
+    // Click — select the primary agent for this group
+    row.addEventListener('click', () => callbacks.onSelect(conv.agentId));
 
     return row;
   }

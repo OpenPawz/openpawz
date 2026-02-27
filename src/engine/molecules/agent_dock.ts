@@ -9,7 +9,7 @@ import { escAttr } from '../../components/helpers';
 
 // ── Constants ────────────────────────────────────────────────────────────
 
-const MAX_VISIBLE_AVATARS = 5;
+const MAX_VISIBLE_AVATARS = 12;
 
 // ── Factory ──────────────────────────────────────────────────────────────
 
@@ -30,6 +30,7 @@ export function createAgentDock(
   let destroyed = false;
   let agents: AgentDockEntry[] = [];
   let collapsed = localStorage.getItem('paw-minihub-dock-collapsed') === 'true';
+  let expanded = false; // whether overflow agents are shown
 
   // Track active hubs and unread counts
   const activeHubs = new Map<string, string>(); // hubId → agentId
@@ -62,8 +63,8 @@ export function createAgentDock(
     const toggleIcon = collapsed ? 'left_panel_open' : 'right_panel_close';
 
     // Build avatar items
-    const displayAgents = visibleAgents.slice(0, MAX_VISIBLE_AVATARS);
-    const overflowCount = Math.max(0, visibleAgents.length - MAX_VISIBLE_AVATARS);
+    const displayAgents = expanded ? visibleAgents : visibleAgents.slice(0, MAX_VISIBLE_AVATARS);
+    const overflowCount = expanded ? 0 : Math.max(0, visibleAgents.length - MAX_VISIBLE_AVATARS);
 
     const itemsHtml = displayAgents
       .map((a) => {
@@ -106,6 +107,12 @@ export function createAgentDock(
         const agentId = (item as HTMLElement).dataset.agentId;
         if (agentId) onAvatarClick(agentId);
       });
+    });
+
+    // Expand button — show all agents
+    dockEl.querySelector('.agent-dock-expand')?.addEventListener('click', () => {
+      expanded = true;
+      render();
     });
 
     dockEl.querySelector('.agent-dock-new-group')?.addEventListener('click', () => {

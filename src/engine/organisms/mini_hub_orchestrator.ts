@@ -3,8 +3,7 @@
 // Lifecycle coordinator: creates/destroys mini-hubs, wires event bus
 // subscribers, manages the agent dock, and handles persistence.
 
-import type { MiniHubController, AgentDockController } from '../atoms/mini-hub';
-import { SQUAD_COLORS } from '../atoms/mini-hub';
+import { SQUAD_COLORS, type MiniHubController, type AgentDockController } from '../atoms/mini-hub';
 import type { Agent } from '../../types';
 
 import {
@@ -530,11 +529,24 @@ async function _handleSend(hubId: string, content: string, attachments: File[]) 
   const agent = _getAgents?.().find((a) => a.id === hub.agentId);
   if (!agent) return;
 
-  // Add user message to feed
+  // Build local attachment previews for the user message
+  const localAttachments: Array<{
+    name: string;
+    mimeType: string;
+    url?: string;
+    data?: string;
+  }> = attachments.map((file) => ({
+    name: file.name,
+    mimeType: file.type || 'application/octet-stream',
+    url: URL.createObjectURL(file),
+  }));
+
+  // Add user message to feed (with attachment previews)
   const userMsg: MessageWithAttachments = {
     role: 'user',
     content,
     timestamp: new Date(),
+    attachments: localAttachments.length > 0 ? localAttachments : undefined,
   };
   live.ctrl.appendMessage(userMsg);
   hub.messages.push(userMsg);
