@@ -147,7 +147,7 @@ async fn run_worker_loop(
     provider: &AnyProvider,
     model: &str,
     messages: &mut Vec<Message>,
-    tools: &mut Vec<ToolDefinition>,
+    tools: &mut [ToolDefinition],
     agent_id: &str,
 ) -> Result<String, String> {
     for round in 1..=WORKER_MAX_ROUNDS {

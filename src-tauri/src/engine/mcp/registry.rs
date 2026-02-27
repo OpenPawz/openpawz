@@ -254,7 +254,7 @@ fn pascal_to_snake(name: &str) -> String {
             // - Next char is lowercase (handles "HTTPRequest" → "http_request")
             if i > 0 && !result.ends_with('_') {
                 let prev = chars[i - 1];
-                let next_lower = chars.get(i + 1).map_or(false, |c| c.is_lowercase());
+                let next_lower = chars.get(i + 1).is_some_and(|c| c.is_lowercase());
                 if prev.is_lowercase() || prev.is_ascii_digit() || (prev.is_uppercase() && next_lower) {
                     result.push('_');
                 }

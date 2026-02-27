@@ -1,0 +1,34 @@
+/* OpenPawz docs — custom overrides
+   Remove all focus outlines/borders that appear when clicking
+   navigation items, links, and interactive elements. */
+
+*:focus,
+*:active,
+*:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: inherit !important;
+}
+
+a:focus,
+a:active,
+button:focus,
+button:active,
+summary:focus,
+summary:active,
+nav a:focus,
+nav a:active,
+nav button:focus,
+nav button:active,
+aside a:focus,
+aside a:active,
+[role="button"]:focus,
+[role="button"]:active,
+[role="tab"]:focus,
+[role="tab"]:active,
+[role="treeitem"]:focus,
+[role="treeitem"]:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: inherit !important;
+}

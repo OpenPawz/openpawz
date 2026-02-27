@@ -69,7 +69,9 @@ function generateSessionLabel(message: string): string {
 function teardownStream(sessionKey: string, reason: string): void {
   const stream = appState.activeStreams.get(sessionKey);
   if (!stream) return;
-  console.debug(`[chat] Tearing down stream for ${sessionKey.slice(0, 12) || '(empty)'}: ${reason}`);
+  console.debug(
+    `[chat] Tearing down stream for ${sessionKey.slice(0, 12) || '(empty)'}: ${reason}`,
+  );
   pawEngine.chatAbort(sessionKey).catch(() => {});
   if (stream.resolve) {
     stream.resolve(stream.content || `(${reason})`);

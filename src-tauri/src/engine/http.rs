@@ -272,6 +272,12 @@ pub struct RequestAuditLog {
     total: u64,
 }
 
+impl Default for RequestAuditLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RequestAuditLog {
     pub fn new() -> Self {
         Self {

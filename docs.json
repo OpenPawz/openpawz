@@ -22,6 +22,7 @@
   "appearance": {
     "default": "dark"
   },
+  "css": "/custom.css",
   "navbar": {
     "primary": {
       "type": "button",
