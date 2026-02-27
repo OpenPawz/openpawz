@@ -78,7 +78,7 @@ export function createAgentDock(
       .join('');
 
     dockEl.innerHTML = `
-      <button class="agent-dock-toggle" title="${collapsed ? 'Show agents' : 'Hide agents'}">
+      <button class="agent-dock-toggle${activeHubs.size > 0 ? ' has-active-hubs' : ''}" title="${collapsed ? 'Show agents' : 'Hide agents'}">
         <span class="ms ms-sm">${toggleIcon}</span>
       </button>
       <div class="agent-dock-items">

@@ -133,13 +133,13 @@
   text-decoration: underline;
 }
 .mini-chat-msg-assistant code {
-  background: rgba(0, 0, 0, 0.15);
+  background: var(--bg-tertiary);
   padding: 1px 4px;
   border-radius: 0;
   font-size: 12px;
 }
 .mini-chat-msg-assistant pre.mini-chat-code {
-  background: rgba(0, 0, 0, 0.2);
+  background: var(--bg-tertiary);
   padding: 6px 8px;
   border-radius: 0;
   font-size: 11px;
@@ -304,7 +304,7 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: #000;
+  background: var(--bg-primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -384,7 +384,7 @@
   background: var(--bg-primary);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
   opacity: 0;
   transform: translateY(16px) scale(0.97);
@@ -535,12 +535,12 @@
 /* ── Streaming border glow ── */
 .mini-hub-streaming {
   border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent), 0 8px 32px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-lg);
 }
 
 /* ── Drag-and-drop overlay ── */
 .mini-hub-messages.drag-active {
-  background: rgba(var(--accent-rgb, 200, 50, 50), 0.08);
+  background: var(--accent-subtle);
   outline: 2px dashed var(--accent);
   outline-offset: -4px;
 }
@@ -571,4 +571,48 @@
 .mini-hub-input-area .attachment-chip {
   font-size: 11px;
   padding: 2px 6px;
+}
+
+/* ═══ Multi-Agent (Squad) Message Styling ═══ */
+
+/* Colored agent prefix in squad messages */
+.mini-hub-messages .message-prefix {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  transition: color 0.15s;
+}
+
+/* Squad avatar inline (next to agent name in messages) */
+.squad-avatar-inline {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+  display: inline-block;
+}
+
+/* ═══ Agent Dock — Focus & Active Enhancements ═══ */
+
+/* Active hub ring with subtle glow */
+.agent-dock-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-subtle);
+}
+
+/* Hover scale-up */
+.agent-dock-item {
+  transition: border-color 0.15s, transform 0.15s;
+}
+.agent-dock-item:hover {
+  transform: scale(1.08);
+}
+.agent-dock-item:active {
+  transform: scale(0.96);
+}
+
+/* Dock toggle — accent glow when hubs are open */
+.agent-dock-toggle.has-active-hubs {
+  border-color: var(--accent-muted);
+  color: var(--accent);
 }
