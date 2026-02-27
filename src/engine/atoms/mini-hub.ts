@@ -81,10 +81,12 @@ export interface MiniHubController {
 
   // ── Model ────────────────────────────────────────────────────────────
 
-  /** Set the selected model key. */
+  /** Set the selected model key. Adds a ✓ confirmed option if not in list. */
   setModel(modelKey: string): void;
   /** Get the currently selected model key. */
   getModel(): string;
+  /** Populate the model select with provider-grouped options. */
+  populateModels(providers: Array<{ id: string; kind: string; default_model?: string }>): void;
 
   // ── Window state ─────────────────────────────────────────────────────
 

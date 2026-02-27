@@ -50,6 +50,9 @@ let _dock: AgentDockController | null = null;
 let _getAgents: (() => Agent[]) | null = null;
 let _initialized = false;
 
+/** Cached providers for model select population (refreshed periodically). */
+let _cachedProviders: Array<{ id: string; kind: string; default_model?: string }> = [];
+
 // ── Public API ───────────────────────────────────────────────────────────
 
 /**
@@ -338,6 +341,9 @@ function _spawnController(
   }
 
   _liveHubs.set(hubId, { ctrl, unsubscribe });
+
+  // Populate model select from providers (async, best-effort)
+  _populateHubModels(ctrl);
 }
 
 // ── Internal: event bus subscription ─────────────────────────────────────
@@ -549,6 +555,50 @@ function _handleModelChange(hubId: string, model: string) {
   if (hub) {
     hub.modelOverride = model || null;
     persistHubs(appState.miniHubs);
+  }
+}
+
+// ── Internal: populate model select from providers ───────────────────────
+
+/**
+ * Populate a hub's model select with provider-grouped options.
+ * Uses a cached provider list; fetches from engine config if stale/empty.
+ */
+async function _populateHubModels(ctrl: MiniHubController): Promise<void> {
+  try {
+    if (_cachedProviders.length === 0) {
+      const cfg = await pawEngine.getConfig();
+      _cachedProviders = (cfg.providers ?? []).map((p) => ({
+        id: p.id,
+        kind: p.kind,
+        default_model: p.default_model,
+      }));
+    }
+    if (_cachedProviders.length > 0) {
+      ctrl.populateModels(_cachedProviders);
+    }
+  } catch {
+    // Best-effort — hub still works with just Default option
+  }
+}
+
+/**
+ * Refresh the cached provider list (call when engine config changes).
+ * Re-populates all live hubs' model selects.
+ */
+export async function refreshHubModels(): Promise<void> {
+  try {
+    const cfg = await pawEngine.getConfig();
+    _cachedProviders = (cfg.providers ?? []).map((p) => ({
+      id: p.id,
+      kind: p.kind,
+      default_model: p.default_model,
+    }));
+    for (const { ctrl } of _liveHubs.values()) {
+      ctrl.populateModels(_cachedProviders);
+    }
+  } catch {
+    // noop
   }
 }
 

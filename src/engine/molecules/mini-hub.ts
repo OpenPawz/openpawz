@@ -6,7 +6,7 @@
 import type { MiniHubConfig, MiniHubController } from '../atoms/mini-hub';
 import { buildSquadAgentMap } from '../atoms/mini-hub';
 import type { MessageWithAttachments } from '../../state/index';
-import { icon } from '../../components/helpers';
+import { icon, populateModelSelect } from '../../components/helpers';
 import { spriteAvatar } from '../../views/agents/atoms';
 import {
   renderMessages,
@@ -380,10 +380,30 @@ export function createMiniHub(
 
     setModel(modelKey: string) {
       currentModel = modelKey;
+      // If the model isn't already in the select, add it as a confirmed option
+      const exists = Array.from(modelSelect.options).some((o) => o.value === modelKey);
+      if (!exists && modelKey) {
+        const opt = document.createElement('option');
+        opt.value = modelKey;
+        opt.textContent = `\u2713 ${modelKey}`;
+        // Insert after default option
+        if (modelSelect.children.length > 1) {
+          modelSelect.insertBefore(opt, modelSelect.children[1]);
+        } else {
+          modelSelect.appendChild(opt);
+        }
+      }
       modelSelect.value = modelKey;
     },
 
     getModel: () => currentModel || config.modelOverride || '',
+
+    populateModels(providers: Array<{ id: string; kind: string; default_model?: string }>) {
+      populateModelSelect(modelSelect, providers, {
+        defaultLabel: 'Default',
+        currentValue: currentModel || '',
+      });
+    },
 
     setStreamingActive(active: boolean) {
       streamingActive = active;
