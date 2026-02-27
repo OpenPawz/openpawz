@@ -85,8 +85,8 @@
 .today-header-right {
   display: flex;
   flex-direction: column;
-  min-width: 220px;
-  max-width: 320px;
+  min-width: 280px;
+  max-width: 420px;
 }
 .today-usage-strip {
   display: flex;
@@ -121,13 +121,14 @@
 }
 .today-weather-cell {
   flex: 1;
-  padding: 8px 12px;
+  padding: 10px 14px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
   justify-content: center;
   font-family: var(--font-mono);
   font-size: var(--type-label);
   color: var(--text-secondary);
+  overflow: hidden;
 }
 .today-label {
   font-family: var(--font-mono);
@@ -518,33 +519,48 @@
 .today-weather-main {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 4px;
+  gap: 8px;
+  margin-bottom: 2px;
 }
 .today-weather-icon {
-  font-size: 32px;
+  font-size: 28px;
+  flex-shrink: 0;
 }
 .today-weather-temp {
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
   color: var(--text-primary);
+  white-space: nowrap;
 }
 .today-weather-desc {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .today-weather-details {
   display: flex;
-  gap: 12px;
-  font-size: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 11px;
   color: var(--text-muted);
-  margin-top: 6px;
+  margin-top: 4px;
+}
+.today-weather-details span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
 }
 .today-weather-location {
   font-size: 11px;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: 3px;
   opacity: 0.7;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Email items on today view */
