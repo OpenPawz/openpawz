@@ -1,12 +1,12 @@
 ---
 title: "The Foreman Protocol"
-description: "Low-Cost Tool Execution via Worker Models and Self-Describing MCP — a novel architecture for reducing cloud API costs from agent tool execution."
+description: "Low-Cost Tool Execution via Any Worker Model and Self-Describing MCP — a novel architecture for reducing tool execution costs by delegating to cheaper models."
 sidebarTitle: "The Foreman Protocol"
 ---
 
 # The Foreman Protocol
 
-**Bidirectional Access to 25,000+ Services via Local Models and Self-Describing MCP**
+**Bidirectional Access to 25,000+ Services via Worker Models and Self-Describing MCP**
 
 *Invented by Eli Bury for OpenPawz. Open source (MIT).*
 
@@ -124,7 +124,7 @@ No pre-training. No static configuration. No context window overflow.
 This means:
 - **Any new n8n community node is instantly accessible** — install the npm package, the MCP server exposes it, the Foreman can read from or write to it
 - **Zero configuration per service** — no prompt engineering, no few-shot examples, no fine-tuning
-- **Any local model works** — the Foreman just needs to follow JSON-RPC formatting, which any code-capable model can do
+- **Any model works** — the Foreman just needs to follow JSON-RPC formatting, which any code-capable model can do
 - **Reads are as natural as writes** — querying a database and sending a Slack message go through the same path
 
 ---
@@ -207,13 +207,13 @@ if tool_name.starts_with("mcp_") {
 }
 
 // delegate_to_worker checks for configured worker_model
-// If found: spawns mini agent loop with the local model
+// If found: spawns mini agent loop with the worker model (any provider)
 // If not: returns None (fallback to direct execution)
 ```
 
-### Worker Model Setup
+### Worker Model Setup (Ollama Example)
 
-The Foreman uses a custom Ollama Modelfile built on `qwen2.5-coder:7b`:
+When using a local Ollama model, the Foreman can use a custom Modelfile built on `qwen2.5-coder:7b`:
 
 ```dockerfile
 FROM qwen2.5-coder:7b
@@ -227,7 +227,7 @@ Low temperature ensures structured, deterministic tool calls. The 7B parameter m
 
 ---
 
-## Hardware Requirements
+## Model Requirements
 
 The Foreman can run **any model from any provider**:
 
@@ -260,7 +260,7 @@ Just chat normally. When your agent calls any MCP tool, the Foreman handles exec
 
 > "Generate a QR code for https://openpawz.ai"
 >
-> *Architect identifies the task → Librarian finds n8n QR code node → Foreman executes via MCP → QR code returned — tool execution ran entirely on your machine.*
+> *Architect identifies the task → Librarian finds n8n QR code node → Foreman executes via MCP → QR code returned — tool execution was handled by the worker model, not the expensive Architect.*
 
 ---
 
@@ -272,7 +272,7 @@ The Foreman Protocol and [The Librarian Method](/reference/librarian-method) are
 |---|---|---|
 | **Solves** | Tool discovery at scale | Service access cost and bidirectional reach |
 | **Question answered** | *Which* tool to use? | *How* to access any service without cloud costs? |
-| **Model used** | Embedding model (e.g. `nomic-embed-text`) | Any cheap model (local or cloud) |
+| **Model used** | Any embedding model (e.g. `nomic-embed-text` locally, or a cloud embedding API) | Any cheap model (local or cloud) |
 | **Works independently?** | Yes | Yes |
 | **Better together?** | The Librarian finds the right tool, then the Foreman executes it for free |
 
@@ -286,4 +286,4 @@ The Foreman Protocol was invented by **Eli Bury** as part of **OpenPawz** and is
 
 If you reference this work in academic papers or technical writing:
 
-> Bury, E. (2025). "The Foreman Protocol: Zero-Cost Tool Execution via Local Models and Self-Describing MCP." OpenPawz. https://github.com/OpenPawz/openpawz
+> Bury, E. (2025). "The Foreman Protocol: Low-Cost Tool Execution via Worker Models and Self-Describing MCP." OpenPawz. https://github.com/OpenPawz/openpawz

@@ -69,12 +69,12 @@ OpenPawz introduces two novel methods for scaling AI agent tool usage. Both were
 
 **Problem:** AI agents break when they have too many tools. Loading 25,000+ tool definitions into context is impossible, and keyword pre-filters guess wrong because they lack intent.
 
-**Solution:** The agent itself requests tools after understanding the user's intent. A local Ollama embedding model (`nomic-embed-text`) performs semantic search over the entire tool index and returns only the relevant tools — on demand, per round, at zero cost.
+**Solution:** The agent itself requests tools after understanding the user's intent. An embedding model performs semantic search over the entire tool index and returns only the relevant tools — on demand, per round. We recommend a local Ollama model like `nomic-embed-text` for zero cost, but any embedding model works.
 
 ```
 User: "Email John about the quarterly report"
   → Agent calls request_tools("email sending capabilities")   ← agent has intent
-  → Librarian (local, free): embeds query → cosine search → email_send, email_read
+  → Librarian (embedding model): embeds query → cosine search → email_send, email_read
   → Only relevant tools loaded instead of every available definition
 ```
 
@@ -82,20 +82,20 @@ User: "Email John about the quarterly report"
 
 📄 [Full case study: The Librarian Method](reference/librarian-method.mdx)
 
-### The Foreman Protocol — Zero-Cost Tool Execution
+### The Foreman Protocol — Low-Cost Tool Execution
 
 **Problem:** When a cloud LLM executes tools, the reasoning around formatting and calling them burns expensive tokens. The actual API calls (Slack, Trello, etc.) are free or cheap — but the LLM processing around them is not.
 
-**Solution:** A local Ollama model (`qwen2.5-coder:7b`) executes all MCP tool calls instead of the cloud LLM. The critical enabler is **MCP's self-describing schemas** — the MCP server tells the local model exactly how to call each tool. No pre-training. No configuration. Any new n8n community node is instantly executable.
+**Solution:** A cheaper worker model executes all MCP tool calls instead of the expensive Architect model. The critical enabler is **MCP's self-describing schemas** — the MCP server tells the worker model exactly how to call each tool. No pre-training. No configuration. Any new n8n community node is instantly executable. We recommend a local Ollama model like `qwen2.5-coder:7b` for zero cost, but any model from any provider works.
 
 ```
 Architect (Cloud LLM): "Send hello to #general" → calls mcp_slack_send_message
   → Engine intercepts mcp_* call
-  → Foreman (local Ollama, free): executes via MCP → n8n → Slack API
-  → Tool execution ran locally — no cloud tokens burned
+  → Foreman (worker model): executes via MCP → n8n → Slack API
+  → Tool execution handled by the cheapest capable model in the stack
 ```
 
-**Key insight:** MCP servers are self-describing. The local model doesn't need to know how to use 25,000+ integrations — MCP tells it at runtime.
+**Key insight:** MCP servers are self-describing. The worker model doesn't need to know how to use 25,000+ integrations — MCP tells it at runtime.
 
 📄 [Full case study: The Foreman Protocol](reference/foreman-protocol.mdx)
 
@@ -169,7 +169,7 @@ OpenPawz ships with **400+ built-in integrations** compiled into the Rust binary
 ```
 User: "Generate a QR code for my website"
   → Agent calls request_tools("QR code generation")
-  → Librarian (Ollama) finds n8n-nodes-base.qrCode
+  → Librarian (embedding model) finds n8n-nodes-base.qrCode
   → Auto-installs n8n community package (if needed)
   → Executes via MCP bridge
   → Returns QR code to user
@@ -199,7 +199,7 @@ User: "Generate a QR code for my website"
 | **Embedded n8n** | Auto-provisioned via Docker or npx — starts at launch, zero config |
 | **MCP Transport** | SSE + Stdio transports connect to n8n's MCP server |
 | **Community Nodes** | 1,000+ npm packages with 25,000+ node types — auto-installed on demand |
-| **Tool RAG** | Local Ollama embeddings discover the right integration via semantic search |
+| **Tool RAG** | Embedding model discovers the right integration via semantic search (local Ollama recommended) |
 | **Local Worker** | Ollama `qwen2.5-coder:7b` executes MCP tool calls — no cloud costs |
 
 ### 10 AI Providers

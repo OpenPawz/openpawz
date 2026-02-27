@@ -3,7 +3,7 @@
 > **Vision**: If a tool doesn't exist, build it on the fly. Every agent has access
 > to 25,000+ automations — they discover, install, and use them autonomously.
 >
-> **Architecture**: `Opus (Architect) → MCP → n8n Bridge → Qwen (Worker/Foreman)`
+> **Architecture**: `Architect (any LLM) → MCP → n8n Bridge → Worker/Foreman (any cheaper model)`
 >
 > **Status**: Phases 0–6 shipped. Phase 7 in progress.
 
@@ -24,7 +24,7 @@
 │  └──────────┬───────────────────────────────────┘               │
 │             │  Task Orders (structured JSON)                    │
 │  ┌──────────▼───────────────────────────────────┐               │
-│  │  WORKER / FOREMAN (Qwen 2.5 Coder / Ollama)  │              │
+│  │  WORKER / FOREMAN (Any model — e.g. Qwen 2.5 Coder / Ollama)  │              │
 │  │  • Executes MCP tool calls                    │              │
 │  │  • Handles n8n node installation              │              │
 │  │  • Manages JSON payloads & retries            │              │

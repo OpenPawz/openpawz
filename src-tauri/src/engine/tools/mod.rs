@@ -126,10 +126,10 @@ pub async fn execute_tool(
     let args: serde_json::Value = serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
 
     // fetch & exec: When a worker model is configured, delegate these to the
-    // local worker (Foreman) so the main model doesn't spend API tokens on
-    // data-fetching rounds. The worker runs on Ollama = zero cost.
+    // worker (Foreman) so the main model doesn't spend API tokens on
+    // data-fetching rounds. The worker is typically a cheaper model.
     if (name == "fetch" || name == "exec") && worker_delegate::has_worker(app_handle) {
-        info!("[engine] Delegating {} to Foreman (zero-cost)", name);
+        info!("[engine] Delegating {} to Foreman (worker model)", name);
         if let Some(worker_result) =
             worker_delegate::delegate_to_worker(tool_call, app_handle, agent_id).await
         {

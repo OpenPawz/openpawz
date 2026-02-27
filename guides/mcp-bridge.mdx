@@ -19,7 +19,7 @@ This is the feature that makes OpenPawz the most connected AI agent platform in 
 ```mermaid actions={false}
 graph TD
     A["User: 'Generate a QR code for my website'"] --> B["Agent calls request_tools()"]
-    B --> C["Librarian (Ollama)\nSemantic search over tool index"]
+    B --> C["Librarian (embedding model)\nSemantic search over tool index"]
     C --> D["Finds: n8n-nodes-base.qrCode"]
     D --> E{"Package installed?"}
     E -->|No| F["Auto-install via npm\ninside n8n container"]
@@ -81,7 +81,7 @@ When an agent needs a tool that requires an n8n community package:
 
 ## The Architect/Worker Pattern
 
-Cloud LLMs (Gemini, Claude, GPT) act as **Architects** — they plan and orchestrate. A local Ollama model acts as the **Worker** — it executes MCP tool calls at zero cost. This is wired directly into the main chat loop: every MCP tool call from your cloud AI is automatically intercepted and delegated to the local worker.
+Cloud LLMs (Gemini, Claude, GPT) act as **Architects** — they plan and orchestrate. A cheaper **Worker** model executes MCP tool calls at reduced cost (or zero cost if running locally on Ollama). This is wired directly into the main chat loop: every MCP tool call from your cloud AI is automatically intercepted and delegated to the worker. Any model from any provider can serve as the Worker — local Ollama is recommended for zero-cost execution.
 
 ```mermaid actions={false}
 graph LR
@@ -89,7 +89,7 @@ graph LR
         A["Plans task"] --> B["Identifies needed tools"]
         B --> C["Delegates to worker"]
     end
-    subgraph Local["Worker (Ollama qwen2.5-coder:7b)"]
+    subgraph Local["Worker (any model — e.g. Ollama, gpt-4o-mini)"]
         C --> D["Receives task + MCP tool schemas"]
         D --> E["Executes tool calls via MCP"]
         E --> F["Returns results"]
@@ -100,8 +100,8 @@ graph LR
 | Role | Model | Cost | Purpose |
 |------|-------|------|---------|
 | **Architect** | Gemini / Claude / GPT | Per-token | Planning, reasoning, user interaction |
-| **Worker** | Ollama `worker-qwen` (~4.7 GB) | $0 | MCP tool execution, structured I/O |
-| **Librarian** | Ollama `nomic-embed-text` | $0 | Semantic tool discovery (embeddings) |
+| **Worker** | Any cheaper model (e.g. Ollama `worker-qwen`, or cloud `gpt-4o-mini`) | $0 local / low cloud | MCP tool execution, structured I/O |
+| **Librarian** | Any embedding model (e.g. Ollama `nomic-embed-text`, or cloud embedding API) | $0 local / low cloud | Semantic tool discovery (embeddings) |
 
 ### How It Works in Practice
 
@@ -124,12 +124,18 @@ The Architect never touches the MCP layer directly. The Worker doesn't need pre-
 
 If no `worker_model` is configured in **Settings → Models → Model Routing**, MCP tool calls fall back to direct JSON-RPC execution (the engine calls MCP servers directly). This still works but means the Architect model handles tool call formatting, costing more tokens.
 
-### Setup
+### Setup (Ollama — Zero Cost)
 
 1. Install Ollama and pull the base model: `ollama pull qwen2.5-coder:7b`
 2. Go to **Settings → Advanced → Ollama** and click **Setup Worker Agent**
 3. In **Settings → Models → Model Routing**, set `worker_model` to `worker-qwen`
 4. That's it — all MCP tool calls now route through the free local worker
+
+### Setup (Cloud — Any Provider)
+
+1. Go to **Settings → Models → Model Routing**
+2. Set your Worker Model to any cheap model (e.g. `gpt-4o-mini`, `gemini-2.0-flash`, `claude-haiku-4-5`)
+3. All MCP tool calls now route through the cloud worker at a fraction of the Architect's cost
 
 ---
 
@@ -170,11 +176,11 @@ The MCP Bridge requires **zero configuration** for basic operation. Everything i
 |-------------|-----------|---------|
 | **Docker** | Recommended | Preferred n8n runtime (container isolation) |
 | **Node.js 18+** | Fallback | Used if Docker is not available (`npx n8n start`) |
-| **Ollama** | Required | Local worker model + embedding model |
+| **Ollama** | Recommended | Local worker model + embedding model (zero cost). Not required if using cloud models for both roles. |
 
-### Ollama Models
+### Ollama Models (Recommended for Zero Cost)
 
-Three Ollama models power the system:
+If using Ollama locally, three models power the system:
 
 ```bash
 # Worker model — executes MCP tool calls
@@ -225,7 +231,7 @@ Alternatively, agents can discover and install packages conversationally:
 | **Integrations** | 25,000+ | 7,000+ | 2,000+ | 400+ built-in |
 | **AI-driven** | Agents discover & execute | Manual setup | Manual setup | Manual setup |
 | **Auto-install** | On-demand, at runtime | Pre-configured | Pre-configured | Manual npm install |
-| **Cost** | $0 (local Ollama worker) | $20–600/mo | $9–300/mo | Free (self-hosted) |
+| **Cost** | $0 local / low cloud | $20–600/mo | $9–300/mo | Free (self-hosted) |
 | **Natural language** | "Generate a QR code" | Drag-and-drop | Drag-and-drop | Drag-and-drop |
 | **Privacy** | 100% local | Cloud | Cloud | Self-hosted option |
 | **Multi-agent** | Yes | No | No | No |
@@ -240,7 +246,7 @@ Alternatively, agents can discover and install packages conversationally:
 | SSE stream closes immediately | Expected if no MCP workflows are deployed yet. Install a community package first. |
 | "No MCP tools available" | Run `mcp_refresh` or restart the app. Check that n8n is healthy at `http://localhost:5678`. |
 | Community package install fails | Ensure n8n has network access. Check container logs: `docker logs openpawz-n8n`. |
-| Worker model not found | Run `ollama pull qwen2.5-coder:7b` to download the worker model. |
+| Worker model not found | If using Ollama, run `ollama pull qwen2.5-coder:7b`. Otherwise, configure any model as the worker in Settings → Models → Model Routing. |
 
 ---
 

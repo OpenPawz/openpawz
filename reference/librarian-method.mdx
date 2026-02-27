@@ -1,12 +1,12 @@
 ---
 title: "The Librarian Method"
-description: "Intent-Stated Tool Discovery via Local Embeddings — a novel approach to solving tool bloat in agentic AI systems."
+description: "Intent-Stated Tool Discovery via Embeddings — a novel approach to solving tool bloat in agentic AI systems."
 sidebarTitle: "The Librarian Method"
 ---
 
 # The Librarian Method
 
-**Intent-Stated Tool Discovery via Local Embeddings**
+**Intent-Stated Tool Discovery via Embeddings**
 
 *Invented by Eli Bury for OpenPawz. Open source (MIT).*
 
@@ -45,7 +45,7 @@ graph TD
         A["Understands user intent"]
         B["Calls request_tools() with natural language query"]
     end
-    subgraph Librarian["Librarian (Ollama · nomic-embed-text)"]
+    subgraph Librarian[\"Librarian (any embedding model)\"]
         C["Embeds the query → 768-dim vector"]
         D["Cosine similarity against tool index"]
         E["Domain expansion: siblings included"]
@@ -69,7 +69,7 @@ graph TD
 | Role | Implementation | Cost |
 |------|----------------|------|
 | **Patron** | Cloud LLM (Gemini, Claude, GPT) | Per-token (paid) |
-| **Librarian** | Ollama `nomic-embed-text` running locally | $0 |
+| **Librarian** | Any embedding model (e.g. Ollama `nomic-embed-text` locally, or a cloud embedding API) | $0 local / low cloud |
 | **Library** | In-memory `ToolIndex` with pre-computed embeddings | ~230 KB RAM |
 
 ### How It Works — Round by Round
@@ -137,7 +137,7 @@ The Librarian Method combines five properties that, to the best of our research,
 | Property | Description |
 |----------|-------------|
 | **Agent-stated intent** | The LLM writes the search query after understanding user intent — not a pre-filter on raw input |
-| **Local embeddings** | Zero-cost semantic search via Ollama, no API calls |
+| **Local embeddings** | Zero-cost semantic search via a local model (e.g. Ollama), or low-cost via any cloud embedding API |
 | **On-demand hot-loading** | Tools injected into the active agent round, not pre-configured |
 | **Domain expansion** | Sibling tools auto-included to reduce round trips |
 | **Scale-independent** | Works the same whether you have 50 tools or 50,000 |
@@ -146,7 +146,7 @@ The Librarian Method combines five properties that, to the best of our research,
 
 Academic work on tool retrieval for LLMs exists (ToolGen, ICLR 2025; ToolWeaver, ICLR 2026; ToolkenGPT, NeurIPS 2023), but these systems focus on fine-tuning LLMs to generate tool tokens or training retrieval models on tool documentation. They require expensive training pipelines and don't operate at the 25,000+ tool scale.
 
-The Librarian Method requires **zero training**. It uses off-the-shelf embedding models (nomic-embed-text) and works with any tool added to the index — including tools that didn't exist when the embedding model was trained.
+The Librarian Method requires **zero training**. It uses off-the-shelf embedding models (e.g. `nomic-embed-text`, OpenAI `text-embedding-3-small`, or any model that produces vector embeddings) and works with any tool added to the index — including tools that didn't exist when the embedding model was trained.
 
 ---
 
@@ -159,7 +159,7 @@ This has two compounding effects:
 1. **Lower token usage** — Fewer tool definitions means fewer tokens consumed per request, which directly reduces API costs regardless of which provider or model you use.
 2. **More room for conversation** — Context window space freed from tool schemas is available for actual conversation, memory, reasoning, and skill instructions.
 
-The embedding search itself runs entirely on your machine via Ollama and costs nothing.
+The embedding search itself is powered by any embedding model you configure. Running locally via Ollama costs nothing; cloud embedding APIs like OpenAI's `text-embedding-3-small` cost fractions of a cent per query.
 
 ---
 
@@ -202,7 +202,7 @@ The `ToolIndex` is built lazily on the first `request_tools` call — all regist
 
 ## Try It
 
-The Librarian Method is active by default in OpenPawz. No configuration needed — just have Ollama running with `nomic-embed-text` installed:
+The Librarian Method is active by default in OpenPawz. No configuration needed beyond having an embedding model available. For zero-cost local operation, have Ollama running with `nomic-embed-text` installed:
 
 ```bash
 ollama pull nomic-embed-text

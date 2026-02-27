@@ -64,16 +64,16 @@ After launching, OpenPawz opens to the Today dashboard. Go to **Settings → Pro
 
 ## Recommended: Ollama (local AI)
 
-Ollama powers three critical systems in OpenPawz: **zero-cost tool execution**, **semantic memory**, and **offline chat**. We strongly recommend installing it.
+Ollama powers three systems in OpenPawz: **low-cost tool execution**, **semantic memory**, and **offline chat**. We strongly recommend installing it for zero-cost local inference, but these roles can also be filled by cloud models from any provider.
 
 ```bash
 # Install Ollama
 curl -fsSL https://ollama.com/install.sh | sh
 
-# Worker model — executes MCP tool calls locally at $0 cost
+# Worker model — executes MCP tool calls (any model works; local = $0)
 ollama pull qwen2.5-coder:7b
 
-# Embedding model — semantic memory + tool discovery
+# Embedding model — semantic memory + tool discovery (any embedding model works; local = $0)
 ollama pull nomic-embed-text
 
 # Chat fallback — offline conversations when no API is available

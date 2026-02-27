@@ -368,7 +368,7 @@ Pawz uses **Tool RAG** (Retrieval-Augmented Generation for tools) to solve the "
                        │  request_tools("send email to john")
                        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  LIBRARIAN  (Ollama local — nomic-embed-text, free, ~50ms)      │
+│  LIBRARIAN  (Embedding model — e.g. Ollama nomic-embed-text, ~50ms)  │
 │                                                                  │
 │  1. Embed the query → 768-dim vector                            │
 │  2. Cosine similarity against tool index                         │
@@ -412,7 +412,7 @@ Round 3: Done ✅  (used 12 tools total, not 75)
 - **Domain expansion**: Matching `email_send` also returns `email_read` — siblings come together
 - **Round carryover**: Tools loaded in round N stay available in round N+1 (cleared per chat turn)
 - **Swarm bypass**: Swarm/orchestrated agents get all tools (they're autonomous, no time for discovery)
-- **Zero-cost search**: Uses the existing Ollama embedding pipeline — no API calls, no cloud costs
+- **Zero-cost search**: Uses the embedding pipeline (Ollama recommended) — no cloud costs when running locally
 
 **Token savings:** ~5,000–8,500 tokens per request, freeing ~25% of a 32K context window for actual conversation.
 
@@ -427,7 +427,7 @@ Round 3: Done ✅  (used 12 tools total, not 75)
 
 > *Invented by Eli Bury. [Full case study →](reference/foreman-protocol.mdx)*
 
-The MCP Bridge is the breakthrough that connects OpenPawz to **25,000+ integrations** via an embedded n8n engine. Instead of hard-coding tools, agents discover and execute any of n8n's community node types through the Model Context Protocol (MCP). The local worker model ("Foreman") executes all MCP tool calls at zero cost using self-describing MCP schemas.
+The MCP Bridge is the breakthrough that connects OpenPawz to **25,000+ integrations** via an embedded n8n engine. Instead of hard-coding tools, agents discover and execute any of n8n's community node types through the Model Context Protocol (MCP). A worker model (the "Foreman") executes all MCP tool calls using self-describing MCP schemas — any model from any provider works, with local Ollama models recommended for zero cost.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -436,15 +436,15 @@ The MCP Bridge is the breakthrough that connects OpenPawz to **25,000+ integrati
 │  "I need to generate a QR code..."                              │
 │  → request_tools("QR code generation")                          │
 │  → Librarian finds n8n-nodes-base.qrCode                        │
-│  → Spawns local worker to execute via MCP                       │
+│  → Spawns worker model to execute via MCP                        │
 └──────────────────────┬──────────────────────────────────────────┘
                        │  MCP tool call
                        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  LOCAL WORKER  (Ollama qwen2.5-coder:7b — free, ~4.7 GB)       │
+│  WORKER MODEL  (Any model — e.g. Ollama qwen2.5-coder:7b, ~4.7 GB)   │
 │                                                                  │
 │  Executes MCP tool calls against n8n                            │
-│  No cloud API costs for tool execution                          │
+│  Cheaper than the Architect — or free if running locally        │
 │  Handles structured input/output mapping                        │
 └──────────────────────┬──────────────────────────────────────────┘
                        │  JSON-RPC over SSE
@@ -476,7 +476,7 @@ The MCP Bridge is the breakthrough that connects OpenPawz to **25,000+ integrati
 - **Auto-registration** (`registry.rs`) — `register_n8n()` + `N8N_MCP_SERVER_ID` auto-registers n8n as an MCP server. `pascal_to_snake()` remaps n8n's PascalCase tool names to snake_case for LLM compatibility.
 - **Lazy ensure-ready** (`n8n.rs`) — `lazy_ensure_n8n()` checks n8n health before every community node install or MCP refresh. Ensures n8n is always available.
 - **On-demand auto-install** — `COMMUNITY_PACKAGE_MAP` maps node types to npm packages. When an agent needs a tool, the package is installed automatically.
-- **Architect/Worker split** — Cloud LLMs plan; local Ollama `qwen2.5-coder:7b` executes MCP calls. Zero cloud cost for tool execution.
+- **Architect/Worker split** — Cloud LLMs plan; a cheaper worker model (e.g. Ollama `qwen2.5-coder:7b` or any cloud model) executes MCP calls. Minimal or zero cost for tool execution.
 
 **Files:**
 - `engine/mcp/transport.rs` — `SseTransport`, `StdioTransport`, `McpTransportHandle`
