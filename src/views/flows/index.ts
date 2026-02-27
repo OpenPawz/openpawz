@@ -5,10 +5,12 @@
 
 import {
   type FlowGraph,
+  type FlowTemplate,
   createGraph,
   createNode as createNodeFn,
   serializeGraph,
   deserializeGraph,
+  instantiateTemplate,
 } from './atoms';
 import {
   setMoleculesState,
@@ -18,9 +20,11 @@ import {
   renderToolbar,
   renderFlowList,
   renderNodePanel,
+  renderTemplateBrowser,
   markNodeNew,
 } from './molecules';
 import { parseFlowText } from './parser';
+import { FLOW_TEMPLATES } from './templates';
 import { createFlowExecutor, type FlowExecutorController } from './executor';
 import { createFlowChatReporter, type FlowChatReporterController } from './chat-reporter';
 
@@ -32,6 +36,7 @@ let _selectedNodeId: string | null = null;
 let _mounted = false;
 let _executor: FlowExecutorController | null = null;
 let _reporter: FlowChatReporterController | null = null;
+let _sidebarTab: 'flows' | 'templates' = 'flows';
 
 const STORAGE_KEY = 'openpawz-flows';
 
@@ -236,30 +241,56 @@ function updateFlowList() {
   const container = el('flows-list');
   if (!container) return;
 
-  renderFlowList(
-    container,
-    _graphs,
-    _activeGraphId,
-    (id) => {
-      _activeGraphId = id;
-      _selectedNodeId = null;
-      renderActiveGraph();
+  // Render tab switcher
+  const tabHtml = `<div class="flow-sidebar-tabs">
+    <button class="flow-sidebar-tab${_sidebarTab === 'flows' ? ' active' : ''}" data-tab="flows">Flows</button>
+    <button class="flow-sidebar-tab${_sidebarTab === 'templates' ? ' active' : ''}" data-tab="templates">Templates</button>
+  </div>`;
+
+  // Create a content area below tabs
+  container.innerHTML = `${tabHtml}<div class="flow-sidebar-content"></div>`;
+
+  // Wire tab clicks
+  container.querySelectorAll('.flow-sidebar-tab').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      _sidebarTab = (btn as HTMLElement).dataset.tab as 'flows' | 'templates';
       updateFlowList();
-    },
-    (id) => {
-      _graphs = _graphs.filter((g) => g.id !== id);
-      if (_activeGraphId === id) {
-        _activeGraphId = _graphs[0]?.id ?? null;
+    });
+  });
+
+  const content = container.querySelector('.flow-sidebar-content') as HTMLElement;
+  if (!content) return;
+
+  if (_sidebarTab === 'templates') {
+    renderTemplateBrowser(content, FLOW_TEMPLATES, (tpl: FlowTemplate) => {
+      instantiateFromTemplate(tpl);
+    });
+  } else {
+    renderFlowList(
+      content,
+      _graphs,
+      _activeGraphId,
+      (id) => {
+        _activeGraphId = id;
         _selectedNodeId = null;
-      }
-      persist();
-      renderActiveGraph();
-      updateFlowList();
-    },
-    () => {
-      newFlow();
-    },
-  );
+        renderActiveGraph();
+        updateFlowList();
+      },
+      (id) => {
+        _graphs = _graphs.filter((g) => g.id !== id);
+        if (_activeGraphId === id) {
+          _activeGraphId = _graphs[0]?.id ?? null;
+          _selectedNodeId = null;
+        }
+        persist();
+        renderActiveGraph();
+        updateFlowList();
+      },
+      () => {
+        newFlow();
+      },
+    );
+  }
 }
 
 function updateNodePanel() {
@@ -284,6 +315,21 @@ function newFlow() {
   _graphs.push(graph);
   _activeGraphId = graph.id;
   _selectedNodeId = null;
+  persist();
+  renderActiveGraph();
+  updateFlowList();
+}
+
+function instantiateFromTemplate(tpl: FlowTemplate) {
+  const graph = instantiateTemplate(tpl);
+  // Mark all nodes as new for materialise animation
+  for (const node of graph.nodes) {
+    markNodeNew(node.id);
+  }
+  _graphs.push(graph);
+  _activeGraphId = graph.id;
+  _selectedNodeId = null;
+  _sidebarTab = 'flows';
   persist();
   renderActiveGraph();
   updateFlowList();

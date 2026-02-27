@@ -17,9 +17,13 @@ import {
   hitTestPort,
   serializeGraph,
   deserializeGraph,
+  instantiateTemplate,
+  filterTemplates,
   type FlowGraph,
+  type FlowTemplate,
   NODE_DEFAULTS,
   GRID_SIZE,
+  TEMPLATE_CATEGORIES,
 } from './atoms';
 
 // ── Factory functions ──────────────────────────────────────────────────────
@@ -266,5 +270,119 @@ describe('hitTestPort', () => {
     const n = createNode('agent', 'A', 100, 100);
     const g = createGraph('Test', [n]);
     expect(hitTestPort(g, 500, 500)).toBeNull();
+  });
+});
+
+// ── Template Types & Functions ─────────────────────────────────────────────
+
+describe('TEMPLATE_CATEGORIES', () => {
+  it('has entries for all categories', () => {
+    const cats = ['ai', 'communication', 'devops', 'productivity', 'data', 'research', 'social', 'finance', 'support', 'custom'];
+    for (const cat of cats) {
+      expect(TEMPLATE_CATEGORIES[cat as keyof typeof TEMPLATE_CATEGORIES]).toBeDefined();
+      expect(TEMPLATE_CATEGORIES[cat as keyof typeof TEMPLATE_CATEGORIES].label).toBeTruthy();
+      expect(TEMPLATE_CATEGORIES[cat as keyof typeof TEMPLATE_CATEGORIES].icon).toBeTruthy();
+    }
+  });
+});
+
+describe('instantiateTemplate', () => {
+  const tpl: FlowTemplate = {
+    id: 'test-tpl',
+    name: 'Test Template',
+    description: 'A test',
+    category: 'ai',
+    tags: ['test'],
+    icon: 'bolt',
+    nodes: [
+      { kind: 'trigger', label: 'Start' },
+      { kind: 'agent', label: 'Process', config: { prompt: 'do stuff' } },
+      { kind: 'output', label: 'End' },
+    ],
+    edges: [
+      { fromIdx: 0, toIdx: 1 },
+      { fromIdx: 1, toIdx: 2 },
+    ],
+  };
+
+  it('creates a FlowGraph with fresh IDs', () => {
+    const g = instantiateTemplate(tpl);
+    expect(g.name).toBe('Test Template');
+    expect(g.description).toBe('A test');
+    expect(g.nodes).toHaveLength(3);
+    expect(g.edges).toHaveLength(2);
+  });
+
+  it('nodes get unique IDs', () => {
+    const g = instantiateTemplate(tpl);
+    const ids = g.nodes.map((n) => n.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it('edges reference correct node IDs', () => {
+    const g = instantiateTemplate(tpl);
+    expect(g.edges[0].from).toBe(g.nodes[0].id);
+    expect(g.edges[0].to).toBe(g.nodes[1].id);
+    expect(g.edges[1].from).toBe(g.nodes[1].id);
+    expect(g.edges[1].to).toBe(g.nodes[2].id);
+  });
+
+  it('preserves node config', () => {
+    const g = instantiateTemplate(tpl);
+    expect((g.nodes[1].config as Record<string, unknown>).prompt).toBe('do stuff');
+  });
+
+  it('applies layout to nodes', () => {
+    const g = instantiateTemplate(tpl);
+    // After layout, nodes should have non-zero x positions (layered)
+    expect(g.nodes[0].x).toBeGreaterThanOrEqual(0);
+    expect(g.nodes[2].x).toBeGreaterThan(g.nodes[0].x);
+  });
+
+  it('handles out-of-bounds edge indices gracefully', () => {
+    const badTpl: FlowTemplate = {
+      ...tpl,
+      edges: [{ fromIdx: 0, toIdx: 99 }],
+    };
+    const g = instantiateTemplate(badTpl);
+    expect(g.edges).toHaveLength(0);
+  });
+});
+
+describe('filterTemplates', () => {
+  const templates: FlowTemplate[] = [
+    { id: 'a', name: 'Daily Digest', description: 'Summarize channels', category: 'ai', tags: ['summary', 'daily'], icon: 'a', nodes: [], edges: [] },
+    { id: 'b', name: 'Email Responder', description: 'Auto-reply emails', category: 'communication', tags: ['email', 'reply'], icon: 'b', nodes: [], edges: [] },
+    { id: 'c', name: 'PR Reviewer', description: 'Review pull requests', category: 'devops', tags: ['github', 'review'], icon: 'c', nodes: [], edges: [] },
+  ];
+
+  it('returns all templates when category=all and no query', () => {
+    expect(filterTemplates(templates, 'all', '')).toHaveLength(3);
+  });
+
+  it('filters by category', () => {
+    expect(filterTemplates(templates, 'ai', '')).toHaveLength(1);
+    expect(filterTemplates(templates, 'devops', '')).toHaveLength(1);
+  });
+
+  it('filters by search query in name', () => {
+    expect(filterTemplates(templates, 'all', 'digest')).toHaveLength(1);
+  });
+
+  it('filters by search query in description', () => {
+    expect(filterTemplates(templates, 'all', 'pull request')).toHaveLength(1);
+  });
+
+  it('filters by search query in tags', () => {
+    expect(filterTemplates(templates, 'all', 'email')).toHaveLength(1);
+  });
+
+  it('combines category and query filters', () => {
+    expect(filterTemplates(templates, 'ai', 'digest')).toHaveLength(1);
+    expect(filterTemplates(templates, 'devops', 'digest')).toHaveLength(0);
+  });
+
+  it('is case-insensitive', () => {
+    expect(filterTemplates(templates, 'all', 'DAILY')).toHaveLength(1);
   });
 });

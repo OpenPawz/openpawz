@@ -75,6 +75,98 @@ export interface FlowGraph {
   updatedAt: string;
 }
 
+// ── Template Types ─────────────────────────────────────────────────────────
+
+export type FlowTemplateCategory =
+  | 'ai'
+  | 'communication'
+  | 'devops'
+  | 'productivity'
+  | 'data'
+  | 'research'
+  | 'social'
+  | 'finance'
+  | 'support'
+  | 'custom';
+
+export interface FlowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: FlowTemplateCategory;
+  tags: string[];
+  /** Icon name (Material Symbols) */
+  icon: string;
+  /** Node definitions (will be cloned with fresh IDs on instantiation) */
+  nodes: Array<{ kind: FlowNodeKind; label: string; description?: string; config?: Record<string, unknown> }>;
+  /** Edge definitions (by index: from nodes[fromIdx] → nodes[toIdx]) */
+  edges: Array<{ fromIdx: number; toIdx: number; kind?: EdgeKind; label?: string; condition?: string }>;
+}
+
+/** Category display metadata */
+export const TEMPLATE_CATEGORIES: Record<FlowTemplateCategory, { label: string; icon: string; color: string }> = {
+  ai:            { label: 'AI & Agents',       icon: 'psychology',      color: 'var(--kinetic-red, #FF4D4D)' },
+  communication: { label: 'Communication',     icon: 'forum',           color: 'var(--kinetic-sage, #8FB0A0)' },
+  devops:        { label: 'DevOps & CI',       icon: 'build_circle',    color: 'var(--kinetic-steel, #7A8B9A)' },
+  productivity:  { label: 'Productivity',      icon: 'task_alt',        color: 'var(--kinetic-gold, #D4A853)' },
+  data:          { label: 'Data & Transform',  icon: 'data_object',     color: 'var(--kinetic-steel, #7A8B9A)' },
+  research:      { label: 'Research',          icon: 'science',         color: 'var(--kinetic-sage, #8FB0A0)' },
+  social:        { label: 'Social & Content',  icon: 'share',           color: 'var(--kinetic-gold, #D4A853)' },
+  finance:       { label: 'Finance & Trading', icon: 'trending_up',     color: 'var(--kinetic-red, #FF4D4D)' },
+  support:       { label: 'Support',           icon: 'support_agent',   color: 'var(--kinetic-sage, #8FB0A0)' },
+  custom:        { label: 'Custom',            icon: 'tune',            color: 'var(--text-muted)' },
+};
+
+/**
+ * Instantiate a template into a FlowGraph with fresh IDs and layout.
+ */
+export function instantiateTemplate(template: FlowTemplate): FlowGraph {
+  const nodes: FlowNode[] = template.nodes.map((spec, _i) =>
+    createNode(spec.kind, spec.label, 0, 0, {
+      description: spec.description,
+      config: spec.config ? { ...spec.config } : {},
+    }),
+  );
+
+  const edges: FlowEdge[] = template.edges
+    .filter((e) => e.fromIdx < nodes.length && e.toIdx < nodes.length)
+    .map((e) =>
+      createEdge(nodes[e.fromIdx].id, nodes[e.toIdx].id, e.kind ?? 'forward', {
+        label: e.label,
+        condition: e.condition,
+      }),
+    );
+
+  const graph = createGraph(template.name, nodes, edges);
+  graph.description = template.description;
+  applyLayout(graph);
+  return graph;
+}
+
+/**
+ * Filter templates by category and/or search query.
+ */
+export function filterTemplates(
+  templates: FlowTemplate[],
+  category: FlowTemplateCategory | 'all',
+  query: string,
+): FlowTemplate[] {
+  let filtered = templates;
+  if (category !== 'all') {
+    filtered = filtered.filter((t) => t.category === category);
+  }
+  if (query.trim()) {
+    const q = query.toLowerCase();
+    filtered = filtered.filter(
+      (t) =>
+        t.name.toLowerCase().includes(q) ||
+        t.description.toLowerCase().includes(q) ||
+        t.tags.some((tag) => tag.toLowerCase().includes(q)),
+    );
+  }
+  return filtered;
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────
 
 export const NODE_DEFAULTS: Record<FlowNodeKind, { width: number; height: number; color: string; icon: string }> = {
