@@ -92,7 +92,8 @@ export function mountInbox(): void {
 
   // Move existing chat DOM elements into the thread body
   const chatMessages = $('chat-messages');
-  const chatInputContainer = $('chat-input-container');
+  // chat-input-container has class only (no id) — use querySelector
+  const chatInputContainer = chatView.querySelector('.chat-input-container') as HTMLElement | null;
   const compactionWarning = $('compaction-warning');
   const budgetAlert = $('session-budget-alert');
 
@@ -133,8 +134,21 @@ export function mountInbox(): void {
 
   _mounted = true;
 
-  // Initial population
-  refreshConversationList();
+  // Initial population — await so conversations are rendered before user sees empty state
+  refreshConversationList().then(() => {
+    // Auto-select the current session if one is active
+    if (appState.currentSessionKey && _thread) {
+      appState.inbox.activeSessionKey = appState.currentSessionKey;
+      _thread.showThread();
+      updateThreadHeader();
+      _list?.render(
+        sortConversations(filterByTab(appState.inbox.conversations, appState.inbox.filter)),
+        appState.currentSessionKey,
+        appState.inbox.filter,
+      );
+      updateSidebarMetrics();
+    }
+  });
 
   // Auto-refresh every 30 seconds
   _refreshTimer = setInterval(() => refreshConversationList(), 30_000);
