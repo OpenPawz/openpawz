@@ -22,9 +22,16 @@
   grid-area: hero;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 16px;
-  padding: 20px 24px 12px;
+  padding: 28px 32px 20px;
   border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.flows-hero-left {
+  flex: 1;
+  min-width: 200px;
 }
 
 .flows-hero-title {
@@ -33,11 +40,55 @@
   color: var(--text-primary);
   letter-spacing: -0.03em;
   font-family: var(--font-pixel, 'Share Tech Mono', monospace);
+  margin: 0;
 }
 
 .flows-hero-sub {
   font-size: var(--type-body);
   color: var(--text-muted);
+  margin: 4px 0 0;
+}
+
+.flows-hero-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.flows-hero-stat {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  min-width: 80px;
+}
+
+.flows-hero-stat-icon {
+  font-size: 20px;
+  color: var(--kinetic-red, #FF4D4D);
+}
+
+.flows-hero-stat-val {
+  font-size: 18px;
+  font-weight: 700;
+  font-family: var(--font-pixel, 'Share Tech Mono', monospace);
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.flows-hero-stat-lbl {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  line-height: 1;
+  margin-top: 2px;
+  font-family: var(--font-pixel, 'Share Tech Mono', monospace);
 }
 
 .flows-hero-text-input {
@@ -259,6 +310,81 @@
   font-family: var(--font-pixel, 'Share Tech Mono', monospace);
   font-size: var(--type-micro);
   color: var(--kinetic-red, #FF4D4D);
+}
+
+/* Flow list header actions row */
+.flow-list-actions {
+  display: flex;
+  gap: 4px;
+}
+
+/* ── Folders ────────────────────────────────────────────────────────────── */
+
+.flow-folder {
+  border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,0.04));
+}
+
+.flow-folder-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--text-secondary);
+  font-size: var(--type-label);
+  font-family: var(--font-pixel, 'Share Tech Mono', monospace);
+  letter-spacing: 0.04em;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.flow-folder-header:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.flow-folder-chevron {
+  font-size: 16px;
+  color: var(--text-tertiary);
+  transition: transform 0.2s ease;
+}
+
+.flow-folder-icon {
+  font-size: 16px;
+  color: var(--kinetic-gold, #D4A853);
+}
+
+.flow-folder-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-folder-count {
+  font-size: var(--type-micro);
+  color: var(--text-tertiary);
+  background: var(--bg-hover);
+  padding: 1px 5px;
+  border-radius: var(--radius-pill, 12px);
+}
+
+.flow-folder-items {
+  padding-left: 8px;
+}
+
+/* Drag-and-drop visual feedback */
+.flow-folder-drop-target {
+  background: rgba(143, 176, 160, 0.08);
+  border: 1px dashed var(--kinetic-sage, #8FB0A0);
+  border-radius: var(--radius-sm);
+}
+
+.flow-list-item.flow-list-dragging {
+  opacity: 0.4;
 }
 
 /* ── Toolbar ────────────────────────────────────────────────────────────── */
@@ -1112,6 +1238,23 @@
       "toolbar"
       "canvas"
       "panel";
+  }
+
+  .flows-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 20px 16px 14px;
+  }
+
+  .flows-hero-right {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .flows-hero-stat {
+    padding: 6px 10px;
+    min-width: 60px;
   }
 
   #flows-list {

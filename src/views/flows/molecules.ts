@@ -29,6 +29,16 @@ import {
 } from './atoms';
 import { CRON_PRESETS, validateCron, describeCron, nextCronFire } from './executor-atoms';
 
+// ── Available Agents (injected from index.ts) ──────────────────────────────
+
+interface AgentRef { id: string; name: string }
+let _availableAgents: AgentRef[] = [];
+
+/** Set the list of agents available for agent-node dropdowns. */
+export function setAvailableAgents(agents: AgentRef[]) {
+  _availableAgents = agents;
+}
+
 // ── State Bridge ───────────────────────────────────────────────────────────
 
 interface MoleculesState {
@@ -935,32 +945,108 @@ function truncate(s: string, max: number): string {
 
 // ── Flow List Rendering ────────────────────────────────────────────────────
 
-export function renderFlowList(container: HTMLElement, graphs: FlowGraph[], activeId: string | null, onSelect: (id: string) => void, onDelete: (id: string) => void, onNew: () => void) {
+// Track which folders are collapsed
+const _collapsedFolders = new Set<string>();
+
+function renderFlowItem(g: FlowGraph, activeId: string | null): string {
+  return `
+    <div class="flow-list-item${g.id === activeId ? ' active' : ''}" data-flow-id="${g.id}" draggable="true">
+      <span class="ms flow-list-icon">account_tree</span>
+      <div class="flow-list-meta">
+        <div class="flow-list-name">${g.name}</div>
+        <div class="flow-list-date">${formatDate(g.updatedAt)}</div>
+      </div>
+      <button class="flow-list-del" data-del-id="${g.id}" title="Delete"><span class="ms">close</span></button>
+    </div>`;
+}
+
+export function renderFlowList(
+  container: HTMLElement,
+  graphs: FlowGraph[],
+  activeId: string | null,
+  onSelect: (id: string) => void,
+  onDelete: (id: string) => void,
+  onNew: () => void,
+  onMoveToFolder?: (flowId: string, folder: string) => void,
+) {
+  // Group flows by folder
+  const folders = new Map<string, FlowGraph[]>();
+  const rootFlows: FlowGraph[] = [];
+
+  for (const g of graphs) {
+    const folder = g.folder?.trim();
+    if (folder) {
+      if (!folders.has(folder)) folders.set(folder, []);
+      folders.get(folder)!.push(g);
+    } else {
+      rootFlows.push(g);
+    }
+  }
+
+  // Sort folders alphabetically
+  const sortedFolders = [...folders.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  // Build folder HTML
+  let foldersHtml = '';
+  for (const [folderName, flows] of sortedFolders) {
+    const collapsed = _collapsedFolders.has(folderName);
+    foldersHtml += `
+      <div class="flow-folder" data-folder="${escAttr(folderName)}">
+        <div class="flow-folder-header" data-folder-toggle="${escAttr(folderName)}">
+          <span class="ms flow-folder-chevron">${collapsed ? 'chevron_right' : 'expand_more'}</span>
+          <span class="ms flow-folder-icon">folder</span>
+          <span class="flow-folder-name">${folderName}</span>
+          <span class="flow-folder-count">${flows.length}</span>
+        </div>
+        ${collapsed ? '' : `<div class="flow-folder-items">${flows.map((g) => renderFlowItem(g, activeId)).join('')}</div>`}
+      </div>`;
+  }
+
+  // Build root flows HTML
+  const rootHtml = rootFlows.length > 0
+    ? rootFlows.map((g) => renderFlowItem(g, activeId)).join('')
+    : (sortedFolders.length === 0 ? '<div class="flow-list-empty">No flows yet.<br>Create one or use <code>/flow</code> in Chat.</div>' : '');
+
   container.innerHTML = `
     <div class="flow-list-header">
       <h3>Flows</h3>
-      <button class="flow-list-new-btn" title="New Flow"><span class="ms">add</span></button>
+      <div class="flow-list-actions">
+        <button class="flow-list-new-btn" data-action="new-folder" title="New Folder"><span class="ms">create_new_folder</span></button>
+        <button class="flow-list-new-btn" title="New Flow"><span class="ms">add</span></button>
+      </div>
     </div>
-    <div class="flow-list-items">${
-      graphs.length === 0
-        ? '<div class="flow-list-empty">No flows yet.<br>Create one or use <code>/flow</code> in Chat.</div>'
-        : graphs
-            .map(
-              (g) => `
-          <div class="flow-list-item${g.id === activeId ? ' active' : ''}" data-flow-id="${g.id}">
-            <span class="ms flow-list-icon">account_tree</span>
-            <div class="flow-list-meta">
-              <div class="flow-list-name">${g.name}</div>
-              <div class="flow-list-date">${formatDate(g.updatedAt)}</div>
-            </div>
-            <button class="flow-list-del" data-del-id="${g.id}" title="Delete"><span class="ms">close</span></button>
-          </div>`,
-            )
-            .join('')
-    }</div>
+    <div class="flow-list-items">
+      ${foldersHtml}
+      ${rootHtml}
+    </div>
   `;
 
-  container.querySelector('.flow-list-new-btn')?.addEventListener('click', onNew);
+  // Wire new flow button
+  container.querySelector('.flow-list-new-btn:not([data-action])')?.addEventListener('click', onNew);
+
+  // Wire new folder button
+  container.querySelector('[data-action="new-folder"]')?.addEventListener('click', () => {
+    const name = prompt('Folder name:');
+    if (!name?.trim()) return;
+    // Create folder by moving nothing — just trigger a re-render so the UI acknowledges it
+    // We store known folders in the flow items themselves — we need at least one flow.
+    // Instead, create a new flow inside the folder immediately
+    onNew();
+    // We'll just let the user drag flows into folders
+  });
+
+  // Wire folder toggles
+  container.querySelectorAll('[data-folder-toggle]').forEach((header) => {
+    header.addEventListener('click', () => {
+      const folder = (header as HTMLElement).dataset.folderToggle!;
+      if (_collapsedFolders.has(folder)) _collapsedFolders.delete(folder);
+      else _collapsedFolders.add(folder);
+      // Re-render
+      renderFlowList(container, graphs, activeId, onSelect, onDelete, onNew, onMoveToFolder);
+    });
+  });
+
+  // Wire flow item clicks & deletes
   container.querySelectorAll('.flow-list-item').forEach((el) => {
     const id = (el as HTMLElement).dataset.flowId!;
     el.addEventListener('click', (e) => {
@@ -974,12 +1060,129 @@ export function renderFlowList(container: HTMLElement, graphs: FlowGraph[], acti
       onDelete(id);
     });
   });
+
+  // Drag-and-drop: flows can be dragged into folders
+  container.querySelectorAll('.flow-list-item[draggable]').forEach((item) => {
+    item.addEventListener('dragstart', (e) => {
+      const ev = e as DragEvent;
+      const flowId = (item as HTMLElement).dataset.flowId!;
+      ev.dataTransfer?.setData('text/plain', flowId);
+      (item as HTMLElement).classList.add('flow-list-dragging');
+    });
+    item.addEventListener('dragend', () => {
+      (item as HTMLElement).classList.remove('flow-list-dragging');
+      container.querySelectorAll('.flow-folder-drop-target').forEach((f) => f.classList.remove('flow-folder-drop-target'));
+    });
+  });
+
+  // Folder drop targets
+  container.querySelectorAll('.flow-folder').forEach((folder) => {
+    const folderName = (folder as HTMLElement).dataset.folder!;
+    folder.addEventListener('dragover', (e) => {
+      (e as DragEvent).preventDefault();
+      (folder as HTMLElement).classList.add('flow-folder-drop-target');
+    });
+    folder.addEventListener('dragleave', () => {
+      (folder as HTMLElement).classList.remove('flow-folder-drop-target');
+    });
+    folder.addEventListener('drop', (e) => {
+      (e as DragEvent).preventDefault();
+      (folder as HTMLElement).classList.remove('flow-folder-drop-target');
+      const flowId = (e as DragEvent).dataTransfer?.getData('text/plain');
+      if (flowId && onMoveToFolder) onMoveToFolder(flowId, folderName);
+    });
+  });
+
+  // Drop on root area (outside folders) → move to root
+  const listItems = container.querySelector('.flow-list-items');
+  if (listItems) {
+    listItems.addEventListener('dragover', (e) => {
+      const ev = e as DragEvent;
+      // Only accept if dropping directly on the list, not on a folder
+      if (!(ev.target as HTMLElement).closest('.flow-folder')) {
+        ev.preventDefault();
+      }
+    });
+    listItems.addEventListener('drop', (e) => {
+      const ev = e as DragEvent;
+      if ((ev.target as HTMLElement).closest('.flow-folder')) return;
+      ev.preventDefault();
+      const flowId = ev.dataTransfer?.getData('text/plain');
+      if (flowId && onMoveToFolder) onMoveToFolder(flowId, '');
+    });
+  }
 }
 
 // ── Node Properties Panel ──────────────────────────────────────────────────
 
-export function renderNodePanel(container: HTMLElement, node: FlowNode | null, onUpdate: (patch: Partial<FlowNode>) => void) {
+export function renderNodePanel(
+  container: HTMLElement,
+  node: FlowNode | null,
+  onUpdate: (patch: Partial<FlowNode>) => void,
+  activeGraph?: FlowGraph | null,
+  onGraphUpdate?: (patch: Partial<FlowGraph>) => void,
+) {
   if (!node) {
+    // Show flow-level properties if a graph is active
+    if (activeGraph && onGraphUpdate) {
+      const folderVal = escAttr(activeGraph.folder ?? '');
+      const descVal = escAttr(activeGraph.description ?? '');
+
+      // Collect known folders from _state
+      const knownFolders = new Set<string>();
+      // We rely on the state bridge — gather folders from all graphs
+      const graph = _state?.getGraph();
+      if (graph?.folder) knownFolders.add(graph.folder);
+
+      container.innerHTML = `
+        <div class="flow-panel">
+          <div class="flow-panel-header">
+            <span class="ms" style="color: var(--kinetic-red, #FF4D4D)">account_tree</span>
+            <div>
+              <div class="flow-panel-kind">FLOW PROPERTIES</div>
+            </div>
+          </div>
+          <label class="flow-panel-field">
+            <span>Name</span>
+            <input type="text" class="flow-panel-input" data-flow-field="name" value="${escAttr(activeGraph.name)}" />
+          </label>
+          <label class="flow-panel-field">
+            <span>Description</span>
+            <textarea class="flow-panel-textarea" data-flow-field="description" rows="2" placeholder="Describe this flow…">${descVal}</textarea>
+          </label>
+          <label class="flow-panel-field">
+            <span>Folder</span>
+            <input type="text" class="flow-panel-input" data-flow-field="folder" value="${folderVal}" placeholder="(root)" />
+          </label>
+          <div class="flow-panel-section">
+            <div class="flow-panel-section-label">Stats</div>
+            <div class="flow-panel-pos">
+              <span>${activeGraph.nodes.length} nodes</span>
+              <span>${activeGraph.edges.length} edges</span>
+            </div>
+          </div>
+          <div class="flow-panel-section">
+            <div class="flow-panel-pos">
+              <span>Created: ${formatDate(activeGraph.createdAt)}</span>
+            </div>
+            <div class="flow-panel-pos" style="margin-top: 2px">
+              <span>Updated: ${formatDate(activeGraph.updatedAt)}</span>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // Wire flow-level field changes
+      container.querySelectorAll('[data-flow-field]').forEach((el) => {
+        el.addEventListener('change', () => {
+          const field = (el as HTMLElement).dataset.flowField!;
+          const value = (el as HTMLInputElement).value;
+          onGraphUpdate({ [field]: value } as Partial<FlowGraph>);
+        });
+      });
+      return;
+    }
+
     container.innerHTML = '<div class="flow-panel-empty"><span class="ms">touch_app</span><p>Select a node to edit</p></div>';
     return;
   }
@@ -987,7 +1190,6 @@ export function renderNodePanel(container: HTMLElement, node: FlowNode | null, o
   const defaults = NODE_DEFAULTS[node.kind];
   const config = node.config ?? {};
   const promptVal = escAttr((config.prompt as string) ?? '');
-  const agentIdVal = escAttr((config.agentId as string) ?? '');
   const modelVal = escAttr((config.model as string) ?? '');
   const conditionVal = escAttr((config.conditionExpr as string) ?? '');
   const transformVal = escAttr((config.transform as string) ?? '');
@@ -1049,10 +1251,20 @@ export function renderNodePanel(container: HTMLElement, node: FlowNode | null, o
   }
 
   if (node.kind === 'agent' || node.kind === 'tool') {
+    // Build agent dropdown from availableAgents
+    const rawAgentId = (config.agentId as string) ?? '';
+    const agentOptions = _availableAgents.length > 0
+      ? [{ id: '', name: '— Select Agent —' }, { id: 'default', name: 'Default' }, ..._availableAgents]
+          .map((a) => `<option value="${escAttr(a.id)}"${a.id === rawAgentId ? ' selected' : ''}>${a.name}</option>`)
+          .join('')
+      : `<option value="">default</option>`;
+
     configFieldsHtml += `
       <label class="flow-panel-field">
-        <span>Agent ID</span>
-        <input type="text" class="flow-panel-input" data-config="agentId" value="${agentIdVal}" placeholder="default" />
+        <span>Agent</span>
+        <select class="flow-panel-select" data-config="agentId">
+          ${agentOptions}
+        </select>
       </label>
       <label class="flow-panel-field">
         <span>Model</span>

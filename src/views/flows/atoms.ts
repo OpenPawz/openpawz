@@ -70,6 +70,8 @@ export interface FlowGraph {
   id: string;
   name: string;
   description?: string;
+  /** Folder for organization (empty string or undefined = root) */
+  folder?: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
   /** Created timestamp */

@@ -23,6 +23,7 @@ import {
   renderTemplateBrowser,
   markNodeNew,
   setDebugState,
+  setAvailableAgents,
 } from './molecules';
 import { parseFlowText } from './parser';
 import { FLOW_TEMPLATES } from './templates';
@@ -112,6 +113,16 @@ function el(id: string): HTMLElement | null {
 export function loadFlows() {
   initStateBridge();
   restore();
+
+  // Inject available agents from the agents module for agent node dropdowns
+  try {
+    // Dynamic import to avoid circular dependency
+    const agentStore = localStorage.getItem('paw-agents');
+    if (agentStore) {
+      const agents = JSON.parse(agentStore) as { id: string; name: string }[];
+      setAvailableAgents(agents.map((a) => ({ id: a.id, name: a.name })));
+    }
+  } catch { /* ignore */ }
 
   if (!_mounted) {
     mount();
@@ -256,6 +267,22 @@ export function unmountFlows() {
 
 // ── Internal Actions ───────────────────────────────────────────────────────
 
+/** Update the hero stat counters to reflect current state. */
+function updateHeroStats() {
+  const totalEl = el('flows-stat-total');
+  const nodesEl = el('flows-stat-nodes');
+  const schedEl = el('flows-stat-scheduled');
+
+  if (totalEl) totalEl.textContent = String(_graphs.length);
+  if (nodesEl) {
+    const total = _graphs.reduce((sum, g) => sum + g.nodes.length, 0);
+    nodesEl.textContent = String(total);
+  }
+  if (schedEl) {
+    schedEl.textContent = String(_scheduleRegistry.length);
+  }
+}
+
 function renderActiveGraph() {
   initStateBridge();
   renderGraph();
@@ -265,6 +292,9 @@ function renderActiveGraph() {
 function updateFlowList() {
   const container = el('flows-list');
   if (!container) return;
+
+  // Update hero stats
+  updateHeroStats();
 
   // Render tab switcher
   const tabHtml = `<div class="flow-sidebar-tabs">
@@ -314,6 +344,16 @@ function updateFlowList() {
       () => {
         newFlow();
       },
+      // Move flow to folder
+      (flowId, folder) => {
+        const g = _graphs.find((gg) => gg.id === flowId);
+        if (g) {
+          g.folder = folder || undefined;
+          g.updatedAt = new Date().toISOString();
+          persist();
+          updateFlowList();
+        }
+      },
     );
   }
 }
@@ -325,14 +365,27 @@ function updateNodePanel() {
   const graph = _graphs.find((g) => g.id === _activeGraphId);
   const node = graph?.nodes.find((n) => n.id === _selectedNodeId) ?? null;
 
-  renderNodePanel(container, node, (patch) => {
-    if (!graph || !node) return;
-    Object.assign(node, patch);
-    graph.updatedAt = new Date().toISOString();
-    persist();
-    renderGraph();
-    updateNodePanel();
-  });
+  renderNodePanel(
+    container,
+    node,
+    (patch) => {
+      if (!graph || !node) return;
+      Object.assign(node, patch);
+      graph.updatedAt = new Date().toISOString();
+      persist();
+      renderGraph();
+      updateNodePanel();
+    },
+    graph ?? null,
+    (graphPatch) => {
+      if (!graph) return;
+      Object.assign(graph, graphPatch);
+      graph.updatedAt = new Date().toISOString();
+      persist();
+      updateFlowList();
+      updateNodePanel();
+    },
+  );
 }
 
 function newFlow() {

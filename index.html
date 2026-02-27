@@ -2766,14 +2766,37 @@
         <!-- ═══ Flows View — Flow Visualization Engine ═══ -->
         <div class="view flows-view" id="flows-view">
           <div class="flows-hero">
-            <div>
+            <div class="flows-hero-left">
               <h1 class="flows-hero-title">Flows</h1>
               <p class="flows-hero-sub">Visualize and build AI workflows</p>
             </div>
-            <div class="flows-hero-text-input">
-              <input type="text" class="flows-text-box" id="flows-text-input"
-                placeholder="Describe a flow… e.g. webhook → agent → send email"
-                autocomplete="off" />
+            <div class="flows-hero-right">
+              <div class="flows-hero-stat k-row k-spring">
+                <span class="ms flows-hero-stat-icon">account_tree</span>
+                <div>
+                  <div class="flows-hero-stat-val" id="flows-stat-total">0</div>
+                  <div class="flows-hero-stat-lbl">Flows</div>
+                </div>
+              </div>
+              <div class="flows-hero-stat k-row k-spring">
+                <span class="ms flows-hero-stat-icon">hub</span>
+                <div>
+                  <div class="flows-hero-stat-val" id="flows-stat-nodes">0</div>
+                  <div class="flows-hero-stat-lbl">Nodes</div>
+                </div>
+              </div>
+              <div class="flows-hero-stat k-row k-spring">
+                <span class="ms flows-hero-stat-icon">schedule</span>
+                <div>
+                  <div class="flows-hero-stat-val" id="flows-stat-scheduled">0</div>
+                  <div class="flows-hero-stat-lbl">Scheduled</div>
+                </div>
+              </div>
+              <div class="flows-hero-text-input">
+                <input type="text" class="flows-text-box" id="flows-text-input"
+                  placeholder="Describe a flow… e.g. webhook → agent → send email"
+                  autocomplete="off" />
+              </div>
             </div>
           </div>
           <div id="flows-list"></div>
