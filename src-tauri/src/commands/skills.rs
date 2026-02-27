@@ -503,6 +503,22 @@ pub async fn engine_google_gmail_send(
         .map_err(|e| e.to_string())
 }
 
+// ── Google Calendar (Today widget) ─────────────────────────────────────
+
+/// List upcoming Google Calendar events for the Today widget.
+#[tauri::command]
+pub async fn engine_google_calendar_list(
+    app_handle: tauri::AppHandle,
+    max_results: Option<u32>,
+) -> Result<Vec<crate::engine::tools::google::CalendarEvent>, String> {
+    crate::engine::tools::google::calendar_list_json(
+        &app_handle,
+        max_results.unwrap_or(10),
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 // ── Phase 4 — Modular Enable/Disable ───────────────────────────────────
 
 /// Bulk enable/disable a list of skill IDs (used by setup wizard).

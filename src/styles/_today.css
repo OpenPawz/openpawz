@@ -610,6 +610,66 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* Calendar events */
+.today-cal-event {
+  display: flex;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  align-items: flex-start;
+}
+.today-cal-event:last-child {
+  border-bottom: none;
+}
+.today-cal-today {
+  border-left: 2px solid var(--accent);
+  padding-left: 8px;
+  margin-left: -2px;
+}
+.today-cal-time {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  min-width: 72px;
+  white-space: nowrap;
+  padding-top: 1px;
+}
+.today-cal-details {
+  flex: 1;
+  min-width: 0;
+}
+.today-cal-summary {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today-cal-location {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.today-cal-more {
+  font-size: 12px;
+  color: var(--accent);
+  text-align: center;
+  padding: 8px 0 2px;
+}
+.today-link-integrations {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .today-quick-action:hover {
   border-color: var(--accent);
   background: var(--accent-subtle);

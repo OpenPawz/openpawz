@@ -269,6 +269,8 @@ pub fn run() {
             commands::skills::engine_google_gmail_list,
             commands::skills::engine_google_gmail_read,
             commands::skills::engine_google_gmail_send,
+            // ── Google Calendar (Today widget) ──
+            commands::skills::engine_google_calendar_list,
             // ── Trading ──
             commands::trade::engine_trading_history,
             commands::trade::engine_trading_summary,

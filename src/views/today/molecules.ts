@@ -389,6 +389,79 @@ export async function fetchUnreadEmails() {
   }
 }
 
+// ── Calendar ──────────────────────────────────────────────────────────
+
+export async function fetchCalendarEvents() {
+  const calEl = $('today-calendar');
+  if (!calEl) return;
+
+  if (!invoke) {
+    calEl.innerHTML = `<div class="today-section-empty">Calendar requires the desktop app</div>`;
+    return;
+  }
+
+  try {
+    const googleEmail = await pawEngine.googleOAuthStatus();
+    if (!googleEmail) {
+      calEl.innerHTML = `<div class="today-section-empty">Connect Google in <a href="#" class="today-link-integrations">Integrations</a> to see your calendar</div>`;
+      calEl.querySelector('.today-link-integrations')?.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchView('integrations');
+      });
+      return;
+    }
+
+    const events = await pawEngine.googleCalendarList(10);
+
+    if (!events || events.length === 0) {
+      calEl.innerHTML = `<div class="today-section-empty"><span class="ms ms-sm">event_available</span> No upcoming events this week</div>`;
+      return;
+    }
+
+    const now = new Date();
+
+    calEl.innerHTML = events
+      .slice(0, 6)
+      .map((ev) => {
+        const start = new Date(ev.start);
+        const isToday = start.toDateString() === now.toDateString();
+        const isTomorrow =
+          start.toDateString() === new Date(now.getTime() + 86400000).toDateString();
+
+        let dayLabel = '';
+        if (ev.all_day) {
+          dayLabel = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        } else {
+          const timeStr = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+          if (isToday) dayLabel = timeStr;
+          else if (isTomorrow) dayLabel = `Tomorrow ${timeStr}`;
+          else dayLabel = `${start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeStr}`;
+        }
+
+        const locationHtml = ev.location
+          ? `<div class="today-cal-location"><span class="ms ms-xs">location_on</span> ${escHtml(ev.location)}</div>`
+          : '';
+
+        return `
+          <div class="today-cal-event${isToday ? ' today-cal-today' : ''}">
+            <div class="today-cal-time">${escHtml(dayLabel)}</div>
+            <div class="today-cal-details">
+              <div class="today-cal-summary">${escHtml(ev.summary)}</div>
+              ${locationHtml}
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    if (events.length > 6) {
+      calEl.innerHTML += `<div class="today-cal-more">+${events.length - 6} more events</div>`;
+    }
+  } catch (e) {
+    console.warn('[today] Calendar fetch failed:', e);
+    calEl.innerHTML = `<div class="today-section-empty">Could not load calendar</div>`;
+  }
+}
+
 // ── Cached data for synchronous render ────────────────────────────────
 let _skillOutputs: SkillOutput[] = [];
 let _activeSkills: EngineSkillStatus[] = [];
@@ -694,11 +767,21 @@ export function renderToday() {
         </div>
       </div>
 
-      <div class="cmd-card bento-cell bento-span-4">
+      <!-- Row 2: Mail + Calendar -->
+      <div class="cmd-card bento-cell bento-span-6">
         <div class="today-card-header">
           <span class="today-card-title">UNREAD MAIL</span>
         </div>
         <div class="today-card-body" id="today-emails">
+          <span class="today-loading">Loading…</span>
+        </div>
+      </div>
+
+      <div class="cmd-card bento-cell bento-span-6">
+        <div class="today-card-header">
+          <span class="today-card-title">CALENDAR</span>
+        </div>
+        <div class="today-card-body" id="today-calendar">
           <span class="today-loading">Loading…</span>
         </div>
       </div>

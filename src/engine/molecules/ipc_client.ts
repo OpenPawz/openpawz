@@ -424,6 +424,25 @@ export class PawEngineClient {
     return invoke<string>('engine_google_gmail_send', { to, subject, body });
   }
 
+  // ── Google Calendar (Today widget) ──────────────────────────────────
+
+  async googleCalendarList(
+    maxResults?: number,
+  ): Promise<
+    {
+      id: string;
+      summary: string;
+      start: string;
+      end: string;
+      location: string;
+      all_day: boolean;
+    }[]
+  > {
+    return invoke('engine_google_calendar_list', {
+      maxResults: maxResults ?? null,
+    });
+  }
+
   async skillGetInstructions(skillId: string): Promise<string | null> {
     return invoke<string | null>('engine_skill_get_instructions', { skillId });
   }

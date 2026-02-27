@@ -1641,6 +1641,73 @@ pub async fn gmail_send_json(
     Ok(msg_id)
 }
 
+// ── Public Calendar API for Today widget ────────────────────────────────────
+
+/// Structured calendar event for the Today UI (not agent output).
+#[derive(Debug, Serialize)]
+pub struct CalendarEvent {
+    pub id: String,
+    pub summary: String,
+    pub start: String,
+    pub end: String,
+    pub location: String,
+    pub all_day: bool,
+}
+
+/// List upcoming calendar events — returns structured JSON for the Today widget.
+pub async fn calendar_list_json(
+    app_handle: &tauri::AppHandle,
+    max_results: u32,
+) -> EngineResult<Vec<CalendarEvent>> {
+    let creds = super::get_skill_creds("google_workspace", app_handle)?;
+    let token = get_access_token(&creds).await?;
+
+    let now_str = chrono::Utc::now().to_rfc3339();
+    let end_of_week = (chrono::Utc::now() + chrono::Duration::days(7)).to_rfc3339();
+
+    let url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events\
+         ?timeMin={}&timeMax={}&maxResults={}&singleEvents=true&orderBy=startTime",
+        url_encode(&now_str),
+        url_encode(&end_of_week),
+        max_results.min(50)
+    );
+
+    let (_, resp) = google_request("GET", &url, &token, None).await?;
+
+    let items = resp["items"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+
+    let events: Vec<CalendarEvent> = items
+        .iter()
+        .map(|ev| {
+            let all_day = ev["start"]["date"].is_string();
+            let start = ev["start"]["dateTime"]
+                .as_str()
+                .or_else(|| ev["start"]["date"].as_str())
+                .unwrap_or("")
+                .to_string();
+            let end = ev["end"]["dateTime"]
+                .as_str()
+                .or_else(|| ev["end"]["date"].as_str())
+                .unwrap_or("")
+                .to_string();
+            CalendarEvent {
+                id: ev["id"].as_str().unwrap_or("").to_string(),
+                summary: ev["summary"].as_str().unwrap_or("(No title)").to_string(),
+                start,
+                end,
+                location: ev["location"].as_str().unwrap_or("").to_string(),
+                all_day,
+            }
+        })
+        .collect();
+
+    Ok(events)
+}
+
 // ── Generic Google API ─────────────────────────────────────────────────────
 
 async fn exec_google_api(

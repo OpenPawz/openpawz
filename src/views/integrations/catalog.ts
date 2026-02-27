@@ -1062,8 +1062,31 @@ const AUTO: ServiceDefinition[] = [
     'Manage events and schedules',
     ['Create events', 'List calendars', 'Get availability'],
     'n8n-nodes-base.googleCalendar',
-    '',
-    false,
+    'https://developers.google.com/calendar/api',
+    true,
+    [
+      {
+        key: 'oauth',
+        label: 'Google Account',
+        type: 'text',
+        placeholder: 'Sign in with Google',
+        required: true,
+      },
+    ],
+    {
+      title: 'Connect Google Calendar',
+      steps: [
+        { instruction: 'Click "Connect" to sign in with your Google account' },
+        { instruction: 'Grant OpenPawz permission to read and manage your calendar' },
+      ],
+      estimatedTime: '1 minute',
+    },
+    [
+      'What meetings do I have today?',
+      'Am I free tomorrow at 2pm?',
+      'Show this week\'s events',
+    ],
+    ['When a meeting is created, post in Slack', 'Daily agenda briefing at 8am'],
   ),
   svc(
     'google-docs',
