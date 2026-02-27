@@ -505,7 +505,7 @@ pub async fn run_agent_turn(
                 "web_browse",
                 "list_tasks",
                 "email_read",
-                "email_send",  // redirects to google_gmail_send internally
+                "email_send", // redirects to google_gmail_send internally
                 "slack_read",
                 "telegram_read",
                 // ── Agent memory / profile ──
