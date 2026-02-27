@@ -395,11 +395,6 @@ export async function fetchCalendarEvents() {
   const calEl = $('today-calendar');
   if (!calEl) return;
 
-  if (!invoke) {
-    calEl.innerHTML = `<div class="today-section-empty">Calendar requires the desktop app</div>`;
-    return;
-  }
-
   try {
     const googleEmail = await pawEngine.googleOAuthStatus();
     if (!googleEmail) {
