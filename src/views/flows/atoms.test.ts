@@ -37,19 +37,26 @@ describe('createNode', () => {
     expect(n.height).toBe(NODE_DEFAULTS.agent.height);
     expect(n.status).toBe('idle');
     expect(n.inputs).toEqual(['in']);
-    expect(n.outputs).toEqual(['out']);
+    expect(n.outputs).toEqual(['out', 'err']);
   });
 
   it('trigger nodes have no inputs', () => {
     const n = createNode('trigger', 'Start');
     expect(n.inputs).toEqual([]);
-    expect(n.outputs).toEqual(['out']);
+    expect(n.outputs).toEqual(['out', 'err']);
   });
 
   it('output nodes have no outputs', () => {
     const n = createNode('output', 'End');
     expect(n.inputs).toEqual(['in']);
     expect(n.outputs).toEqual([]);
+  });
+
+  it('error nodes have no outputs and one input', () => {
+    const n = createNode('error', 'Error Handler');
+    expect(n.inputs).toEqual(['in']);
+    expect(n.outputs).toEqual([]);
+    expect(n.kind).toBe('error');
   });
 
   it('respects position overrides', () => {
@@ -196,11 +203,11 @@ describe('snapToGrid', () => {
 // ── Edge path geometry ──────────────────────────────────────────────────────
 
 describe('getOutputPort / getInputPort', () => {
-  it('output port is at the right-center of the node', () => {
+  it('output port is at the right, upper portion of the node', () => {
     const n = createNode('agent', 'A', 100, 50);
     const p = getOutputPort(n);
     expect(p.x).toBe(100 + n.width);
-    expect(p.y).toBe(50 + n.height / 2);
+    expect(p.y).toBe(50 + n.height * 0.35);
   });
 
   it('input port is at the left-center of the node', () => {
@@ -208,6 +215,13 @@ describe('getOutputPort / getInputPort', () => {
     const p = getInputPort(n);
     expect(p.x).toBe(100);
     expect(p.y).toBe(50 + n.height / 2);
+  });
+
+  it('error port is at the right-bottom of the node', () => {
+    const n = createNode('agent', 'A', 100, 50);
+    const p = getOutputPort(n, 'err');
+    expect(p.x).toBe(100 + n.width);
+    expect(p.y).toBe(50 + n.height * 0.8);
   });
 });
 

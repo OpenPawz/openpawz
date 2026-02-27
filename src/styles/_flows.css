@@ -1441,3 +1441,105 @@
   color: var(--kinetic-sage, #4A7C59);
   animation: k-materialise 0.4s ease;
 }
+
+/* ── ═══════════════════════════════════════════════════════════════════════
+   Phase 6: Error Handling Edges
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* Error node canvas styling */
+.flow-node-error .flow-node-body {
+  stroke: var(--kinetic-red, #D64045);
+  stroke-dasharray: 6 3;
+}
+
+.flow-node-error .flow-node-badge {
+  color: var(--kinetic-red, #D64045);
+}
+
+/* Error port styling */
+.flow-port-error {
+  stroke: var(--kinetic-red, #D64045) !important;
+  fill: var(--bg-primary) !important;
+}
+
+.flow-port-error:hover {
+  fill: var(--kinetic-red, #D64045) !important;
+}
+
+/* Error edge styling */
+.flow-edge-error .flow-edge-path {
+  stroke: var(--kinetic-red, #D64045);
+  stroke-dasharray: 8 4;
+  opacity: 0.7;
+}
+
+.flow-edge-error.flow-edge-active .flow-edge-path {
+  opacity: 1;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px rgba(214, 64, 69, 0.5));
+}
+
+/* Error handler config panel */
+.flow-panel-error-config {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid var(--kinetic-red-20, rgba(214, 64, 69, 0.2));
+  border-radius: 8px;
+  background: rgba(214, 64, 69, 0.05);
+}
+
+.flow-panel-error-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--kinetic-chalk, #E8E4DD);
+}
+
+.flow-panel-error-targets {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.flow-panel-error-target {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.flow-panel-error-target input[type="checkbox"] {
+  accent-color: var(--kinetic-red, #D64045);
+}
+
+/* Retry config panel */
+.flow-panel-retry-config {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--kinetic-steel-20, rgba(122, 139, 154, 0.15));
+  border-radius: 8px;
+  background: var(--kinetic-midnight-10, rgba(30, 30, 30, 0.3));
+}
+
+.flow-panel-retry-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--kinetic-chalk, #E8E4DD);
+}
+
+.flow-panel-retry-config .flow-panel-field {
+  margin-bottom: 6px;
+}
+
+.flow-panel-retry-config .flow-panel-input {
+  width: 80px;
+}

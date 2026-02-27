@@ -13,12 +13,14 @@ export type FlowNodeKind =
   | 'data'       // Data transform / mapping
   | 'code'       // Inline JavaScript evaluation (sandboxed)
   | 'output'     // Terminal output (log, send, store)
+  | 'error'      // Error handler (logs, alerts, notifications)
   | 'group';     // Sub-flow / compound node
 
 export type EdgeKind =
   | 'forward'       // Normal A → B
   | 'reverse'       // Pull: B ← A (data request)
-  | 'bidirectional'; // Handshake: A ↔ B
+  | 'bidirectional' // Handshake: A ↔ B
+  | 'error';        // Error path: A --err--> B (fallback)
 
 export type FlowStatus = 'idle' | 'running' | 'success' | 'error' | 'paused';
 
@@ -178,6 +180,7 @@ export const NODE_DEFAULTS: Record<FlowNodeKind, { width: number; height: number
   data:      { width: 160, height: 56, color: 'var(--kinetic-gold)', icon: 'data_object' },
   code:      { width: 180, height: 72, color: 'var(--kinetic-steel)', icon: 'code' },
   output:    { width: 160, height: 64, color: 'var(--success)',      icon: 'output' },
+  error:     { width: 180, height: 72, color: 'var(--kinetic-red, #D64045)', icon: 'error' },
   group:     { width: 240, height: 120, color: 'var(--border)',      icon: 'folder' },
 };
 
@@ -214,7 +217,7 @@ export function createNode(
     status: 'idle',
     config: {},
     inputs: kind === 'trigger' ? [] : ['in'],
-    outputs: kind === 'output' ? [] : ['out'],
+    outputs: kind === 'output' ? [] : kind === 'error' ? [] : ['out', 'err'],
     ...overrides,
   };
 }
@@ -355,10 +358,14 @@ export function snapToGrid(val: number): number {
 export interface Point { x: number; y: number; }
 
 /**
- * Compute the output port position for a node (right-center by default).
+ * Compute the output port position for a node.
+ * 'out' → right-center, 'err' → right-bottom-quarter.
  */
-export function getOutputPort(node: FlowNode, _portName = 'out'): Point {
-  return { x: node.x + node.width, y: node.y + node.height / 2 };
+export function getOutputPort(node: FlowNode, portName = 'out'): Point {
+  if (portName === 'err') {
+    return { x: node.x + node.width, y: node.y + node.height * 0.8 };
+  }
+  return { x: node.x + node.width, y: node.y + node.height * 0.35 };
 }
 
 /**

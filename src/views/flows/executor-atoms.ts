@@ -46,8 +46,14 @@ export interface NodeExecConfig {
   scheduleEnabled?: boolean;
   /** For output nodes: target (chat, log, store) */
   outputTarget?: 'chat' | 'log' | 'store';
-  /** Max retries on error */
+  /** For error nodes: notification targets */
+  errorTargets?: ('log' | 'toast' | 'chat')[];
+  /** Max retries on error (0 = no retry) */
   maxRetries?: number;
+  /** Delay between retries in ms (default 1000) */
+  retryDelayMs?: number;
+  /** Backoff multiplier (default 2 = exponential backoff) */
+  retryBackoff?: number;
   /** Timeout in ms */
   timeoutMs?: number;
 }
@@ -390,6 +396,12 @@ export function buildNodePrompt(
       parts.push(`[Code node: ${node.label}]`);
       break;
 
+    case 'error':
+      // Error handler nodes receive error info
+      parts.push(`[Error handler: ${node.label}]`);
+      if (config.prompt) parts.push(config.prompt);
+      break;
+
     case 'output':
       parts.push(upstreamInput || 'No output to report.');
       break;
@@ -492,7 +504,10 @@ export function getNodeExecConfig(node: FlowNode): NodeExecConfig {
     schedule: (c.schedule as string) ?? undefined,
     scheduleEnabled: (c.scheduleEnabled as boolean) ?? false,
     outputTarget: (c.outputTarget as 'chat' | 'log' | 'store') ?? 'chat',
+    errorTargets: (c.errorTargets as ('log' | 'toast' | 'chat')[]) ?? ['log'],
     maxRetries: (c.maxRetries as number) ?? 0,
+    retryDelayMs: (c.retryDelayMs as number) ?? 1000,
+    retryBackoff: (c.retryBackoff as number) ?? 2,
     timeoutMs: (c.timeoutMs as number) ?? 120_000,
   };
 }

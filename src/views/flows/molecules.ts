@@ -398,13 +398,14 @@ function renderPorts(node: FlowNode) {
 
   for (const p of node.outputs) {
     const pos = getOutputPort(node, p);
+    const isErrPort = p === 'err';
     const circle = svgEl('circle');
-    circle.setAttribute('class', 'flow-port flow-port-output');
+    circle.setAttribute('class', `flow-port flow-port-output${isErrPort ? ' flow-port-error' : ''}`);
     circle.setAttribute('cx', String(pos.x));
     circle.setAttribute('cy', String(pos.y));
     circle.setAttribute('r', String(PORT_RADIUS));
     circle.setAttribute('fill', 'var(--bg-primary)');
-    circle.setAttribute('stroke', 'var(--accent)');
+    circle.setAttribute('stroke', isErrPort ? 'var(--kinetic-red, #D64045)' : 'var(--accent)');
     circle.setAttribute('stroke-width', '1.5');
     circle.setAttribute('data-node-id', node.id);
     circle.setAttribute('data-port', p);
@@ -460,6 +461,11 @@ function renderEdge(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode): SVGGE
       path.setAttribute('stroke', 'var(--kinetic-gold)');
       path.setAttribute('marker-end', 'url(#flow-arrow-bi-end)');
       path.setAttribute('marker-start', 'url(#flow-arrow-bi-start)');
+      break;
+    case 'error':
+      path.setAttribute('stroke', edge.active ? 'var(--kinetic-red)' : 'var(--kinetic-red-60, rgba(214, 64, 69, 0.6))');
+      path.setAttribute('stroke-dasharray', '8 4');
+      path.setAttribute('marker-end', 'url(#flow-arrow-fwd)');
       break;
   }
 
@@ -636,7 +642,17 @@ function onMouseUp(e: MouseEvent) {
         (ee) => ee.from === _drawingEdge!.fromNodeId && ee.to === portHit.node.id,
       );
       if (!exists) {
-        const edge = createEdge(_drawingEdge.fromNodeId, portHit.node.id);
+        const isErrorEdge = _drawingEdge.fromPort === 'err';
+        const edge = createEdge(
+          _drawingEdge.fromNodeId,
+          portHit.node.id,
+          isErrorEdge ? 'error' : 'forward',
+          {
+            fromPort: _drawingEdge.fromPort,
+            toPort: portHit.port,
+            label: isErrorEdge ? 'error' : undefined,
+          },
+        );
         graph.edges.push(edge);
         _state.onGraphChanged();
       }
@@ -772,6 +788,9 @@ export function renderToolbar(container: HTMLElement, runState?: { isRunning: bo
         <button class="flow-tb-btn" data-action="add-code" title="Add Code">
           <span class="ms">${NODE_DEFAULTS.code.icon}</span>
         </button>
+        <button class="flow-tb-btn" data-action="add-error" title="Add Error Handler">
+          <span class="ms">${NODE_DEFAULTS.error.icon}</span>
+        </button>
         <button class="flow-tb-btn" data-action="add-output" title="Add Output">
           <span class="ms">${NODE_DEFAULTS.output.icon}</span>
         </button>
@@ -820,6 +839,7 @@ function handleToolbarAction(action: string) {
     'add-condition': 'condition',
     'add-data': 'data',
     'add-code': 'code',
+    'add-error': 'error',
     'add-output': 'output',
   };
 
@@ -1082,6 +1102,61 @@ return input.toUpperCase();">${codeVal}</textarea>
     `;
   }
 
+  // Error node config
+  if (node.kind === 'error') {
+    const errorTargets = (config.errorTargets as string[]) ?? ['log'];
+    configFieldsHtml += `
+      <div class="flow-panel-error-config">
+        <div class="flow-panel-error-header">
+          <span class="ms" style="font-size:16px;color:var(--kinetic-red)">error</span>
+          <span>Error Handler</span>
+        </div>
+        <label class="flow-panel-field">
+          <span>Notify via</span>
+          <div class="flow-panel-error-targets">
+            ${['log', 'toast', 'chat'].map((t) => `
+              <label class="flow-panel-error-target">
+                <input type="checkbox" data-error-target="${t}" ${errorTargets.includes(t) ? 'checked' : ''} />
+                <span>${t === 'log' ? 'Console Log' : t === 'toast' ? 'Toast Alert' : 'Chat Message'}</span>
+              </label>
+            `).join('')}
+          </div>
+        </label>
+        <label class="flow-panel-field">
+          <span>Custom Message</span>
+          <textarea class="flow-panel-textarea" data-config="prompt" rows="2" placeholder="Optional error message template…">${promptVal}</textarea>
+        </label>
+      </div>
+    `;
+  }
+
+  // Retry config for executable nodes (agent, tool, data, code)
+  if (['agent', 'tool', 'data', 'code'].includes(node.kind)) {
+    const maxRetries = (config.maxRetries as number) ?? 0;
+    const retryDelay = (config.retryDelayMs as number) ?? 1000;
+    const retryBackoff = (config.retryBackoff as number) ?? 2;
+    configFieldsHtml += `
+      <div class="flow-panel-retry-config">
+        <div class="flow-panel-retry-header">
+          <span class="ms" style="font-size:14px">replay</span>
+          <span>Retry on Error</span>
+        </div>
+        <label class="flow-panel-field">
+          <span>Max Retries</span>
+          <input type="number" class="flow-panel-input" data-config="maxRetries" value="${maxRetries}" min="0" max="10" step="1" />
+        </label>
+        <label class="flow-panel-field">
+          <span>Delay (ms)</span>
+          <input type="number" class="flow-panel-input" data-config="retryDelayMs" value="${retryDelay}" min="100" max="60000" step="100" />
+        </label>
+        <label class="flow-panel-field">
+          <span>Backoff ×</span>
+          <input type="number" class="flow-panel-input" data-config="retryBackoff" value="${retryBackoff}" min="1" max="10" step="0.5" />
+        </label>
+      </div>
+    `;
+  }
+
   // Timeout field for agent/tool/condition/data/code nodes
   if (['agent', 'tool', 'condition', 'data', 'code'].includes(node.kind)) {
     configFieldsHtml += `
@@ -1180,6 +1255,20 @@ return input.toUpperCase();">${codeVal}</textarea>
       }
     });
   }
+
+  // Error target checkboxes → builds errorTargets array
+  container.querySelectorAll('[data-error-target]').forEach((el) => {
+    el.addEventListener('change', () => {
+      const targets: string[] = [];
+      container.querySelectorAll('[data-error-target]').forEach((cb) => {
+        if ((cb as HTMLInputElement).checked) {
+          targets.push((cb as HTMLElement).dataset.errorTarget!);
+        }
+      });
+      const newConfig = { ...node.config, errorTargets: targets };
+      onUpdate({ config: newConfig });
+    });
+  });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

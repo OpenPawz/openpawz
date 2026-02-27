@@ -253,6 +253,25 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
           break;
         }
 
+        case 'error': {
+          // Error handler nodes: receive error info, log/notify, pass through
+          const targets = config.errorTargets ?? ['log'];
+          const errorInfo = upstreamInput || 'Unknown error';
+          const parts: string[] = [];
+          if (targets.includes('log')) {
+            console.error(`[flow-error-handler] ${graph.name}: ${errorInfo}`);
+            parts.push('Logged');
+          }
+          if (targets.includes('toast')) {
+            parts.push('Toast sent');
+          }
+          if (targets.includes('chat')) {
+            parts.push('Chat notified');
+          }
+          output = `Error handled (${parts.join(', ')}): ${errorInfo}`;
+          break;
+        }
+
         case 'agent':
         case 'tool':
         case 'data':
@@ -291,45 +310,108 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
 
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      nodeState.status = 'error';
-      nodeState.error = errorMsg;
-      nodeState.finishedAt = Date.now();
-      nodeState.durationMs = nodeState.finishedAt - nodeState.startedAt;
-      node.status = 'error';
-      callbacks.onNodeStatusChange(node.id, 'error');
 
-      callbacks.onEvent({
-        type: 'step-error',
-        runId: _runState.runId,
-        nodeId: node.id,
-        error: errorMsg,
-        durationMs: nodeState.durationMs,
-      });
+      // ── Retry Logic ──────────────────────────────────────────────────────
+      const maxRetries = config.maxRetries ?? 0;
+      const retryDelay = config.retryDelayMs ?? 1000;
+      const backoff = config.retryBackoff ?? 2;
 
-      _runState.outputLog.push({
-        nodeId: node.id,
-        nodeLabel: node.label,
-        nodeKind: node.kind,
-        status: 'error',
-        output: '',
-        error: errorMsg,
-        durationMs: nodeState.durationMs,
-        timestamp: Date.now(),
-      });
+      let retried = false;
+      if (maxRetries > 0) {
+        for (let attempt = 1; attempt <= maxRetries; attempt++) {
+          const delay = retryDelay * Math.pow(backoff, attempt - 1);
+          console.debug(`[flow-exec] Retry ${attempt}/${maxRetries} for "${node.label}" in ${delay}ms`);
+          await new Promise((r) => setTimeout(r, delay));
 
-      // Retry logic
-      if (config.maxRetries && config.maxRetries > 0) {
-        // Simplified: just log (full retry would need recursion with counter)
-        console.warn(`[flow-exec] Node "${node.label}" failed, retries not yet implemented.`);
+          try {
+            // Re-attempt the node execution
+            const retryInput = nodeState.input;
+            let retryOutput: string;
+
+            switch (node.kind) {
+              case 'code': {
+                const src = (node.config.code as string) ?? '';
+                const result = executeCodeSandboxed(src, retryInput, config.timeoutMs ?? 5000);
+                if (result.error) throw new Error(result.error);
+                retryOutput = result.output;
+                break;
+              }
+              default:
+                retryOutput = await executeAgentStep(graph, node, retryInput, config, defaultAgentId);
+                break;
+            }
+
+            // Retry succeeded
+            nodeState.output = retryOutput;
+            nodeState.status = 'success';
+            nodeState.finishedAt = Date.now();
+            nodeState.durationMs = nodeState.finishedAt - nodeState.startedAt;
+            node.status = 'success';
+            callbacks.onNodeStatusChange(node.id, 'success');
+            callbacks.onEvent({
+              type: 'step-complete', runId: _runState.runId, nodeId: node.id,
+              output: retryOutput, durationMs: nodeState.durationMs,
+            });
+            _runState.outputLog.push({
+              nodeId: node.id, nodeLabel: node.label, nodeKind: node.kind,
+              status: 'success', output: retryOutput,
+              durationMs: nodeState.durationMs, timestamp: Date.now(),
+            });
+            retried = true;
+            break;
+          } catch {
+            // Continue to next retry attempt
+          }
+        }
       }
 
-      // Don't abort the whole flow on one node error — mark and continue
-      // but skip downstream since input is missing
-      const downstream = graph.edges
-        .filter((e) => e.from === node.id)
-        .map((e) => e.to);
-      for (const dId of downstream) {
-        _skipNodes.add(dId);
+      if (!retried) {
+        // All retries exhausted or no retries — mark error
+        nodeState.status = 'error';
+        nodeState.error = errorMsg;
+        nodeState.finishedAt = Date.now();
+        nodeState.durationMs = nodeState.finishedAt - nodeState.startedAt;
+        node.status = 'error';
+        callbacks.onNodeStatusChange(node.id, 'error');
+
+        callbacks.onEvent({
+          type: 'step-error', runId: _runState.runId, nodeId: node.id,
+          error: errorMsg, durationMs: nodeState.durationMs,
+        });
+
+        _runState.outputLog.push({
+          nodeId: node.id, nodeLabel: node.label, nodeKind: node.kind,
+          status: 'error', output: '', error: errorMsg,
+          durationMs: nodeState.durationMs, timestamp: Date.now(),
+        });
+
+        // ── Error Edge Routing ─────────────────────────────────────────────
+        // Find error edges from this node (kind=error or fromPort=err)
+        const errorEdges = graph.edges.filter(
+          (e) => e.from === node.id && (e.kind === 'error' || e.fromPort === 'err'),
+        );
+        const errorTargetIds = new Set(errorEdges.map((e) => e.to));
+
+        // Provide error info as input for error-path nodes
+        if (errorEdges.length > 0) {
+          const errorPayload = JSON.stringify({ error: errorMsg, nodeId: node.id, nodeLabel: node.label });
+          const errNodeState = createNodeRunState(`${node.id}_err_output`);
+          errNodeState.output = errorPayload;
+          errNodeState.status = 'success';
+          _runState.nodeStates.set(node.id, { ...nodeState, output: errorPayload });
+        }
+
+        // Skip downstream nodes on SUCCESS path only (not error path)
+        const successEdges = graph.edges.filter(
+          (e) => e.from === node.id && e.kind !== 'error' && e.fromPort !== 'err',
+        );
+        for (const e of successEdges) {
+          _skipNodes.add(e.to);
+        }
+        // Error targets are NOT skipped — they'll receive error info
+        for (const id of errorTargetIds) {
+          _skipNodes.delete(id);
+        }
       }
     } finally {
       // Deactivate incoming edges
