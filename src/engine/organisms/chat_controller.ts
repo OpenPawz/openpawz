@@ -1,7 +1,7 @@
 // src/engine/organisms/chat_controller.ts
-// Owns all chat UI logic: sessions, messages, streaming, token metering, TTS,
-// attachments, and retry.  Imports from state/index.ts so it never touches
-// the main.ts closure scope.
+// Thin orchestrator for the main chat view.
+// Imports atoms + molecules and wires them to the existing DOM.
+// All rendering, input, metering, and TTS logic lives in molecules.
 
 import { pawEngine } from '../../engine';
 import { engineChatSend } from '../molecules/bridge';
@@ -9,63 +9,126 @@ import {
   appState,
   agentSessionMap,
   persistAgentSessionMap,
-  MODEL_CONTEXT_SIZES,
   MODEL_COST_PER_TOKEN,
-  COMPACTION_WARN_THRESHOLD,
   createStreamState,
   sweepStaleStreams,
   type StreamState,
   type MessageWithAttachments,
 } from '../../state/index';
-import { formatMarkdown } from '../../components/molecules/markdown';
 import { escHtml, icon, confirmModal } from '../../components/helpers';
 import { showToast } from '../../components/toast';
 import * as AgentsModule from '../../views/agents';
 import * as SettingsModule from '../../views/settings-main';
 import {
-  refreshMissionPanel,
-  initMissionPanel,
   addActiveJob,
   clearActiveJobs,
 } from '../../components/chat-mission-panel';
 import {
   interceptSlashCommand,
   getSessionOverrides as getSlashOverrides,
-  getAutocompleteSuggestions,
   isSlashCommand,
+  getAutocompleteSuggestions,
   type CommandContext,
 } from '../../features/slash-commands';
 import { parseCredentialSignal, handleCredentialRequired } from '../molecules/credential_bridge';
-import type { Message, ToolCall, Agent } from '../../types';
+import type { Agent, ToolCall, Message } from '../../types';
 
+// ── Molecule imports ─────────────────────────────────────────────────────
+import {
+  generateSessionLabel,
+  extractContent,
+  findLastIndex,
+  fileToBase64,
+  fileTypeIcon,
+} from '../atoms/chat';
+import {
+  renderMessages as rendererRenderMessages,
+  showStreamingMessage as rendererShowStreaming,
+  appendStreamingDelta as rendererAppendDelta,
+  appendThinkingDelta as rendererAppendThinking,
+  scrollToBottom as rendererScrollToBottom,
+  type RenderOpts,
+} from '../molecules/chat_renderer';
+import { createTokenMeter, type TokenMeterController, type TokenMeterState } from '../molecules/token_meter';
+import { speakMessage, autoSpeakIfEnabled, createTalkMode, type TtsState } from '../molecules/tts';
+
+// ── DOM shorthand ────────────────────────────────────────────────────────
 const $ = (id: string) => document.getElementById(id);
 
-// ── Auto-label helper ────────────────────────────────────────────────────
-/** Generate a short label from the user's first message (max 50 chars). */
-function generateSessionLabel(message: string): string {
-  // Strip leading slashes, markdown, excessive whitespace
-  let label = message
-    .replace(/^\/\w+\s*/, '')
-    .replace(/[#*_~`>]+/g, '')
-    .trim();
-  // Collapse whitespace
-  label = label.replace(/\s+/g, ' ');
-  if (label.length > 50) {
-    label = `${label.slice(0, 47).replace(/\s+\S*$/, '')}…`;
-  }
-  return label || 'New chat';
+// ── Scroll helper (RAF-debounced) ────────────────────────────────────────
+const _scrollRaf = { value: false };
+
+export function scrollToBottom(): void {
+  const chatMessages = $('chat-messages');
+  if (!chatMessages) return;
+  rendererScrollToBottom(chatMessages, _scrollRaf);
 }
 
-// ── Utility helpers ──────────────────────────────────────────────────────
+// ── TTS state (scoped to main chat view) ─────────────────────────────────
+const _ttsState: TtsState = {
+  ttsAudio: null,
+  ttsActiveBtn: null,
+};
 
-/**
- * Tear down an active stream for the given session key: abort the backend,
- * resolve the pending promise so sendMessage() unblocks, clean timers, and
- * remove the entry from activeStreams.  No-op if no stream exists for the key.
- *
- * This is used whenever the user switches sessions, agents, or starts a new
- * chat while a previous stream is still in-flight.
- */
+// Sync TTS state with appState for backward compat
+function syncTtsToAppState(): void {
+  appState.ttsAudio = _ttsState.ttsAudio;
+  appState.ttsActiveBtn = _ttsState.ttsActiveBtn;
+}
+
+// ── Token meter (lazily initialized) ─────────────────────────────────────
+let _tokenMeter: TokenMeterController | null = null;
+
+function getTokenMeter(): TokenMeterController {
+  if (!_tokenMeter) {
+    _tokenMeter = createTokenMeter({
+      meterId: 'token-meter',
+      fillId: 'token-meter-fill',
+      labelId: 'token-meter-label',
+      breakdownPanelId: 'context-breakdown-panel',
+      compactionWarningId: 'compaction-warning',
+      compactionWarningTextId: 'compaction-warning-text',
+      budgetAlertId: 'session-budget-alert',
+      budgetAlertTextId: 'session-budget-alert-text',
+    });
+  }
+  return _tokenMeter;
+}
+
+/** Build a TokenMeterState snapshot from appState. */
+function meterSnapshot(): TokenMeterState {
+  return {
+    sessionTokensUsed: appState.sessionTokensUsed,
+    sessionInputTokens: appState.sessionInputTokens,
+    sessionOutputTokens: appState.sessionOutputTokens,
+    sessionCost: appState.sessionCost,
+    modelContextLimit: appState.modelContextLimit,
+    compactionDismissed: appState.compactionDismissed,
+    lastRecordedTotal: appState.lastRecordedTotal,
+    activeModelKey: appState.activeModelKey,
+    sessionToolResultTokens: appState.sessionToolResultTokens,
+    sessionToolCallCount: appState.sessionToolCallCount,
+    messageCount: appState.messages.length,
+    messages: appState.messages,
+  };
+}
+
+/** Write token meter state changes back to appState. */
+function syncMeterToAppState(state: TokenMeterState): void {
+  appState.sessionTokensUsed = state.sessionTokensUsed;
+  appState.sessionInputTokens = state.sessionInputTokens;
+  appState.sessionOutputTokens = state.sessionOutputTokens;
+  appState.sessionCost = state.sessionCost;
+  appState.modelContextLimit = state.modelContextLimit;
+  appState.compactionDismissed = state.compactionDismissed;
+  appState.lastRecordedTotal = state.lastRecordedTotal;
+  appState.activeModelKey = state.activeModelKey;
+  appState.sessionToolResultTokens = state.sessionToolResultTokens;
+  appState.sessionToolCallCount = state.sessionToolCallCount;
+}
+
+// ── Stream teardown ──────────────────────────────────────────────────────
+
 function teardownStream(sessionKey: string, reason: string): void {
   const stream = appState.activeStreams.get(sessionKey);
   if (!stream) return;
@@ -89,44 +152,24 @@ function teardownStream(sessionKey: string, reason: string): void {
   if (abortBtn) abortBtn.style.display = 'none';
 }
 
-export function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      resolve(result.split(',')[1] || result);
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
+// ── Re-exports for backward compat ───────────────────────────────────────
+// These are used by event_bus.ts and other modules.
+export { fileToBase64, extractContent };
 
-function fileTypeIcon(mimeType: string): string {
-  if (mimeType.startsWith('image/')) return 'image';
-  if (mimeType === 'application/pdf' || mimeType.startsWith('text/')) return 'file-text';
-  return 'file';
-}
+// ── Render opts builder ──────────────────────────────────────────────────
 
-export function extractContent(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (Array.isArray(content)) {
-    return (content as Record<string, unknown>[])
-      .filter((b) => b.type === 'text' && typeof b.text === 'string')
-      .map((b) => b.text as string)
-      .join('\n');
-  }
-  if (content && typeof content === 'object') {
-    const obj = content as Record<string, unknown>;
-    if (obj.type === 'text' && typeof obj.text === 'string') return obj.text;
-  }
-  return content == null ? '' : String(content);
-}
-
-function findLastIndex<T>(arr: T[], pred: (item: T) => boolean): number {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (pred(arr[i])) return i;
-  }
-  return -1;
+function buildRenderOpts(): RenderOpts {
+  const agent = AgentsModule.getCurrentAgent();
+  return {
+    agentName: agent?.name ?? 'AGENT',
+    agentAvatar: agent?.avatar,
+    onRetry: (content: string) => retryMessage(content),
+    onSpeak: (text: string, btn: HTMLButtonElement) => {
+      speakMessage(text, btn, _ttsState);
+      syncTtsToAppState();
+    },
+    isStreaming: appState.activeStreams.has(appState.currentSessionKey ?? ''),
+  };
 }
 
 // ── Session management ───────────────────────────────────────────────────
@@ -135,7 +178,7 @@ export async function loadSessions(opts?: { skipHistory?: boolean }): Promise<vo
   try {
     const engineSessions = await pawEngine.sessionsList(200);
 
-    // ── Auto-prune empty sessions older than 1 hour (bulk Rust-side) ──
+    // Auto-prune empty sessions older than 1 hour
     pawEngine
       .sessionCleanup(3600, appState.currentSessionKey ?? undefined)
       .then((n) => {
@@ -143,7 +186,6 @@ export async function loadSessions(opts?: { skipHistory?: boolean }): Promise<vo
       })
       .catch((e) => console.warn('[chat] Session cleanup failed:', e));
 
-    // Filter out empty old sessions on the display side too
     const ONE_HOUR = 60 * 60 * 1000;
     const now = Date.now();
     const keptSessions = engineSessions.filter((s) => {
@@ -218,12 +260,10 @@ export function renderSessionSelect(): void {
     return;
   }
 
-  // Sort newest first and limit
   const MAX_SESSIONS = 25;
   const sorted = [...agentSessions].sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   const limited = sorted.slice(0, MAX_SESSIONS);
 
-  // Group by time bucket
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const yesterdayStart = new Date(todayStart);
@@ -254,17 +294,15 @@ export function renderSessionSelect(): void {
       const opt = document.createElement('option');
       opt.value = s.key;
       const raw = s.label ?? s.displayName ?? 'Untitled chat';
-      // Truncate long labels for the dropdown
       const label = raw.length > 40 ? `${raw.slice(0, 37)}…` : raw;
       opt.textContent = label;
-      opt.title = raw; // full label on hover
+      opt.title = raw;
       if (s.key === appState.currentSessionKey) opt.selected = true;
       optgroup.appendChild(opt);
     }
     chatSessionSelect.appendChild(optgroup);
   }
 
-  // If there are more sessions than shown, add a hint
   if (sorted.length > MAX_SESSIONS) {
     const opt = document.createElement('option');
     opt.value = '';
@@ -296,8 +334,6 @@ export async function switchToAgent(agentId: string): Promise<void> {
     persistAgentSessionMap();
   }
 
-  // Tear down any active stream for the current session before switching.
-  // Use the raw key (null → '') since streams are keyed that way.
   const oldKey = appState.currentSessionKey ?? '';
   teardownStream(oldKey, 'Agent switched');
   appState.streamingEl = null;
@@ -377,333 +413,49 @@ export async function loadChatHistory(sessionKey: string): Promise<void> {
   }
 }
 
-// ── Token metering ─────────────────────────────────────────────────────────
+// ── Token metering (delegates to molecule) ───────────────────────────────
+
 export function resetTokenMeter(): void {
-  appState.sessionTokensUsed = 0;
-  appState.sessionInputTokens = 0;
-  appState.sessionOutputTokens = 0;
-  appState.sessionCost = 0;
-  appState.lastRecordedTotal = 0;
-  appState.compactionDismissed = false;
-  appState.sessionToolResultTokens = 0;
-  appState.sessionToolCallCount = 0;
-  updateTokenMeter();
-  initMissionPanel();
-  ($('session-budget-alert') as HTMLElement | null)?.style !== undefined &&
-    (($('session-budget-alert') as HTMLElement).style.display = 'none');
+  const state = meterSnapshot();
+  getTokenMeter().reset(state);
+  syncMeterToAppState(state);
 }
 
 export function updateTokenMeter(): void {
-  const meter = $('token-meter');
-  const fill = $('token-meter-fill');
-  const label = $('token-meter-label');
-  if (!meter || !fill || !label) return;
-  meter.style.display = '';
-
-  if (appState.sessionTokensUsed <= 0) {
-    fill.style.width = '0%';
-    fill.className = 'token-meter-fill';
-    const lim =
-      appState.modelContextLimit >= 1000
-        ? `${(appState.modelContextLimit / 1000).toFixed(0)}k`
-        : `${appState.modelContextLimit}`;
-    label.textContent = `0 / ${lim} tokens`;
-    meter.title = 'Token tracking active — send a message to see usage';
-
-    // Still update mission panel on zero state
-    refreshMissionPanel({
-      tokensUsed: 0,
-      contextLimit: appState.modelContextLimit,
-      inputTokens: 0,
-      outputTokens: 0,
-      cost: 0,
-      messageCount: appState.messages.length,
-    });
-    return;
-  }
-
-  const pct = Math.min((appState.sessionTokensUsed / appState.modelContextLimit) * 100, 100);
-  fill.style.width = `${pct}%`;
-  fill.className =
-    pct >= 80
-      ? 'token-meter-fill danger'
-      : pct >= 60
-        ? 'token-meter-fill warning'
-        : 'token-meter-fill';
-
-  const used =
-    appState.sessionTokensUsed >= 1000
-      ? `${(appState.sessionTokensUsed / 1000).toFixed(1)}k`
-      : `${appState.sessionTokensUsed}`;
-  const lim =
-    appState.modelContextLimit >= 1000
-      ? `${(appState.modelContextLimit / 1000).toFixed(0)}k`
-      : `${appState.modelContextLimit}`;
-  const cost = appState.sessionCost > 0 ? ` · $${appState.sessionCost.toFixed(4)}` : '';
-  label.textContent = `${used} / ${lim} tokens${cost}`;
-  meter.title = 'Click for context breakdown';
-
-  updateCompactionWarning(pct);
-  updateContextBreakdownPopover();
-
-  // Update mission control side panel
-  refreshMissionPanel({
-    tokensUsed: appState.sessionTokensUsed,
-    contextLimit: appState.modelContextLimit,
-    inputTokens: appState.sessionInputTokens,
-    outputTokens: appState.sessionOutputTokens,
-    cost: appState.sessionCost,
-    messageCount: appState.messages.length,
-  });
-}
-
-function updateCompactionWarning(pct: number): void {
-  const warning = $('compaction-warning');
-  if (!warning) return;
-  if (pct >= COMPACTION_WARN_THRESHOLD * 100 && !appState.compactionDismissed) {
-    warning.style.display = '';
-    const text = $('compaction-warning-text');
-    if (text) {
-      text.textContent =
-        pct >= 95
-          ? `Context window ${pct.toFixed(0)}% full — messages will be compacted imminently`
-          : `Context window ${pct.toFixed(0)}% full — older messages may be compacted soon`;
-    }
-  } else {
-    warning.style.display = 'none';
-  }
-}
-
-// ── Context breakdown popover ────────────────────────────────────────────
-interface ContextBreakdown {
-  total: number;
-  limit: number;
-  pct: number;
-  system: number;
-  systemPct: number;
-  messages: number;
-  messagesPct: number;
-  toolResults: number;
-  toolResultsPct: number;
-  output: number;
-  outputPct: number;
-}
-
-function estimateContextBreakdown(): ContextBreakdown {
-  const total = appState.sessionTokensUsed;
-  const limit = appState.modelContextLimit;
-  const pct = limit > 0 ? Math.min((total / limit) * 100, 100) : 0;
-
-  // Estimate message tokens from visible chat messages
-  let msgTokens = 0;
-  for (const m of appState.messages) {
-    const contentLen = m.content?.length ?? 0;
-    msgTokens += Math.ceil(contentLen / 4) + 4;
-  }
-
-  const toolResultTokens = appState.sessionToolResultTokens;
-  const output = appState.sessionOutputTokens;
-
-  // System = input − messages − tool results (what the model sees beyond conversation)
-  const inputTokens = appState.sessionInputTokens;
-  const system = Math.max(0, inputTokens - msgTokens - toolResultTokens);
-
-  const safeDivisor = total > 0 ? total : 1;
-
-  return {
-    total,
-    limit,
-    pct,
-    system,
-    systemPct: (system / safeDivisor) * 100,
-    messages: msgTokens,
-    messagesPct: (msgTokens / safeDivisor) * 100,
-    toolResults: toolResultTokens,
-    toolResultsPct: (toolResultTokens / safeDivisor) * 100,
-    output,
-    outputPct: (output / safeDivisor) * 100,
-  };
-}
-
-function fmtK(n: number): string {
-  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : `${n}`;
-}
-
-export function updateContextBreakdownPopover(): void {
-  const panel = $('context-breakdown-panel');
-  if (!panel || panel.style.display === 'none') return;
-
-  const b = estimateContextBreakdown();
-  const fill = panel.querySelector('.ctx-breakdown-fill') as HTMLElement | null;
-  const summary = panel.querySelector('.ctx-breakdown-summary') as HTMLElement | null;
-  const rows = panel.querySelector('.ctx-breakdown-rows') as HTMLElement | null;
-  const warn = panel.querySelector('.ctx-breakdown-warn') as HTMLElement | null;
-
-  if (fill) {
-    fill.style.width = `${b.pct}%`;
-    fill.className =
-      b.pct >= 80
-        ? 'ctx-breakdown-fill danger'
-        : b.pct >= 60
-          ? 'ctx-breakdown-fill warning'
-          : 'ctx-breakdown-fill';
-  }
-  if (summary) {
-    summary.textContent = `${fmtK(b.total)} / ${fmtK(b.limit)} tokens \u2022 ${b.pct.toFixed(0)}%`;
-  }
-  if (rows) {
-    rows.innerHTML =
-      `<div class="ctx-row"><span class="ctx-row-header">System</span></div>` +
-      `<div class="ctx-row"><span class="ctx-row-label">System Prompt</span><span class="ctx-row-value">${b.systemPct.toFixed(1)}%</span></div>` +
-      `<div class="ctx-row"><span class="ctx-row-header">Conversation</span></div>` +
-      `<div class="ctx-row"><span class="ctx-row-label">Messages</span><span class="ctx-row-value">${b.messagesPct.toFixed(1)}%</span></div>` +
-      `<div class="ctx-row"><span class="ctx-row-label">Tool Results</span><span class="ctx-row-value">${b.toolResultsPct.toFixed(1)}%</span></div>` +
-      `<div class="ctx-row"><span class="ctx-row-label">Output</span><span class="ctx-row-value">${b.outputPct.toFixed(1)}%</span></div>`;
-  }
-  if (warn) {
-    warn.style.display = b.pct >= 60 ? '' : 'none';
-    warn.textContent =
-      b.pct >= 90
-        ? 'Context nearly full — quality will degrade.'
-        : b.pct >= 60
-          ? 'Quality may decline as limit nears.'
-          : '';
-  }
-}
-
-function toggleContextBreakdown(): void {
-  const panel = $('context-breakdown-panel');
-  if (!panel) return;
-  const visible = panel.style.display !== 'none';
-  if (visible) {
-    panel.style.display = 'none';
-  } else {
-    panel.style.display = '';
-    updateContextBreakdownPopover();
-  }
-}
-
-function initContextBreakdownClick(): void {
-  const meter = $('token-meter');
-  if (!meter) return;
-  meter.style.cursor = 'pointer';
-  meter.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleContextBreakdown();
-  });
-  // Dismiss on click outside
-  document.addEventListener('click', () => {
-    const panel = $('context-breakdown-panel');
-    if (panel) panel.style.display = 'none';
-  });
-  const panel = $('context-breakdown-panel');
-  if (panel) {
-    panel.addEventListener('click', (e) => e.stopPropagation());
-  }
-}
-
-export function updateContextLimitFromModel(modelName: string): void {
-  const lower = modelName.toLowerCase();
-  for (const [prefix, limit] of Object.entries(MODEL_CONTEXT_SIZES)) {
-    if (lower.includes(prefix)) {
-      if (appState.modelContextLimit !== limit) {
-        console.debug(
-          `[token] Context limit: ${appState.modelContextLimit.toLocaleString()} → ${limit.toLocaleString()} (${modelName})`,
-        );
-        appState.modelContextLimit = limit;
-        updateTokenMeter();
-      }
-      appState.activeModelKey = prefix;
-      return;
-    }
-  }
+  getTokenMeter().update(meterSnapshot());
 }
 
 export function recordTokenUsage(usage: Record<string, unknown> | undefined): void {
-  if (!usage) return;
-  const uAny = usage as Record<string, unknown>;
-  const nested = uAny.response as Record<string, unknown> | undefined;
-  const inner = (uAny.usage ?? nested?.usage ?? usage) as Record<string, unknown>;
-  const totalTokens = (inner.totalTokens ??
-    inner.total_tokens ??
-    inner.totalTokenCount ??
-    0) as number;
-  const inputTokens = (inner.promptTokens ??
-    inner.prompt_tokens ??
-    inner.inputTokens ??
-    inner.input_tokens ??
-    inner.prompt_token_count ??
-    0) as number;
-  const outputTokens = (inner.completionTokens ??
-    inner.completion_tokens ??
-    inner.outputTokens ??
-    inner.output_tokens ??
-    inner.completion_token_count ??
-    0) as number;
-
-  if (totalTokens > 0 || inputTokens > 0 || outputTokens > 0) {
-    appState.sessionInputTokens = inputTokens;
-    appState.sessionOutputTokens += outputTokens;
-    appState.sessionTokensUsed = inputTokens + appState.sessionOutputTokens;
-    appState.lastRecordedTotal = appState.sessionTokensUsed;
-  }
-
-  const rate = MODEL_COST_PER_TOKEN[appState.activeModelKey] ?? MODEL_COST_PER_TOKEN['default'];
-  appState.sessionCost += inputTokens * rate.input + outputTokens * rate.output;
-
-  const budgetLimit = SettingsModule.getBudgetLimit();
-  if (budgetLimit != null && appState.sessionCost >= budgetLimit * 0.8) {
-    const budgetAlert = $('session-budget-alert');
-    if (budgetAlert) {
-      budgetAlert.style.display = '';
-      const alertText = $('session-budget-alert-text');
-      if (alertText) {
-        alertText.textContent =
-          appState.sessionCost >= budgetLimit
-            ? `Session budget exceeded: $${appState.sessionCost.toFixed(4)} / $${budgetLimit.toFixed(2)}`
-            : `Nearing session budget: $${appState.sessionCost.toFixed(4)} / $${budgetLimit.toFixed(2)}`;
-      }
-    }
-  }
-  updateTokenMeter();
+  const state = meterSnapshot();
+  getTokenMeter().recordUsage(usage, state, SettingsModule.getBudgetLimit);
+  syncMeterToAppState(state);
 }
 
-// ── Streaming pipeline ────────────────────────────────────────────────────
+export function updateContextLimitFromModel(modelName: string): void {
+  const state = meterSnapshot();
+  getTokenMeter().updateContextLimitFromModel(modelName, state);
+  syncMeterToAppState(state);
+}
+
+export function updateContextBreakdownPopover(): void {
+  getTokenMeter().updateBreakdownPopover(meterSnapshot());
+}
+
+// ── Streaming pipeline (delegates to renderer molecule) ──────────────────
+
 export function showStreamingMessage(): void {
   const chatEmpty = $('chat-empty');
   const chatMessages = $('chat-messages');
   if (chatEmpty) chatEmpty.style.display = 'none';
+  if (!chatMessages) return;
 
-  const div = document.createElement('div');
-  div.className = 'message assistant';
-  div.id = 'streaming-message';
-
-  const contentEl = document.createElement('div');
-  contentEl.className = 'message-content';
-
-  // Terminal-style prefix for streaming
-  const prefix = document.createElement('span');
-  prefix.className = 'message-prefix';
   const agent = AgentsModule.getCurrentAgent();
-  prefix.textContent = `${(agent?.name ?? 'AGENT').toUpperCase()} ›`;
-  contentEl.appendChild(prefix);
-
-  const streamSpan = document.createElement('span');
-  streamSpan.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
-  contentEl.appendChild(streamSpan);
-
-  const time = document.createElement('div');
-  time.className = 'message-time';
-  time.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  div.appendChild(contentEl);
-  div.appendChild(time);
-  chatMessages?.appendChild(div);
+  const contentEl = rendererShowStreaming(chatMessages, agent?.name ?? 'AGENT');
 
   // Create session-keyed stream state
   const key = appState.currentSessionKey ?? '';
-  sweepStaleStreams(); // Evict leaked entries before adding a new one
-  const ss = createStreamState(AgentsModule.getCurrentAgent()?.id);
+  sweepStaleStreams();
+  const ss = createStreamState(agent?.id);
   ss.el = contentEl;
   appState.activeStreams.set(key, ss);
 
@@ -711,69 +463,29 @@ export function showStreamingMessage(): void {
   if (abortBtn) abortBtn.style.display = '';
   scrollToBottom();
 
-  // Mission panel: show active job
   const modelName =
     ($('chat-model-select') as HTMLSelectElement | null)?.selectedOptions?.[0]?.text ?? 'model';
   addActiveJob(`Streaming · ${modelName}`);
 }
 
-export function scrollToBottom(): void {
-  const chatMessages = $('chat-messages');
-  if (appState.scrollRafPending || !chatMessages) return;
-  appState.scrollRafPending = true;
-  requestAnimationFrame(() => {
-    const el = document.getElementById('chat-messages');
-    if (el) el.scrollTop = el.scrollHeight;
-    appState.scrollRafPending = false;
-  });
-}
-
 export function appendStreamingDelta(text: string): void {
   appState.streamingContent += text;
   if (appState.streamingEl) {
-    appState.streamingEl.innerHTML = formatMarkdown(appState.streamingContent);
+    rendererAppendDelta(appState.streamingEl, appState.streamingContent);
     scrollToBottom();
   }
 }
 
-/**
- * Append a thinking/reasoning delta to the streaming message.
- * Renders inside a collapsible `<details>` block above the main response.
- */
 export function appendThinkingDelta(text: string): void {
   const key = appState.currentSessionKey ?? '';
   const ss = appState.activeStreams.get(key);
   if (!ss) return;
   ss.thinkingContent += text;
 
-  // Find or create the thinking container inside the streaming message
   const streamMsg = document.getElementById('streaming-message');
   if (!streamMsg) return;
 
-  let thinkingEl = streamMsg.querySelector('.thinking-block') as HTMLElement | null;
-  if (!thinkingEl) {
-    thinkingEl = document.createElement('details');
-    thinkingEl.className = 'thinking-block';
-    thinkingEl.setAttribute('open', '');
-    const summary = document.createElement('summary');
-    summary.textContent = 'Thinking\u2026';
-    thinkingEl.appendChild(summary);
-    const content = document.createElement('div');
-    content.className = 'thinking-content';
-    thinkingEl.appendChild(content);
-    // Insert before the message-content element
-    const contentEl = streamMsg.querySelector('.message-content');
-    if (contentEl) {
-      streamMsg.insertBefore(thinkingEl, contentEl);
-    } else {
-      streamMsg.prepend(thinkingEl);
-    }
-  }
-
-  const contentDiv = thinkingEl.querySelector('.thinking-content') as HTMLElement | null;
-  if (contentDiv) {
-    contentDiv.innerHTML = formatMarkdown(ss.thinkingContent);
-  }
+  rendererAppendThinking(streamMsg, ss.thinkingContent);
   scrollToBottom();
 }
 
@@ -783,13 +495,8 @@ export function finalizeStreaming(
   streamSessionKey?: string,
 ): void {
   $('streaming-message')?.remove();
-
-  // Mission panel: clear active jobs
   clearActiveJobs();
 
-  // Tear down session-keyed stream — use the original stream's session key
-  // (not appState.currentSessionKey) because the user may have switched
-  // sessions/context while this stream was in-flight.
   const key = streamSessionKey ?? appState.currentSessionKey ?? '';
   const ss = appState.activeStreams.get(key);
   const savedRunId = ss?.runId ?? null;
@@ -816,7 +523,7 @@ export function finalizeStreaming(
       toolCalls,
       thinkingContent,
     });
-    autoSpeakIfEnabled(finalContent);
+    autoSpeakIfEnabled(finalContent, _ttsState).then(() => syncTtsToAppState());
 
     // Fallback token estimation
     if (
@@ -870,12 +577,13 @@ export function finalizeStreaming(
   }
 }
 
-// ── Message rendering ────────────────────────────────────────────────────
+// ── Message rendering (delegates to renderer molecule) ───────────────────
+
 export function addMessage(message: MessageWithAttachments): void {
   appState.messages.push(message);
   renderMessages();
 
-  // ── Credential bridge: detect [CREDENTIAL_REQUIRED] signals ──
+  // Credential bridge: detect [CREDENTIAL_REQUIRED] signals
   if (message.role === 'assistant' && message.content) {
     const signal = parseCredentialSignal(message.content);
     if (signal) {
@@ -900,227 +608,17 @@ function retryMessage(content: string): void {
   sendMessage();
 }
 
-/** Render an inline screenshot card for assistant messages */
-function renderScreenshotCard(msgContent: string): HTMLElement | null {
-  const ssMatch = msgContent.match(/Screenshot saved:\s*([^\n]+\.png)/);
-  if (!ssMatch) return null;
-  const ssFilename = ssMatch[1].split('/').pop() || '';
-  if (!ssFilename.startsWith('screenshot-')) return null;
-
-  const ssCard = document.createElement('div');
-  ssCard.className = 'message-screenshot-card';
-  ssCard.style.cssText =
-    'margin:8px 0;border-radius:8px;overflow:hidden;border:1px solid var(--border-color);cursor:pointer;max-width:400px';
-  ssCard.innerHTML =
-    '<div style="padding:8px;text-align:center;color:var(--text-muted);font-size:12px">Loading screenshot…</div>';
-  (async () => {
-    try {
-      const { pawEngine: eng } = await import('../molecules/ipc_client');
-      const ss = await eng.screenshotGet(ssFilename);
-      if (ss.base64_png) {
-        ssCard.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = `data:image/png;base64,${ss.base64_png}`;
-        img.style.cssText = 'width:100%;display:block';
-        img.alt = ssFilename;
-        ssCard.appendChild(img);
-        ssCard.addEventListener('click', () => {
-          const win = window.open('', '_blank');
-          if (win) {
-            win.document.title = ssFilename;
-            win.document.body.style.cssText =
-              'margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh';
-            const fullImg = win.document.createElement('img');
-            fullImg.src = img.src;
-            fullImg.style.maxWidth = '100%';
-            win.document.body.appendChild(fullImg);
-          }
-        });
-      }
-    } catch {
-      ssCard.innerHTML =
-        '<div style="padding:8px;color:var(--text-muted);font-size:12px">Screenshot unavailable</div>';
-    }
-  })();
-  return ssCard;
-}
-
-/** Render attachment strip (images + file chips) for a message */
-function renderAttachmentStrip(attachments: NonNullable<Message['attachments']>): HTMLElement {
-  const strip = document.createElement('div');
-  strip.className = 'message-attachments';
-  for (const att of attachments) {
-    if (att.mimeType?.startsWith('image/')) {
-      const card = document.createElement('div');
-      card.className = 'message-attachment-card';
-      const img = document.createElement('img');
-      img.className = 'message-attachment-img';
-      img.alt = att.name || 'attachment';
-      if (att.url) img.src = att.url;
-      else if (att.data) img.src = `data:${att.mimeType};base64,${att.data}`;
-      const overlay = document.createElement('div');
-      overlay.className = 'message-attachment-overlay';
-      overlay.innerHTML = icon('external-link');
-      card.appendChild(img);
-      card.appendChild(overlay);
-      card.addEventListener('click', () => window.open(img.src, '_blank'));
-      if (att.name) {
-        const lbl = document.createElement('div');
-        lbl.className = 'message-attachment-label';
-        lbl.textContent = att.name;
-        card.appendChild(lbl);
-      }
-      strip.appendChild(card);
-    } else {
-      const docChip = document.createElement('div');
-      docChip.className = 'message-attachment-doc';
-      const iconName =
-        att.mimeType?.startsWith('text/') || att.mimeType === 'application/pdf'
-          ? 'file-text'
-          : 'file';
-      docChip.innerHTML = icon(iconName);
-      const nameSpan = document.createElement('span');
-      nameSpan.textContent = att.name || 'file';
-      docChip.appendChild(nameSpan);
-      strip.appendChild(docChip);
-    }
-  }
-  return strip;
-}
-
-/** Render a single message element */
-function renderSingleMessage(
-  msg: Message,
-  index: number,
-  lastUserIdx: number,
-  lastAssistantIdx: number,
-): HTMLElement {
-  const div = document.createElement('div');
-  div.className = `message ${msg.role}`;
-
-  // Thinking block (collapsed in history)
-  if (msg.thinkingContent) {
-    const thinkingEl = document.createElement('details');
-    thinkingEl.className = 'thinking-block';
-    const summary = document.createElement('summary');
-    summary.textContent = 'Thinking';
-    thinkingEl.appendChild(summary);
-    const thinkingDiv = document.createElement('div');
-    thinkingDiv.className = 'thinking-content';
-    thinkingDiv.innerHTML = formatMarkdown(msg.thinkingContent);
-    thinkingEl.appendChild(thinkingDiv);
-    div.appendChild(thinkingEl);
-  }
-
-  const contentEl = document.createElement('div');
-  contentEl.className = 'message-content';
-
-  // Terminal-style prefix: YOU › or AGENT ›
-  const prefix = document.createElement('span');
-  prefix.className = 'message-prefix';
-  if (msg.role === 'user') {
-    prefix.textContent = 'YOU ›';
-  } else if (msg.role === 'assistant') {
-    const agent = AgentsModule.getCurrentAgent();
-    prefix.textContent = `${(agent?.name ?? 'AGENT').toUpperCase()} ›`;
-  } else {
-    prefix.textContent = 'SYS ›';
-  }
-  contentEl.appendChild(prefix);
-
-  const textNode = document.createElement('span');
-  if (msg.role === 'assistant' || msg.role === 'system') {
-    textNode.innerHTML = formatMarkdown(msg.content);
-  } else {
-    textNode.textContent = msg.content;
-  }
-  contentEl.appendChild(textNode);
-
-  const time = document.createElement('div');
-  time.className = 'message-time';
-  time.textContent = msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  div.appendChild(contentEl);
-
-  // Inline screenshot detection
-  if (msg.role === 'assistant' && msg.content.includes('Screenshot saved:')) {
-    const ssCard = renderScreenshotCard(msg.content);
-    if (ssCard) div.appendChild(ssCard);
-  }
-
-  // Image/file attachments
-  if (msg.attachments?.length) {
-    div.appendChild(renderAttachmentStrip(msg.attachments));
-  }
-
-  div.appendChild(time);
-
-  // Tool calls badge
-  if (msg.toolCalls?.length) {
-    const badge = document.createElement('div');
-    badge.className = 'tool-calls-badge';
-    badge.innerHTML = `${icon('wrench')} ${msg.toolCalls.length} tool call${msg.toolCalls.length > 1 ? 's' : ''}`;
-    div.appendChild(badge);
-  }
-
-  // Retry button
-  const isLastUser = index === lastUserIdx;
-  const isErrored = index === lastAssistantIdx && msg.content.startsWith('Error:');
-  if ((isLastUser || isErrored) && !appState.activeStreams.has(appState.currentSessionKey ?? '')) {
-    const retryBtn = document.createElement('button');
-    retryBtn.className = 'message-retry-btn';
-    retryBtn.title = 'Retry';
-    retryBtn.innerHTML = `${icon('rotate-ccw')} Retry`;
-    const retryContent = isLastUser
-      ? msg.content
-      : lastUserIdx >= 0
-        ? appState.messages[lastUserIdx].content
-        : '';
-    retryBtn.addEventListener('click', () => retryMessage(retryContent));
-    div.appendChild(retryBtn);
-  }
-
-  // TTS button
-  if (msg.role === 'assistant' && msg.content && !msg.content.startsWith('Error:')) {
-    const ttsBtn = document.createElement('button');
-    ttsBtn.className = 'message-tts-btn';
-    ttsBtn.title = 'Read aloud';
-    ttsBtn.innerHTML = `<span class="ms">volume_up</span>`;
-    const msgContent = msg.content;
-    ttsBtn.addEventListener('click', () => speakMessage(msgContent, ttsBtn));
-    div.appendChild(ttsBtn);
-  }
-
-  return div;
-}
-
 export function renderMessages(): void {
   const chatMessages = $('chat-messages');
   const chatEmpty = $('chat-empty');
   if (!chatMessages) return;
-  chatMessages.querySelectorAll('.message').forEach((m) => m.remove());
 
-  if (appState.messages.length === 0) {
-    if (chatEmpty) chatEmpty.style.display = 'flex';
-    return;
-  }
-  if (chatEmpty) chatEmpty.style.display = 'none';
-
-  const frag = document.createDocumentFragment();
-  const lastUserIdx = findLastIndex(appState.messages, (m) => m.role === 'user');
-  const lastAssistantIdx = findLastIndex(appState.messages, (m) => m.role === 'assistant');
-
-  for (let i = 0; i < appState.messages.length; i++) {
-    frag.appendChild(renderSingleMessage(appState.messages[i], i, lastUserIdx, lastAssistantIdx));
-  }
-
-  const streamingEl = $('streaming-message');
-  if (streamingEl) chatMessages.insertBefore(frag, streamingEl);
-  else chatMessages.appendChild(frag);
+  rendererRenderMessages(chatMessages, appState.messages, buildRenderOpts(), chatEmpty);
   scrollToBottom();
 }
 
 // ── Attachment helpers ─────────────────────────────────────────────────────
+
 export function renderAttachmentPreview(): void {
   const chatAttachmentPreview = $('chat-attachment-preview');
   if (!chatAttachmentPreview) return;
@@ -1183,81 +681,8 @@ export function clearPendingAttachments(): void {
   renderAttachmentPreview();
 }
 
-// ── TTS ───────────────────────────────────────────────────────────────────
-export async function speakMessage(text: string, btn: HTMLButtonElement): Promise<void> {
-  if (appState.ttsAudio && appState.ttsActiveBtn === btn) {
-    appState.ttsAudio.pause();
-    appState.ttsAudio = null;
-    btn.innerHTML = `<span class="ms">volume_up</span>`;
-    btn.classList.remove('tts-playing');
-    appState.ttsActiveBtn = null;
-    return;
-  }
-  if (appState.ttsAudio) {
-    appState.ttsAudio.pause();
-    appState.ttsAudio = null;
-    if (appState.ttsActiveBtn) {
-      appState.ttsActiveBtn.innerHTML = `<span class="ms">volume_up</span>`;
-      appState.ttsActiveBtn.classList.remove('tts-playing');
-    }
-  }
-  btn.innerHTML = `<span class="ms">hourglass_top</span>`;
-  btn.classList.add('tts-loading');
-  try {
-    const base64Audio = await pawEngine.ttsSpeak(text);
-    const audioBytes = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
-    const blob = new Blob([audioBytes], { type: 'audio/mp3' });
-    const url = URL.createObjectURL(blob);
-    appState.ttsAudio = new Audio(url);
-    appState.ttsActiveBtn = btn;
-    btn.innerHTML = `<span class="ms">stop_circle</span>`;
-    btn.classList.remove('tts-loading');
-    btn.classList.add('tts-playing');
-    appState.ttsAudio.addEventListener('ended', () => {
-      btn.innerHTML = `<span class="ms">volume_up</span>`;
-      btn.classList.remove('tts-playing');
-      URL.revokeObjectURL(url);
-      appState.ttsAudio = null;
-      appState.ttsActiveBtn = null;
-    });
-    appState.ttsAudio.addEventListener('error', () => {
-      btn.innerHTML = `<span class="ms">volume_up</span>`;
-      btn.classList.remove('tts-playing');
-      URL.revokeObjectURL(url);
-      appState.ttsAudio = null;
-      appState.ttsActiveBtn = null;
-    });
-    appState.ttsAudio.play();
-  } catch (e) {
-    console.error('[tts] Error:', e);
-    btn.innerHTML = `<span class="ms">volume_up</span>`;
-    btn.classList.remove('tts-loading', 'tts-playing');
-    showToast(e instanceof Error ? e.message : 'TTS failed — check Voice settings', 'error');
-  }
-}
-
-async function autoSpeakIfEnabled(text: string): Promise<void> {
-  try {
-    const cfg = await pawEngine.ttsGetConfig();
-    if (!cfg.auto_speak) return;
-    const base64Audio = await pawEngine.ttsSpeak(text);
-    const audioBytes = Uint8Array.from(atob(base64Audio), (c) => c.charCodeAt(0));
-    const blob = new Blob([audioBytes], { type: 'audio/mp3' });
-    const url = URL.createObjectURL(blob);
-    if (appState.ttsAudio) appState.ttsAudio.pause();
-    appState.ttsAudio = new Audio(url);
-    appState.ttsAudio.addEventListener('ended', () => {
-      URL.revokeObjectURL(url);
-      appState.ttsAudio = null;
-    });
-    appState.ttsAudio.play();
-  } catch (e) {
-    console.warn('[tts] Auto-speak failed:', e);
-  }
-}
-
 // ── Send message ──────────────────────────────────────────────────────────
-/** Build the command context object for slash command interception */
+
 function buildSlashCommandContext(chatModelSelect: HTMLSelectElement | null): CommandContext {
   return {
     sessionKey: appState.currentSessionKey,
@@ -1284,7 +709,6 @@ function buildSlashCommandContext(chatModelSelect: HTMLSelectElement | null): Co
   };
 }
 
-/** Encode pending file attachments to base64 for sending */
 async function encodeFileAttachments(): Promise<
   Array<{ type: string; mimeType: string; content: string; name?: string }>
 > {
@@ -1310,7 +734,6 @@ async function encodeFileAttachments(): Promise<
   return attachments;
 }
 
-/** Handle the send result — update session, auto-label, process ack text */
 function handleSendResult(
   result: {
     sessionKey?: string;
@@ -1376,8 +799,6 @@ export async function sendMessage(): Promise<void> {
   const chatSend = document.getElementById('chat-send') as HTMLButtonElement | null;
   const chatModelSelect = document.getElementById('chat-model-select') as HTMLSelectElement | null;
   let content = chatInput?.value.trim();
-  // Per-session loading guard: only block if the *current* session is streaming.
-  // Other sessions can stream concurrently in the background.
   const currentKey = appState.currentSessionKey ?? '';
   if (!content || appState.activeStreams.has(currentKey)) return;
 
@@ -1397,10 +818,8 @@ export async function sendMessage(): Promise<void> {
     }
   }
 
-  // Encode pending file attachments
   const attachments = await encodeFileAttachments();
 
-  // User message
   const userMsg: Message = { role: 'user', content, timestamp: new Date() };
   if (attachments.length) {
     userMsg.attachments = attachments.map((a) => ({
@@ -1449,7 +868,6 @@ export async function sendMessage(): Promise<void> {
     if (chatModelVal && chatModelVal !== 'default') chatOpts.model = chatModelVal;
     const slashOverrides = getSlashOverrides();
     if (slashOverrides.model) chatOpts.model = slashOverrides.model;
-    // Thinking level priority: slash command > agent profile > unset (backend default)
     if (slashOverrides.thinkingLevel) {
       chatOpts.thinkingLevel = slashOverrides.thinkingLevel;
     } else if (currentAgent?.thinking_level) {
@@ -1472,9 +890,6 @@ export async function sendMessage(): Promise<void> {
     handleSendResult(result, ss, streamKey);
 
     const finalText = await responsePromise;
-    // If teardownStream already cleaned up this stream (user switched
-    // session/agent/new-chat), skip finalizeStreaming to avoid injecting
-    // a phantom assistant message into the new session's chat view.
     if (appState.activeStreams.has(streamKey)) {
       finalizeStreaming(finalText, undefined, streamKey);
     } else {
@@ -1488,8 +903,6 @@ export async function sendMessage(): Promise<void> {
       finalizeStreaming(ss.content || `Error: ${errMsg}`, undefined, streamKey);
     }
   } finally {
-    // Clean up stream entries for BOTH the original stream key and the
-    // current session key (in case handleSendResult re-keyed the stream)
     const finalKey = appState.currentSessionKey ?? streamKey;
     appState.activeStreams.delete(finalKey);
     appState.activeStreams.delete(streamKey);
@@ -1504,6 +917,10 @@ export async function sendMessage(): Promise<void> {
 
 // ── Wire up all chat DOM event listeners ─────────────────────────────────
 // Called once from main.ts DOMContentLoaded.
+
+// Talk mode controller (scoped to main chat view)
+let _talkMode: ReturnType<typeof createTalkMode> | null = null;
+
 export function initChatListeners(): void {
   const chatSend = document.getElementById('chat-send') as HTMLButtonElement | null;
   const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement | null;
@@ -1611,7 +1028,6 @@ export function initChatListeners(): void {
     const key = chatSessionSelect?.value;
     if (!key) return;
 
-    // Tear down any active stream for the old session before switching.
     const oldKey = appState.currentSessionKey ?? '';
     if (oldKey !== key) {
       teardownStream(oldKey, 'Session switched');
@@ -1633,7 +1049,6 @@ export function initChatListeners(): void {
   });
 
   $('new-chat-btn')?.addEventListener('click', () => {
-    // Tear down any in-flight stream before resetting
     const oldKey = appState.currentSessionKey ?? '';
     teardownStream(oldKey, 'New chat');
     appState.messages = [];
@@ -1706,7 +1121,6 @@ export function initChatListeners(): void {
       resetTokenMeter();
       const ba = document.getElementById('session-budget-alert');
       if (ba) ba.style.display = 'none';
-      // Reload compacted history into the UI
       const history = await pawEngine.chatHistory(appState.currentSessionKey, 100);
       appState.messages = history.map((m) => ({
         role: m.role as 'user' | 'assistant' | 'system',
@@ -1725,139 +1139,32 @@ export function initChatListeners(): void {
     if (warning) warning.style.display = 'none';
   });
 
-  // Talk Mode button in chat input
-  $('chat-talk-btn')?.addEventListener('click', () => toggleChatTalkMode());
+  // Talk Mode: use scoped TalkModeController
+  _talkMode = createTalkMode(
+    () => document.getElementById('chat-input') as HTMLTextAreaElement | null,
+    () => document.getElementById('chat-talk-btn'),
+  );
+  $('chat-talk-btn')?.addEventListener('click', () => _talkMode?.toggle());
 
   // Context breakdown popover on token meter click
   initContextBreakdownClick();
 }
 
-// ═══ Chat Talk Mode ═════════════════════════════════════════════════════
-// Quick talk button next to chat input — records one utterance and sends it
-
-let _chatTalkActive = false;
-let _chatMediaRecorder: MediaRecorder | null = null;
-let _chatAudioStream: MediaStream | null = null;
-let _chatTalkTimeout: ReturnType<typeof setTimeout> | null = null;
-
-async function toggleChatTalkMode() {
-  if (_chatTalkActive) {
-    stopChatTalk();
-  } else {
-    await startChatTalk();
-  }
-}
-
-async function startChatTalk() {
-  const btn = $('chat-talk-btn');
-  if (!btn) return;
-
-  try {
-    _chatAudioStream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
-    });
-
-    _chatTalkActive = true;
-    btn.innerHTML = `<span class="ms">stop_circle</span>`;
-    btn.classList.add('talk-active');
-    btn.title = 'Stop recording';
-
-    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-      ? 'audio/webm;codecs=opus'
-      : MediaRecorder.isTypeSupported('audio/webm')
-        ? 'audio/webm'
-        : 'audio/ogg';
-
-    _chatMediaRecorder = new MediaRecorder(_chatAudioStream, { mimeType });
-    const chunks: Blob[] = [];
-
-    _chatMediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunks.push(e.data);
-    };
-
-    _chatMediaRecorder.onstop = async () => {
-      cleanupChatTalk();
-      if (chunks.length === 0) return;
-
-      const blob = new Blob(chunks, { type: mimeType });
-      if (blob.size < 4000) {
-        showToast('Recording too short — try again', 'info');
-        return;
-      }
-
-      btn.innerHTML = `<span class="ms">hourglass_top</span>`;
-      btn.title = 'Transcribing...';
-
-      try {
-        const reader = new FileReader();
-        const base64 = await new Promise<string>((resolve, reject) => {
-          reader.onload = () => resolve((reader.result as string).split(',')[1] || '');
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(blob);
-        });
-
-        const transcript = await pawEngine.ttsTranscribe(base64, mimeType);
-        if (transcript.trim()) {
-          const chatInput = $('chat-input') as HTMLTextAreaElement | null;
-          if (chatInput) {
-            chatInput.value = transcript;
-            chatInput.style.height = 'auto';
-            chatInput.style.height = `${Math.min(chatInput.scrollHeight, 120)}px`;
-            chatInput.focus();
-          }
-        } else {
-          showToast('No speech detected — try again', 'info');
-        }
-      } catch (e) {
-        console.error('[talk] Transcription error:', e);
-        showToast(`Transcription failed: ${e instanceof Error ? e.message : e}`, 'error');
-      } finally {
-        btn.innerHTML = `<span class="ms">mic</span>`;
-        btn.title = 'Talk Mode — hold to speak';
-      }
-    };
-
-    _chatMediaRecorder.start();
-
-    // Auto-stop after 30 seconds max
-    _chatTalkTimeout = setTimeout(() => {
-      _chatTalkTimeout = null;
-      if (_chatMediaRecorder && _chatMediaRecorder.state === 'recording') {
-        _chatMediaRecorder.stop();
-      }
-    }, 30_000);
-  } catch (e) {
-    showToast('Microphone access denied', 'error');
-    console.error('[talk] Mic error:', e);
-    cleanupChatTalk();
-  }
-}
-
-function stopChatTalk() {
-  if (_chatTalkTimeout) {
-    clearTimeout(_chatTalkTimeout);
-    _chatTalkTimeout = null;
-  }
-  if (_chatMediaRecorder && _chatMediaRecorder.state === 'recording') {
-    _chatMediaRecorder.stop();
-  }
-}
-
-function cleanupChatTalk() {
-  if (_chatTalkTimeout) {
-    clearTimeout(_chatTalkTimeout);
-    _chatTalkTimeout = null;
-  }
-  _chatTalkActive = false;
-  _chatMediaRecorder = null;
-  if (_chatAudioStream) {
-    _chatAudioStream.getTracks().forEach((t) => t.stop());
-    _chatAudioStream = null;
-  }
-  const btn = $('chat-talk-btn');
-  if (btn) {
-    btn.innerHTML = `<span class="ms">mic</span>`;
-    btn.classList.remove('talk-active');
-    btn.title = 'Talk Mode — hold to speak';
+function initContextBreakdownClick(): void {
+  const meter = $('token-meter');
+  if (!meter) return;
+  meter.style.cursor = 'pointer';
+  meter.addEventListener('click', (e) => {
+    e.stopPropagation();
+    getTokenMeter().toggleBreakdown();
+    getTokenMeter().updateBreakdownPopover(meterSnapshot());
+  });
+  document.addEventListener('click', () => {
+    const panel = $('context-breakdown-panel');
+    if (panel) panel.style.display = 'none';
+  });
+  const panel = $('context-breakdown-panel');
+  if (panel) {
+    panel.addEventListener('click', (e) => e.stopPropagation());
   }
 }

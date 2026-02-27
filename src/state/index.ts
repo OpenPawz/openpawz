@@ -4,6 +4,7 @@
 
 import type { AppConfig, Session, ToolCall } from '../types';
 import type { ModelPricingRow } from '../db';
+import type { MiniHubRegistry } from './mini-hub';
 
 // ── Extended message type ──────────────────────────────────────────────────
 export interface ChatAttachmentLocal {
@@ -264,6 +265,13 @@ export const appState = {
 
   // Scroll de-bounce
   scrollRafPending: false,
+
+  // Mini-hub registry (Phase 1)
+  miniHubs: {
+    hubs: new Map(),
+    activeHubId: null,
+    maxHubs: 8,
+  } as MiniHubRegistry,
 };
 
 // ── Per-agent session map ──────────────────────────────────────────────────
