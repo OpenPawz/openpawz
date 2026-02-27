@@ -20,6 +20,19 @@ use tauri::Manager;
 /// Maximum rounds the worker gets to execute a task.
 const WORKER_MAX_ROUNDS: u32 = 8;
 
+/// Check if a worker model is configured (quick, non-async check).
+pub fn has_worker(app_handle: &tauri::AppHandle) -> bool {
+    if let Some(state) = app_handle.try_state::<EngineState>() {
+        let cfg = state.config.lock();
+        cfg.model_routing
+            .worker_model
+            .as_ref()
+            .map_or(false, |m| !m.is_empty())
+    } else {
+        false
+    }
+}
+
 /// Attempt to delegate a tool call to the local worker model.
 ///
 /// Returns `Some(ToolResult)` if delegation was performed (success or failure).
@@ -51,16 +64,20 @@ pub async fn delegate_to_worker(
     let provider_config = resolve_worker_provider(&worker_model, &providers)?;
     let provider = AnyProvider::from_config(&provider_config);
 
-    // Gather MCP tool definitions (the worker needs to know what's available)
-    let mcp_tools = ToolDefinition::mcp_tools(app_handle);
-    if mcp_tools.is_empty() {
-        warn!("[worker-delegate] No MCP tools available — falling back to direct execution");
+    // Gather tool definitions the worker can use:
+    // - fetch/exec for direct API calls and shell commands
+    // - MCP tools for n8n-bridged services
+    // - n8n management tools
+    let mut worker_tools: Vec<ToolDefinition> = Vec::new();
+    worker_tools.extend(crate::engine::tools::fetch::definitions());
+    worker_tools.extend(crate::engine::tools::exec::definitions());
+    worker_tools.extend(ToolDefinition::mcp_tools(app_handle));
+    worker_tools.extend(crate::engine::tools::n8n::definitions());
+
+    if worker_tools.is_empty() {
+        warn!("[worker-delegate] No tools available for worker — falling back");
         return None;
     }
-
-    // Also include n8n management tools so the worker can install/refresh
-    let mut worker_tools = mcp_tools;
-    worker_tools.extend(crate::engine::tools::n8n::definitions());
 
     // Build the task prompt from the brain's tool call
     let task_prompt = format!(
@@ -72,15 +89,20 @@ pub async fn delegate_to_worker(
 
     // Build system prompt for the worker
     let system_prompt = "You are the LOCAL FOREMAN (Worker Agent) for OpenPawz.\n\n\
-        Your job is to receive Task Orders and translate them into precise MCP tool calls.\n\
+        Your job is to receive Task Orders and execute them using your available tools.\n\
         You are a silent execution unit — never engage in conversation, never explain your reasoning.\n\n\
+        ## Available Tools\n\
+        - `fetch` — Make HTTP requests (GET/POST) to any API. Use for data lookups, price checks, API calls.\n\
+        - `exec` — Run shell commands (curl, jq, etc.). Use when you need piping or complex CLI workflows.\n\
+        - `mcp_*` — MCP bridge tools for n8n-connected services.\n\n\
         ## Execution Rules\n\
-        1. Parse the Task Order. Identify the tool call needed.\n\
-        2. Execute the MCP tool call with the correct parameters.\n\
+        1. Parse the Task Order. Identify what data/action is needed.\n\
+        2. Use `fetch` for simple API calls, `exec` for CLI pipelines, `mcp_*` for n8n services.\n\
         3. If a tool call fails, retry ONCE with corrected parameters.\n\
-        4. Return the tool result as your final response — nothing else.\n\n\
+        4. Return ONLY the result data — no explanation, no commentary.\n\
+        5. For structured data (JSON), return relevant fields only, summarized concisely.\n\n\
         ## Important\n\
-        - MCP tools are prefixed with `mcp_` — use them as provided.\n\
+        - You run LOCALLY at zero cost. Execute efficiently.\n\
         - Do NOT explain what you're doing. Just execute and return the result.\n\
         - If the task cannot be completed, say ERROR: followed by the reason."
         .to_string();
@@ -309,7 +331,13 @@ async fn execute_worker_tool(
     let args: serde_json::Value =
         serde_json::from_str(&tool_call.function.arguments).unwrap_or(serde_json::json!({}));
 
-    let result = if name.starts_with("mcp_") {
+    let result = if let Some(r) = tools::fetch::execute(name, &args, app_handle).await {
+        // fetch — HTTP requests for API calls
+        r
+    } else if let Some(r) = tools::exec::execute(name, &args, app_handle, _agent_id).await {
+        // exec — shell commands
+        r
+    } else if name.starts_with("mcp_") {
         // MCP tools → direct JSON-RPC to MCP server
         if let Some(state) = app_handle.try_state::<EngineState>() {
             let reg = state.mcp_registry.lock().await;
@@ -324,7 +352,7 @@ async fn execute_worker_tool(
         // n8n management tools (install_n8n_node, search_ncnodes, etc.)
         r
     } else {
-        Err(format!("Worker cannot execute non-MCP tool: {}", name))
+        Err(format!("Worker cannot execute tool: {}", name))
     };
 
     match result {
