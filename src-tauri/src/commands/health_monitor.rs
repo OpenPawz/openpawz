@@ -51,29 +51,19 @@ const HEALTH_KEY: &str = "integration_health";
 const CHAINS_KEY: &str = "workflow_chains";
 
 fn load_health(app: &tauri::AppHandle) -> Vec<ServiceHealth> {
-    channels::load_channel_config::<Vec<ServiceHealth>>(app, HEALTH_KEY)
-        .unwrap_or_default()
+    channels::load_channel_config::<Vec<ServiceHealth>>(app, HEALTH_KEY).unwrap_or_default()
 }
 
-fn save_health(
-    app: &tauri::AppHandle,
-    health: &[ServiceHealth],
-) -> Result<(), String> {
-    channels::save_channel_config(app, HEALTH_KEY, &health.to_vec())
-        .map_err(|e| e.to_string())
+fn save_health(app: &tauri::AppHandle, health: &[ServiceHealth]) -> Result<(), String> {
+    channels::save_channel_config(app, HEALTH_KEY, &health.to_vec()).map_err(|e| e.to_string())
 }
 
 fn load_chains(app: &tauri::AppHandle) -> Vec<ChainRule> {
-    channels::load_channel_config::<Vec<ChainRule>>(app, CHAINS_KEY)
-        .unwrap_or_default()
+    channels::load_channel_config::<Vec<ChainRule>>(app, CHAINS_KEY).unwrap_or_default()
 }
 
-fn save_chains(
-    app: &tauri::AppHandle,
-    chains: &[ChainRule],
-) -> Result<(), String> {
-    channels::save_channel_config(app, CHAINS_KEY, &chains.to_vec())
-        .map_err(|e| e.to_string())
+fn save_chains(app: &tauri::AppHandle, chains: &[ChainRule]) -> Result<(), String> {
+    channels::save_channel_config(app, CHAINS_KEY, &chains.to_vec()).map_err(|e| e.to_string())
 }
 
 // ── Health Commands ────────────────────────────────────────────────────
@@ -86,11 +76,9 @@ pub fn engine_health_check_services(
     let mut health = load_health(&app_handle);
 
     // Check for connected services with no health record
-    let connected: Vec<String> = channels::load_channel_config::<Vec<String>>(
-        &app_handle,
-        "connected_service_ids",
-    )
-    .unwrap_or_default();
+    let connected: Vec<String> =
+        channels::load_channel_config::<Vec<String>>(&app_handle, "connected_service_ids")
+            .unwrap_or_default();
 
     let now = chrono::Utc::now().to_rfc3339();
     for svc in &connected {
@@ -163,9 +151,7 @@ pub fn engine_health_update_service(
 
 /// Trigger re-authentication for a service.
 #[tauri::command]
-pub fn engine_health_trigger_reauth(
-    service: String,
-) -> Result<String, String> {
+pub fn engine_health_trigger_reauth(service: String) -> Result<String, String> {
     // Stub: in production, this would clear stored credentials and
     // prompt the credential flow (Phase 3). For now, return guidance.
     Ok(format!(
@@ -178,9 +164,7 @@ pub fn engine_health_trigger_reauth(
 
 /// List all workflow chain rules.
 #[tauri::command]
-pub fn engine_health_list_chains(
-    app_handle: tauri::AppHandle,
-) -> Result<Vec<ChainRule>, String> {
+pub fn engine_health_list_chains(app_handle: tauri::AppHandle) -> Result<Vec<ChainRule>, String> {
     Ok(load_chains(&app_handle))
 }
 

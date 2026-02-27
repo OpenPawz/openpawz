@@ -115,8 +115,12 @@ pub async fn execute(
     app_handle: &tauri::AppHandle,
 ) -> Option<Result<String, String>> {
     match name {
-        "n8n_list_workflows" | "n8n_trigger_workflow" | "n8n_execute_action"
-        | "search_ncnodes" | "install_n8n_node" | "mcp_refresh" => {}
+        "n8n_list_workflows"
+        | "n8n_trigger_workflow"
+        | "n8n_execute_action"
+        | "search_ncnodes"
+        | "install_n8n_node"
+        | "mcp_refresh" => {}
         _ => return None,
     }
 
@@ -155,11 +159,14 @@ fn load_n8n_config(app_handle: &tauri::AppHandle) -> Result<N8nConnection, Strin
         #[serde(default)]
         api_key: String,
     }
-    let cfg: Cfg = channels::load_channel_config(app_handle, "n8n_config")
-        .map_err(|_| "n8n is not configured. Set up n8n in Settings → Integrations first.".to_string())?;
+    let cfg: Cfg = channels::load_channel_config(app_handle, "n8n_config").map_err(|_| {
+        "n8n is not configured. Set up n8n in Settings → Integrations first.".to_string()
+    })?;
 
     if cfg.url.is_empty() || cfg.api_key.is_empty() {
-        return Err("n8n URL or API key is empty. Configure n8n in Settings → Integrations.".into());
+        return Err(
+            "n8n URL or API key is empty. Configure n8n in Settings → Integrations.".into(),
+        );
     }
 
     Ok(N8nConnection {
@@ -202,7 +209,10 @@ async fn execute_list_workflows(config: &N8nConnection) -> Result<String, String
         Some(workflows) if !workflows.is_empty() => {
             let mut output = format!("Found {} workflow(s):\n\n", workflows.len());
             for wf in workflows {
-                let id = wf["id"].as_str().or(wf["id"].as_u64().map(|_| "")).unwrap_or("?");
+                let id = wf["id"]
+                    .as_str()
+                    .or(wf["id"].as_u64().map(|_| ""))
+                    .unwrap_or("?");
                 let name = wf["name"].as_str().unwrap_or("Untitled");
                 let active = wf["active"].as_bool().unwrap_or(false);
                 let status = if active { "✅ active" } else { "⏸ inactive" };
@@ -221,9 +231,15 @@ async fn execute_trigger_workflow(
     let workflow_id = args["workflow_id"]
         .as_str()
         .ok_or("n8n_trigger_workflow: missing 'workflow_id'")?;
-    let payload = args.get("payload").cloned().unwrap_or(serde_json::json!({}));
+    let payload = args
+        .get("payload")
+        .cloned()
+        .unwrap_or(serde_json::json!({}));
 
-    info!("[tool:n8n] Triggering workflow {} with payload", workflow_id);
+    info!(
+        "[tool:n8n] Triggering workflow {} with payload",
+        workflow_id
+    );
 
     let endpoint = format!("{}/api/v1/workflows/{}/execute", config.url, workflow_id);
     let resp = client()?
@@ -271,10 +287,7 @@ async fn execute_action(
         .ok_or("n8n_execute_action: missing 'action'")?;
     let params = args.get("params").cloned().unwrap_or(serde_json::json!({}));
 
-    info!(
-        "[tool:n8n] Executing action {}.{} via n8n",
-        service, action
-    );
+    info!("[tool:n8n] Executing action {}.{} via n8n", service, action);
 
     // Load stored credentials for this service
     let cred_key = format!("integration_creds_{}", service);
@@ -472,32 +485,72 @@ async fn fallback_rest_call(
 
     let (base_url, auth_header, auth_value) = match service {
         "notion" => {
-            let token = creds.get("api_key").or(creds.get("access_token")).cloned().unwrap_or_default();
-            ("https://api.notion.com/v1".to_string(), "Authorization", format!("Bearer {}", token))
+            let token = creds
+                .get("api_key")
+                .or(creds.get("access_token"))
+                .cloned()
+                .unwrap_or_default();
+            (
+                "https://api.notion.com/v1".to_string(),
+                "Authorization",
+                format!("Bearer {}", token),
+            )
         }
         "linear" => {
             let token = creds.get("api_key").cloned().unwrap_or_default();
-            ("https://api.linear.app".to_string(), "Authorization", format!("Bearer {}", token))
+            (
+                "https://api.linear.app".to_string(),
+                "Authorization",
+                format!("Bearer {}", token),
+            )
         }
         "todoist" => {
-            let token = creds.get("api_token").or(creds.get("api_key")).cloned().unwrap_or_default();
-            ("https://api.todoist.com/rest/v2".to_string(), "Authorization", format!("Bearer {}", token))
+            let token = creds
+                .get("api_token")
+                .or(creds.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
+            (
+                "https://api.todoist.com/rest/v2".to_string(),
+                "Authorization",
+                format!("Bearer {}", token),
+            )
         }
         "clickup" => {
             let token = creds.get("api_key").cloned().unwrap_or_default();
-            ("https://api.clickup.com/api/v2".to_string(), "Authorization", format!("Bearer {}", token))
+            (
+                "https://api.clickup.com/api/v2".to_string(),
+                "Authorization",
+                format!("Bearer {}", token),
+            )
         }
         "airtable" => {
             let token = creds.get("api_key").cloned().unwrap_or_default();
-            ("https://api.airtable.com/v0".to_string(), "Authorization", format!("Bearer {}", token))
+            (
+                "https://api.airtable.com/v0".to_string(),
+                "Authorization",
+                format!("Bearer {}", token),
+            )
         }
         "sendgrid" => {
             let token = creds.get("api_key").cloned().unwrap_or_default();
-            ("https://api.sendgrid.com/v3".to_string(), "Authorization", format!("Bearer {}", token))
+            (
+                "https://api.sendgrid.com/v3".to_string(),
+                "Authorization",
+                format!("Bearer {}", token),
+            )
         }
         "hubspot" => {
-            let token = creds.get("access_token").or(creds.get("api_key")).cloned().unwrap_or_default();
-            ("https://api.hubapi.com".to_string(), "Authorization", format!("Bearer {}", token))
+            let token = creds
+                .get("access_token")
+                .or(creds.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
+            (
+                "https://api.hubapi.com".to_string(),
+                "Authorization",
+                format!("Bearer {}", token),
+            )
         }
         _ => {
             return Err(format!(
@@ -570,7 +623,11 @@ async fn fallback_rest_call(
 }
 
 /// Map a semantic action name to (HTTP_METHOD, path)
-fn map_action_to_rest(service: &str, action: &str, params: &serde_json::Value) -> (&'static str, String) {
+fn map_action_to_rest(
+    service: &str,
+    action: &str,
+    params: &serde_json::Value,
+) -> (&'static str, String) {
     let id = params.get("id").and_then(|v| v.as_str()).unwrap_or("");
 
     match (service, action) {
@@ -591,7 +648,9 @@ fn map_action_to_rest(service: &str, action: &str, params: &serde_json::Value) -
         ("todoist", "list_projects") => ("GET", "/projects".into()),
         ("todoist", "list_tasks") | ("todoist", "get_tasks") => ("GET", "/tasks".into()),
         ("todoist", "create_task") => ("POST", "/tasks".into()),
-        ("todoist", "close_task") | ("todoist", "complete_task") => ("POST", format!("/tasks/{}/close", id)),
+        ("todoist", "close_task") | ("todoist", "complete_task") => {
+            ("POST", format!("/tasks/{}/close", id))
+        }
 
         // ClickUp
         ("clickup", "get_teams") | ("clickup", "list_teams") => ("GET", "/team".into()),
@@ -608,8 +667,12 @@ fn map_action_to_rest(service: &str, action: &str, params: &serde_json::Value) -
         }
 
         // HubSpot
-        ("hubspot", "list_contacts") | ("hubspot", "get_contacts") => ("GET", "/crm/v3/objects/contacts".into()),
-        ("hubspot", "list_deals") | ("hubspot", "get_deals") => ("GET", "/crm/v3/objects/deals".into()),
+        ("hubspot", "list_contacts") | ("hubspot", "get_contacts") => {
+            ("GET", "/crm/v3/objects/contacts".into())
+        }
+        ("hubspot", "list_deals") | ("hubspot", "get_deals") => {
+            ("GET", "/crm/v3/objects/deals".into())
+        }
         ("hubspot", "create_contact") => ("POST", "/crm/v3/objects/contacts".into()),
         ("hubspot", "create_deal") => ("POST", "/crm/v3/objects/deals".into()),
 
@@ -646,13 +709,13 @@ async fn execute_search_ncnodes(args: &serde_json::Value) -> Result<String, Stri
         .ok_or("search_ncnodes: missing 'query' parameter")?;
     let limit = args["limit"].as_u64().unwrap_or(5).min(20) as u32;
 
-    info!("[tool:n8n] search_ncnodes query='{}' limit={}", query, limit);
+    info!(
+        "[tool:n8n] search_ncnodes query='{}' limit={}",
+        query, limit
+    );
 
-    let results = crate::commands::n8n::engine_n8n_search_ncnodes(
-        query.to_string(),
-        Some(limit),
-    )
-    .await?;
+    let results =
+        crate::commands::n8n::engine_n8n_search_ncnodes(query.to_string(), Some(limit)).await?;
 
     if results.is_empty() {
         return Ok(format!(
@@ -661,7 +724,11 @@ async fn execute_search_ncnodes(args: &serde_json::Value) -> Result<String, Stri
         ));
     }
 
-    let mut output = format!("Found {} community package(s) for '{}':\n\n", results.len(), query);
+    let mut output = format!(
+        "Found {} community package(s) for '{}':\n\n",
+        results.len(),
+        query
+    );
     for (i, pkg) in results.iter().enumerate() {
         output.push_str(&format!(
             "{}. **{}** v{}\n   {}\n   Author: {} | Popularity: {} | Updated: {}\n",
@@ -712,11 +779,7 @@ async fn execute_install_n8n_node(
     )
     .await?;
 
-    let node_names: Vec<String> = pkg
-        .installed_nodes
-        .iter()
-        .map(|n| n.name.clone())
-        .collect();
+    let node_names: Vec<String> = pkg.installed_nodes.iter().map(|n| n.name.clone()).collect();
 
     // Auto-deploy MCP workflow for the first node type if available
     let mcp_deployed = if let Some(first_node) = pkg.installed_nodes.first() {
@@ -761,7 +824,9 @@ async fn execute_install_n8n_node(
         output.push_str("   MCP workflow deployed — new tools are available.\n");
     }
     output.push_str(&format!("   {}\n", tool_count));
-    output.push_str("\nThe new tools are now available in your tool set. You can use them immediately.");
+    output.push_str(
+        "\nThe new tools are now available in your tool set. You can use them immediately.",
+    );
 
     Ok(output)
 }
@@ -801,7 +866,10 @@ async fn execute_mcp_refresh(app_handle: &tauri::AppHandle) -> Result<String, St
     if reg.is_n8n_registered() {
         reg.refresh_tools("n8n").await?;
         let tool_count = reg.tool_definitions_for(&["n8n".into()]).len();
-        info!("[tool:n8n] MCP tools refreshed — {} tools available", tool_count);
+        info!(
+            "[tool:n8n] MCP tools refreshed — {} tools available",
+            tool_count
+        );
         Ok(format!(
             "MCP tools refreshed. {} tool(s) now available from n8n.",
             tool_count

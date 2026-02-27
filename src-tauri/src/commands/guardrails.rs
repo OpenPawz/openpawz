@@ -55,16 +55,11 @@ const AUDIT_LOG_KEY: &str = "guardrail_audit_log";
 const TOKEN_INFO_KEY: &str = "guardrail_token_info";
 
 fn load_rate_limits(app: &tauri::AppHandle) -> Vec<RateLimitConfig> {
-    channels::load_channel_config::<Vec<RateLimitConfig>>(app, RATE_LIMITS_KEY)
-        .unwrap_or_default()
+    channels::load_channel_config::<Vec<RateLimitConfig>>(app, RATE_LIMITS_KEY).unwrap_or_default()
 }
 
-fn save_rate_limits(
-    app: &tauri::AppHandle,
-    limits: &[RateLimitConfig],
-) -> Result<(), String> {
-    channels::save_channel_config(app, RATE_LIMITS_KEY, &limits.to_vec())
-        .map_err(|e| e.to_string())
+fn save_rate_limits(app: &tauri::AppHandle, limits: &[RateLimitConfig]) -> Result<(), String> {
+    channels::save_channel_config(app, RATE_LIMITS_KEY, &limits.to_vec()).map_err(|e| e.to_string())
 }
 
 fn load_permissions(app: &tauri::AppHandle) -> Vec<AgentServicePermission> {
@@ -76,34 +71,23 @@ fn save_permissions(
     app: &tauri::AppHandle,
     perms: &[AgentServicePermission],
 ) -> Result<(), String> {
-    channels::save_channel_config(app, PERMISSIONS_KEY, &perms.to_vec())
-        .map_err(|e| e.to_string())
+    channels::save_channel_config(app, PERMISSIONS_KEY, &perms.to_vec()).map_err(|e| e.to_string())
 }
 
 fn load_audit_log(app: &tauri::AppHandle) -> Vec<CredentialUsageLog> {
-    channels::load_channel_config::<Vec<CredentialUsageLog>>(app, AUDIT_LOG_KEY)
-        .unwrap_or_default()
+    channels::load_channel_config::<Vec<CredentialUsageLog>>(app, AUDIT_LOG_KEY).unwrap_or_default()
 }
 
-fn save_audit_log(
-    app: &tauri::AppHandle,
-    logs: &[CredentialUsageLog],
-) -> Result<(), String> {
-    channels::save_channel_config(app, AUDIT_LOG_KEY, &logs.to_vec())
-        .map_err(|e| e.to_string())
+fn save_audit_log(app: &tauri::AppHandle, logs: &[CredentialUsageLog]) -> Result<(), String> {
+    channels::save_channel_config(app, AUDIT_LOG_KEY, &logs.to_vec()).map_err(|e| e.to_string())
 }
 
 fn load_token_info(app: &tauri::AppHandle) -> Vec<TokenInfo> {
-    channels::load_channel_config::<Vec<TokenInfo>>(app, TOKEN_INFO_KEY)
-        .unwrap_or_default()
+    channels::load_channel_config::<Vec<TokenInfo>>(app, TOKEN_INFO_KEY).unwrap_or_default()
 }
 
-fn save_token_info(
-    app: &tauri::AppHandle,
-    tokens: &[TokenInfo],
-) -> Result<(), String> {
-    channels::save_channel_config(app, TOKEN_INFO_KEY, &tokens.to_vec())
-        .map_err(|e| e.to_string())
+fn save_token_info(app: &tauri::AppHandle, tokens: &[TokenInfo]) -> Result<(), String> {
+    channels::save_channel_config(app, TOKEN_INFO_KEY, &tokens.to_vec()).map_err(|e| e.to_string())
 }
 
 // ── Rate Limit Commands ────────────────────────────────────────────────
@@ -233,9 +217,7 @@ pub fn engine_guardrails_get_audit_log(
 
 /// Clear the audit log.
 #[tauri::command]
-pub fn engine_guardrails_clear_audit(
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+pub fn engine_guardrails_clear_audit(app_handle: tauri::AppHandle) -> Result<(), String> {
     save_audit_log(&app_handle, &[])
 }
 
@@ -248,8 +230,7 @@ pub fn engine_guardrails_check_token_expiry(
     within_days: u32,
 ) -> Result<Vec<TokenInfo>, String> {
     let tokens = load_token_info(&app_handle);
-    let cutoff = chrono::Utc::now()
-        + chrono::Duration::days(i64::from(within_days));
+    let cutoff = chrono::Utc::now() + chrono::Duration::days(i64::from(within_days));
 
     let expiring: Vec<TokenInfo> = tokens
         .into_iter()

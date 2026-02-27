@@ -71,7 +71,10 @@ pub async fn get_n8n_version(base_url: &str, api_key: &str) -> Option<String> {
         .build()
         .ok()?;
 
-    let endpoint = format!("{}/api/v1/workflows?limit=1", base_url.trim_end_matches('/'));
+    let endpoint = format!(
+        "{}/api/v1/workflows?limit=1",
+        base_url.trim_end_matches('/')
+    );
     let resp = client
         .get(&endpoint)
         .header("X-N8N-API-KEY", api_key)

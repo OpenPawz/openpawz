@@ -103,7 +103,8 @@ async fn execute_exec(
                 return Err(format!(
                     "Sandbox execution failed (host fallback is disabled for security): {}",
                     e
-                ).into());
+                )
+                .into());
             }
         }
     }

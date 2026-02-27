@@ -49,13 +49,11 @@ pub fn save_data_root_to_conf(path: Option<&str>) -> Result<(), String> {
     let conf = storage_conf_path().ok_or("Cannot determine home directory")?;
     // Ensure ~/.paw/ exists
     if let Some(parent) = conf.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Cannot create ~/.paw/: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Cannot create ~/.paw/: {}", e))?;
     }
     match path {
         Some(p) if !p.is_empty() => {
-            std::fs::write(&conf, p)
-                .map_err(|e| format!("Cannot write storage.conf: {}", e))?;
+            std::fs::write(&conf, p).map_err(|e| format!("Cannot write storage.conf: {}", e))?;
         }
         _ => {
             // Remove the file to reset to default

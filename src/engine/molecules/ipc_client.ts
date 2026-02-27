@@ -426,9 +426,7 @@ export class PawEngineClient {
 
   // ── Google Calendar (Today widget) ──────────────────────────────────
 
-  async googleCalendarList(
-    maxResults?: number,
-  ): Promise<
+  async googleCalendarList(maxResults?: number): Promise<
     {
       id: string;
       summary: string;

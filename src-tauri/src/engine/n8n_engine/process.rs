@@ -22,9 +22,7 @@ pub fn is_node_available() -> bool {
 // ── Process provisioning ───────────────────────────────────────────────
 
 /// Start n8n as a managed child process via `npx n8n`.
-pub async fn start_n8n_process(
-    app_handle: &tauri::AppHandle,
-) -> EngineResult<N8nEndpoint> {
+pub async fn start_n8n_process(app_handle: &tauri::AppHandle) -> EngineResult<N8nEndpoint> {
     let port = find_available_port(DEFAULT_PORT);
     let api_key = generate_random_key();
     let encryption_key = generate_random_key();
@@ -33,7 +31,11 @@ pub async fn start_n8n_process(
     std::fs::create_dir_all(&data_dir)
         .map_err(|e| EngineError::Other(format!("Failed to create n8n data dir: {}", e)))?;
 
-    super::emit_status(app_handle, "starting", "Starting integration engine (Node.js)...");
+    super::emit_status(
+        app_handle,
+        "starting",
+        "Starting integration engine (Node.js)...",
+    );
 
     let child = std::process::Command::new("npx")
         .arg("n8n")

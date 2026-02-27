@@ -346,11 +346,7 @@ pub fn engine_storage_get_paths(
     let browser_size = dir_size(&browser_dir);
 
     // Get workspace path from frontend config (if stored in engine config)
-    let workspace_path = state
-        .store
-        .get_config("user_workspace_path")
-        .ok()
-        .flatten();
+    let workspace_path = state.store.get_config("user_workspace_path").ok().flatten();
 
     Ok(serde_json::json!({
         "data_root": data_root.to_string_lossy(),

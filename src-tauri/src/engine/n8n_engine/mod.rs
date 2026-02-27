@@ -23,10 +23,7 @@ pub fn load_config(app_handle: &tauri::AppHandle) -> EngineResult<N8nEngineConfi
     channels::load_channel_config::<N8nEngineConfig>(app_handle, CONFIG_KEY)
 }
 
-pub fn save_config(
-    app_handle: &tauri::AppHandle,
-    config: &N8nEngineConfig,
-) -> EngineResult<()> {
+pub fn save_config(app_handle: &tauri::AppHandle, config: &N8nEngineConfig) -> EngineResult<()> {
     channels::save_channel_config(app_handle, CONFIG_KEY, config)
 }
 
@@ -65,9 +62,7 @@ fn app_data_dir(app_handle: &tauri::AppHandle) -> std::path::PathBuf {
 ///   3. Docker available → provision container
 ///   4. Node.js available → start via npx
 ///   5. Nothing available → error with actionable message
-pub async fn ensure_n8n_ready(
-    app_handle: &tauri::AppHandle,
-) -> EngineResult<N8nEndpoint> {
+pub async fn ensure_n8n_ready(app_handle: &tauri::AppHandle) -> EngineResult<N8nEndpoint> {
     let config = load_config(app_handle)?;
 
     // ── Already configured? ────────────────────────────────────────
@@ -95,9 +90,7 @@ pub async fn ensure_n8n_ready(
                 });
             }
             // Container exists but not responding — try to start it
-            if let Ok(endpoint) =
-                docker::restart_existing_container(app_handle, &config).await
-            {
+            if let Ok(endpoint) = docker::restart_existing_container(app_handle, &config).await {
                 return Ok(endpoint);
             }
             // Container is broken — will re-provision below
@@ -120,9 +113,7 @@ pub async fn ensure_n8n_ready(
     // ── Detect local n8n on default port ───────────────────────────
     let local_url = format!("http://127.0.0.1:{}", DEFAULT_PORT);
     // Only auto-detect if we don't already own that port
-    if config.container_port != Some(DEFAULT_PORT)
-        && config.process_port != Some(DEFAULT_PORT)
-    {
+    if config.container_port != Some(DEFAULT_PORT) && config.process_port != Some(DEFAULT_PORT) {
         if let Some(endpoint) = health::detect_local_n8n(&local_url).await {
             // Save detected config
             let mut new_config = config.clone();
@@ -137,13 +128,21 @@ pub async fn ensure_n8n_ready(
 
     // ── Docker mode ────────────────────────────────────────────────
     if docker::is_docker_available().await {
-        emit_status(app_handle, "provisioning", "Setting up integration engine...");
+        emit_status(
+            app_handle,
+            "provisioning",
+            "Setting up integration engine...",
+        );
         return docker::provision_docker_container(app_handle).await;
     }
 
     // ── Process mode (Node.js fallback) ────────────────────────────
     if process::is_node_available() {
-        emit_status(app_handle, "provisioning", "Setting up integration engine...");
+        emit_status(
+            app_handle,
+            "provisioning",
+            "Setting up integration engine...",
+        );
         return process::start_n8n_process(app_handle).await;
     }
 
@@ -208,7 +207,11 @@ pub async fn health_check(app_handle: &tauri::AppHandle) -> bool {
     if healthy {
         emit_status(app_handle, "healthy", "Integration engine is running.");
     } else {
-        emit_status(app_handle, "unhealthy", "Integration engine is not responding.");
+        emit_status(
+            app_handle,
+            "unhealthy",
+            "Integration engine is not responding.",
+        );
     }
     healthy
 }

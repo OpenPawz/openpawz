@@ -234,6 +234,12 @@ impl SessionStore {
         // This is how VS Code handles retries: removeRequest + resend fresh.
         Self::delete_failed_exchanges(&mut messages);
 
+        // ── Delete empty / near-empty assistant messages ───────────────
+        // Empty responses that leaked into storage waste context tokens and
+        // cause the model to mimic the empty-response pattern in long
+        // conversations. Strip them before the model sees them.
+        Self::delete_empty_assistant_messages(&mut messages);
+
         // ── Sanitize tool_use / tool_result pairing ────────────────────
         // After truncation (or corruption from previous crashes), ensure every
         // assistant message with tool_calls has matching tool_result messages.
@@ -357,6 +363,48 @@ impl SessionStore {
             "[engine] Deleted {} failed exchange messages from conversation history (VS Code pattern)",
             sorted.len()
         );
+    }
+
+    /// Remove empty or near-empty assistant messages from conversation history.
+    ///
+    /// Empty responses that leaked into storage waste context tokens and
+    /// cause the model to mimic the empty-response pattern in long conversations.
+    /// Also removes very short non-answers like "Let me know!" that indicate
+    /// the model was confused rather than genuinely responding.
+    fn delete_empty_assistant_messages(messages: &mut Vec<Message>) {
+        let before = messages.len();
+
+        messages.retain(|m| {
+            if m.role != Role::Assistant {
+                return true; // keep non-assistant messages
+            }
+            // Keep messages that have tool calls — they're functional
+            if m.tool_calls.as_ref().is_some_and(|tc| !tc.is_empty()) {
+                return true;
+            }
+            let text = m.content.as_text();
+            let trimmed = text.trim();
+            // Remove completely empty messages
+            if trimmed.is_empty() {
+                return false;
+            }
+            // Remove very short non-answers (< 15 chars, no real content)
+            // These are artifacts like "Let me know!", "Sure!", "Okay." etc.
+            // that indicate the model was confused rather than responding.
+            // Only remove if the message is a dead-end (no substantive content).
+            if trimmed.len() < 15 && !trimmed.contains(' ') {
+                return false; // single-word garbage
+            }
+            true
+        });
+
+        let removed = before - messages.len();
+        if removed > 0 {
+            log::info!(
+                "[engine] Removed {} empty/near-empty assistant messages from conversation",
+                removed
+            );
+        }
     }
 
     /// Ensure every assistant message with tool_calls has matching tool_result

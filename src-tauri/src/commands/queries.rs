@@ -184,11 +184,7 @@ async fn execute_query_direct(
             question,
         )
     } else {
-        format!(
-            "🔍 Query: \"{}\"\n\n{}",
-            question,
-            results.join("\n\n"),
-        )
+        format!("🔍 Query: \"{}\"\n\n{}", question, results.join("\n\n"),)
     }
 }
 
@@ -202,22 +198,29 @@ fn build_query_tool_call(
             // Map common GitHub queries to API endpoints
             let endpoint = if question.to_lowercase().contains("issue") {
                 "/repos/{owner}/{repo}/issues?state=open&per_page=10"
-            } else if question.to_lowercase().contains("pr") || question.to_lowercase().contains("pull request") {
+            } else if question.to_lowercase().contains("pr")
+                || question.to_lowercase().contains("pull request")
+            {
                 "/repos/{owner}/{repo}/pulls?state=open&per_page=10"
             } else {
                 "/user/repos?sort=updated&per_page=5"
             };
-            ("github_api", serde_json::json!({"endpoint": endpoint, "method": "GET"}))
+            (
+                "github_api",
+                serde_json::json!({"endpoint": endpoint, "method": "GET"}),
+            )
         }
-        "slack" => {
-            ("slack_read", serde_json::json!({"channel": "general", "limit": 10}))
-        }
-        "trello" => {
-            ("rest_api_call", serde_json::json!({"path": "/1/members/me/boards", "method": "GET"}))
-        }
+        "slack" => (
+            "slack_read",
+            serde_json::json!({"channel": "general", "limit": 10}),
+        ),
+        "trello" => (
+            "rest_api_call",
+            serde_json::json!({"path": "/1/members/me/boards", "method": "GET"}),
+        ),
         // For services that map to rest_api, use rest_api_call
-        "notion" | "linear" | "todoist" | "clickup" | "airtable"
-        | "sendgrid" | "hubspot" | "stripe" => {
+        "notion" | "linear" | "todoist" | "clickup" | "airtable" | "sendgrid" | "hubspot"
+        | "stripe" => {
             let path = match service_id {
                 "notion" => "/search",
                 "linear" => "/graphql",
@@ -229,21 +232,33 @@ fn build_query_tool_call(
                 "stripe" => "/balance",
                 _ => "/",
             };
-            let method = if service_id == "notion" || service_id == "linear" { "POST" } else { "GET" };
-            ("rest_api_call", serde_json::json!({"path": path, "method": method}))
+            let method = if service_id == "notion" || service_id == "linear" {
+                "POST"
+            } else {
+                "GET"
+            };
+            (
+                "rest_api_call",
+                serde_json::json!({"path": path, "method": method}),
+            )
         }
         // Generic n8n execution for everything else
-        _ => {
-            ("n8n_execute_action", serde_json::json!({
+        _ => (
+            "n8n_execute_action",
+            serde_json::json!({
                 "service": service_id,
                 "action": "list",
                 "params": {}
-            }))
-        }
+            }),
+        ),
     };
 
     Some(crate::engine::types::ToolCall {
-        id: format!("query-{}-{}", service_id, chrono::Utc::now().timestamp_millis()),
+        id: format!(
+            "query-{}-{}",
+            service_id,
+            chrono::Utc::now().timestamp_millis()
+        ),
         call_type: "function".into(),
         function: crate::engine::types::FunctionCall {
             name: tool_name.into(),
@@ -264,9 +279,7 @@ pub async fn engine_queries_history(
 
 /// Clear query history.
 #[tauri::command]
-pub async fn engine_queries_clear_history(
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+pub async fn engine_queries_clear_history(app_handle: tauri::AppHandle) -> Result<(), String> {
     save_history(&app_handle, &[])?;
     Ok(())
 }
@@ -279,28 +292,37 @@ fn _detect_services(question: &str) -> Vec<String> {
     let mut services = Vec::new();
 
     let patterns: &[(&str, &[&str])] = &[
-        ("hubspot",   &["hubspot", "deal", "pipeline", "contacts", "companies"]),
-        ("salesforce", &["salesforce", "opportunity", "leads", "accounts"]),
-        ("trello",    &["trello", "board", "card", "kanban"]),
-        ("jira",      &["jira", "sprint", "epic", "story"]),
-        ("linear",    &["linear", "cycle", "project"]),
-        ("slack",     &["slack", "channel", "message", "dm", "mention"]),
-        ("discord",   &["discord", "server", "guild"]),
-        ("telegram",  &["telegram", "bot", "group chat"]),
-        ("github",    &["github", "repo", "pull request", "pr", "commit", "issue"]),
-        ("notion",    &["notion", "page", "database", "wiki"]),
+        (
+            "hubspot",
+            &["hubspot", "deal", "pipeline", "contacts", "companies"],
+        ),
+        (
+            "salesforce",
+            &["salesforce", "opportunity", "leads", "accounts"],
+        ),
+        ("trello", &["trello", "board", "card", "kanban"]),
+        ("jira", &["jira", "sprint", "epic", "story"]),
+        ("linear", &["linear", "cycle", "project"]),
+        ("slack", &["slack", "channel", "message", "dm", "mention"]),
+        ("discord", &["discord", "server", "guild"]),
+        ("telegram", &["telegram", "bot", "group chat"]),
+        (
+            "github",
+            &["github", "repo", "pull request", "pr", "commit", "issue"],
+        ),
+        ("notion", &["notion", "page", "database", "wiki"]),
         ("google-sheets", &["sheet", "spreadsheet", "google sheets"]),
-        ("gmail",     &["gmail", "email", "inbox", "mail"]),
-        ("shopify",   &["shopify", "order", "product", "inventory"]),
-        ("stripe",    &["stripe", "payment", "charge", "balance"]),
-        ("zendesk",   &["zendesk", "ticket", "support"]),
-        ("asana",     &["asana"]),
-        ("clickup",   &["clickup"]),
-        ("monday",    &["monday"]),
-        ("todoist",   &["todoist"]),
-        ("airtable",  &["airtable", "base"]),
-        ("sendgrid",  &["sendgrid"]),
-        ("twilio",    &["twilio", "sms", "call log"]),
+        ("gmail", &["gmail", "email", "inbox", "mail"]),
+        ("shopify", &["shopify", "order", "product", "inventory"]),
+        ("stripe", &["stripe", "payment", "charge", "balance"]),
+        ("zendesk", &["zendesk", "ticket", "support"]),
+        ("asana", &["asana"]),
+        ("clickup", &["clickup"]),
+        ("monday", &["monday"]),
+        ("todoist", &["todoist"]),
+        ("airtable", &["airtable", "base"]),
+        ("sendgrid", &["sendgrid"]),
+        ("twilio", &["twilio", "sms", "call log"]),
     ];
 
     for (service_id, keywords) in patterns {

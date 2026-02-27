@@ -283,10 +283,11 @@ pub async fn engine_chat_send(
     );
 
     // ── Agent roster: inject known agents so delegation works ───────────
-    if let Some(roster) = chat_org::build_agent_roster(&state.store, &agent_id_owned) {
+    let agent_roster = chat_org::build_agent_roster(&state.store, &agent_id_owned);
+    if let Some(ref roster) = agent_roster {
         if let Some(ref mut p) = full_system_prompt {
             p.push_str("\n\n---\n\n");
-            p.push_str(&roster);
+            p.push_str(roster);
         }
         info!("[engine] Agent roster injected ({} chars)", roster.len());
     }
@@ -296,6 +297,7 @@ pub async fn engine_chat_send(
     // the system prompt so the agent doesn't "forget" cross-session context.
     // Dedup: skip memories already present in today's memory notes to avoid
     // double-injection which causes the model to loop on the same content.
+    let mut recall_block: Option<String> = None;
     {
         let (auto_recall_on, recall_limit, recall_threshold) = {
             let mcfg = state.memory_config.lock();
@@ -327,13 +329,22 @@ pub async fn engine_chat_send(
                     if !deduped.is_empty() {
                         let ctx: Vec<String> = deduped
                             .iter()
-                            .map(|m| format!("- [{}] {}", m.category, m.content))
+                            .map(|m| {
+                                // Cap individual memory entries to keep things tight
+                                let short = if m.content.len() > 300 {
+                                    format!("{}…", &m.content[..m.content.floor_char_boundary(300)])
+                                } else {
+                                    m.content.clone()
+                                };
+                                format!("- [{}] {}", m.category, short)
+                            })
                             .collect();
                         let memory_block = format!("## Relevant Memories\n{}", ctx.join("\n"));
                         if let Some(ref mut p) = full_system_prompt {
                             p.push_str("\n\n---\n\n");
                             p.push_str(&memory_block);
                         }
+                        recall_block = Some(memory_block.clone());
                         info!("[engine] Auto-recalled {} memories ({} deduped from today's, {} chars)",
                             mems.len(), mems.len() - deduped.len(), memory_block.len());
                     } else {
@@ -346,19 +357,78 @@ pub async fn engine_chat_send(
         }
     }
 
-    info!(
-        "[engine] System prompt: {} chars (core_ctx={}, today_mem={}, skills={})",
-        full_system_prompt.as_ref().map(|s| s.len()).unwrap_or(0),
-        core_context.is_some(),
-        todays_memories.is_some(),
-        !skill_instructions.is_empty()
-    );
-
-    // ── Load conversation history ──────────────────────────────────────────
+    // ── Dynamic system prompt budget ───────────────────────────────────────
+    // Reserve a minimum of conversation_floor tokens for conversation messages.
+    // If the system prompt is too large, drop sections in priority order
+    // (lowest priority first) until the budget fits.
+    //
+    // Priority (highest → lowest, never dropped → dropped first):
+    //   1. Platform awareness + Foreman protocol + runtime context (core identity)
+    //   2. Soul files (IDENTITY.md, SOUL.md, USER.md)
+    //   3. Agent roster (needed for delegation)
+    //   4. Today's memory notes (daily context)
+    //   5. Skill instructions (tool usage hints)
+    //   6. Auto-recalled memories (can always use memory_search instead)
     let context_window = {
         let cfg = state.config.lock();
         cfg.context_window_tokens
     };
+    // Reserve at least 60% of context window for conversation messages.
+    // This ensures even in long conversations the model has room to read
+    // the user's recent messages and respond coherently.
+    let conversation_floor = context_window * 60 / 100;
+    let sys_prompt_budget = context_window - conversation_floor; // in tokens
+    let sys_prompt_budget_chars = sys_prompt_budget * 4; // rough chars ≈ tokens × 4
+
+    let sys_prompt_len = full_system_prompt.as_ref().map(|s| s.len()).unwrap_or(0);
+
+    if sys_prompt_len > sys_prompt_budget_chars {
+        info!(
+            "[engine] System prompt ({} chars, ~{}T) exceeds budget (~{}T for {}T window) — trimming by priority",
+            sys_prompt_len, sys_prompt_len / 4, sys_prompt_budget, context_window
+        );
+
+        // Rebuild the system prompt with prioritized sections.
+        // Drop from lowest priority until we fit the budget.
+        let rebuild = chat_org::compose_chat_system_prompt_budgeted(
+            base_system_prompt.as_deref(),
+            {
+                let cfg = state.config.lock();
+                let provider_name = cfg
+                    .providers
+                    .iter()
+                    .find(|p| Some(p.id.clone()) == cfg.default_provider)
+                    .or_else(|| cfg.providers.first())
+                    .map(|p| format!("{} ({:?})", p.id, p.kind))
+                    .unwrap_or_else(|| "unknown".into());
+                let user_tz = cfg.user_timezone.clone();
+                chat_org::build_runtime_context(
+                    &model,
+                    &provider_name,
+                    &session_id,
+                    &agent_id_owned,
+                    &user_tz,
+                )
+            },
+            core_context.as_deref(),
+            todays_memories.as_deref(),
+            &skill_instructions,
+            agent_roster.as_deref(),
+            recall_block.as_deref(),
+            sys_prompt_budget_chars,
+        );
+        full_system_prompt = rebuild;
+    }
+
+    info!(
+        "[engine] System prompt: {} chars (~{} tokens), budget: ~{} tokens, conversation floor: ~{} tokens",
+        full_system_prompt.as_ref().map(|s| s.len()).unwrap_or(0),
+        full_system_prompt.as_ref().map(|s| s.len() / 4).unwrap_or(0),
+        sys_prompt_budget,
+        conversation_floor,
+    );
+
+    // ── Load conversation history ──────────────────────────────────────────
     let mut messages = state.store.load_conversation(
         &session_id,
         full_system_prompt.as_deref(),
@@ -478,8 +548,18 @@ pub async fn engine_chat_send(
 
                 if let Some(engine_state) = app.try_state::<EngineState>() {
                     // Persist only NEW messages (skip pre-loaded history)
+                    // Skip empty assistant messages — they waste context and
+                    // cause the model to mimic the empty-response pattern.
                     for msg in messages.iter().skip(pre_loop_msg_count) {
                         if msg.role == Role::Assistant || msg.role == Role::Tool {
+                            // Don't persist empty or near-empty assistant messages
+                            if msg.role == Role::Assistant {
+                                let text = msg.content.as_text();
+                                if text.trim().is_empty() {
+                                    info!("[engine] Skipping empty assistant message (not persisting)");
+                                    continue;
+                                }
+                            }
                             let stored = StoredMessage {
                                 id: uuid::Uuid::new_v4().to_string(),
                                 session_id: session_id_clone.clone(),
@@ -670,9 +750,7 @@ pub async fn engine_chat_send(
                         "model": queued.request.model,
                     }),
                 );
-                info!(
-                    "[engine] Emitted engine-queue-ready for frontend re-send"
-                );
+                info!("[engine] Emitted engine-queue-ready for frontend re-send");
             }
         }
 

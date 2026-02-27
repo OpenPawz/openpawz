@@ -81,7 +81,11 @@ pub async fn provision_docker_container(
     std::fs::create_dir_all(&data_dir)
         .map_err(|e| EngineError::Other(format!("Failed to create n8n data dir: {}", e)))?;
 
-    super::emit_status(app_handle, "downloading", "Pulling n8n image (first time only)...");
+    super::emit_status(
+        app_handle,
+        "downloading",
+        "Pulling n8n image (first time only)...",
+    );
 
     // Pull image (skip if already present)
     pull_image_if_needed(&docker, N8N_IMAGE).await?;

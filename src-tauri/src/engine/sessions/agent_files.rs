@@ -106,13 +106,32 @@ impl SessionStore {
     /// Lean session init — load ONLY the three core soul files.
     /// Everything else (AGENTS.md, TOOLS.md, custom files) is available
     /// on-demand via `soul_read` / `soul_list`.
+    ///
+    /// Each file is capped at 3000 chars (~750 tokens) to prevent large
+    /// soul files from eating the context window in long conversations.
     pub fn compose_core_context(&self, agent_id: &str) -> EngineResult<Option<String>> {
+        const MAX_SOUL_FILE_CHARS: usize = 3000;
         let core_files = ["IDENTITY.md", "SOUL.md", "USER.md"];
         let mut sections = Vec::new();
         for name in &core_files {
             if let Ok(Some(f)) = self.get_agent_file(agent_id, name) {
                 if !f.content.trim().is_empty() {
-                    sections.push(f.content.clone());
+                    if f.content.len() > MAX_SOUL_FILE_CHARS {
+                        let truncated =
+                            &f.content[..f.content.floor_char_boundary(MAX_SOUL_FILE_CHARS)];
+                        sections.push(format!(
+                            "{}…\n\n*[{} truncated — use `soul_read \"{}\"` for full content]*",
+                            truncated, name, name
+                        ));
+                        log::info!(
+                            "[engine] Soul file {} truncated: {} → {} chars",
+                            name,
+                            f.content.len(),
+                            MAX_SOUL_FILE_CHARS
+                        );
+                    } else {
+                        sections.push(f.content.clone());
+                    }
                 }
             }
         }

@@ -353,7 +353,9 @@ pub fn sign_and_log_request(provider: &str, model: &str, body_bytes: &[u8]) -> S
 
     info!(
         "[security] Outbound request signed: provider={} model={} hash={}",
-        provider, model, &hash_hex[..16]
+        provider,
+        model,
+        &hash_hex[..16]
     );
 
     AUDIT_LOG.lock().push(entry);

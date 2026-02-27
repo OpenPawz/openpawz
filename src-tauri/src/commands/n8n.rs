@@ -413,9 +413,7 @@ pub async fn engine_n8n_mcp_status(
 
 /// Refresh the n8n MCP tool list (re-discovers tools from the running engine).
 #[tauri::command]
-pub async fn engine_n8n_mcp_refresh(
-    app_handle: tauri::AppHandle,
-) -> Result<usize, String> {
+pub async fn engine_n8n_mcp_refresh(app_handle: tauri::AppHandle) -> Result<usize, String> {
     let state = app_handle
         .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
@@ -457,17 +455,13 @@ pub fn engine_n8n_set_engine_config(
 
 /// Perform a health check on the running engine.
 #[tauri::command]
-pub async fn engine_n8n_health_check(
-    app_handle: tauri::AppHandle,
-) -> Result<bool, String> {
+pub async fn engine_n8n_health_check(app_handle: tauri::AppHandle) -> Result<bool, String> {
     Ok(n8n_engine::health_check(&app_handle).await)
 }
 
 /// Gracefully shut down the engine (Docker stop / process kill).
 #[tauri::command]
-pub async fn engine_n8n_shutdown(
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+pub async fn engine_n8n_shutdown(app_handle: tauri::AppHandle) -> Result<(), String> {
     n8n_engine::shutdown(&app_handle).await;
     Ok(())
 }
@@ -498,16 +492,10 @@ fn get_n8n_endpoint(app_handle: &tauri::AppHandle) -> Result<(String, String), S
     let url = match config.mode {
         n8n_engine::N8nMode::Remote | n8n_engine::N8nMode::Local => config.url.clone(),
         n8n_engine::N8nMode::Embedded => {
-            format!(
-                "http://127.0.0.1:{}",
-                config.container_port.unwrap_or(5678)
-            )
+            format!("http://127.0.0.1:{}", config.container_port.unwrap_or(5678))
         }
         n8n_engine::N8nMode::Process => {
-            format!(
-                "http://127.0.0.1:{}",
-                config.process_port.unwrap_or(5678)
-            )
+            format!("http://127.0.0.1:{}", config.process_port.unwrap_or(5678))
         }
     };
     if url.is_empty() || config.api_key.is_empty() {
@@ -542,7 +530,10 @@ pub async fn engine_n8n_search_ncnodes(
 ) -> Result<Vec<NCNodeResult>, String> {
     let limit = limit.unwrap_or(10).min(50);
 
-    info!("[n8n:ncnodes] Searching npm for '{}' (limit={})", query, limit);
+    info!(
+        "[n8n:ncnodes] Searching npm for '{}' (limit={})",
+        query, limit
+    );
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
@@ -551,13 +542,13 @@ pub async fn engine_n8n_search_ncnodes(
 
     // npm registry search API — filter by the n8n community node keyword
     let encoded_query = url::form_urlencoded::Serializer::new(String::new())
-        .append_pair("text", &format!("{} keywords:n8n-community-node-package", query))
+        .append_pair(
+            "text",
+            &format!("{} keywords:n8n-community-node-package", query),
+        )
         .append_pair("size", &limit.to_string())
         .finish();
-    let search_url = format!(
-        "https://registry.npmjs.org/-/v1/search?{}",
-        encoded_query
-    );
+    let search_url = format!("https://registry.npmjs.org/-/v1/search?{}", encoded_query);
 
     let resp = client
         .get(&search_url)
@@ -583,10 +574,7 @@ pub async fn engine_n8n_search_ncnodes(
                     let name = pkg["name"].as_str()?;
                     Some(NCNodeResult {
                         package_name: name.to_string(),
-                        description: pkg["description"]
-                            .as_str()
-                            .unwrap_or("")
-                            .to_string(),
+                        description: pkg["description"].as_str().unwrap_or("").to_string(),
                         author: pkg["publisher"]["username"]
                             .as_str()
                             .or_else(|| pkg["author"]["name"].as_str())
@@ -598,9 +586,7 @@ pub async fn engine_n8n_search_ncnodes(
                             .map(|p| (p * 100_000.0) as u64)
                             .unwrap_or(0),
                         last_updated: pkg["date"].as_str().unwrap_or("").to_string(),
-                        repository_url: pkg["links"]["repository"]
-                            .as_str()
-                            .map(|s| s.to_string()),
+                        repository_url: pkg["links"]["repository"].as_str().map(|s| s.to_string()),
                         keywords: pkg["keywords"]
                             .as_array()
                             .map(|a| {
@@ -637,7 +623,10 @@ pub async fn engine_n8n_community_packages_list(
         .map_err(|e| e.to_string())?;
 
     let resp = client
-        .get(format!("{}/api/v1/community-packages", base_url.trim_end_matches('/')))
+        .get(format!(
+            "{}/api/v1/community-packages",
+            base_url.trim_end_matches('/')
+        ))
         .header("X-N8N-API-KEY", &api_key)
         .send()
         .await
@@ -664,10 +653,7 @@ pub async fn engine_n8n_community_packages_install(
 ) -> Result<CommunityPackage, String> {
     let (base_url, api_key) = get_n8n_endpoint(&app_handle)?;
 
-    info!(
-        "[n8n] Installing community package: {}",
-        package_name
-    );
+    info!("[n8n] Installing community package: {}", package_name);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120)) // npm install can be slow
@@ -675,7 +661,10 @@ pub async fn engine_n8n_community_packages_install(
         .map_err(|e| e.to_string())?;
 
     let resp = client
-        .post(format!("{}/api/v1/community-packages", base_url.trim_end_matches('/')))
+        .post(format!(
+            "{}/api/v1/community-packages",
+            base_url.trim_end_matches('/')
+        ))
         .header("X-N8N-API-KEY", &api_key)
         .header("Content-Type", "application/json")
         .json(&serde_json::json!({ "name": package_name }))
@@ -847,11 +836,17 @@ pub async fn engine_n8n_deploy_mcp_workflow(
 
     match activate_resp {
         Ok(r) if r.status().is_success() => {
-            info!("[n8n:mcp] Workflow '{}' activated (id={})", workflow_name, workflow_id);
+            info!(
+                "[n8n:mcp] Workflow '{}' activated (id={})",
+                workflow_name, workflow_id
+            );
         }
         Ok(r) => {
             let body = r.text().await.unwrap_or_default();
-            log::warn!("[n8n:mcp] Workflow activation returned non-success: {}", body);
+            log::warn!(
+                "[n8n:mcp] Workflow activation returned non-success: {}",
+                body
+            );
         }
         Err(e) => {
             log::warn!("[n8n:mcp] Workflow activation request failed: {}", e);
@@ -1002,15 +997,34 @@ pub async fn engine_integrations_test_credentials(
     // Per-service lightweight validation
     let result = match service_id.as_str() {
         "slack" => {
-            let token = credentials.get("bot_token").or(credentials.get("access_token")).or(credentials.get("api_key")).cloned().unwrap_or_default();
+            let token = credentials
+                .get("bot_token")
+                .or(credentials.get("access_token"))
+                .or(credentials.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
             _test_slack(&client, &token).await
         }
         "discord" => {
-            let token = credentials.get("bot_token").or(credentials.get("api_key")).cloned().unwrap_or_default();
-            _test_bearer_bot(&client, "https://discord.com/api/v10/users/@me", &token, "Discord").await
+            let token = credentials
+                .get("bot_token")
+                .or(credentials.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
+            _test_bearer_bot(
+                &client,
+                "https://discord.com/api/v10/users/@me",
+                &token,
+                "Discord",
+            )
+            .await
         }
         "github" | "github-app" => {
-            let token = credentials.get("access_token").or(credentials.get("api_key")).cloned().unwrap_or_default();
+            let token = credentials
+                .get("access_token")
+                .or(credentials.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
             _test_bearer(&client, "https://api.github.com/user", &token, "GitHub").await
         }
         "linear" => {
@@ -1022,35 +1036,81 @@ pub async fn engine_integrations_test_credentials(
             _test_notion(&client, &token).await
         }
         "stripe" => {
-            let key = credentials.get("secret_key").or(credentials.get("api_key")).cloned().unwrap_or_default();
-            _test_basic_auth(&client, "https://api.stripe.com/v1/balance", &key, "", "Stripe").await
+            let key = credentials
+                .get("secret_key")
+                .or(credentials.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
+            _test_basic_auth(
+                &client,
+                "https://api.stripe.com/v1/balance",
+                &key,
+                "",
+                "Stripe",
+            )
+            .await
         }
         "todoist" => {
-            let token = credentials.get("api_token").or(credentials.get("api_key")).cloned().unwrap_or_default();
-            _test_bearer(&client, "https://api.todoist.com/rest/v2/projects", &token, "Todoist").await
+            let token = credentials
+                .get("api_token")
+                .or(credentials.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
+            _test_bearer(
+                &client,
+                "https://api.todoist.com/rest/v2/projects",
+                &token,
+                "Todoist",
+            )
+            .await
         }
         "clickup" => {
             let token = credentials.get("api_key").cloned().unwrap_or_default();
-            _test_bearer(&client, "https://api.clickup.com/api/v2/user", &token, "ClickUp").await
+            _test_bearer(
+                &client,
+                "https://api.clickup.com/api/v2/user",
+                &token,
+                "ClickUp",
+            )
+            .await
         }
         "airtable" => {
             let token = credentials.get("api_key").cloned().unwrap_or_default();
-            _test_bearer(&client, "https://api.airtable.com/v0/meta/whoami", &token, "Airtable").await
+            _test_bearer(
+                &client,
+                "https://api.airtable.com/v0/meta/whoami",
+                &token,
+                "Airtable",
+            )
+            .await
         }
         "trello" => {
             let api_key = credentials.get("api_key").cloned().unwrap_or_default();
             let api_token = credentials.get("api_token").cloned().unwrap_or_default();
-            let url = format!("https://api.trello.com/1/members/me?key={}&token={}", api_key, api_token);
+            let url = format!(
+                "https://api.trello.com/1/members/me?key={}&token={}",
+                api_key, api_token
+            );
             _test_get(&client, &url, "Trello").await
         }
         "telegram" => {
-            let token = credentials.get("bot_token").or(credentials.get("api_key")).cloned().unwrap_or_default();
+            let token = credentials
+                .get("bot_token")
+                .or(credentials.get("api_key"))
+                .cloned()
+                .unwrap_or_default();
             let url = format!("https://api.telegram.org/bot{}/getMe", token);
             _test_get(&client, &url, "Telegram").await
         }
         "sendgrid" => {
             let token = credentials.get("api_key").cloned().unwrap_or_default();
-            _test_bearer(&client, "https://api.sendgrid.com/v3/user/profile", &token, "SendGrid").await
+            _test_bearer(
+                &client,
+                "https://api.sendgrid.com/v3/user/profile",
+                &token,
+                "SendGrid",
+            )
+            .await
         }
         "jira" => {
             let domain = credentials.get("domain").cloned().unwrap_or_default();
@@ -1064,7 +1124,14 @@ pub async fn engine_integrations_test_credentials(
             let email = credentials.get("email").cloned().unwrap_or_default();
             let token = credentials.get("api_token").cloned().unwrap_or_default();
             let url = format!("https://{}.zendesk.com/api/v2/users/me.json", subdomain);
-            _test_basic_auth(&client, &url, &format!("{}/token", email), &token, "Zendesk").await
+            _test_basic_auth(
+                &client,
+                &url,
+                &format!("{}/token", email),
+                &token,
+                "Zendesk",
+            )
+            .await
         }
         "weather-api" => {
             let location = credentials.get("location").cloned().unwrap_or_default();
@@ -1090,7 +1157,9 @@ pub async fn engine_integrations_test_credentials(
                     Err(_) => Ok(CredentialTestResult {
                         success: false,
                         message: format!("Could not find location: {}", location),
-                        details: Some("Try a different city name, e.g. 'Austin' or 'London'".into()),
+                        details: Some(
+                            "Try a different city name, e.g. 'Austin' or 'London'".into(),
+                        ),
                     }),
                 }
             }
@@ -1116,8 +1185,7 @@ pub fn engine_integrations_save_credentials(
     credentials: std::collections::HashMap<String, String>,
 ) -> Result<(), String> {
     let key = format!("integration_creds_{}", service_id);
-    channels::save_channel_config(&app_handle, &key, &credentials)
-        .map_err(|e| e.to_string())
+    channels::save_channel_config(&app_handle, &key, &credentials).map_err(|e| e.to_string())
 }
 
 /// Load saved credentials for a service.
@@ -1439,10 +1507,7 @@ pub fn engine_integrations_provision(
     // 1. Use provided credentials or load from config store
     let creds = if let Some(c) = credentials {
         if c.is_empty() {
-            return Err(format!(
-                "No credentials provided for '{}'.",
-                service_id
-            ));
+            return Err(format!("No credentials provided for '{}'.", service_id));
         }
         info!(
             "[provision] Using {} directly-provided credentials for '{}'",
@@ -1478,8 +1543,8 @@ pub fn engine_integrations_provision(
     let state = app_handle
         .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
-    let vault_key = skills::get_vault_key()
-        .map_err(|e| format!("Failed to get vault key: {}", e))?;
+    let vault_key =
+        skills::get_vault_key().map_err(|e| format!("Failed to get vault key: {}", e))?;
 
     // 4. Write each credential to the skill vault (encrypted)
     for (key, value) in &mapped_creds {
@@ -1524,7 +1589,11 @@ fn map_integration_to_skill(
     let skill_id = match service_id {
         // ── Services with dedicated tool modules ──
         "slack" => {
-            if let Some(v) = creds.get("bot_token").or(creds.get("access_token")).or(creds.get("api_key")) {
+            if let Some(v) = creds
+                .get("bot_token")
+                .or(creds.get("access_token"))
+                .or(creds.get("api_key"))
+            {
                 mapped.insert("SLACK_BOT_TOKEN".into(), v.clone());
             }
             if let Some(v) = creds.get("default_channel") {
@@ -1545,7 +1614,11 @@ fn map_integration_to_skill(
             "discord"
         }
         "github" | "github-app" => {
-            if let Some(v) = creds.get("access_token").or(creds.get("api_key")).or(creds.get("token")) {
+            if let Some(v) = creds
+                .get("access_token")
+                .or(creds.get("api_key"))
+                .or(creds.get("token"))
+            {
                 mapped.insert("GITHUB_TOKEN".into(), v.clone());
             }
             "github"
@@ -1599,7 +1672,10 @@ fn map_integration_to_skill(
             if let Some(v) = creds.get("api_token").or(creds.get("api_key")) {
                 mapped.insert("API_KEY".into(), v.clone());
             }
-            mapped.insert("API_BASE_URL".into(), "https://api.todoist.com/rest/v2".into());
+            mapped.insert(
+                "API_BASE_URL".into(),
+                "https://api.todoist.com/rest/v2".into(),
+            );
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
             "rest_api"
@@ -1608,7 +1684,10 @@ fn map_integration_to_skill(
             if let Some(v) = creds.get("api_key") {
                 mapped.insert("API_KEY".into(), v.clone());
             }
-            mapped.insert("API_BASE_URL".into(), "https://api.clickup.com/api/v2".into());
+            mapped.insert(
+                "API_BASE_URL".into(),
+                "https://api.clickup.com/api/v2".into(),
+            );
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
             "rest_api"
@@ -1694,8 +1773,8 @@ fn map_integration_to_skill(
             }
             if !sid.is_empty() && !token.is_empty() {
                 use base64::Engine;
-                let encoded = base64::engine::general_purpose::STANDARD
-                    .encode(format!("{}:{}", sid, token));
+                let encoded =
+                    base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", sid, token));
                 mapped.insert("API_KEY".into(), encoded);
                 mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
                 mapped.insert("API_AUTH_PREFIX".into(), "Basic".into());

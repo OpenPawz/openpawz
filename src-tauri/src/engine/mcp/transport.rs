@@ -321,7 +321,10 @@ impl SseTransport {
     /// `base_url` should be the MCP server's base URL (e.g. `http://127.0.0.1:5678/mcp`).
     /// We'll open GET `{base_url}/sse` for the event stream and POST to the endpoint
     /// URL provided by the server.
-    pub async fn connect(base_url: &str, headers: &HashMap<String, String>) -> Result<Self, String> {
+    pub async fn connect(
+        base_url: &str,
+        headers: &HashMap<String, String>,
+    ) -> Result<Self, String> {
         let sse_url = format!("{}/sse", base_url.trim_end_matches('/'));
         info!("[mcp:sse] Connecting to {}", sse_url);
 
@@ -454,20 +457,17 @@ impl SseTransport {
 
         // ── Wait for the endpoint event (up to 10s) ────────────────────
         let messages_url_clone = Arc::clone(&messages_url);
-        let got_endpoint = tokio::time::timeout(
-            std::time::Duration::from_secs(10),
-            async {
-                loop {
-                    {
-                        let guard = messages_url_clone.lock().await;
-                        if guard.is_some() {
-                            return;
-                        }
+        let got_endpoint = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+            loop {
+                {
+                    let guard = messages_url_clone.lock().await;
+                    if guard.is_some() {
+                        return;
                     }
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 }
-            },
-        )
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+        })
         .await;
 
         if got_endpoint.is_err() {
@@ -510,8 +510,7 @@ impl SseTransport {
         };
 
         // POST the request
-        let body =
-            serde_json::to_vec(&request).map_err(|e| format!("Serialize error: {}", e))?;
+        let body = serde_json::to_vec(&request).map_err(|e| format!("Serialize error: {}", e))?;
 
         let resp = self
             .http
@@ -573,10 +572,7 @@ impl SseTransport {
             .map_err(|e| format!("POST notification failed: {}", e))?;
 
         if !resp.status().is_success() && resp.status().as_u16() != 202 {
-            warn!(
-                "[mcp:sse] Notification POST returned {}",
-                resp.status()
-            );
+            warn!("[mcp:sse] Notification POST returned {}", resp.status());
         }
 
         Ok(())

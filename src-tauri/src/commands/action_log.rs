@@ -54,16 +54,11 @@ pub struct ServiceActionStats {
 const STORAGE_KEY: &str = "integration_action_log";
 
 fn load_log(app: &tauri::AppHandle) -> Vec<IntegrationActionLog> {
-    channels::load_channel_config::<Vec<IntegrationActionLog>>(app, STORAGE_KEY)
-        .unwrap_or_default()
+    channels::load_channel_config::<Vec<IntegrationActionLog>>(app, STORAGE_KEY).unwrap_or_default()
 }
 
-fn save_log(
-    app: &tauri::AppHandle,
-    log: &[IntegrationActionLog],
-) -> Result<(), String> {
-    channels::save_channel_config(app, STORAGE_KEY, &log.to_vec())
-        .map_err(|e| e.to_string())
+fn save_log(app: &tauri::AppHandle, log: &[IntegrationActionLog]) -> Result<(), String> {
+    channels::save_channel_config(app, STORAGE_KEY, &log.to_vec()).map_err(|e| e.to_string())
 }
 
 // ── Commands ───────────────────────────────────────────────────────────
@@ -133,19 +128,13 @@ pub fn engine_action_log_list(
     let limit = limit.unwrap_or(50) as usize;
 
     let filtered: Vec<IntegrationActionLog> = if let Some(ref svc) = service {
-        log.into_iter()
-            .filter(|a| &a.service == svc)
-            .collect()
+        log.into_iter().filter(|a| &a.service == svc).collect()
     } else {
         log
     };
 
     // Return most recent first
-    let mut result: Vec<IntegrationActionLog> = filtered
-        .into_iter()
-        .rev()
-        .take(limit)
-        .collect();
+    let mut result: Vec<IntegrationActionLog> = filtered.into_iter().rev().take(limit).collect();
     result.reverse();
 
     Ok(result)
@@ -153,13 +142,9 @@ pub fn engine_action_log_list(
 
 /// Compute aggregate stats for recent actions (today by default).
 #[tauri::command]
-pub fn engine_action_log_stats(
-    app_handle: tauri::AppHandle,
-) -> Result<ActionStatsResult, String> {
+pub fn engine_action_log_stats(app_handle: tauri::AppHandle) -> Result<ActionStatsResult, String> {
     let log = load_log(&app_handle);
-    let today = chrono::Utc::now()
-        .format("%Y-%m-%d")
-        .to_string();
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
 
     let today_actions: Vec<&IntegrationActionLog> = log
         .iter()
@@ -202,8 +187,6 @@ pub fn engine_action_log_stats(
 
 /// Clear the action log.
 #[tauri::command]
-pub fn engine_action_log_clear(
-    app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+pub fn engine_action_log_clear(app_handle: tauri::AppHandle) -> Result<(), String> {
     save_log(&app_handle, &[])
 }

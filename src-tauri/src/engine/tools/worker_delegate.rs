@@ -174,7 +174,10 @@ async fn run_worker_loop(
     agent_id: &str,
 ) -> Result<String, String> {
     for round in 1..=WORKER_MAX_ROUNDS {
-        info!("[worker-delegate] Worker round {}/{}", round, WORKER_MAX_ROUNDS);
+        info!(
+            "[worker-delegate] Worker round {}/{}",
+            round, WORKER_MAX_ROUNDS
+        );
 
         // Call the local model
         let chunks = provider
@@ -305,10 +308,7 @@ fn resolve_worker_provider(model: &str, providers: &[ProviderConfig]) -> Option<
         || model.starts_with("nomic")
         || model.starts_with("starcoder")
     {
-        if let Some(p) = providers
-            .iter()
-            .find(|p| p.kind == ProviderKind::Ollama)
-        {
+        if let Some(p) = providers.iter().find(|p| p.kind == ProviderKind::Ollama) {
             return Some(p.clone());
         }
     }

@@ -199,7 +199,12 @@ pub async fn _geocode_query(
 ) -> Result<serde_json::Value, String> {
     let resp = client
         .get("https://geocoding-api.open-meteo.com/v1/search")
-        .query(&[("name", query), ("count", "1"), ("language", "en"), ("format", "json")])
+        .query(&[
+            ("name", query),
+            ("count", "1"),
+            ("language", "en"),
+            ("format", "json"),
+        ])
         .send()
         .await
         .map_err(|e| format!("Geocoding failed: {}", e))?;
@@ -241,13 +246,20 @@ pub async fn fetch_weather(app_handle: tauri::AppHandle) -> Result<String, Strin
 
     // 2. Legacy: try integration credentials
     if loc.is_empty() {
-        if let Ok(creds) = crate::engine::channels::load_channel_config::<std::collections::HashMap<String, String>>(&app_handle, "integration_creds_weather-api") {
+        if let Ok(creds) = crate::engine::channels::load_channel_config::<
+            std::collections::HashMap<String, String>,
+        >(&app_handle, "integration_creds_weather-api")
+        {
             if let Some(l) = creds.get("location") {
                 if !l.is_empty() {
                     loc = l.clone();
-                    log::info!("[weather] Using legacy integration credential location: {}", loc);
+                    log::info!(
+                        "[weather] Using legacy integration credential location: {}",
+                        loc
+                    );
                     // Migrate to config.weather_location for next time
-                    if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>() {
+                    if let Some(state) = app_handle.try_state::<crate::engine::state::EngineState>()
+                    {
                         let mut cfg = state.config.lock();
                         cfg.weather_location = Some(loc.clone());
                         drop(cfg);
@@ -262,13 +274,22 @@ pub async fn fetch_weather(app_handle: tauri::AppHandle) -> Result<String, Strin
         log::info!("[weather] No location configured — auto-detecting via IP");
         match auto_detect_location(&client).await {
             Ok((lat, lon, city, country)) => {
-                log::info!("[weather] Auto-detected location: {}, {} ({}, {})", city, country, lat, lon);
+                log::info!(
+                    "[weather] Auto-detected location: {}, {} ({}, {})",
+                    city,
+                    country,
+                    lat,
+                    lon
+                );
                 // Go straight to weather fetch with known coords
                 return fetch_weather_by_coords(&client, lat, lon, &city, &country).await;
             }
             Err(e) => {
                 log::warn!("[weather] IP geolocation failed: {}", e);
-                return Err("No location set. Click the location on your dashboard to set your city.".into());
+                return Err(
+                    "No location set. Click the location on your dashboard to set your city."
+                        .into(),
+                );
             }
         }
     }
@@ -321,7 +342,11 @@ async fn fetch_weather_by_coords(
         "country": country,
     });
 
-    log::info!("[weather] Successfully fetched weather for {}, {}", place_name, country);
+    log::info!(
+        "[weather] Successfully fetched weather for {}, {}",
+        place_name,
+        country
+    );
     serde_json::to_string(&wx).map_err(|e| format!("JSON serialization error: {}", e))
 }
 
@@ -353,9 +378,6 @@ async fn auto_detect_location(
         .as_f64()
         .ok_or("IP geolocation missing longitude")?;
     let city = data["city"].as_str().unwrap_or("Unknown").to_string();
-    let country = data["country_name"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
+    let country = data["country_name"].as_str().unwrap_or("").to_string();
     Ok((lat, lon, city, country))
 }

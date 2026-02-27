@@ -32,7 +32,11 @@ fn get_ollama_url(app_handle: &tauri::AppHandle) -> String {
 
     if let Some(state) = app_handle.try_state::<EngineState>() {
         let cfg = state.config.lock();
-        if let Some(provider) = cfg.providers.iter().find(|p| p.kind == ProviderKind::Ollama) {
+        if let Some(provider) = cfg
+            .providers
+            .iter()
+            .find(|p| p.kind == ProviderKind::Ollama)
+        {
             if let Some(ref url) = provider.base_url {
                 if !url.is_empty() {
                     return url.trim_end_matches('/').to_string();
@@ -79,10 +83,7 @@ pub async fn engine_ollama_list_models(
                     Some(OllamaModel {
                         name,
                         size: m["size"].as_u64().unwrap_or(0),
-                        modified_at: m["modified_at"]
-                            .as_str()
-                            .unwrap_or("")
-                            .to_string(),
+                        modified_at: m["modified_at"].as_str().unwrap_or("").to_string(),
                     })
                 })
                 .collect()
@@ -186,7 +187,10 @@ pub async fn engine_ollama_create_model(
     Ok(OllamaCreateResult {
         success: true,
         model_name: model_name.clone(),
-        message: format!("Model '{}' created. Ready for use as a worker agent.", model_name),
+        message: format!(
+            "Model '{}' created. Ready for use as a worker agent.",
+            model_name
+        ),
     })
 }
 

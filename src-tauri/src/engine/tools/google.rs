@@ -1675,10 +1675,7 @@ pub async fn calendar_list_json(
 
     let (_, resp) = google_request("GET", &url, &token, None).await?;
 
-    let items = resp["items"]
-        .as_array()
-        .cloned()
-        .unwrap_or_default();
+    let items = resp["items"].as_array().cloned().unwrap_or_default();
 
     let events: Vec<CalendarEvent> = items
         .iter()

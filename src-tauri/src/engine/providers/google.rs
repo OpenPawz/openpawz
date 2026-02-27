@@ -3,7 +3,9 @@
 // Preserves the two-pass thought-part parsing for Gemini thinking models.
 
 use crate::atoms::traits::{AiProvider, ProviderError};
-use crate::engine::http::{pinned_client, sign_and_log_request, update_last_audit_status, CircuitBreaker};
+use crate::engine::http::{
+    pinned_client, sign_and_log_request, update_last_audit_status, CircuitBreaker,
+};
 use crate::engine::providers::openai::{
     is_retryable_status, parse_retry_after, retry_delay, MAX_RETRIES,
 };

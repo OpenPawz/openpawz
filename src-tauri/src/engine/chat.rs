@@ -320,6 +320,142 @@ pub fn compose_chat_system_prompt(
     }
 }
 
+/// Build a system prompt within a character budget by dropping lowest-priority
+/// sections first.
+///
+/// Priority (highest → lowest — dropped last → first):
+///   1. Core: platform awareness + foreman protocol + runtime context
+///   2. Soul files (IDENTITY.md, SOUL.md, USER.md)
+///   3. Base system prompt (user-configured personality/instructions)
+///   4. Agent roster (needed for multi-agent delegation)
+///   5. Today's memory notes
+///   6. Skill instructions
+///   7. Auto-recalled memories (most expendable — `memory_search` is available)
+///
+/// Each section is tried in reverse priority order. If including it would
+/// exceed the budget, it's dropped with a hint telling the model how to
+/// access the information on demand.
+#[allow(clippy::too_many_arguments)]
+pub fn compose_chat_system_prompt_budgeted(
+    base_system_prompt: Option<&str>,
+    runtime_context: String,
+    core_context: Option<&str>,
+    todays_memories: Option<&str>,
+    skill_instructions: &str,
+    agent_roster: Option<&str>,
+    recall_block: Option<&str>,
+    max_chars: usize,
+) -> Option<String> {
+    let sep = "\n\n---\n\n";
+
+    // ── Priority 1 (always included): core platform identity ───────────
+    let mut parts: Vec<String> = Vec::new();
+    parts.push(build_platform_awareness());
+    parts.push(build_foreman_awareness().to_string());
+    parts.push(runtime_context);
+
+    // ── Priority 2: soul files ─────────────────────────────────────────
+    // Always include the soul hint, soul content is already capped at 3K each
+    let soul_hint = if core_context.is_some() {
+        "Your core soul files (IDENTITY.md, SOUL.md, USER.md) are loaded below. \
+        Use `soul_write` to update them. Use `soul_read` / `soul_list` to access other files."
+    } else {
+        "You have no soul files yet. Use `soul_write` to create IDENTITY.md, SOUL.md, USER.md."
+    };
+    parts.push(format!(
+        "## Soul Files\n{}\n\n## Memory\n\
+        Use `memory_search` for recall. Use `memory_store` to save important info.",
+        soul_hint
+    ));
+    if let Some(cc) = core_context {
+        parts.push(cc.to_string());
+    }
+
+    // ── Priority 3: base system prompt ─────────────────────────────────
+    if let Some(sp) = base_system_prompt {
+        parts.push(sp.to_string());
+    }
+
+    // Add coding guidelines only when dev skills actually enabled
+    if skill_instructions.contains("development") || skill_instructions.contains("## Code") {
+        parts.push(build_coding_guidelines().to_string());
+    }
+
+    // Check running size — everything above is "essential"
+    let essential = parts.join(sep);
+    let mut result = essential;
+
+    // ── Priority 4-7: optional sections, added if budget allows ────────
+    // Try adding each in priority order; skip any that would bust the budget.
+    struct OptionalSection<'a> {
+        content: Option<&'a str>,
+        label: &'a str,
+        fallback_hint: &'a str,
+    }
+
+    let optional_sections = [
+        OptionalSection {
+            content: agent_roster,
+            label: "agent_roster",
+            fallback_hint:
+                "[Agent roster omitted to save context. Use `agent_list` to see available agents.]",
+        },
+        OptionalSection {
+            content: todays_memories,
+            label: "todays_memories",
+            fallback_hint:
+                "[Today's notes omitted to save context. Use `memory_search` for recall.]",
+        },
+        OptionalSection {
+            content: if skill_instructions.is_empty() {
+                None
+            } else {
+                Some(skill_instructions)
+            },
+            label: "skill_instructions",
+            fallback_hint:
+                "[Skill instructions omitted. Use `request_tools` to discover available tools.]",
+        },
+        OptionalSection {
+            content: recall_block,
+            label: "recalled_memories",
+            fallback_hint:
+                "[Auto-recalled memories omitted. Use `memory_search` for relevant context.]",
+        },
+    ];
+
+    let mut dropped: Vec<&str> = Vec::new();
+
+    for section in &optional_sections {
+        if let Some(content) = section.content {
+            let candidate = format!("{}{}{}", result, sep, content);
+            if candidate.len() <= max_chars {
+                result = candidate;
+            } else {
+                // Won't fit — add the fallback hint instead (much smaller)
+                let hint_candidate = format!("{}{}{}", result, sep, section.fallback_hint);
+                if hint_candidate.len() <= max_chars {
+                    result = hint_candidate;
+                }
+                dropped.push(section.label);
+            }
+        }
+    }
+
+    if !dropped.is_empty() {
+        info!(
+            "[engine] System prompt budget: dropped {:?} to fit {} char limit (final: {} chars, ~{} tokens)",
+            dropped, max_chars, result.len(), result.len() / 4
+        );
+    }
+
+    if result.is_empty() {
+        None
+    } else {
+        Some(result)
+    }
+}
+
 // ── Response loop detector ─────────────────────────────────────────────────────
 
 /// Detect stuck response loops and inject a system nudge to break the cycle.

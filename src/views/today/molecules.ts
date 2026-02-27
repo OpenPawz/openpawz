@@ -425,12 +425,21 @@ export async function fetchCalendarEvents() {
 
         let dayLabel = '';
         if (ev.all_day) {
-          dayLabel = isToday ? 'Today' : isTomorrow ? 'Tomorrow' : start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+          dayLabel = isToday
+            ? 'Today'
+            : isTomorrow
+              ? 'Tomorrow'
+              : start.toLocaleDateString('en-US', {
+                  weekday: 'short',
+                  month: 'short',
+                  day: 'numeric',
+                });
         } else {
           const timeStr = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
           if (isToday) dayLabel = timeStr;
           else if (isTomorrow) dayLabel = `Tomorrow ${timeStr}`;
-          else dayLabel = `${start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeStr}`;
+          else
+            dayLabel = `${start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })} ${timeStr}`;
         }
 
         const locationHtml = ev.location

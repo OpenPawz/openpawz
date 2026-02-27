@@ -137,10 +137,7 @@ impl McpRegistry {
     /// After connecting, all n8n-provided tools appear as `mcp_n8n_{tool_name}`.
     pub async fn register_n8n(&mut self, n8n_url: &str, api_key: &str) -> Result<usize, String> {
         let mcp_url = format!("{}/mcp", n8n_url.trim_end_matches('/'));
-        info!(
-            "[mcp] Auto-registering n8n as MCP server at {}",
-            mcp_url
-        );
+        info!("[mcp] Auto-registering n8n as MCP server at {}", mcp_url);
 
         let mut env = HashMap::new();
         if !api_key.is_empty() {
@@ -255,7 +252,10 @@ fn pascal_to_snake(name: &str) -> String {
             if i > 0 && !result.ends_with('_') {
                 let prev = chars[i - 1];
                 let next_lower = chars.get(i + 1).is_some_and(|c| c.is_lowercase());
-                if prev.is_lowercase() || prev.is_ascii_digit() || (prev.is_uppercase() && next_lower) {
+                if prev.is_lowercase()
+                    || prev.is_ascii_digit()
+                    || (prev.is_uppercase() && next_lower)
+                {
                     result.push('_');
                 }
             }

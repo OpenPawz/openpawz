@@ -136,7 +136,10 @@ pub async fn execute_tool(
             return worker_result;
         }
         // Worker delegation failed — fall through to direct execution
-        info!("[engine] Worker delegation failed, executing {} directly", name);
+        info!(
+            "[engine] Worker delegation failed, executing {} directly",
+            name
+        );
     }
 
     // Try each module in order — first Some(result) wins.

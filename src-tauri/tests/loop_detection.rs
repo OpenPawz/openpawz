@@ -125,10 +125,7 @@ fn detects_short_directive_ignored() {
 
 #[test]
 fn no_crash_with_fewer_than_two_assistant_messages() {
-    let mut msgs = vec![
-        msg(Role::User, "Hello"),
-        msg(Role::Assistant, "Hi there!"),
-    ];
+    let mut msgs = vec![msg(Role::User, "Hello"), msg(Role::Assistant, "Hi there!")];
     detect_response_loop(&mut msgs);
     assert!(
         !has_system_redirect(&msgs),
@@ -145,10 +142,7 @@ fn no_crash_with_empty_messages() {
 
 #[test]
 fn no_crash_with_only_user_messages() {
-    let mut msgs = vec![
-        msg(Role::User, "Hello"),
-        msg(Role::User, "Are you there?"),
-    ];
+    let mut msgs = vec![msg(Role::User, "Hello"), msg(Role::User, "Are you there?")];
     detect_response_loop(&mut msgs);
     assert!(
         !has_system_redirect(&msgs),

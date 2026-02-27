@@ -55,8 +55,12 @@ pub fn handle_malformed_tool_call(
 
 // ── Empty response nudge ───────────────────────────────────────────────
 
-/// When the model returns an empty response on round 1, inject a system
-/// nudge that recaps the user's message and asks the model to retry.
+/// When the model returns an empty response, inject a system nudge that
+/// recaps the user's message and asks the model to retry.
+///
+/// Retries up to 2 times (rounds 1-2) before giving up. Long conversations
+/// are more prone to empty responses due to context truncation, so we need
+/// to retry beyond just round 1.
 ///
 /// Returns `true` if a retry nudge was injected (caller should `continue`).
 pub fn handle_empty_response(
@@ -65,7 +69,7 @@ pub fn handle_empty_response(
     round: u32,
     max_rounds: u32,
 ) -> bool {
-    if !final_text.is_empty() || round != 1 || round >= max_rounds {
+    if !final_text.is_empty() || round > 2 || round >= max_rounds {
         return false;
     }
 

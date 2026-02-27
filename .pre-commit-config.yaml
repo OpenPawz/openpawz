@@ -20,12 +20,17 @@ repos:
         args: [--maxkb=500]
       - id: mixed-line-ending
         args: [--fix=lf]
-      - id: no-commit-to-branch
-        args: [--branch, main]
 
   # ── TypeScript / JavaScript ─────────────────────────────────────
   - repo: local
     hooks:
+      - id: prettier
+        name: prettier --write
+        entry: npx prettier --write
+        language: system
+        files: '^src/.*\.ts$'
+        types: [ts]
+
       - id: eslint
         name: eslint
         entry: npx eslint --max-warnings 0
@@ -34,16 +39,17 @@ repos:
         exclude: '\.test\.ts$'
         types: [ts]
 
-      - id: prettier
-        name: prettier
-        entry: npx prettier --check
-        language: system
-        files: '^src/.*\.ts$'
-        types: [ts]
-
       - id: typecheck
         name: tsc --noEmit
         entry: npx tsc --noEmit
+        language: system
+        pass_filenames: false
+        files: '^src/.*\.ts$'
+        types: [ts]
+
+      - id: vitest
+        name: vitest run
+        entry: npx vitest run
         language: system
         pass_filenames: false
         files: '^src/.*\.ts$'

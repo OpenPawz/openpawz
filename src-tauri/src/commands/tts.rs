@@ -109,8 +109,8 @@ pub async fn engine_tts_speak(
         }
         _ => {
             // Default: Google Cloud TTS
-            let api_key =
-                google_key.ok_or("No Google provider configured — add one in Settings → Providers")?;
+            let api_key = google_key
+                .ok_or("No Google provider configured — add one in Settings → Providers")?;
             tts_google(&api_key, &text, &tts_config).await
         }
     }

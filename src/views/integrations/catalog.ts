@@ -1081,11 +1081,7 @@ const AUTO: ServiceDefinition[] = [
       ],
       estimatedTime: '1 minute',
     },
-    [
-      'What meetings do I have today?',
-      'Am I free tomorrow at 2pm?',
-      'Show this week\'s events',
-    ],
+    ['What meetings do I have today?', 'Am I free tomorrow at 2pm?', "Show this week's events"],
     ['When a meeting is created, post in Slack', 'Daily agenda briefing at 8am'],
   ),
   svc(

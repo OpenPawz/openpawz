@@ -42,7 +42,8 @@ impl McpClient {
         let transport = match config.transport {
             McpTransport::Stdio => {
                 use super::transport::StdioTransport;
-                let stdio = StdioTransport::spawn(&config.command, &config.args, &config.env).await?;
+                let stdio =
+                    StdioTransport::spawn(&config.command, &config.args, &config.env).await?;
                 McpTransportHandle::Stdio(stdio)
             }
             McpTransport::Sse => {

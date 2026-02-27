@@ -126,8 +126,7 @@ pub fn run() {
                     tokio::time::sleep(std::time::Duration::from_secs(8)).await;
 
                     // Only auto-start if the user has previously enabled n8n
-                    let config = engine::n8n_engine::load_config(&app_handle)
-                        .unwrap_or_default();
+                    let config = engine::n8n_engine::load_config(&app_handle).unwrap_or_default();
                     if !config.enabled {
                         log::debug!("[n8n] Auto-start skipped — n8n not enabled");
                         return;

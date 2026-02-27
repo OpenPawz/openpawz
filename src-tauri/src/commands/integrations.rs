@@ -37,8 +37,7 @@ fn load_connected_ids(app: &tauri::AppHandle) -> Vec<String> {
 }
 
 fn save_connected_ids(app: &tauri::AppHandle, ids: &[String]) -> Result<(), String> {
-    channels::save_channel_config(app, CONNECTED_KEY, &ids.to_vec())
-        .map_err(|e| e.to_string())
+    channels::save_channel_config(app, CONNECTED_KEY, &ids.to_vec()).map_err(|e| e.to_string())
 }
 
 fn load_details(app: &tauri::AppHandle) -> Vec<ConnectedService> {
@@ -158,7 +157,8 @@ pub fn engine_integrations_overview(
     app_handle: tauri::AppHandle,
 ) -> Result<IntegrationOverview, String> {
     let connected = load_details(&app_handle);
-    let needing_attention = connected.iter()
+    let needing_attention = connected
+        .iter()
         .filter(|c| c.status == "error" || c.status == "expired")
         .count() as u32;
 

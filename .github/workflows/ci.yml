@@ -33,7 +33,7 @@ jobs:
       - name: Run prek hooks
         run: prek run --all-files
         env:
-          SKIP: no-commit-to-branch,cargo-fmt,cargo-clippy
+          SKIP: cargo-fmt,cargo-clippy
 
   # ── TypeScript: lint, type-check, test, format ──────────────────
   typescript:
@@ -91,6 +91,10 @@ jobs:
             patchelf \
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
+
+      - name: Cargo fmt check
+        run: cargo fmt -- --check
+        working-directory: src-tauri
 
       - name: Cargo check
         run: cargo check
