@@ -654,33 +654,25 @@ pub async fn engine_chat_send(
                     "[engine] Processing queued request for session {}",
                     queue_session_id
                 );
-                // Re-send via the Tauri command system
-                if let Some(engine_state) = queue_app.try_state::<EngineState>() {
-                    // Store the queued user message
-                    let user_msg = StoredMessage {
-                        id: uuid::Uuid::new_v4().to_string(),
-                        session_id: queue_session_id.clone(),
-                        role: "user".into(),
-                        content: queued.request.message.clone(),
-                        tool_calls_json: None,
-                        tool_call_id: None,
-                        name: None,
-                        created_at: chrono::Utc::now().to_rfc3339(),
-                    };
-                    let _ = engine_state.store.add_message(&user_msg);
-                    // Emit a queue-processing event so frontend knows
-                    let _ = queue_app.emit(
-                        "engine-event",
-                        EngineEvent::Delta {
-                            session_id: queue_session_id.clone(),
-                            run_id: format!("queue-{}", uuid::Uuid::new_v4()),
-                            text: String::new(),
-                        },
-                    );
-                    info!(
-                        "[engine] Queued request stored, frontend should re-send via normal flow"
-                    );
-                }
+                // Don't store the user message here — the normal engine_chat_send
+                // flow will store it when the frontend re-sends. Storing here would
+                // create a duplicate.
+                //
+                // Emit a queue-ready event so the frontend re-sends via normal flow.
+                // The frontend listens for "engine-queue-ready" and calls engineChatSend
+                // with the queued message, which goes through the full chat pipeline
+                // (system prompt construction, context loading, tool building, etc.)
+                let _ = queue_app.emit(
+                    "engine-queue-ready",
+                    serde_json::json!({
+                        "sessionId": queue_session_id,
+                        "message": queued.request.message,
+                        "model": queued.request.model,
+                    }),
+                );
+                info!(
+                    "[engine] Emitted engine-queue-ready for frontend re-send"
+                );
             }
         }
 

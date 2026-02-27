@@ -204,11 +204,17 @@ use std::sync::LazyLock;
 /// Build a `rustls::ClientConfig` pinned to the Mozilla root certificates.
 /// This explicitly ignores the OS trust store, ensuring a system-level CA
 /// compromise cannot intercept provider traffic.
+///
+/// Uses an explicit `ring` CryptoProvider rather than the process-level
+/// default so the config works reliably in unit-test binaries where no
+/// global provider has been installed.
 fn pinned_tls_config() -> ClientConfig {
     let mut root_store = rustls::RootCertStore::empty();
     root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
 
-    ClientConfig::builder()
+    ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+        .with_safe_default_protocol_versions()
+        .expect("Failed to set default TLS protocol versions")
         .with_root_certificates(root_store)
         .with_no_client_auth()
 }

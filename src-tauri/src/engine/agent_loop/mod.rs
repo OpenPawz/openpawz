@@ -51,6 +51,13 @@ pub async fn run_agent_turn(
         std::collections::HashMap::new();
     const MAX_CONSECUTIVE_TOOL_FAILS: u32 = 3;
 
+    // Repetition detector: track the tool-call "signature" (hashed tool names
+    // + args) for each round.  If the same signature appears consecutively
+    // MAX_REPEATED_SIGNATURES times, the model is stuck in a tool-calling loop
+    // (common after model/context changes mid-conversation).
+    let mut round_signatures: Vec<u64> = Vec::new();
+    const MAX_REPEATED_SIGNATURES: usize = 3;
+
     loop {
         round += 1;
 
@@ -391,6 +398,86 @@ pub async fn run_agent_turn(
             tool_call_id: None,
             name: None,
         });
+
+        // ── Repetition detector: break tool-calling loops ──────────────
+        // Hash the sorted tool names + full args into a u64 fingerprint.
+        // If the same fingerprint appears MAX_REPEATED_SIGNATURES times
+        // consecutively, the model is stuck repeating the same tool calls
+        // (common when model or context is changed mid-conversation).
+        // Uses a hash to avoid UTF-8 boundary issues and keep memory flat.
+        {
+            use std::collections::hash_map::DefaultHasher;
+            use std::hash::{Hash, Hasher};
+
+            let mut sig_parts: Vec<(&str, &str)> = tool_calls
+                .iter()
+                .map(|tc| (tc.function.name.as_str(), tc.function.arguments.as_str()))
+                .collect();
+            sig_parts.sort();
+
+            let mut hasher = DefaultHasher::new();
+            for (name, args) in &sig_parts {
+                name.hash(&mut hasher);
+                args.hash(&mut hasher);
+            }
+            let signature = hasher.finish();
+            round_signatures.push(signature);
+
+            // Check the last N signatures for consecutive repetition
+            let sig_len = round_signatures.len();
+            if sig_len >= MAX_REPEATED_SIGNATURES {
+                let all_same = round_signatures[sig_len - MAX_REPEATED_SIGNATURES..]
+                    .iter()
+                    .all(|&s| s == signature);
+                if all_same {
+                    // Check whether we (or detect_response_loop) already
+                    // injected a loop/redirect message. If so, the model
+                    // ignored the first nudge — hard-break to prevent
+                    // unbounded redirect stacking.
+                    let already_redirected = messages.iter().any(|m| {
+                        m.role == Role::System && {
+                            let t = m.content.as_text_ref();
+                            t.contains("stuck in a tool-calling loop")
+                                || t.contains("stuck in a response loop")
+                                || t.contains("stuck asking clarifying questions")
+                        }
+                    });
+                    if already_redirected {
+                        warn!(
+                            "[engine] Model ignored tool-loop redirect — hard-breaking agent turn"
+                        );
+                        messages.pop(); // remove the repeated assistant message
+                        return Ok(
+                            "I was stuck calling the same tools repeatedly and couldn't make \
+                            progress. Please try rephrasing your request or switching context."
+                                .to_string(),
+                        );
+                    }
+
+                    warn!(
+                        "[engine] Tool-call loop detected: same tool signature repeated {} times — injecting redirect",
+                        MAX_REPEATED_SIGNATURES
+                    );
+                    // Remove the assistant message we just pushed (it has the repeated tools)
+                    messages.pop();
+                    // Inject a redirect message
+                    messages.push(Message {
+                        role: Role::System,
+                        content: MessageContent::Text(
+                            "[SYSTEM] You are stuck in a tool-calling loop — you have called the \
+                            same tools with the same arguments multiple times in a row. STOP calling \
+                            tools and provide a direct text response to the user summarizing what you \
+                            have accomplished and any issues encountered. Do NOT make any more tool calls."
+                                .to_string(),
+                        ),
+                        tool_calls: None,
+                        tool_call_id: None,
+                        name: None,
+                    });
+                    continue; // Go back to model call — it should now produce text
+                }
+            }
+        }
 
         // ── 5. Execute each tool call (with HIL approval) ──────────────
         let tc_count = tool_calls.len();

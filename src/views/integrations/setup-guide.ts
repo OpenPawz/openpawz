@@ -343,7 +343,7 @@ function _wireGuideEvents(container: HTMLElement, service: ServiceDefinition): v
           <div class="guide-feedback guide-feedback-warning" style="margin-top: 8px">
             <span class="ms ms-sm" style="color: var(--warning, #f59e0b)">warning</span>
             <span>Credentials saved, but skill provisioning failed. Agent tools may not work until you reconnect.</span>
-          </div>` + feedback.innerHTML;
+          </div>${feedback.innerHTML}`;
       }
 
       // ── MCP workflow deployment (dynamic tool discovery) ──

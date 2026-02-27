@@ -114,7 +114,13 @@ export async function loadIntegrations(): Promise<void> {
     // Skills configured via the Skills page (e.g. Google OAuth, Slack bot token)
     // should also appear as connected in the Integration Hub.
     const skillToService: Record<string, string[]> = {
-      google_workspace: ['gmail', 'google-sheets', 'google-calendar', 'google-docs', 'google-drive'],
+      google_workspace: [
+        'gmail',
+        'google-sheets',
+        'google-calendar',
+        'google-docs',
+        'google-drive',
+      ],
       slack: ['slack'],
       discord: ['discord'],
       github: ['github'],

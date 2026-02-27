@@ -20,8 +20,7 @@ function formatBytes(bytes: number): string {
 export async function loadStorageSettings() {
   const container = $('settings-storage-content');
   if (!container) return;
-  container.innerHTML =
-    '<p style="color:var(--text-muted)">Loading storage paths…</p>';
+  container.innerHTML = '<p style="color:var(--text-muted)">Loading storage paths…</p>';
 
   try {
     const paths = await pawEngine.storageGetPaths();
@@ -47,10 +46,14 @@ export async function loadStorageSettings() {
           <button class="btn btn-sm btn-primary" id="storage-data-root-save">
             <span class="ms ms-sm" style="margin-right: 2px">save</span> Save
           </button>
-          ${paths.is_custom ? `
+          ${
+            paths.is_custom
+              ? `
           <button class="btn btn-sm btn-ghost" id="storage-data-root-reset" title="Reset to default">
             <span class="ms ms-sm">restart_alt</span>
-          </button>` : ''}
+          </button>`
+              : ''
+          }
         </div>
         <p style="color: var(--text-muted); font-size: 11px; margin-top: 4px">
           Default: <code style="font-size: 11px">${escapeHtml(paths.default_root)}</code>
@@ -70,16 +73,23 @@ export async function loadStorageSettings() {
         rootSaveBtn.disabled = true;
         rootSaveBtn.textContent = 'Saving…';
         await pawEngine.storageSetDataRoot(val);
-        rootSaveBtn.innerHTML = '<span class="ms ms-sm" style="margin-right:2px">check</span> Saved — restart required';
+        rootSaveBtn.innerHTML =
+          '<span class="ms ms-sm" style="margin-right:2px">check</span> Saved — restart required';
         setTimeout(() => loadStorageSettings(), 2000);
       } catch (e) {
         rootSaveBtn.textContent = 'Error';
         alert(`Failed to set data root: ${e}`);
-        setTimeout(() => { rootSaveBtn.innerHTML = '<span class="ms ms-sm" style="margin-right:2px">save</span> Save'; rootSaveBtn.disabled = false; }, 2000);
+        setTimeout(() => {
+          rootSaveBtn.innerHTML =
+            '<span class="ms ms-sm" style="margin-right:2px">save</span> Save';
+          rootSaveBtn.disabled = false;
+        }, 2000);
       }
     });
 
-    const resetBtn = rootSection.querySelector('#storage-data-root-reset') as HTMLButtonElement | null;
+    const resetBtn = rootSection.querySelector(
+      '#storage-data-root-reset',
+    ) as HTMLButtonElement | null;
     if (resetBtn) {
       resetBtn.addEventListener('click', async () => {
         if (!confirm('Reset data root to default (~/.paw/)? Requires a restart.')) return;
@@ -91,7 +101,8 @@ export async function loadStorageSettings() {
     // ── Storage Breakdown ─────────────────────────────────────────────
     const statsSection = document.createElement('div');
     statsSection.className = 'settings-section';
-    const totalSize = paths.engine_db_size + paths.workspaces_size + paths.skills_size + paths.browser_size;
+    const totalSize =
+      paths.engine_db_size + paths.workspaces_size + paths.skills_size + paths.browser_size;
     statsSection.innerHTML = `
       <h2 class="settings-section-title">Storage Usage</h2>
       <p class="settings-section-desc" style="margin-bottom: 12px">
@@ -171,7 +182,6 @@ export async function loadStorageSettings() {
       </div>
     `;
     container.appendChild(syncSection);
-
   } catch (e) {
     container.innerHTML = `<p style="color:var(--error)">Failed to load storage settings: ${e}</p>`;
   }

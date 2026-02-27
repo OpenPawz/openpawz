@@ -57,6 +57,36 @@ function generateSessionLabel(message: string): string {
 }
 
 // ── Utility helpers ──────────────────────────────────────────────────────
+
+/**
+ * Tear down an active stream for the given session key: abort the backend,
+ * resolve the pending promise so sendMessage() unblocks, clean timers, and
+ * remove the entry from activeStreams.  No-op if no stream exists for the key.
+ *
+ * This is used whenever the user switches sessions, agents, or starts a new
+ * chat while a previous stream is still in-flight.
+ */
+function teardownStream(sessionKey: string, reason: string): void {
+  const stream = appState.activeStreams.get(sessionKey);
+  if (!stream) return;
+  console.debug(`[chat] Tearing down stream for ${sessionKey.slice(0, 12) || '(empty)'}: ${reason}`);
+  pawEngine.chatAbort(sessionKey).catch(() => {});
+  if (stream.resolve) {
+    stream.resolve(stream.content || `(${reason})`);
+    stream.resolve = null;
+  }
+  if (stream.timeout) {
+    clearTimeout(stream.timeout);
+    stream.timeout = null;
+  }
+  appState.activeStreams.delete(sessionKey);
+  // Clean up streaming UI
+  document.getElementById('streaming-message')?.remove();
+  clearActiveJobs();
+  const abortBtn = document.getElementById('chat-abort-btn');
+  if (abortBtn) abortBtn.style.display = 'none';
+}
+
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -264,8 +294,10 @@ export async function switchToAgent(agentId: string): Promise<void> {
     persistAgentSessionMap();
   }
 
-  // Clean up stale streaming UI
-  document.getElementById('streaming-message')?.remove();
+  // Tear down any active stream for the current session before switching.
+  // Use the raw key (null → '') since streams are keyed that way.
+  const oldKey = appState.currentSessionKey ?? '';
+  teardownStream(oldKey, 'Agent switched');
   appState.streamingEl = null;
 
   AgentsModule.setSelectedAgent(agentId);
@@ -743,14 +775,20 @@ export function appendThinkingDelta(text: string): void {
   scrollToBottom();
 }
 
-export function finalizeStreaming(finalContent: string, toolCalls?: ToolCall[]): void {
+export function finalizeStreaming(
+  finalContent: string,
+  toolCalls?: ToolCall[],
+  streamSessionKey?: string,
+): void {
   $('streaming-message')?.remove();
 
   // Mission panel: clear active jobs
   clearActiveJobs();
 
-  // Tear down session-keyed stream
-  const key = appState.currentSessionKey ?? '';
+  // Tear down session-keyed stream — use the original stream's session key
+  // (not appState.currentSessionKey) because the user may have switched
+  // sessions/context while this stream was in-flight.
+  const key = streamSessionKey ?? appState.currentSessionKey ?? '';
   const ss = appState.activeStreams.get(key);
   const savedRunId = ss?.runId ?? null;
   const streamingAgent = ss?.agentId ?? null;
@@ -1432,17 +1470,27 @@ export async function sendMessage(): Promise<void> {
     handleSendResult(result, ss, streamKey);
 
     const finalText = await responsePromise;
-    finalizeStreaming(finalText);
+    // If teardownStream already cleaned up this stream (user switched
+    // session/agent/new-chat), skip finalizeStreaming to avoid injecting
+    // a phantom assistant message into the new session's chat view.
+    if (appState.activeStreams.has(streamKey)) {
+      finalizeStreaming(finalText, undefined, streamKey);
+    } else {
+      console.debug('[chat] Stream already torn down — skipping finalizeStreaming');
+    }
     loadSessions({ skipHistory: true }).catch(() => {});
   } catch (error) {
     console.error('[chat] error:', error);
-    if (ss?.el) {
+    if (ss?.el && appState.activeStreams.has(streamKey)) {
       const errMsg = error instanceof Error ? error.message : 'Failed to get response';
-      finalizeStreaming(ss.content || `Error: ${errMsg}`);
+      finalizeStreaming(ss.content || `Error: ${errMsg}`, undefined, streamKey);
     }
   } finally {
+    // Clean up stream entries for BOTH the original stream key and the
+    // current session key (in case handleSendResult re-keyed the stream)
     const finalKey = appState.currentSessionKey ?? streamKey;
     appState.activeStreams.delete(finalKey);
+    appState.activeStreams.delete(streamKey);
     if (ss?.timeout) {
       clearTimeout(ss.timeout);
       ss.timeout = null;
@@ -1560,6 +1608,13 @@ export function initChatListeners(): void {
   chatSessionSelect?.addEventListener('change', () => {
     const key = chatSessionSelect?.value;
     if (!key) return;
+
+    // Tear down any active stream for the old session before switching.
+    const oldKey = appState.currentSessionKey ?? '';
+    if (oldKey !== key) {
+      teardownStream(oldKey, 'Session switched');
+    }
+
     appState.currentSessionKey = key;
     const curAgent = AgentsModule.getCurrentAgent();
     if (curAgent) {
@@ -1576,6 +1631,9 @@ export function initChatListeners(): void {
   });
 
   $('new-chat-btn')?.addEventListener('click', () => {
+    // Tear down any in-flight stream before resetting
+    const oldKey = appState.currentSessionKey ?? '';
+    teardownStream(oldKey, 'New chat');
     appState.messages = [];
     appState.currentSessionKey = null;
     resetTokenMeter();
@@ -1587,21 +1645,9 @@ export function initChatListeners(): void {
   });
 
   $('chat-abort-btn')?.addEventListener('click', async () => {
-    const key = appState.currentSessionKey ?? 'default';
-    try {
-      await pawEngine.chatAbort(key);
-      // Immediately resolve the stream promise so the UI unblocks.
-      // Don't wait for the backend Complete event — it may be dropped
-      // by session filters or delayed by the 3s grace period.
-      const ss = appState.activeStreams.get(key);
-      if (ss?.resolve) {
-        ss.resolve(ss.content || '(Stopped)');
-        ss.resolve = null;
-      }
-      showToast('Agent stopped', 'info');
-    } catch (e) {
-      console.warn('[chat] Abort failed:', e);
-    }
+    const key = appState.currentSessionKey ?? '';
+    teardownStream(key, 'Stopped');
+    showToast('Agent stopped', 'info');
   });
 
   $('session-rename-btn')?.addEventListener('click', async () => {

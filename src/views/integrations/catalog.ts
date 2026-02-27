@@ -4878,7 +4878,8 @@ const AUTO: ServiceDefinition[] = [
         type: 'text' as const,
         placeholder: 'e.g. New York, London, Tokyo',
         required: true,
-        helpText: 'City name or "City, Country" — used for your dashboard weather and agent queries.',
+        helpText:
+          'City name or "City, Country" — used for your dashboard weather and agent queries.',
       },
     ],
     {

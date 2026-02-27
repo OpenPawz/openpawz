@@ -75,10 +75,9 @@ export async function fetchWeather() {
     let savedLocation: string | null = null;
     try {
       if (invoke) {
-        const creds = await invoke<Record<string, string>>(
-          'engine_integrations_get_credentials',
-          { serviceId: 'weather-api' },
-        );
+        const creds = await invoke<Record<string, string>>('engine_integrations_get_credentials', {
+          serviceId: 'weather-api',
+        });
         if (creds?.location) savedLocation = creds.location;
       }
     } catch {

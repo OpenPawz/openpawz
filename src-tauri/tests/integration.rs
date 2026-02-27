@@ -20,6 +20,7 @@ pub fn test_store() -> SessionStore {
 }
 
 mod config_persistence;
+mod loop_detection;
 mod memory_roundtrip;
 mod session_lifecycle;
 mod tool_classification;

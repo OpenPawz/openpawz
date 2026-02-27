@@ -6,6 +6,7 @@ import { pawEngine } from './ipc_client';
 import type { EngineEvent, EngineChatRequest } from '../atoms/types';
 import { getAgentAllowedTools, ALL_TOOLS } from '../../features/agent-policies';
 import { getIntegrationHint } from './auto-discover-bridge';
+import { appState } from '../../state';
 
 type AgentEventHandler = (payload: unknown) => void;
 type ToolApprovalHandler = (event: EngineEvent) => void;
@@ -81,6 +82,38 @@ export async function startEngineBridge(): Promise<void> {
       }
     }
   });
+
+  // ── Queue-ready listener: re-send queued messages after yield ─────────
+  // When the backend completes a yielded run and finds a queued message,
+  // it emits "engine-queue-ready".  We re-send via the normal chat pipeline
+  // so system prompt, context, and tool lists are properly reconstructed.
+  const { listen } = await import('@tauri-apps/api/event');
+  await listen<{ sessionId: string; message: string; model?: string }>(
+    'engine-queue-ready',
+    async (event) => {
+      const { sessionId, message, model } = event.payload;
+      console.debug(`[bridge] Queue-ready: re-sending message for session ${sessionId}`);
+
+      // Guard: if the user has already navigated to a different session,
+      // skip firing the frontend send (the backend already stored nothing;
+      // the message will simply be lost from the queue, which is correct —
+      // the user abandoned the context).
+      if (appState.currentSessionKey && appState.currentSessionKey !== sessionId) {
+        console.debug(
+          `[bridge] Queue-ready: session ${sessionId} != current ${appState.currentSessionKey} — skipping`,
+        );
+        return;
+      }
+
+      try {
+        // The Rust queue processor does NOT store the message — it will be
+        // stored when engineChatSend triggers the normal engine_chat_send flow.
+        await engineChatSend(sessionId, message, { model: model || undefined });
+      } catch (e) {
+        console.error('[bridge] Queue re-send failed:', e);
+      }
+    },
+  );
 }
 
 /**
