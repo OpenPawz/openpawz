@@ -321,9 +321,10 @@ export function buildShowcaseData(): ShowcaseData {
   };
 }
 
-/** Build 30-day activity data from task activity items. */
+/** Build 30-day activity data from task activity + chat sessions. */
 export function buildHeatmapData(
   activities: EngineTaskActivity[],
+  sessions?: { created_at: string; updated_at: string }[],
 ): { date: string; count: number }[] {
   const days: { date: string; count: number }[] = [];
   const today = new Date();
@@ -332,6 +333,14 @@ export function buildHeatmapData(
   for (const a of activities) {
     const d = a.created_at.slice(0, 10); // "YYYY-MM-DD"
     counts.set(d, (counts.get(d) ?? 0) + 1);
+  }
+
+  // Count chat sessions by their updated_at date (most recent activity)
+  if (sessions) {
+    for (const s of sessions) {
+      const d = (s.updated_at || s.created_at).slice(0, 10);
+      counts.set(d, (counts.get(d) ?? 0) + 1);
+    }
   }
 
   for (let i = 29; i >= 0; i--) {

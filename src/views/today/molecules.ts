@@ -615,8 +615,12 @@ export async function fetchHeatmap() {
   if (!container) return;
 
   try {
-    const items = await pawEngine.taskActivity(undefined, 500);
-    const days = buildHeatmapData(items);
+    // Combine task activity + chat sessions for a complete picture
+    const [taskItems, sessions] = await Promise.all([
+      pawEngine.taskActivity(undefined, 500).catch(() => []),
+      pawEngine.sessionsList(500).catch(() => []),
+    ]);
+    const days = buildHeatmapData(taskItems, sessions);
     container.innerHTML = heatmapStrip(days);
   } catch (e) {
     console.warn('[today] Heatmap fetch failed:', e);

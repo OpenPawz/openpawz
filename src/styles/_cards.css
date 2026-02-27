@@ -81,14 +81,18 @@
 
 .viz-heatmap {
   display: flex;
-  gap: 2px;
-  flex-wrap: wrap;
+  gap: 3px;
+  flex-wrap: nowrap;
+  justify-content: space-between;
 }
 .viz-heatmap-cell {
-  width: 10px;
-  height: 10px;
+  flex: 1;
+  height: 14px;
+  min-width: 8px;
+  max-width: 24px;
   border-radius: 2px;
   background: var(--bg-tertiary);
+  border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.15));
   transition: background var(--transition-fast);
 }
 
