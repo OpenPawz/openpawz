@@ -768,6 +768,9 @@ export function renderToolbar(container: HTMLElement, runState?: { isRunning: bo
         <button class="flow-tb-btn" data-action="add-data" title="Add Data">
           <span class="ms">${NODE_DEFAULTS.data.icon}</span>
         </button>
+        <button class="flow-tb-btn" data-action="add-code" title="Add Code">
+          <span class="ms">${NODE_DEFAULTS.code.icon}</span>
+        </button>
         <button class="flow-tb-btn" data-action="add-output" title="Add Output">
           <span class="ms">${NODE_DEFAULTS.output.icon}</span>
         </button>
@@ -815,6 +818,7 @@ function handleToolbarAction(action: string) {
     'add-tool': 'tool',
     'add-condition': 'condition',
     'add-data': 'data',
+    'add-code': 'code',
     'add-output': 'output',
   };
 
@@ -966,6 +970,7 @@ export function renderNodePanel(container: HTMLElement, node: FlowNode | null, o
   const modelVal = escAttr((config.model as string) ?? '');
   const conditionVal = escAttr((config.conditionExpr as string) ?? '');
   const transformVal = escAttr((config.transform as string) ?? '');
+  const codeVal = escAttr((config.code as string) ?? '');
   const outputTarget = (config.outputTarget as string) ?? 'chat';
   const timeoutVal = (config.timeoutMs as number) ?? 120000;
 
@@ -1012,6 +1017,18 @@ export function renderNodePanel(container: HTMLElement, node: FlowNode | null, o
     `;
   }
 
+  if (node.kind === 'code') {
+    configFieldsHtml += `
+      <label class="flow-panel-field">
+        <span>JavaScript Code</span>
+        <textarea class="flow-panel-textarea flow-panel-code" data-config="code" rows="8" placeholder="// Input available as: input (string), data (parsed JSON)
+// Return a value or use console.log()
+return input.toUpperCase();">${codeVal}</textarea>
+        <span class="flow-panel-hint">Sandboxed: no window, document, fetch, eval.<br>Receives <code>input</code> (string) and <code>data</code> (parsed JSON).</span>
+      </label>
+    `;
+  }
+
   if (node.kind === 'output') {
     configFieldsHtml += `
       <label class="flow-panel-field">
@@ -1023,8 +1040,8 @@ export function renderNodePanel(container: HTMLElement, node: FlowNode | null, o
     `;
   }
 
-  // Timeout field for agent/tool/condition/data nodes
-  if (['agent', 'tool', 'condition', 'data'].includes(node.kind)) {
+  // Timeout field for agent/tool/condition/data/code nodes
+  if (['agent', 'tool', 'condition', 'data', 'code'].includes(node.kind)) {
     configFieldsHtml += `
       <label class="flow-panel-field">
         <span>Timeout (s)</span>

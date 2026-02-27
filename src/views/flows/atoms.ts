@@ -11,6 +11,7 @@ export type FlowNodeKind =
   | 'tool'       // MCP tool invocation
   | 'condition'  // If/else branch
   | 'data'       // Data transform / mapping
+  | 'code'       // Inline JavaScript evaluation (sandboxed)
   | 'output'     // Terminal output (log, send, store)
   | 'group';     // Sub-flow / compound node
 
@@ -175,6 +176,7 @@ export const NODE_DEFAULTS: Record<FlowNodeKind, { width: number; height: number
   tool:      { width: 180, height: 64, color: 'var(--kinetic-sage)', icon: 'build' },
   condition: { width: 140, height: 64, color: 'var(--status-info)',  icon: 'call_split' },
   data:      { width: 160, height: 56, color: 'var(--kinetic-gold)', icon: 'data_object' },
+  code:      { width: 180, height: 72, color: 'var(--kinetic-steel)', icon: 'code' },
   output:    { width: 160, height: 64, color: 'var(--success)',      icon: 'output' },
   group:     { width: 240, height: 120, color: 'var(--border)',      icon: 'folder' },
 };

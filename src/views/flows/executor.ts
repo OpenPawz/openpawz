@@ -15,6 +15,7 @@ import {
   createNodeRunState,
   getNodeExecConfig,
   validateFlowForExecution,
+  executeCodeSandboxed,
   type FlowRunState,
   type FlowExecEvent,
   type NodeExecConfig,
@@ -236,6 +237,21 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
           output = await executeAgentStep(graph, node, upstreamInput, config, defaultAgentId);
           handleConditionResult(graph, node, output);
           break;
+
+        case 'code': {
+          // Code nodes execute inline JavaScript in a sandboxed environment
+          const codeSource = (node.config.code as string) ?? config.prompt ?? '';
+          if (!codeSource.trim()) {
+            output = 'No code to execute.';
+          } else {
+            const codeResult = executeCodeSandboxed(codeSource, upstreamInput, config.timeoutMs ?? 5000);
+            if (codeResult.error) {
+              throw new Error(`Code error: ${codeResult.error}`);
+            }
+            output = codeResult.output;
+          }
+          break;
+        }
 
         case 'agent':
         case 'tool':

@@ -17,6 +17,7 @@ import {
   getNodeExecConfig,
   validateFlowForExecution,
   summarizeRun,
+  executeCodeSandboxed,
   type NodeRunState,
 } from './executor-atoms';
 import { createGraph, createNode, createEdge, type FlowGraph } from './atoms';
@@ -392,5 +393,84 @@ describe('createFlowRunState for debug', () => {
       const node = g.nodes.find((n) => n.id === plan[i]);
       expect(node).toBeDefined();
     }
+  });
+});
+
+// ── Code Sandbox Tests ───────────────────────────────────────────────────
+
+describe('executeCodeSandboxed', () => {
+  it('executes simple return statement', () => {
+    const result = executeCodeSandboxed('return 42;', '');
+    expect(result.output).toBe('42');
+    expect(result.error).toBeUndefined();
+  });
+
+  it('receives input string', () => {
+    const result = executeCodeSandboxed('return input.toUpperCase();', 'hello world');
+    expect(result.output).toBe('HELLO WORLD');
+  });
+
+  it('parses JSON data from input', () => {
+    const result = executeCodeSandboxed('return data.name;', '{"name":"Pawz"}');
+    expect(result.output).toBe('Pawz');
+  });
+
+  it('handles data as null for non-JSON input', () => {
+    const result = executeCodeSandboxed('return data === null ? "null" : "not null";', 'plain text');
+    expect(result.output).toBe('null');
+  });
+
+  it('captures console.log output', () => {
+    const result = executeCodeSandboxed('console.log("debug info"); return "done";', '');
+    expect(result.output).toContain('done');
+    expect(result.output).toContain('debug info');
+  });
+
+  it('blocks window access', () => {
+    const result = executeCodeSandboxed('return window.location;', '');
+    expect(result.error).toContain('forbidden');
+  });
+
+  it('blocks document access', () => {
+    const result = executeCodeSandboxed('return document.cookie;', '');
+    expect(result.error).toContain('forbidden');
+  });
+
+  it('blocks fetch access', () => {
+    const result = executeCodeSandboxed('return fetch("http://evil.com");', '');
+    expect(result.error).toContain('forbidden');
+  });
+
+  it('blocks eval access', () => {
+    const result = executeCodeSandboxed('return eval("1+1");', '');
+    expect(result.error).toContain('forbidden');
+  });
+
+  it('handles runtime errors gracefully', () => {
+    const result = executeCodeSandboxed('throw new Error("test error");', '');
+    expect(result.error).toBe('test error');
+    expect(result.output).toBe('');
+  });
+
+  it('returns stringified objects', () => {
+    const result = executeCodeSandboxed('return { x: 1, y: 2 };', '');
+    const parsed = JSON.parse(result.output);
+    expect(parsed.x).toBe(1);
+    expect(parsed.y).toBe(2);
+  });
+
+  it('allows Math usage', () => {
+    const result = executeCodeSandboxed('return Math.max(3, 7, 1);', '');
+    expect(result.output).toBe('7');
+  });
+
+  it('allows Array methods', () => {
+    const result = executeCodeSandboxed('return [1,2,3].map(x => x * 2).join(",");', '');
+    expect(result.output).toBe('2,4,6');
+  });
+
+  it('returns fallback message for no output', () => {
+    const result = executeCodeSandboxed('const x = 1;', '');
+    expect(result.output).toBe('Code executed (no output)');
   });
 });

@@ -1293,3 +1293,54 @@
   margin: 0;
   line-height: 1.5;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase 4: Code Node Kind
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Code Editor in Config Panel ────────────────────────────────────────── */
+
+.flow-panel-code {
+  font-family: var(--font-pixel, 'Share Tech Mono', monospace) !important;
+  font-size: 11px !important;
+  line-height: 1.6 !important;
+  background: var(--bg-primary) !important;
+  border: 1px solid var(--kinetic-steel, #7A8B9A) !important;
+  color: var(--text-primary) !important;
+  tab-size: 2;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.flow-panel-code:focus {
+  border-color: var(--kinetic-sage, #8FB0A0) !important;
+  box-shadow: 0 0 0 2px rgba(143, 176, 160, 0.15);
+}
+
+.flow-panel-hint {
+  display: block;
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+.flow-panel-hint code {
+  font-family: var(--font-pixel, 'Share Tech Mono', monospace);
+  background: var(--bg-primary);
+  padding: 1px 3px;
+  border-radius: 2px;
+  font-size: 9px;
+  color: var(--kinetic-sage, #8FB0A0);
+}
+
+/* ── Code Node Canvas Styling ───────────────────────────────────────────── */
+
+.flow-node-code .flow-node-body {
+  stroke: var(--kinetic-steel, #7A8B9A);
+  stroke-dasharray: 8 3;
+}
+
+.flow-node-code .flow-node-badge {
+  color: var(--kinetic-steel, #7A8B9A);
+}

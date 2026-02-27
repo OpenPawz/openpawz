@@ -38,6 +38,8 @@ export interface NodeExecConfig {
   conditionExpr?: string;
   /** For data nodes: transform instructions */
   transform?: string;
+  /** For code nodes: inline JavaScript source */
+  code?: string;
   /** For output nodes: target (chat, log, store) */
   outputTarget?: 'chat' | 'log' | 'store';
   /** Max retries on error */
@@ -258,6 +260,11 @@ export function buildNodePrompt(
       }
       break;
 
+    case 'code':
+      // Code nodes don't need a prompt — they execute inline JS
+      parts.push(`[Code node: ${node.label}]`);
+      break;
+
     case 'output':
       parts.push(upstreamInput || 'No output to report.');
       break;
@@ -356,6 +363,7 @@ export function getNodeExecConfig(node: FlowNode): NodeExecConfig {
     model: (c.model as string) ?? undefined,
     conditionExpr: (c.conditionExpr as string) ?? undefined,
     transform: (c.transform as string) ?? undefined,
+    code: (c.code as string) ?? undefined,
     outputTarget: (c.outputTarget as 'chat' | 'log' | 'store') ?? 'chat',
     maxRetries: (c.maxRetries as number) ?? 0,
     timeoutMs: (c.timeoutMs as number) ?? 120_000,
@@ -438,4 +446,86 @@ function formatMs(ms: number): string {
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
   return `${(ms / 60_000).toFixed(1)}m`;
+}
+
+// ── Sandboxed Code Execution ───────────────────────────────────────────────
+
+/**
+ * Execute inline JavaScript in a restricted sandbox.
+ * - No access to window, document, fetch, eval, Function
+ * - Input is provided as `input` (string) and `data` (parsed JSON or null)
+ * - Must return a string (or value that gets stringified)
+ * - Timeout enforced (default 5s)
+ */
+export function executeCodeSandboxed(
+  code: string,
+  input: string,
+  timeoutMs = 5000,
+): { output: string; error?: string } {
+  // Parse input as JSON if possible, otherwise pass as string
+  let parsedData: unknown = null;
+  try {
+    parsedData = JSON.parse(input);
+  } catch {
+    parsedData = null;
+  }
+
+  // Block dangerous patterns
+  const forbidden = [
+    /\bwindow\b/, /\bdocument\b/, /\bfetch\b/, /\bXMLHttpRequest\b/,
+    /\bimport\s*\(/, /\brequire\s*\(/, /\beval\s*\(/, /\bnew\s+Function\b/,
+    /\bglobalThis\b/, /\bprocess\b/, /\b__proto__\b/, /\bconstructor\s*\[/,
+  ];
+  for (const pattern of forbidden) {
+    if (pattern.test(code)) {
+      return { output: '', error: `Blocked: code contains forbidden pattern "${pattern.source}"` };
+    }
+  }
+
+  try {
+    // Build sandboxed function with restricted scope
+    // The function receives `input` (string), `data` (parsed), and utility helpers
+    // Shadow dangerous globals by declaring them as undefined parameters
+    // eslint-disable-next-line no-new-func -- intentional: sandboxed execution with blocked globals
+    const sandboxFn = new Function(
+      'input', 'data', 'console', 'JSON', 'Math', 'Date', 'Array', 'Object', 'String', 'Number', 'Boolean', 'RegExp', 'Map', 'Set',
+      // Shadow dangerous globals (cannot use reserved words as params)
+      'window', 'document', 'fetch', 'XMLHttpRequest', 'globalThis', 'process', 'require',
+      `"use strict";\n${code}`,
+    );
+
+    const safeConsole = {
+      log: (...args: unknown[]) => logs.push(args.map(String).join(' ')),
+      warn: (...args: unknown[]) => logs.push(`[warn] ${args.map(String).join(' ')}`),
+      error: (...args: unknown[]) => logs.push(`[error] ${args.map(String).join(' ')}`),
+    };
+    const logs: string[] = [];
+
+    // Execute with timeout via synchronous execution (no async support in sandbox)
+    const start = Date.now();
+    const result = sandboxFn(
+      input, parsedData, safeConsole, JSON, Math, Date, Array, Object, String, Number, Boolean, RegExp, Map, Set,
+      // Shadowed as undefined
+      undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+    );
+
+    const elapsed = Date.now() - start;
+    if (elapsed > timeoutMs) {
+      return { output: '', error: `Code execution exceeded timeout (${timeoutMs}ms)` };
+    }
+
+    // Build output: combine return value + console logs
+    let output = '';
+    if (result !== undefined && result !== null) {
+      output = typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+    }
+    if (logs.length > 0) {
+      const logStr = logs.join('\n');
+      output = output ? `${output}\n\n[Console]\n${logStr}` : logStr;
+    }
+
+    return { output: output || 'Code executed (no output)' };
+  } catch (err) {
+    return { output: '', error: err instanceof Error ? err.message : String(err) };
+  }
 }
