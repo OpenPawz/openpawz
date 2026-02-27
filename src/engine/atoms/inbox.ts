@@ -36,6 +36,8 @@ export interface ConversationEntry {
   kind: 'direct' | 'group' | 'global' | 'unknown';
   /** Whether this entry is pinned to the top */
   pinned: boolean;
+  /** Agent IDs participating in a group conversation */
+  members?: string[];
 }
 
 // ── Inbox state ──────────────────────────────────────────────────────────
@@ -134,6 +136,49 @@ export function formatRelativeTime(ts: number, now = Date.now()): string {
   const monthStr = months[date.getMonth()];
   if (date.getFullYear() === thisYear) return `${monthStr} ${date.getDate()}`;
   return `${monthStr} ${date.getDate()}, ${date.getFullYear()}`;
+}
+
+// ── Agent-grouped view ───────────────────────────────────────────────────
+
+export interface AgentGroup {
+  agentId: string;
+  agentName: string;
+  agentAvatar: string;
+  agentColor: string;
+  conversations: ConversationEntry[];
+  totalUnread: number;
+  latestTs: number;
+}
+
+/** Group conversations by owning agent, sorted by latest activity. */
+export function groupByAgent(entries: ConversationEntry[]): AgentGroup[] {
+  const map = new Map<string, AgentGroup>();
+  for (const e of entries) {
+    let g = map.get(e.agentId);
+    if (!g) {
+      g = {
+        agentId: e.agentId,
+        agentName: e.agentName,
+        agentAvatar: e.agentAvatar,
+        agentColor: e.agentColor,
+        conversations: [],
+        totalUnread: 0,
+        latestTs: 0,
+      };
+      map.set(e.agentId, g);
+    }
+    g.conversations.push(e);
+    g.totalUnread += e.unread;
+    if (e.lastTs > g.latestTs) g.latestTs = e.lastTs;
+  }
+  // Sort groups by latest activity
+  const groups = Array.from(map.values());
+  groups.sort((a, b) => b.latestTs - a.latestTs);
+  // Sort conversations within each group by lastTs
+  for (const g of groups) {
+    g.conversations = sortConversations(g.conversations);
+  }
+  return groups;
 }
 
 /** Find a conversation by session key. */

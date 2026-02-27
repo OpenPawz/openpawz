@@ -60,6 +60,7 @@ export function mountInbox(): void {
   _list = createConversationList({
     onSelect: handleSelectConversation,
     onNewChat: handleNewChat,
+    onNewGroup: handleNewGroup,
     onFilter: handleFilter,
     onSearch: handleSearch,
     onAction: handleConversationAction,
@@ -69,6 +70,7 @@ export function mountInbox(): void {
     onToggleSidebar: handleToggleSidebar,
     modelSelectEl: $('chat-model-select') as HTMLSelectElement | null,
     onNewChat: handleNewChat,
+    onSwapAgent: handleSwapAgent,
   });
 
   _sidebar = createInboxSidebar({
@@ -143,6 +145,7 @@ export function mountInbox(): void {
         appState.currentSessionKey,
         appState.inbox.filter,
       );
+      updateSwapAgents();
     }
   });
 
@@ -200,6 +203,7 @@ export async function refreshConversationList(): Promise<void> {
         isStreaming: appState.activeStreams.has(session.key),
         kind: session.kind ?? 'direct',
         pinned: false,
+        members: session.members,
       } satisfies ConversationEntry;
     });
 
@@ -224,6 +228,7 @@ export async function refreshConversationList(): Promise<void> {
         isStreaming: appState.activeStreams.has(session.key),
         kind: session.kind ?? 'direct',
         pinned: false,
+        members: session.members,
       });
     }
 
@@ -323,6 +328,9 @@ async function handleSelectConversation(sessionKey: string): Promise<void> {
   const entry = appState.inbox.conversations.find((c) => c.sessionKey === sessionKey);
   if (entry) entry.unread = 0;
   _list?.setUnread(sessionKey, 0);
+
+  // Populate swap agent dropdown
+  updateSwapAgents();
 }
 
 async function handleNewChat(): Promise<void> {
@@ -346,6 +354,172 @@ async function handleNewChat(): Promise<void> {
   }
 
   showToast('New conversation started', 'success');
+}
+
+async function handleNewGroup(): Promise<void> {
+  // Build agent multi-select overlay
+  const agents = AgentsModule.getAgents();
+  if (agents.length < 2) {
+    showToast('You need at least 2 agents to create a group chat', 'error');
+    return;
+  }
+
+  // Create modal overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'inbox-group-modal-overlay';
+  const modal = document.createElement('div');
+  modal.className = 'inbox-group-modal';
+
+  modal.innerHTML = `
+    <h3 class="inbox-group-modal-title">New Group Chat</h3>
+    <label class="inbox-group-modal-label">Group Name</label>
+    <input type="text" class="inbox-group-name-input" placeholder="e.g. Research Team" />
+    <label class="inbox-group-modal-label">Select Agents</label>
+    <div class="inbox-group-agent-list"></div>
+    <div class="inbox-group-modal-actions">
+      <button class="inbox-group-cancel">Cancel</button>
+      <button class="inbox-group-create">Create Group</button>
+    </div>
+  `;
+
+  const agentListEl = modal.querySelector('.inbox-group-agent-list')!;
+  const selected = new Set<string>();
+
+  for (const agent of agents) {
+    const row = document.createElement('label');
+    row.className = 'inbox-group-agent-row';
+    const avatarHtml = AgentsModule.spriteAvatar(agent.avatar, 20);
+    row.innerHTML = `
+      <input type="checkbox" value="${agent.id}" />
+      <span class="inbox-group-agent-avatar" style="border-color:${agent.color}">${avatarHtml}</span>
+      <span class="inbox-group-agent-name">${agent.name}</span>
+    `;
+    const checkbox = row.querySelector('input')!;
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selected.add(agent.id);
+      else selected.delete(agent.id);
+    });
+    agentListEl.appendChild(row);
+  }
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  return new Promise<void>((resolve) => {
+    const cancelBtn = modal.querySelector('.inbox-group-cancel')!;
+    const createBtn = modal.querySelector('.inbox-group-create')!;
+    const nameInput = modal.querySelector('.inbox-group-name-input') as HTMLInputElement;
+
+    const cleanup = () => {
+      overlay.remove();
+      resolve();
+    };
+
+    cancelBtn.addEventListener('click', cleanup);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup();
+    });
+
+    createBtn.addEventListener('click', async () => {
+      const name = nameInput.value.trim();
+      if (selected.size < 2) {
+        showToast('Select at least 2 agents for a group chat', 'error');
+        return;
+      }
+      if (!name) {
+        showToast('Please enter a group name', 'error');
+        return;
+      }
+
+      // Create a new group session
+      const memberIds = Array.from(selected);
+      const primaryAgentId = memberIds[0];
+
+      // Switch to primary agent and start a group-kind session
+      await switchToAgent(primaryAgentId);
+
+      // Clear current session to create a new one on next send
+      appState.currentSessionKey = null;
+      appState.messages = [];
+      resetTokenMeter();
+
+      // Store group metadata on the state so the next sendMessage creates it as a group
+      appState._pendingGroupMeta = {
+        name,
+        members: memberIds,
+        kind: 'group' as const,
+      };
+
+      const chatMessages = $('chat-messages');
+      if (chatMessages) chatMessages.innerHTML = '';
+      const chatEmpty = $('chat-empty');
+      if (chatEmpty) chatEmpty.style.display = '';
+
+      if (_thread) {
+        _thread.showThread();
+        const memberNames = memberIds
+          .map((id) => agents.find((a) => a.id === id)?.name ?? id)
+          .join(', ');
+        _thread.setAgent(name, agents.find((a) => a.id === primaryAgentId)?.avatar ?? '5',
+          agents.find((a) => a.id === primaryAgentId)?.color ?? 'var(--accent)',
+          `Group: ${memberNames}`);
+      }
+
+      cleanup();
+      showToast(`Group "${name}" created — send a message to start`, 'success');
+      refreshConversationList();
+    });
+  });
+}
+
+async function handleSwapAgent(agentId: string): Promise<void> {
+  const key = appState.currentSessionKey;
+  if (!key) return;
+
+  // Switch agent for the current session — keep session key, just change the agent
+  const currentAgent = AgentsModule.getCurrentAgent();
+  if (currentAgent?.id === agentId) return;
+
+  // Update session-agent mapping
+  agentSessionMap.set(agentId, key);
+  persistAgentSessionMap();
+
+  // Switch agent context (loads agent config/prompt but keeps current session)
+  await switchToAgent(agentId);
+
+  // Force-restore the original session key (switchToAgent may have changed it)
+  appState.currentSessionKey = key;
+  await loadChatHistory(key);
+
+  // Update header
+  const agent = AgentsModule.getAgents().find((a) => a.id === agentId);
+  if (agent && _thread) {
+    _thread.setAgent(agent.name, agent.avatar, agent.color, appState.activeModelKey || '');
+  }
+
+  // Update conversation entry
+  const conv = appState.inbox.conversations.find((c) => c.sessionKey === key);
+  if (conv) {
+    conv.agentId = agentId;
+    conv.agentName = agent?.name ?? 'Paw';
+    conv.agentAvatar = agent?.avatar ?? '5';
+    conv.agentColor = agent?.color ?? 'var(--accent)';
+  }
+
+  refreshConversationList();
+  updateSwapAgents();
+  showToast(`Swapped to ${agent?.name ?? agentId}`, 'success');
+}
+
+/** Populate the swap agent dropdown (exclude current agent). */
+function updateSwapAgents(): void {
+  if (!_thread) return;
+  const agents = AgentsModule.getAgents();
+  const current = AgentsModule.getCurrentAgent();
+  const others = agents
+    .filter((a) => a.id !== current?.id)
+    .map((a) => ({ id: a.id, name: a.name, avatar: a.avatar, color: a.color }));
+  _thread.setSwapAgents(others);
 }
 
 function handleFilter(filter: string): void {

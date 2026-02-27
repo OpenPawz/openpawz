@@ -233,6 +233,9 @@ export const appState = {
 
   // Inbox (Phase 11)
   inbox: createInboxState(),
+
+  // Pending group-chat creation metadata (set by inbox, consumed by sendMessage)
+  _pendingGroupMeta: null as { name: string; members: string[]; kind: 'group' } | null,
 };
 
 // ── Per-agent session map ──────────────────────────────────────────────────

@@ -25,6 +25,8 @@ export interface InboxThreadController {
     messagesContainer: HTMLElement | null;
     inputContainer: HTMLElement | null;
   }): void;
+  /** Update the agent swap dropdown options */
+  setSwapAgents(agents: Array<{ id: string; name: string; avatar: string; color: string }>): void;
   /** Destroy + cleanup */
   destroy(): void;
 }
@@ -36,6 +38,8 @@ export interface InboxThreadCallbacks {
   modelSelectEl?: HTMLSelectElement | null;
   /** New chat button */
   onNewChat?: () => void;
+  /** Agent swap — called with the new agent ID */
+  onSwapAgent?: (agentId: string) => void;
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────
@@ -78,6 +82,33 @@ export function createInboxThread(
   // Header actions
   const actions = document.createElement('div');
   actions.className = 'inbox-thread-actions';
+
+  // Agent swap button + dropdown
+  const swapWrap = document.createElement('div');
+  swapWrap.className = 'inbox-swap-wrap';
+  swapWrap.style.position = 'relative';
+
+  const swapBtn = document.createElement('button');
+  swapBtn.className = 'inbox-swap-btn';
+  swapBtn.title = 'Swap agent';
+  swapBtn.innerHTML = `<span class="ms" style="font-size:16px">swap_horiz</span>`;
+
+  const swapDropdown = document.createElement('div');
+  swapDropdown.className = 'inbox-swap-dropdown';
+  swapDropdown.style.display = 'none';
+
+  swapBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = swapDropdown.style.display !== 'none';
+    swapDropdown.style.display = isOpen ? 'none' : 'flex';
+  });
+  document.addEventListener('click', () => {
+    swapDropdown.style.display = 'none';
+  });
+
+  swapWrap.appendChild(swapBtn);
+  swapWrap.appendChild(swapDropdown);
+  actions.appendChild(swapWrap);
 
   // Model select (moved to header)
   if (callbacks.modelSelectEl) {
@@ -172,6 +203,27 @@ export function createInboxThread(
       }
       if (elements.inputContainer && !chatCol.contains(elements.inputContainer)) {
         chatCol.appendChild(elements.inputContainer);
+      }
+    },
+
+    setSwapAgents(agents) {
+      swapDropdown.innerHTML = '';
+      if (agents.length === 0) {
+        swapBtn.style.display = 'none';
+        return;
+      }
+      swapBtn.style.display = '';
+      for (const agent of agents) {
+        const item = document.createElement('button');
+        item.className = 'inbox-swap-item';
+        const av = AgentsModule.spriteAvatar(agent.avatar, 16);
+        item.innerHTML = `<span class="inbox-swap-avatar" style="border-color:${agent.color}">${av}</span><span>${agent.name}</span>`;
+        item.addEventListener('click', (e) => {
+          e.stopPropagation();
+          swapDropdown.style.display = 'none';
+          callbacks.onSwapAgent?.(agent.id);
+        });
+        swapDropdown.appendChild(item);
       }
     },
 

@@ -265,3 +265,264 @@
   font-size: 32px;
   opacity: 0.5;
 }
+
+/* ─── New Chat Dropdown ─── */
+
+.inbox-new-chat-wrap {
+  position: relative;
+}
+
+.inbox-new-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 200;
+  flex-direction: column;
+  background: var(--bg-elevated, var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  overflow: hidden;
+  min-width: 170px;
+}
+
+.inbox-new-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.inbox-new-dropdown-item:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+}
+
+/* ─── Agent Group Headers (Agents tab) ─── */
+
+.inbox-agent-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px 4px;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--type-small);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.inbox-agent-group-header:hover {
+  color: var(--text-primary);
+}
+
+.inbox-agent-group-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.inbox-agent-group-avatar img,
+.inbox-agent-group-avatar svg {
+  width: 100%;
+  height: 100%;
+}
+
+.inbox-agent-group-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inbox-agent-group-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  border-radius: 10px;
+  padding: 0 6px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.inbox-agent-chevron {
+  transition: transform 0.15s;
+}
+
+.inbox-agent-group-header.collapsed .inbox-agent-chevron {
+  transform: rotate(0deg);
+}
+
+.inbox-grouped-row {
+  padding-left: 30px !important;
+}
+
+/* ─── Group icon overlay on avatar ─── */
+
+.inbox-conv-group-icon {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  font-size: 10px !important;
+  background: var(--accent);
+  color: var(--bg-primary);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inbox-conv-avatar {
+  position: relative;
+}
+
+/* ─── Group Creation Modal ─── */
+
+.inbox-group-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.inbox-group-modal {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  width: 360px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+
+.inbox-group-modal-title {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.inbox-group-modal-label {
+  font-size: var(--type-small);
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.inbox-group-name-input {
+  width: 100%;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  font-size: var(--type-body);
+  outline: none;
+}
+
+.inbox-group-name-input:focus {
+  border-color: var(--accent);
+}
+
+.inbox-group-agent-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.inbox-group-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.inbox-group-agent-row:hover {
+  background: var(--bg-hover, rgba(255,255,255,0.06));
+}
+
+.inbox-group-agent-row input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.inbox-group-agent-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.inbox-group-agent-avatar img,
+.inbox-group-agent-avatar svg {
+  width: 100%;
+  height: 100%;
+}
+
+.inbox-group-agent-name {
+  flex: 1;
+  font-size: var(--type-body);
+  color: var(--text-primary);
+}
+
+.inbox-group-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.inbox-group-cancel {
+  padding: 6px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--type-body);
+}
+
+.inbox-group-create {
+  padding: 6px 14px;
+  background: var(--accent);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #fff;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--type-body);
+}
+
+.inbox-group-create:hover {
+  filter: brightness(1.1);
+}

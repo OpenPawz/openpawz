@@ -73,6 +73,8 @@ export function initMiniHubSystem(
   // Create dock
   _dock = createAgentDock(dockContainer, (agentId) => {
     openMiniHub(agentId);
+  }, () => {
+    openGroupCreationFromDock();
   });
 
   // Initial dock refresh
@@ -208,6 +210,98 @@ export function isMiniHubOpen(agentId: string): boolean {
 export function getMiniHubUnread(agentId: string): number {
   const hub = getHubByAgent(appState.miniHubs, agentId);
   return hub?.unreadCount ?? 0;
+}
+
+/**
+ * Open a group creation flow from the mini-hub dock.
+ * Shows a multi-agent selector and creates a squad, then opens a squad hub.
+ */
+async function openGroupCreationFromDock(): Promise<void> {
+  if (!_getAgents) return;
+  const agents = _getAgents().filter((a) => a.id !== 'default');
+  if (agents.length < 2) {
+    showToast('You need at least 2 agents to create a group', 'error');
+    return;
+  }
+
+  // Build inline multi-select overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'inbox-group-modal-overlay';
+  const modal = document.createElement('div');
+  modal.className = 'inbox-group-modal';
+  modal.innerHTML = `
+    <h3 class="inbox-group-modal-title">New Group Hub</h3>
+    <label class="inbox-group-modal-label">Group Name</label>
+    <input type="text" class="inbox-group-name-input" placeholder="e.g. Research Team" />
+    <label class="inbox-group-modal-label">Select Agents</label>
+    <div class="inbox-group-agent-list"></div>
+    <div class="inbox-group-modal-actions">
+      <button class="inbox-group-cancel">Cancel</button>
+      <button class="inbox-group-create">Create & Open</button>
+    </div>
+  `;
+  const agentListEl = modal.querySelector('.inbox-group-agent-list')!;
+  const selected = new Set<string>();
+
+  for (const agent of agents) {
+    const row = document.createElement('label');
+    row.className = 'inbox-group-agent-row';
+    row.innerHTML = `
+      <input type="checkbox" value="${agent.id}" />
+      <span class="inbox-group-agent-avatar" style="border-color:${agent.color}"></span>
+      <span class="inbox-group-agent-name">${agent.name}</span>
+    `;
+    const checkbox = row.querySelector('input')!;
+    checkbox.addEventListener('change', () => {
+      if (checkbox.checked) selected.add(agent.id); else selected.delete(agent.id);
+    });
+    agentListEl.appendChild(row);
+  }
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+
+  const nameInput = modal.querySelector('.inbox-group-name-input') as HTMLInputElement;
+  const cancelBtn = modal.querySelector('.inbox-group-cancel')!;
+  const createBtn = modal.querySelector('.inbox-group-create')!;
+
+  const cleanup = () => overlay.remove();
+
+  cancelBtn.addEventListener('click', cleanup);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) cleanup(); });
+
+  createBtn.addEventListener('click', async () => {
+    const name = nameInput.value.trim();
+    if (selected.size < 2) { showToast('Select at least 2 agents', 'error'); return; }
+    if (!name) { showToast('Enter a group name', 'error'); return; }
+
+    try {
+      // Create a squad on the backend
+      const id = crypto.randomUUID();
+      const members = Array.from(selected).map((agentId, i) => ({
+        agent_id: agentId,
+        role: i === 0 ? 'coordinator' : 'member',
+      }));
+      await pawEngine.squadCreate({
+        id,
+        name,
+        goal: `Group chat: ${name}`,
+        status: 'active',
+        members,
+        created_at: '',
+        updated_at: '',
+      });
+
+      cleanup();
+      showToast(`Group "${name}" created`, 'success');
+
+      // Open as a squad hub
+      await openSquadHub(id);
+    } catch (e) {
+      console.error('[mini-hub] Group creation failed:', e);
+      showToast('Failed to create group', 'error');
+    }
+  });
 }
 
 /**

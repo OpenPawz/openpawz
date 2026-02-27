@@ -468,7 +468,22 @@ function handleSendResult(
 
     const isNewSession = result.sessionKey !== streamKey || streamKey === 'default' || !streamKey;
     const existingSession = appState.sessions.find((s) => s.key === result.sessionKey);
-    if (isNewSession || !existingSession?.label) {
+
+    // Apply pending group metadata if this is a new group chat session
+    if (isNewSession && appState._pendingGroupMeta) {
+      const gm = appState._pendingGroupMeta;
+      const s = appState.sessions.find((s2) => s2.key === result.sessionKey);
+      if (s) {
+        s.kind = gm.kind;
+        s.members = gm.members;
+        s.label = gm.name;
+        s.displayName = gm.name;
+      }
+      // Auto-label with group name
+      pawEngine.sessionRename(result.sessionKey, gm.name).catch(() => {});
+      appState._pendingGroupMeta = null;
+      renderSessionSelect();
+    } else if (isNewSession || !existingSession?.label) {
       const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement | null;
       const msgContent =
         chatInput?.value || appState.messages[appState.messages.length - 1]?.content || '';

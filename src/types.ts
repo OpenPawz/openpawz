@@ -116,6 +116,8 @@ export interface Session {
   abortedLastRun?: boolean;
   thinkingLevel?: string;
   agentId?: string;
+  /** Agent IDs in a group session */
+  members?: string[];
 }
 
 export interface SessionsListResult {

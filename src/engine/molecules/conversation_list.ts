@@ -9,6 +9,7 @@ import {
   filterByTab,
   truncatePreview,
   formatRelativeTime,
+  groupByAgent,
   type ConversationEntry,
   type InboxState,
 } from '../atoms/inbox';
@@ -34,8 +35,10 @@ export interface ConversationListController {
 export interface ConversationListCallbacks {
   /** Conversation selected */
   onSelect: (sessionKey: string) => void;
-  /** New chat requested */
+  /** New direct chat requested */
   onNewChat: () => void;
+  /** New group chat requested */
+  onNewGroup: () => void;
   /** Filter tab changed */
   onFilter: (filter: InboxState['filter']) => void;
   /** Search query changed */
@@ -70,13 +73,57 @@ export function createConversationList(
   const title = document.createElement('span');
   title.className = 'inbox-conv-title';
   title.textContent = 'Inbox';
+
+  // New chat button with dropdown
+  const newBtnWrap = document.createElement('div');
+  newBtnWrap.className = 'inbox-new-chat-wrap';
+  newBtnWrap.style.position = 'relative';
+
   const newBtn = document.createElement('button');
   newBtn.className = 'inbox-new-chat-btn';
   newBtn.title = 'New conversation';
   newBtn.innerHTML = `<span class="ms" style="font-size:16px">edit_square</span>`;
-  newBtn.addEventListener('click', () => callbacks.onNewChat());
+
+  const newDropdown = document.createElement('div');
+  newDropdown.className = 'inbox-new-dropdown';
+  newDropdown.style.display = 'none';
+
+  const newDirectBtn = document.createElement('button');
+  newDirectBtn.className = 'inbox-new-dropdown-item';
+  newDirectBtn.innerHTML = `<span class="ms" style="font-size:14px">chat</span> New Chat`;
+  newDirectBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    newDropdown.style.display = 'none';
+    callbacks.onNewChat();
+  });
+
+  const newGroupBtn = document.createElement('button');
+  newGroupBtn.className = 'inbox-new-dropdown-item';
+  newGroupBtn.innerHTML = `<span class="ms" style="font-size:14px">group</span> New Group Chat`;
+  newGroupBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    newDropdown.style.display = 'none';
+    callbacks.onNewGroup();
+  });
+
+  newDropdown.appendChild(newDirectBtn);
+  newDropdown.appendChild(newGroupBtn);
+
+  newBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const isOpen = newDropdown.style.display !== 'none';
+    newDropdown.style.display = isOpen ? 'none' : 'flex';
+  });
+  // Close dropdown on outside click
+  document.addEventListener('click', () => {
+    newDropdown.style.display = 'none';
+  });
+
+  newBtnWrap.appendChild(newBtn);
+  newBtnWrap.appendChild(newDropdown);
+
   titleRow.appendChild(title);
-  titleRow.appendChild(newBtn);
+  titleRow.appendChild(newBtnWrap);
   header.appendChild(titleRow);
 
   // Search bar
@@ -127,6 +174,9 @@ export function createConversationList(
 
   // ── Render rows ────────────────────────────────────────────────────────
 
+  /** Collapsed agents tracker (by agentId). */
+  const collapsedAgents = new Set<string>();
+
   function renderRows(): void {
     scrollArea.innerHTML = '';
 
@@ -142,74 +192,136 @@ export function createConversationList(
       return;
     }
 
+    // "Agents" tab → grouped by agent. Everything else → flat list.
+    if (_filter === 'agents') {
+      renderGroupedRows(visible);
+    } else {
+      renderFlatRows(visible);
+    }
+  }
+
+  function renderFlatRows(visible: ConversationEntry[]): void {
+    const frag = document.createDocumentFragment();
+    const now = Date.now();
+    for (const conv of visible) {
+      frag.appendChild(buildConvRow(conv, now));
+    }
+    scrollArea.appendChild(frag);
+  }
+
+  function renderGroupedRows(visible: ConversationEntry[]): void {
+    const groups = groupByAgent(visible);
     const frag = document.createDocumentFragment();
     const now = Date.now();
 
-    for (const conv of visible) {
-      const row = document.createElement('div');
-      row.className = 'inbox-conv-row';
-      if (conv.sessionKey === _activeKey) row.classList.add('active');
-      if (conv.unread > 0) row.classList.add('unread');
-      row.dataset.session = conv.sessionKey;
+    for (const group of groups) {
+      // Agent group header
+      const header = document.createElement('div');
+      header.className = 'inbox-agent-group-header';
+      const isCollapsed = collapsedAgents.has(group.agentId);
+      if (isCollapsed) header.classList.add('collapsed');
 
-      // Avatar
-      const avatar = document.createElement('div');
-      avatar.className = 'inbox-conv-avatar';
-      avatar.style.borderColor = conv.agentColor;
-      const avatarContent = AgentsModule.spriteAvatar(conv.agentAvatar, 24);
-      if (avatarContent.startsWith('<img') || avatarContent.startsWith('<svg')) {
-        avatar.innerHTML = avatarContent;
-      } else {
-        avatar.textContent = conv.agentAvatar;
+      const avatarHtml = AgentsModule.spriteAvatar(group.agentAvatar, 18);
+      const chevron = isCollapsed ? 'chevron_right' : 'expand_more';
+      header.innerHTML = `
+        <span class="ms inbox-agent-chevron" style="font-size:14px">${chevron}</span>
+        <span class="inbox-agent-group-avatar" style="border-color:${group.agentColor}">${avatarHtml}</span>
+        <span class="inbox-agent-group-name">${group.agentName}</span>
+        <span class="inbox-agent-group-count">${group.conversations.length}</span>
+        ${group.totalUnread > 0 ? `<span class="inbox-conv-badge">${group.totalUnread}</span>` : ''}
+      `;
+      header.addEventListener('click', () => {
+        if (collapsedAgents.has(group.agentId)) {
+          collapsedAgents.delete(group.agentId);
+        } else {
+          collapsedAgents.add(group.agentId);
+        }
+        renderRows();
+      });
+      frag.appendChild(header);
+
+      // Conversation rows for this agent (hidden if collapsed)
+      if (!isCollapsed) {
+        for (const conv of group.conversations) {
+          const row = buildConvRow(conv, now);
+          row.classList.add('inbox-grouped-row');
+          frag.appendChild(row);
+        }
       }
-      // Streaming dot
-      if (conv.isStreaming) {
-        const dot = document.createElement('span');
-        dot.className = 'streaming-dot';
-        avatar.appendChild(dot);
-      }
-      row.appendChild(avatar);
+    }
+    scrollArea.appendChild(frag);
+  }
 
-      // Body
-      const body = document.createElement('div');
-      body.className = 'inbox-conv-body';
+  function buildConvRow(conv: ConversationEntry, now: number): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'inbox-conv-row';
+    if (conv.sessionKey === _activeKey) row.classList.add('active');
+    if (conv.unread > 0) row.classList.add('unread');
+    if (conv.kind === 'group') row.classList.add('group');
+    row.dataset.session = conv.sessionKey;
 
-      const topRow = document.createElement('div');
-      topRow.className = 'inbox-conv-top';
-      const name = document.createElement('span');
-      name.className = 'inbox-conv-name';
-      name.textContent = conv.label || conv.agentName;
-      const time = document.createElement('span');
-      time.className = 'inbox-conv-time';
-      time.textContent = conv.lastTs ? formatRelativeTime(conv.lastTs, now) : '';
-      topRow.appendChild(name);
-      topRow.appendChild(time);
+    // Avatar
+    const avatar = document.createElement('div');
+    avatar.className = 'inbox-conv-avatar';
+    avatar.style.borderColor = conv.agentColor;
+    const avatarContent = AgentsModule.spriteAvatar(conv.agentAvatar, 24);
+    if (avatarContent.startsWith('<img') || avatarContent.startsWith('<svg')) {
+      avatar.innerHTML = avatarContent;
+    } else {
+      avatar.textContent = conv.agentAvatar;
+    }
+    // Streaming dot
+    if (conv.isStreaming) {
+      const dot = document.createElement('span');
+      dot.className = 'streaming-dot';
+      avatar.appendChild(dot);
+    }
+    // Group icon overlay
+    if (conv.kind === 'group') {
+      const groupIcon = document.createElement('span');
+      groupIcon.className = 'ms inbox-conv-group-icon';
+      groupIcon.textContent = 'group';
+      avatar.appendChild(groupIcon);
+    }
+    row.appendChild(avatar);
 
-      const bottomRow = document.createElement('div');
-      bottomRow.className = 'inbox-conv-bottom';
-      const preview = document.createElement('span');
-      preview.className = 'inbox-conv-preview';
-      const rolePrefix = conv.lastRole === 'user' ? 'You: ' : '';
-      preview.textContent = conv.lastMessage ? rolePrefix + truncatePreview(conv.lastMessage) : 'No messages yet';
-      bottomRow.appendChild(preview);
-      if (conv.unread > 0) {
-        const badge = document.createElement('span');
-        badge.className = 'inbox-conv-badge';
-        badge.textContent = String(conv.unread);
-        bottomRow.appendChild(badge);
-      }
+    // Body
+    const body = document.createElement('div');
+    body.className = 'inbox-conv-body';
 
-      body.appendChild(topRow);
-      body.appendChild(bottomRow);
-      row.appendChild(body);
+    const topRow = document.createElement('div');
+    topRow.className = 'inbox-conv-top';
+    const name = document.createElement('span');
+    name.className = 'inbox-conv-name';
+    name.textContent = conv.label || conv.agentName;
+    const time = document.createElement('span');
+    time.className = 'inbox-conv-time';
+    time.textContent = conv.lastTs ? formatRelativeTime(conv.lastTs, now) : '';
+    topRow.appendChild(name);
+    topRow.appendChild(time);
 
-      // Click handler
-      row.addEventListener('click', () => callbacks.onSelect(conv.sessionKey));
-
-      frag.appendChild(row);
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'inbox-conv-bottom';
+    const preview = document.createElement('span');
+    preview.className = 'inbox-conv-preview';
+    const rolePrefix = conv.lastRole === 'user' ? 'You: ' : '';
+    preview.textContent = conv.lastMessage ? rolePrefix + truncatePreview(conv.lastMessage) : 'No messages yet';
+    bottomRow.appendChild(preview);
+    if (conv.unread > 0) {
+      const badge = document.createElement('span');
+      badge.className = 'inbox-conv-badge';
+      badge.textContent = String(conv.unread);
+      bottomRow.appendChild(badge);
     }
 
-    scrollArea.appendChild(frag);
+    body.appendChild(topRow);
+    body.appendChild(bottomRow);
+    row.appendChild(body);
+
+    // Click handler
+    row.addEventListener('click', () => callbacks.onSelect(conv.sessionKey));
+
+    return row;
   }
 
   // ── Controller ─────────────────────────────────────────────────────────

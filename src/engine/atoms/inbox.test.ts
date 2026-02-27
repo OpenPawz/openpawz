@@ -12,6 +12,7 @@ import {
   updateConversation,
   removeConversation,
   createInboxState,
+  groupByAgent,
   type ConversationEntry,
 } from './inbox';
 
@@ -252,5 +253,58 @@ describe('createInboxState', () => {
     expect(state.searchQuery).toBe('');
     expect(state.sidebarOpen).toBe(true);
     expect(state.filter).toBe('all');
+  });
+});
+
+// ── groupByAgent ─────────────────────────────────────────────────────────
+
+describe('groupByAgent', () => {
+  it('groups conversations by agentId', () => {
+    const entries = [
+      entry({ sessionKey: 'a', agentId: 'aria', agentName: 'Aria', lastTs: 200 }),
+      entry({ sessionKey: 'b', agentId: 'max', agentName: 'Max', lastTs: 300 }),
+      entry({ sessionKey: 'c', agentId: 'aria', agentName: 'Aria', lastTs: 100 }),
+    ];
+    const groups = groupByAgent(entries);
+    expect(groups).toHaveLength(2);
+    // Max's group should be first (higher latestTs)
+    expect(groups[0].agentId).toBe('max');
+    expect(groups[0].conversations).toHaveLength(1);
+    expect(groups[1].agentId).toBe('aria');
+    expect(groups[1].conversations).toHaveLength(2);
+  });
+
+  it('sorts groups by latest activity descending', () => {
+    const entries = [
+      entry({ sessionKey: 'a', agentId: 'aria', lastTs: 100 }),
+      entry({ sessionKey: 'b', agentId: 'max', lastTs: 500 }),
+      entry({ sessionKey: 'c', agentId: 'luna', lastTs: 300 }),
+    ];
+    const groups = groupByAgent(entries);
+    expect(groups.map((g) => g.agentId)).toEqual(['max', 'luna', 'aria']);
+  });
+
+  it('aggregates unread counts per group', () => {
+    const entries = [
+      entry({ sessionKey: 'a', agentId: 'aria', unread: 3, lastTs: 200 }),
+      entry({ sessionKey: 'b', agentId: 'aria', unread: 2, lastTs: 100 }),
+    ];
+    const groups = groupByAgent(entries);
+    expect(groups[0].totalUnread).toBe(5);
+  });
+
+  it('returns empty array for no entries', () => {
+    expect(groupByAgent([])).toEqual([]);
+  });
+
+  it('sorts conversations within each group by pinned + lastTs', () => {
+    const entries = [
+      entry({ sessionKey: 'a', agentId: 'aria', lastTs: 100 }),
+      entry({ sessionKey: 'b', agentId: 'aria', lastTs: 300, pinned: true }),
+      entry({ sessionKey: 'c', agentId: 'aria', lastTs: 200 }),
+    ];
+    const groups = groupByAgent(entries);
+    const keys = groups[0].conversations.map((c) => c.sessionKey);
+    expect(keys).toEqual(['b', 'c', 'a']); // pinned first, then by time
   });
 });

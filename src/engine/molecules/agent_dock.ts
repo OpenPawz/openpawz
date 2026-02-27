@@ -20,10 +20,12 @@ const MAX_VISIBLE_AVATARS = 5;
  *
  * @param container  Element to append the dock into (usually document.body)
  * @param onAvatarClick  Called when user clicks an agent avatar
+ * @param onNewGroup  Called when user clicks the "new group" button
  */
 export function createAgentDock(
   container: HTMLElement,
   onAvatarClick: (agentId: string) => void,
+  onNewGroup?: () => void,
 ): AgentDockController {
   let destroyed = false;
   let agents: AgentDockEntry[] = [];
@@ -84,6 +86,9 @@ export function createAgentDock(
       <div class="agent-dock-items">
         ${itemsHtml}
         ${overflowCount > 0 ? `<button class="agent-dock-expand" title="Show ${overflowCount} more">+${overflowCount}</button>` : ''}
+        <button class="agent-dock-new-group" title="New Group Chat">
+          <span class="ms" style="font-size:16px">group_add</span>
+        </button>
       </div>
     `;
 
@@ -101,6 +106,10 @@ export function createAgentDock(
         const agentId = (item as HTMLElement).dataset.agentId;
         if (agentId) onAvatarClick(agentId);
       });
+    });
+
+    dockEl.querySelector('.agent-dock-new-group')?.addEventListener('click', () => {
+      onNewGroup?.();
     });
   }
 

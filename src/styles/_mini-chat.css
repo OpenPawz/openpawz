@@ -367,6 +367,27 @@
   pointer-events: none;
 }
 
+/* ═══ Agent Dock — New Group Button ═══ */
+.agent-dock-new-group {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px dashed var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  margin-top: 4px;
+}
+.agent-dock-new-group:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(var(--accent-rgb, 59,130,246), 0.1);
+}
+
 /* ═══ Agent Dock — Streaming Indicator ═══ */
 .agent-dock-streaming .agent-dock-avatar {
   animation: dockBreathe 2s ease-in-out infinite;
