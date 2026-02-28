@@ -109,6 +109,7 @@ pub async fn start_n8n_process(app_handle: &tauri::AppHandle) -> EngineResult<N8
         encryption_key: Some(encryption_key),
         process_pid: Some(pid),
         process_port: Some(port),
+        mcp_token: None,
         enabled: true,
         auto_discover: true,
         mcp_mode: true,

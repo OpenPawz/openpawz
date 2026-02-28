@@ -211,6 +211,7 @@ pub async fn provision_docker_container(
         encryption_key: Some(encryption_key),
         process_pid: None,
         process_port: None,
+        mcp_token: None,
         enabled: true,
         auto_discover: true,
         mcp_mode: true,

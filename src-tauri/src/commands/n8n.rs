@@ -364,7 +364,8 @@ pub async fn engine_n8n_ensure_ready(
         if let Some(state) = app_handle.try_state::<EngineState>() {
             let mut reg = state.mcp_registry.lock().await;
             if !reg.is_n8n_registered() {
-                match reg.register_n8n(&endpoint.url, &endpoint.api_key).await {
+                let mcp_token = get_or_retrieve_mcp_token(&app_handle).await;
+                match reg.register_n8n(&endpoint.url, &endpoint.api_key, mcp_token.as_deref()).await {
                     Ok(tool_count) => {
                         log::info!(
                             "[n8n] MCP bridge registered — {} tools available to agents",
@@ -446,9 +447,10 @@ pub async fn engine_n8n_mcp_refresh(app_handle: tauri::AppHandle) -> Result<usiz
 
     // Full reconnect: disconnect stale client and re-register
     let (endpoint_url, api_key) = get_n8n_endpoint(&app_handle)?;
+    let mcp_token = get_or_retrieve_mcp_token(&app_handle).await;
     reg.disconnect_n8n().await;
     let tool_count = reg
-        .register_n8n(&endpoint_url, &api_key)
+        .register_n8n(&endpoint_url, &api_key, mcp_token.as_deref())
         .await
         .map_err(|e| format!("MCP reconnection failed: {}", e))?;
 
@@ -541,6 +543,48 @@ fn get_n8n_endpoint(app_handle: &tauri::AppHandle) -> Result<(String, String), S
         return Err("Integration engine not configured".into());
     }
     Ok((url, config.api_key))
+}
+
+/// Get the MCP token from config, or attempt to retrieve it from n8n.
+/// Returns None (not an error) if retrieval fails — MCP is optional.
+async fn get_or_retrieve_mcp_token(app_handle: &tauri::AppHandle) -> Option<String> {
+    let config = n8n_engine::load_config(app_handle).ok()?;
+
+    // If we already have a token, use it
+    if let Some(ref token) = config.mcp_token {
+        if !token.is_empty() {
+            return Some(token.clone());
+        }
+    }
+
+    // Try to retrieve the token from n8n
+    let url = match config.mode {
+        n8n_engine::N8nMode::Remote | n8n_engine::N8nMode::Local => config.url.clone(),
+        n8n_engine::N8nMode::Embedded => {
+            format!("http://127.0.0.1:{}", config.container_port.unwrap_or(5678))
+        }
+        n8n_engine::N8nMode::Process => {
+            format!("http://127.0.0.1:{}", config.process_port.unwrap_or(5678))
+        }
+    };
+
+    // Ensure owner exists first
+    let _ = n8n_engine::health::setup_owner_if_needed(&url).await;
+
+    match n8n_engine::health::retrieve_mcp_token(&url).await {
+        Ok(token) => {
+            log::info!("[n8n] MCP token retrieved and cached");
+            // Save token to config for future use
+            let mut new_config = config;
+            new_config.mcp_token = Some(token.clone());
+            let _ = n8n_engine::save_config(app_handle, &new_config);
+            Some(token)
+        }
+        Err(e) => {
+            log::debug!("[n8n] MCP token retrieval failed (non-fatal): {}", e);
+            None
+        }
+    }
 }
 
 // ── NCNodes / npm Registry Search ──────────────────────────────────────
@@ -1542,11 +1586,12 @@ async fn refresh_mcp_after_install(app_handle: &tauri::AppHandle) {
         Err(_) => return,
     };
 
-    // 1. Disconnect stale MCP client and re-register with fresh SSE connection
+    // 1. Disconnect stale MCP client and re-register
+    let mcp_token = get_or_retrieve_mcp_token(app_handle).await;
     let tool_count = {
         let mut reg = state.mcp_registry.lock().await;
         reg.disconnect_n8n().await;
-        match reg.register_n8n(&endpoint_url, &api_key).await {
+        match reg.register_n8n(&endpoint_url, &api_key, mcp_token.as_deref()).await {
             Ok(count) => count,
             Err(e) => {
                 log::warn!("[n8n] MCP bridge reconnection failed after install: {}", e);

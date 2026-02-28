@@ -74,6 +74,12 @@ pub struct N8nEngineConfig {
     #[serde(default)]
     pub process_port: Option<u16>,
 
+    // ── MCP ────────────────────────────────────────────────────────
+    /// Bearer token for n8n's MCP server endpoint.
+    /// Retrieved automatically after owner setup.
+    #[serde(default)]
+    pub mcp_token: Option<String>,
+
     // ── Common ─────────────────────────────────────────────────────
     #[serde(default)]
     pub enabled: bool,
@@ -94,6 +100,7 @@ impl Default for N8nEngineConfig {
             encryption_key: None,
             process_pid: None,
             process_port: None,
+            mcp_token: None,
             enabled: false,
             auto_discover: true,
             mcp_mode: false,
