@@ -99,6 +99,11 @@ pub async fn start_n8n_process(app_handle: &tauri::AppHandle) -> EngineResult<N8
         log::warn!("[n8n] Owner setup failed (non-fatal): {}", e);
     }
 
+    // Enable MCP access (disabled by default even after owner creation)
+    if let Err(e) = super::health::enable_mcp_access(&url).await {
+        log::warn!("[n8n] MCP access enable failed (non-fatal): {}", e);
+    }
+
     // Persist config
     let new_config = N8nEngineConfig {
         mode: N8nMode::Process,
