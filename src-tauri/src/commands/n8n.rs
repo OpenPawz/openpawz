@@ -568,8 +568,9 @@ async fn get_or_retrieve_mcp_token(app_handle: &tauri::AppHandle) -> Option<Stri
         }
     };
 
-    // Ensure owner exists first
+    // Ensure owner exists and MCP access is enabled
     let _ = n8n_engine::health::setup_owner_if_needed(&url).await;
+    let _ = n8n_engine::health::enable_mcp_access(&url).await;
 
     match n8n_engine::health::retrieve_mcp_token(&url).await {
         Ok(token) => {

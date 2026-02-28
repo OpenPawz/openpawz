@@ -144,6 +144,74 @@ pub async fn setup_owner_if_needed(base_url: &str) -> Result<(), String> {
     }
 }
 
+// ── MCP access enablement ──────────────────────────────────────────────
+
+/// Enable MCP access on the n8n instance.
+///
+/// MCP is disabled by default even after the owner is created.
+/// This signs in as owner and calls `PATCH /rest/mcp/settings`
+/// with `{ "mcpAccessEnabled": true }`. Idempotent — safe to call
+/// multiple times.
+pub async fn enable_mcp_access(base_url: &str) -> Result<(), String> {
+    let base = base_url.trim_end_matches('/');
+
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    // Sign in to get session
+    let login_url = format!("{}/rest/login", base);
+    let login_body = serde_json::json!({
+        "emailOrLdapLoginId": OWNER_EMAIL,
+        "password": OWNER_PASSWORD
+    });
+
+    let login_resp = client
+        .post(&login_url)
+        .header("Content-Type", "application/json")
+        .json(&login_body)
+        .send()
+        .await
+        .map_err(|e| format!("Login for MCP enable failed: {}", e))?;
+
+    if !login_resp.status().is_success() {
+        let status = login_resp.status();
+        let body = login_resp.text().await.unwrap_or_default();
+        return Err(format!(
+            "Login for MCP enable failed (HTTP {}): {}",
+            status,
+            &body[..body.len().min(200)]
+        ));
+    }
+
+    // Enable MCP access
+    let settings_url = format!("{}/rest/mcp/settings", base);
+    let settings_resp = client
+        .patch(&settings_url)
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({"mcpAccessEnabled": true}))
+        .send()
+        .await
+        .map_err(|e| format!("MCP settings request failed: {}", e))?;
+
+    match settings_resp.status().as_u16() {
+        200 | 204 => {
+            log::info!("[n8n] MCP access enabled");
+            Ok(())
+        }
+        status => {
+            let body = settings_resp.text().await.unwrap_or_default();
+            Err(format!(
+                "MCP enable failed (HTTP {}): {}",
+                status,
+                &body[..body.len().min(200)]
+            ))
+        }
+    }
+}
+
 // ── MCP token retrieval ────────────────────────────────────────────────
 
 /// Retrieve the MCP access token from n8n.

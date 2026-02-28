@@ -201,6 +201,11 @@ pub async fn provision_docker_container(
         log::warn!("[n8n] Owner setup failed (non-fatal): {}", e);
     }
 
+    // Enable MCP access (disabled by default even after owner creation)
+    if let Err(e) = super::health::enable_mcp_access(&url).await {
+        log::warn!("[n8n] MCP access enable failed (non-fatal): {}", e);
+    }
+
     // Persist config
     let new_config = N8nEngineConfig {
         mode: N8nMode::Embedded,
@@ -303,6 +308,8 @@ pub async fn restart_existing_container(
     if poll_n8n_ready(&url, &config.api_key).await {
         // Ensure owner account exists (idempotent)
         let _ = super::health::setup_owner_if_needed(&url).await;
+        // Ensure MCP access is enabled
+        let _ = super::health::enable_mcp_access(&url).await;
         super::emit_status(app_handle, "ready", "Integration engine ready.");
         Ok(N8nEndpoint {
             url,
