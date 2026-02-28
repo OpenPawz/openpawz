@@ -244,12 +244,7 @@ const APPROVAL_CATEGORIES: ApprovalCategory[] = [
     label: 'Messaging',
     icon: 'forum',
     description: 'Slack, Telegram, Discord, inter-agent',
-    tools: [
-      'telegram_read',
-      'telegram_send',
-      'agent_send_message',
-      'agent_read_messages',
-    ],
+    tools: ['telegram_read', 'telegram_send', 'agent_send_message', 'agent_read_messages'],
   },
   {
     id: 'trading',

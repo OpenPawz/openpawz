@@ -75,13 +75,7 @@ const WIZARD_CATEGORIES: WizardCategory[] = [
 const FINANCE_SKILL_IDS: string[] = [];
 
 // Communication is also under "vault" but we distinguish by skill IDs
-const COMMUNICATION_SKILL_IDS = [
-  'telegram',
-  'discord',
-  'whatsapp',
-  'imessage',
-  'webhook',
-];
+const COMMUNICATION_SKILL_IDS = ['telegram', 'discord', 'whatsapp', 'imessage', 'webhook'];
 
 // ── Render ──────────────────────────────────────────────────────────────────
 

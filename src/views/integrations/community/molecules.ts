@@ -73,7 +73,7 @@ function _render(): void {
         </div>
       </div>
 
-      ${_justInstalled ? _renderPostInstallGuide(_justInstalled) : (_tab === 'browse' ? _renderBrowseTab() : _renderInstalledTab())}
+      ${_justInstalled ? _renderPostInstallGuide(_justInstalled) : _tab === 'browse' ? _renderBrowseTab() : _renderInstalledTab()}
     </div>
   `;
 
@@ -254,28 +254,37 @@ function _renderPostInstallGuide(packageName: string): string {
       </div>
       <h2 class="community-post-install-title">${escHtml(name)} Installed</h2>
       <p class="community-post-install-subtitle">
-        ${nodeCount > 0
-          ? `${nodeCount} new node${nodeCount !== 1 ? 's' : ''} registered — ready to use.`
-          : `Package installed — n8n will register the nodes on next restart.`}
+        ${
+          nodeCount > 0
+            ? `${nodeCount} new node${nodeCount !== 1 ? 's' : ''} registered — ready to use.`
+            : `Package installed — n8n will register the nodes on next restart.`
+        }
       </p>
 
-      ${nodeList.length > 0 ? `
+      ${
+        nodeList.length > 0
+          ? `
         <div class="community-post-install-nodes">
           ${nodeList.map((n) => `<span class="community-node-chip">${escHtml(n.name)}</span>`).join('')}
-          ${(pkg?.installedNodes.length ?? 0) > 5
-            ? `<span class="community-node-chip community-node-more">+${(pkg?.installedNodes.length ?? 0) - 5}</span>`
-            : ''}
+          ${
+            (pkg?.installedNodes.length ?? 0) > 5
+              ? `<span class="community-node-chip community-node-more">+${(pkg?.installedNodes.length ?? 0) - 5}</span>`
+              : ''
+          }
         </div>
-      ` : ''}
+      `
+          : ''
+      }
 
       ${_renderCredentialSection(packageName, name)}
 
       <div class="community-post-install-actions">
-        ${_credFormState === 'done'
-          ? `<button class="btn btn-primary" id="post-install-dismiss">
+        ${
+          _credFormState === 'done'
+            ? `<button class="btn btn-primary" id="post-install-dismiss">
               <span class="ms ms-sm">check</span> Done
             </button>`
-          : `<button class="btn btn-ghost" id="post-install-dismiss">
+            : `<button class="btn btn-ghost" id="post-install-dismiss">
               <span class="ms ms-sm">${_credFormState === 'loading' ? 'arrow_back' : 'skip_next'}</span>
               ${_credFormState === 'loading' ? 'Back to Browser' : 'Skip for now'}
             </button>`
@@ -323,9 +332,7 @@ function _renderCredentialSection(_packageName: string, name: string): string {
   }
 
   // Render one form per credential type (most packages need just one)
-  return _credentialInfo.credential_types
-    .map((schema) => _renderCredentialForm(schema))
-    .join('');
+  return _credentialInfo.credential_types.map((schema) => _renderCredentialForm(schema)).join('');
 }
 
 /** Render an inline credential form for one credential type. */
@@ -340,25 +347,32 @@ function _renderCredentialForm(schema: N8nCredentialSchema): string {
         <span class="ms ms-sm">key</span> Connect ${escHtml(schema.display_name)}
       </h3>
 
-      ${_credFormState === 'error' ? `
+      ${
+        _credFormState === 'error'
+          ? `
         <div class="community-cred-error">
           <span class="ms ms-sm">error</span> ${escHtml(_credFormError || 'Failed to save credentials')}
         </div>
-      ` : ''}
+      `
+          : ''
+      }
 
       <div class="community-cred-fields">
-        ${formFields.map((f) => `
+        ${formFields
+          .map(
+            (f) => `
           <div class="community-cred-field">
             <label for="cred-${escHtml(f.name)}">
               ${escHtml(f.display_name)}${f.required ? ' <span class="community-cred-required">*</span>' : ''}
             </label>
             ${f.description ? `<span class="community-cred-hint">${escHtml(f.description)}</span>` : ''}
-            ${f.field_type === 'options' && f.options.length > 0
-              ? `<select id="cred-${escHtml(f.name)}" class="input community-cred-input"
+            ${
+              f.field_type === 'options' && f.options.length > 0
+                ? `<select id="cred-${escHtml(f.name)}" class="input community-cred-input"
                          data-cred-key="${escHtml(f.name)}">
                   ${f.options.map((o) => `<option value="${escHtml(o)}"${f.default_value === o ? ' selected' : ''}>${escHtml(o)}</option>`).join('')}
                 </select>`
-              : `<div class="community-cred-input-wrap">
+                : `<div class="community-cred-input-wrap">
                   <input type="${f.is_secret ? 'password' : 'text'}"
                          id="cred-${escHtml(f.name)}"
                          class="input community-cred-input"
@@ -367,15 +381,21 @@ function _renderCredentialForm(schema: N8nCredentialSchema): string {
                          value="${escHtml(f.default_value ?? '')}"
                          ${f.required ? 'required' : ''}
                          autocomplete="off" />
-                  ${f.is_secret ? `
+                  ${
+                    f.is_secret
+                      ? `
                     <button class="btn btn-ghost btn-xs community-cred-toggle-vis" data-field="${escHtml(f.name)}" title="Toggle visibility">
                       <span class="ms ms-sm">visibility</span>
                     </button>
-                  ` : ''}
+                  `
+                      : ''
+                  }
                 </div>`
             }
           </div>
-        `).join('')}
+        `,
+          )
+          .join('')}
       </div>
 
       <div class="community-cred-form-actions">
@@ -383,9 +403,11 @@ function _renderCredentialForm(schema: N8nCredentialSchema): string {
                 data-cred-type="${escHtml(schema.credential_type)}"
                 data-cred-display="${escHtml(schema.display_name)}"
                 ${_credFormState === 'saving' ? 'disabled' : ''}>
-          ${_credFormState === 'saving'
-            ? '<span class="ms ms-sm k-spin">progress_activity</span> Saving…'
-            : '<span class="ms ms-sm">check</span> Save & Connect'}
+          ${
+            _credFormState === 'saving'
+              ? '<span class="ms ms-sm k-spin">progress_activity</span> Saving…'
+              : '<span class="ms ms-sm">check</span> Save & Connect'
+          }
         </button>
       </div>
     </div>
@@ -448,7 +470,9 @@ async function _installPackage(packageName: string): Promise<void> {
   showToast(`Installing ${packageName}… this may take a minute or two.`, 'info');
 
   try {
-    const result = await invoke<InstalledPackage>('engine_n8n_community_packages_install', { packageName });
+    const result = await invoke<InstalledPackage>('engine_n8n_community_packages_install', {
+      packageName,
+    });
 
     // Track locally so the Installed tab works even if n8n is still restarting
     const localEntry: InstalledPackage = {
@@ -492,10 +516,9 @@ async function _installPackage(packageName: string): Promise<void> {
 /** Fetch the credential schema for a just-installed package's nodes. */
 async function _fetchCredentialSchema(packageName: string): Promise<void> {
   try {
-    const info = await invoke<PackageCredentialInfo>(
-      'engine_n8n_package_credential_schema',
-      { packageName },
-    );
+    const info = await invoke<PackageCredentialInfo>('engine_n8n_package_credential_schema', {
+      packageName,
+    });
     _credentialInfo = info;
     _credFormState = info.credential_types.length > 0 ? 'form' : 'form';
     _render();

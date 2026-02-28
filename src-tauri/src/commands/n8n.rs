@@ -4,7 +4,7 @@ use crate::engine::channels;
 use crate::engine::n8n_engine;
 use crate::engine::skills;
 use crate::engine::state::EngineState;
-use log::{info, error};
+use log::{error, info};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tauri::Manager;
@@ -717,7 +717,9 @@ pub async fn engine_n8n_package_credential_schema(
                 resp.status().as_u16()
             ));
         }
-        resp.json().await.map_err(|e| format!("Failed to parse packages list: {}", e))?
+        resp.json()
+            .await
+            .map_err(|e| format!("Failed to parse packages list: {}", e))?
     };
 
     let pkg = installed
@@ -737,7 +739,10 @@ pub async fn engine_n8n_package_credential_schema(
         .map_err(|e| format!("Failed to fetch credential types: {}", e))?;
 
     let all_cred_types: serde_json::Value = if cred_resp.status().is_success() {
-        cred_resp.json().await.unwrap_or(serde_json::Value::Array(vec![]))
+        cred_resp
+            .json()
+            .await
+            .unwrap_or(serde_json::Value::Array(vec![]))
     } else {
         info!(
             "[n8n] /types/credentials.json returned HTTP {} — falling back to schema API",
@@ -782,9 +787,7 @@ pub async fn engine_n8n_package_credential_schema(
                         // Extract credential type names from node definition
                         if let Some(cred_arr) = node.get("credentials").and_then(|c| c.as_array()) {
                             for cred in cred_arr {
-                                if let Some(cred_name) =
-                                    cred.get("name").and_then(|n| n.as_str())
-                                {
+                                if let Some(cred_name) = cred.get("name").and_then(|n| n.as_str()) {
                                     if !needed_cred_types.contains(&cred_name.to_string()) {
                                         needed_cred_types.push(cred_name.to_string());
                                     }
@@ -803,9 +806,8 @@ pub async fn engine_n8n_package_credential_schema(
     for cred_type_name in &needed_cred_types {
         // First try to find it in the /types/credentials.json bulk response
         let cred_def = all_cred_types.as_array().and_then(|arr| {
-            arr.iter().find(|ct| {
-                ct.get("name").and_then(|n| n.as_str()) == Some(cred_type_name)
-            })
+            arr.iter()
+                .find(|ct| ct.get("name").and_then(|n| n.as_str()) == Some(cred_type_name))
         });
 
         if let Some(ct) = cred_def {
@@ -824,10 +826,7 @@ pub async fn engine_n8n_package_credential_schema(
             });
         } else {
             // Fallback: try the REST API schema endpoint
-            let schema_url = format!(
-                "{}/api/v1/credentials/schema/{}",
-                base, cred_type_name
-            );
+            let schema_url = format!("{}/api/v1/credentials/schema/{}", base, cred_type_name);
             if let Ok(resp) = client
                 .get(&schema_url)
                 .header("X-N8N-API-KEY", &api_key)
@@ -860,7 +859,10 @@ pub async fn engine_n8n_package_credential_schema(
     if schemas.is_empty() && !pkg.installed_nodes.is_empty() {
         let pkg_display = display_name_for_pkg(&package_name);
         schemas.push(N8nCredentialSchema {
-            credential_type: format!("{}Api", package_name.replace("n8n-nodes-", "").replace('-', "")),
+            credential_type: format!(
+                "{}Api",
+                package_name.replace("n8n-nodes-", "").replace('-', "")
+            ),
             display_name: format!("{} API", pkg_display),
             fields: vec![N8nCredentialSchemaField {
                 name: "apiKey".into(),
@@ -913,15 +915,13 @@ fn extract_credential_fields(ct: &serde_json::Value) -> Vec<N8nCredentialSchemaF
             .get("required")
             .and_then(|r| r.as_bool())
             .unwrap_or(false);
-        let default_val = prop
-            .get("default")
-            .and_then(|d| {
-                if d.is_string() {
-                    d.as_str().map(|s| s.to_string())
-                } else {
-                    Some(d.to_string())
-                }
-            });
+        let default_val = prop.get("default").and_then(|d| {
+            if d.is_string() {
+                d.as_str().map(|s| s.to_string())
+            } else {
+                Some(d.to_string())
+            }
+        });
         let placeholder = prop
             .get("placeholder")
             .and_then(|p| p.as_str())
@@ -1035,9 +1035,10 @@ pub async fn engine_n8n_create_credential(
         })?;
 
     if resp.status().is_success() {
-        let result: serde_json::Value = resp.json().await.map_err(|e| {
-            format!("Failed to parse credential creation response: {}", e)
-        })?;
+        let result: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse credential creation response: {}", e))?;
         info!(
             "[n8n] Credential '{}' created successfully (id={})",
             credential_name,
@@ -1047,10 +1048,7 @@ pub async fn engine_n8n_create_credential(
     } else {
         let status = resp.status().as_u16();
         let body = resp.text().await.unwrap_or_default();
-        error!(
-            "[n8n] Create credential failed: HTTP {} — {}",
-            status, body
-        );
+        error!("[n8n] Create credential failed: HTTP {} — {}", status, body);
         Err(format!(
             "Failed to create credential (HTTP {}): {}",
             status, body
@@ -1112,7 +1110,9 @@ pub async fn engine_n8n_community_packages_install(
         let pkg: CommunityPackage = serde_json::from_str(&body_text).map_err(|e| {
             error!(
                 "[n8n] Failed to parse install response for {}: {} — body: {}",
-                package_name, e, &body_text[..body_text.len().min(500)]
+                package_name,
+                e,
+                &body_text[..body_text.len().min(500)]
             );
             format!("Failed to parse response: {}", e)
         })?;
@@ -1198,7 +1198,10 @@ pub async fn engine_n8n_community_packages_install(
                     if let Some(pkg) = pkgs.into_iter().find(|p| p.package_name == package_name) {
                         info!(
                             "[n8n] Confirmed {} v{} ({} nodes) via fallback (attempt {})",
-                            pkg.package_name, pkg.installed_version, pkg.installed_nodes.len(), attempt
+                            pkg.package_name,
+                            pkg.installed_version,
+                            pkg.installed_nodes.len(),
+                            attempt
                         );
                         return Ok(pkg);
                     }

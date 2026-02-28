@@ -198,7 +198,6 @@ export const AGENT_TEMPLATE_CATALOG: AgentTemplate[] = [
     personality: { tone: 'casual', initiative: 'proactive', detail: 'balanced' },
   },
 
-
   // ── Security ──
   {
     id: 'security-auditor',
@@ -253,7 +252,6 @@ export const AGENT_TEMPLATE_CATALOG: AgentTemplate[] = [
       'You are a DeFi scout. Monitor decentralized finance protocols, track yield opportunities, analyze new token launches, and flag potential risks. Always verify contract safety before recommending.',
     personality: { tone: 'casual', initiative: 'proactive', detail: 'thorough' },
   },
-
 ];
 
 // ── Category metadata ──────────────────────────────────────────────────

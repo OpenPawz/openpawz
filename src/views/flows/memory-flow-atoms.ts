@@ -103,12 +103,14 @@ export function getMemoryWriteConfig(config: Record<string, unknown>): MemoryWri
  */
 export function getMemoryRecallConfig(config: Record<string, unknown>): MemoryRecallConfig {
   return {
-    memoryQuerySource: (config.memoryQuerySource as 'input' | 'custom') ?? DEFAULT_MEMORY_RECALL.memoryQuerySource,
+    memoryQuerySource:
+      (config.memoryQuerySource as 'input' | 'custom') ?? DEFAULT_MEMORY_RECALL.memoryQuerySource,
     memoryQuery: (config.memoryQuery as string) ?? undefined,
     memoryLimit: (config.memoryLimit as number) ?? DEFAULT_MEMORY_RECALL.memoryLimit,
     memoryAgentId: (config.memoryAgentId as string) ?? undefined,
     memoryThreshold: (config.memoryThreshold as number) ?? DEFAULT_MEMORY_RECALL.memoryThreshold,
-    memoryOutputFormat: (config.memoryOutputFormat as 'text' | 'json') ?? DEFAULT_MEMORY_RECALL.memoryOutputFormat,
+    memoryOutputFormat:
+      (config.memoryOutputFormat as 'text' | 'json') ?? DEFAULT_MEMORY_RECALL.memoryOutputFormat,
   };
 }
 
