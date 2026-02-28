@@ -649,6 +649,415 @@ pub async fn engine_n8n_community_packages_list(
     Ok(packages)
 }
 
+// ── n8n Credential Management ──────────────────────────────────────────
+
+/// A field definition discovered from n8n's credential schema.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct N8nCredentialSchemaField {
+    pub name: String,
+    pub display_name: String,
+    /// "string", "number", "boolean", "options"
+    pub field_type: String,
+    pub required: bool,
+    pub default_value: Option<String>,
+    pub placeholder: Option<String>,
+    pub description: Option<String>,
+    /// If field_type == "options", possible values
+    pub options: Vec<String>,
+    /// If true, render as password input
+    pub is_secret: bool,
+}
+
+/// Schema for a specific n8n credential type.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct N8nCredentialSchema {
+    pub credential_type: String,
+    pub display_name: String,
+    pub fields: Vec<N8nCredentialSchemaField>,
+}
+
+/// Information about credential types required by an installed community package.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PackageCredentialInfo {
+    pub package_name: String,
+    pub credential_types: Vec<N8nCredentialSchema>,
+}
+
+/// Fetch credential schemas for the node types installed by a community package.
+///
+/// After a community package is installed, n8n registers its node types.
+/// This command discovers which credential types those nodes need and fetches
+/// the field schema from n8n's REST API so the app can render an in-app form.
+#[tauri::command]
+pub async fn engine_n8n_package_credential_schema(
+    app_handle: tauri::AppHandle,
+    package_name: String,
+) -> Result<PackageCredentialInfo, String> {
+    let (base_url, api_key) = get_n8n_endpoint(&app_handle)?;
+    let base = base_url.trim_end_matches('/');
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    // Step 1: Get installed nodes for this package to find their credential types
+    let installed: Vec<CommunityPackage> = {
+        let list_url = format!("{}/api/v1/community-packages", base);
+        let resp = client
+            .get(&list_url)
+            .header("X-N8N-API-KEY", &api_key)
+            .send()
+            .await
+            .map_err(|e| format!("Failed to list packages: {}", e))?;
+
+        if !resp.status().is_success() {
+            return Err(format!(
+                "Failed to list community packages: HTTP {}",
+                resp.status().as_u16()
+            ));
+        }
+        resp.json().await.map_err(|e| format!("Failed to parse packages list: {}", e))?
+    };
+
+    let pkg = installed
+        .iter()
+        .find(|p| p.package_name == package_name)
+        .ok_or_else(|| format!("Package '{}' not found in installed list", package_name))?;
+
+    // Step 2: For each installed node type, discover its credential requirements
+    // n8n exposes /types/credentials.json which lists all credential type schemas
+    let cred_types_url = format!("{}/types/credentials.json", base);
+    let cred_resp = client
+        .get(&cred_types_url)
+        .header("X-N8N-API-KEY", &api_key)
+        .header("Cookie", format!("n8n-auth={}", api_key))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch credential types: {}", e))?;
+
+    let all_cred_types: serde_json::Value = if cred_resp.status().is_success() {
+        cred_resp.json().await.unwrap_or(serde_json::Value::Array(vec![]))
+    } else {
+        info!(
+            "[n8n] /types/credentials.json returned HTTP {} — falling back to schema API",
+            cred_resp.status().as_u16()
+        );
+        serde_json::Value::Array(vec![])
+    };
+
+    // Step 3: Get the node types to figure out which credential types they need
+    let node_types_url = format!("{}/types/nodes.json", base);
+    let nodes_resp = client
+        .get(&node_types_url)
+        .header("X-N8N-API-KEY", &api_key)
+        .header("Cookie", format!("n8n-auth={}", api_key))
+        .send()
+        .await;
+
+    // Build a set of credential type names needed by this package's nodes
+    let mut needed_cred_types: Vec<String> = Vec::new();
+
+    if let Ok(resp) = nodes_resp {
+        if resp.status().is_success() {
+            if let Ok(nodes_json) = resp.json::<serde_json::Value>().await {
+                if let Some(nodes_arr) = nodes_json.as_array() {
+                    let package_node_types: Vec<&str> = pkg
+                        .installed_nodes
+                        .iter()
+                        .map(|n| n.node_type.as_str())
+                        .collect();
+
+                    for node in nodes_arr {
+                        let node_name = node
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or_default();
+
+                        // Skip nodes not from this package
+                        if !package_node_types.contains(&node_name) {
+                            continue;
+                        }
+
+                        // Extract credential type names from node definition
+                        if let Some(cred_arr) = node.get("credentials").and_then(|c| c.as_array()) {
+                            for cred in cred_arr {
+                                if let Some(cred_name) =
+                                    cred.get("name").and_then(|n| n.as_str())
+                                {
+                                    if !needed_cred_types.contains(&cred_name.to_string()) {
+                                        needed_cred_types.push(cred_name.to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Step 4: For each needed credential type, extract its schema
+    let mut schemas: Vec<N8nCredentialSchema> = Vec::new();
+
+    for cred_type_name in &needed_cred_types {
+        // First try to find it in the /types/credentials.json bulk response
+        let cred_def = all_cred_types.as_array().and_then(|arr| {
+            arr.iter().find(|ct| {
+                ct.get("name").and_then(|n| n.as_str()) == Some(cred_type_name)
+            })
+        });
+
+        if let Some(ct) = cred_def {
+            let display = ct
+                .get("displayName")
+                .and_then(|d| d.as_str())
+                .unwrap_or(cred_type_name)
+                .to_string();
+
+            let fields = extract_credential_fields(ct);
+
+            schemas.push(N8nCredentialSchema {
+                credential_type: cred_type_name.clone(),
+                display_name: display,
+                fields,
+            });
+        } else {
+            // Fallback: try the REST API schema endpoint
+            let schema_url = format!(
+                "{}/api/v1/credentials/schema/{}",
+                base, cred_type_name
+            );
+            if let Ok(resp) = client
+                .get(&schema_url)
+                .header("X-N8N-API-KEY", &api_key)
+                .send()
+                .await
+            {
+                if resp.status().is_success() {
+                    if let Ok(schema_json) = resp.json::<serde_json::Value>().await {
+                        let display = schema_json
+                            .get("displayName")
+                            .and_then(|d| d.as_str())
+                            .unwrap_or(cred_type_name)
+                            .to_string();
+
+                        let fields = extract_credential_fields(&schema_json);
+
+                        schemas.push(N8nCredentialSchema {
+                            credential_type: cred_type_name.clone(),
+                            display_name: display,
+                            fields,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    // If we couldn't discover any schemas but we know the package installed nodes,
+    // emit a generic "API Key" credential as a fallback
+    if schemas.is_empty() && !pkg.installed_nodes.is_empty() {
+        let pkg_display = display_name_for_pkg(&package_name);
+        schemas.push(N8nCredentialSchema {
+            credential_type: format!("{}Api", package_name.replace("n8n-nodes-", "").replace('-', "")),
+            display_name: format!("{} API", pkg_display),
+            fields: vec![N8nCredentialSchemaField {
+                name: "apiKey".into(),
+                display_name: "API Key".into(),
+                field_type: "string".into(),
+                required: true,
+                default_value: None,
+                placeholder: Some("Enter your API key…".into()),
+                description: Some(format!("API key for {}", pkg_display)),
+                options: vec![],
+                is_secret: true,
+            }],
+        });
+    }
+
+    Ok(PackageCredentialInfo {
+        package_name,
+        credential_types: schemas,
+    })
+}
+
+/// Helper: extract field definitions from an n8n credential type JSON object.
+fn extract_credential_fields(ct: &serde_json::Value) -> Vec<N8nCredentialSchemaField> {
+    let mut fields = Vec::new();
+
+    // n8n credential types store their fields in "properties" array
+    let props = ct
+        .get("properties")
+        .and_then(|p| p.as_array())
+        .cloned()
+        .unwrap_or_default();
+
+    for prop in &props {
+        let name = prop
+            .get("name")
+            .and_then(|n| n.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let display = prop
+            .get("displayName")
+            .and_then(|d| d.as_str())
+            .unwrap_or(&name)
+            .to_string();
+        let type_hint = prop
+            .get("type")
+            .and_then(|t| t.as_str())
+            .unwrap_or("string")
+            .to_string();
+        let required = prop
+            .get("required")
+            .and_then(|r| r.as_bool())
+            .unwrap_or(false);
+        let default_val = prop
+            .get("default")
+            .and_then(|d| {
+                if d.is_string() {
+                    d.as_str().map(|s| s.to_string())
+                } else {
+                    Some(d.to_string())
+                }
+            });
+        let placeholder = prop
+            .get("placeholder")
+            .and_then(|p| p.as_str())
+            .map(|s| s.to_string());
+        let description = prop
+            .get("description")
+            .and_then(|d| d.as_str())
+            .map(|s| s.to_string());
+        let is_secret = type_hint == "string"
+            && (name.to_lowercase().contains("key")
+                || name.to_lowercase().contains("secret")
+                || name.to_lowercase().contains("token")
+                || name.to_lowercase().contains("password"));
+        let options = prop
+            .get("options")
+            .and_then(|o| o.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|opt| {
+                        opt.get("value")
+                            .or_else(|| opt.get("name"))
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Skip display-only / notice fields
+        if type_hint == "notice" || type_hint == "hidden" {
+            continue;
+        }
+
+        fields.push(N8nCredentialSchemaField {
+            name,
+            display_name: display,
+            field_type: type_hint,
+            required,
+            default_value: default_val,
+            placeholder,
+            description,
+            options,
+            is_secret,
+        });
+    }
+
+    fields
+}
+
+/// Display name for a package: strip "n8n-nodes-" prefix, titlecase.
+fn display_name_for_pkg(package_name: &str) -> String {
+    let stripped = package_name
+        .trim_start_matches("@")
+        .split('/')
+        .last()
+        .unwrap_or(package_name)
+        .trim_start_matches("n8n-nodes-");
+    stripped
+        .split('-')
+        .map(|w| {
+            let mut c = w.chars();
+            match c.next() {
+                None => String::new(),
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Create a credential in n8n programmatically via REST API.
+///
+/// This replaces the need for users to open n8n's UI and manually add credentials.
+/// The credential is created directly inside the embedded n8n instance.
+#[tauri::command]
+pub async fn engine_n8n_create_credential(
+    app_handle: tauri::AppHandle,
+    credential_type: String,
+    credential_name: String,
+    credential_data: std::collections::HashMap<String, String>,
+) -> Result<serde_json::Value, String> {
+    let (base_url, api_key) = get_n8n_endpoint(&app_handle)?;
+    let base = base_url.trim_end_matches('/');
+
+    info!(
+        "[n8n] Creating credential '{}' of type '{}'",
+        credential_name, credential_type
+    );
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({
+        "name": credential_name,
+        "type": credential_type,
+        "data": credential_data,
+    });
+
+    let resp = client
+        .post(format!("{}/api/v1/credentials", base))
+        .header("X-N8N-API-KEY", &api_key)
+        .header("Content-Type", "application/json")
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| {
+            error!("[n8n] Create credential request failed: {}", e);
+            format!("Failed to create credential: {}", e)
+        })?;
+
+    if resp.status().is_success() {
+        let result: serde_json::Value = resp.json().await.map_err(|e| {
+            format!("Failed to parse credential creation response: {}", e)
+        })?;
+        info!(
+            "[n8n] Credential '{}' created successfully (id={})",
+            credential_name,
+            result.get("id").and_then(|i| i.as_u64()).unwrap_or(0)
+        );
+        Ok(result)
+    } else {
+        let status = resp.status().as_u16();
+        let body = resp.text().await.unwrap_or_default();
+        error!(
+            "[n8n] Create credential failed: HTTP {} — {}",
+            status, body
+        );
+        Err(format!(
+            "Failed to create credential (HTTP {}): {}",
+            status, body
+        ))
+    }
+}
+
 /// Install a community node package from npm into the n8n engine.
 ///
 /// `package_name` is the npm package name, e.g. "n8n-nodes-puppeteer"
