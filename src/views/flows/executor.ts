@@ -20,6 +20,14 @@ import {
   type FlowExecEvent,
   type NodeExecConfig,
 } from './executor-atoms';
+import {
+  compileStrategy,
+  shouldUseConductor,
+  parseCollapsedOutput,
+  checkConvergence,
+  type ExecutionStrategy,
+  type ExecutionUnit,
+} from './conductor-atoms';
 import { engineChatSend } from '../../engine/molecules/bridge';
 import { pawEngine } from '../../engine/molecules/ipc_client';
 import { subscribeSession } from '../../engine/molecules/event_bus';
@@ -63,6 +71,8 @@ export interface FlowExecutorController {
   getBreakpoints: () => ReadonlySet<string>;
   /** Get data values flowing on edges (edge ID → truncated value) */
   getEdgeValues: () => ReadonlyMap<string, string>;
+  /** Get the last compiled execution strategy (null if none) */
+  getLastStrategy: () => ExecutionStrategy | null;
 }
 
 // ── Factory ────────────────────────────────────────────────────────────────
@@ -83,6 +93,8 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
   const _breakpoints = new Set<string>();
   // Edge data values — edge ID → value flowing through (debug inspection)
   const _edgeValues = new Map<string, string>();
+  // Last compiled execution strategy (for UI display)
+  let _lastStrategy: ExecutionStrategy | null = null;
 
   async function run(graph: FlowGraph, defaultAgentId?: string): Promise<FlowRunState> {
     // Validate
@@ -117,55 +129,34 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
       callbacks.onNodeStatusChange(node.id, 'idle');
     }
 
-    // Execute each step
-    for (let i = 0; i < plan.length; i++) {
-      if (_aborted) {
-        _runState.status = 'error';
-        callbacks.onEvent({ type: 'run-aborted', runId: _runState.runId });
-        break;
-      }
-
-      // Pause gate
-      if (_paused) {
-        _runState.status = 'paused';
-        callbacks.onEvent({ type: 'run-paused', runId: _runState.runId, stepIndex: i });
-        await new Promise<void>((resolve) => {
-          _pauseResolve = resolve;
-        });
-        _runState.status = 'running';
-      }
-
-      const nodeId = plan[i];
-
-      // Skip nodes that were excluded by condition branching
-      if (_skipNodes.has(nodeId)) continue;
-
-      // Breakpoint check — auto-pause before executing this node
-      if (_breakpoints.has(nodeId) && i > 0) {
-        _paused = true;
-        _runState.status = 'paused';
+    // ── Conductor Protocol: decide execution path ────────────────────────
+    if (shouldUseConductor(graph)) {
+      try {
+        const strategy = compileStrategy(graph);
+        _lastStrategy = strategy;
         callbacks.onEvent({
-          type: 'debug-breakpoint-hit',
+          type: 'run-start',
           runId: _runState.runId,
-          nodeId,
-          stepIndex: i,
+          graphName: `${graph.name} [Conductor: ${strategy.meta.collapseGroups} collapse, ${strategy.meta.parallelPhases} parallel, ${strategy.meta.extractedNodes} extracted]`,
+          totalSteps: strategy.phases.length,
         });
-        callbacks.onEvent({ type: 'debug-cursor', runId: _runState.runId, nodeId, stepIndex: i });
-        await new Promise<void>((resolve) => {
-          _pauseResolve = resolve;
-        });
-        _runState.status = 'running';
-        _paused = false;
+        await runWithStrategy(graph, strategy, defaultAgentId);
+      } catch (err) {
+        // Conductor failed — fall back to sequential execution
+        console.warn('[conductor] Strategy execution failed, falling back to sequential:', err);
+        _lastStrategy = null;
+        _skipNodes = new Set();
+        for (const node of graph.nodes) {
+          if (node.status !== 'success') {
+            node.status = 'idle';
+            callbacks.onNodeStatusChange(node.id, 'idle');
+          }
+        }
+        await runSequential(graph, plan, defaultAgentId);
       }
-
-      _runState.currentStep = i;
-      const node = graph.nodes.find((n) => n.id === nodeId);
-      if (!node) continue;
-
-      await executeNode(graph, node, defaultAgentId);
-
-      // Record edge values for debug inspection
-      recordEdgeValues(graph, nodeId);
+    } else {
+      _lastStrategy = null;
+      await runSequential(graph, plan, defaultAgentId);
     }
 
     // Finalize
@@ -187,6 +178,368 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
     });
 
     return _runState;
+  }
+
+  // ── Sequential Execution (original path) ───────────────────────────────
+
+  async function runSequential(
+    graph: FlowGraph,
+    plan: string[],
+    defaultAgentId?: string,
+  ): Promise<void> {
+    for (let i = 0; i < plan.length; i++) {
+      if (_aborted) {
+        _runState!.status = 'error';
+        callbacks.onEvent({ type: 'run-aborted', runId: _runState!.runId });
+        break;
+      }
+
+      // Pause gate
+      if (_paused) {
+        _runState!.status = 'paused';
+        callbacks.onEvent({ type: 'run-paused', runId: _runState!.runId, stepIndex: i });
+        await new Promise<void>((resolve) => {
+          _pauseResolve = resolve;
+        });
+        _runState!.status = 'running';
+      }
+
+      const nodeId = plan[i];
+      if (_skipNodes.has(nodeId)) continue;
+
+      // Breakpoint check
+      if (_breakpoints.has(nodeId) && i > 0) {
+        _paused = true;
+        _runState!.status = 'paused';
+        callbacks.onEvent({
+          type: 'debug-breakpoint-hit',
+          runId: _runState!.runId,
+          nodeId,
+          stepIndex: i,
+        });
+        callbacks.onEvent({ type: 'debug-cursor', runId: _runState!.runId, nodeId, stepIndex: i });
+        await new Promise<void>((resolve) => {
+          _pauseResolve = resolve;
+        });
+        _runState!.status = 'running';
+        _paused = false;
+      }
+
+      _runState!.currentStep = i;
+      const node = graph.nodes.find((n) => n.id === nodeId);
+      if (!node) continue;
+
+      await executeNode(graph, node, defaultAgentId);
+      recordEdgeValues(graph, nodeId);
+    }
+  }
+
+  // ── Conductor Strategy Execution ───────────────────────────────────────
+
+  async function runWithStrategy(
+    graph: FlowGraph,
+    strategy: ExecutionStrategy,
+    defaultAgentId?: string,
+  ): Promise<void> {
+    const nodeMap = new Map(graph.nodes.map((n) => [n.id, n]));
+
+    for (const phase of strategy.phases) {
+      if (_aborted) {
+        _runState!.status = 'error';
+        callbacks.onEvent({ type: 'run-aborted', runId: _runState!.runId });
+        break;
+      }
+
+      // Execute all units in this phase concurrently (Parallelize primitive)
+      if (phase.units.length === 1) {
+        // Single unit — no parallelism needed
+        await executeUnit(graph, phase.units[0], nodeMap, defaultAgentId);
+      } else {
+        // Multiple units — run in parallel via Promise.all
+        await Promise.all(
+          phase.units.map((unit) =>
+            executeUnit(graph, unit, nodeMap, defaultAgentId),
+          ),
+        );
+      }
+    }
+  }
+
+  async function executeUnit(
+    graph: FlowGraph,
+    unit: ExecutionUnit,
+    nodeMap: Map<string, FlowNode>,
+    defaultAgentId?: string,
+  ): Promise<void> {
+    if (_aborted) return;
+
+    switch (unit.type) {
+      case 'collapsed-agent':
+        await executeCollapsedUnit(graph, unit, nodeMap, defaultAgentId);
+        break;
+      case 'mesh':
+        await executeMeshUnit(graph, unit, nodeMap, defaultAgentId);
+        break;
+      case 'single-agent':
+      case 'single-direct':
+      case 'direct-action': {
+        // Execute each node in the unit sequentially
+        for (const nodeId of unit.nodeIds) {
+          if (_aborted || _skipNodes.has(nodeId)) continue;
+          const node = nodeMap.get(nodeId);
+          if (!node) continue;
+          await executeNode(graph, node, defaultAgentId);
+          recordEdgeValues(graph, nodeId);
+        }
+        break;
+      }
+    }
+  }
+
+  // ── Collapse Execution ─────────────────────────────────────────────────
+
+  async function executeCollapsedUnit(
+    graph: FlowGraph,
+    unit: ExecutionUnit,
+    nodeMap: Map<string, FlowNode>,
+    defaultAgentId?: string,
+  ): Promise<void> {
+    if (!_runState || !unit.mergedPrompt) return;
+
+    // Mark all nodes in the collapse group as running
+    for (const nodeId of unit.nodeIds) {
+      const node = nodeMap.get(nodeId);
+      if (!node) continue;
+      node.status = 'running';
+      callbacks.onNodeStatusChange(nodeId, 'running');
+
+      const inEdges = graph.edges.filter((e) => e.to === nodeId);
+      for (const e of inEdges) {
+        e.active = true;
+        callbacks.onEdgeActive(e.id, true);
+      }
+    }
+
+    // Collect upstream input for the first node in the chain
+    const firstNodeId = unit.nodeIds[0];
+    const upstreamInput = collectNodeInput(graph, firstNodeId, _runState.nodeStates);
+
+    // Build combined prompt
+    let prompt = unit.mergedPrompt;
+    if (upstreamInput) {
+      prompt = `[Previous step output]\n${upstreamInput}\n\n${prompt}`;
+    }
+
+    callbacks.onEvent({
+      type: 'step-start',
+      runId: _runState.runId,
+      stepIndex: _runState.currentStep,
+      nodeId: firstNodeId,
+      nodeLabel: `Collapsed: ${unit.nodeIds.length} steps`,
+      nodeKind: 'agent',
+    });
+
+    const startTime = Date.now();
+
+    try {
+      // Execute as a single LLM call
+      const firstNode = nodeMap.get(firstNodeId)!;
+      const config = getNodeExecConfig(firstNode);
+      const output = await executeAgentStep(graph, firstNode, upstreamInput, {
+        ...config,
+        prompt: prompt,
+      }, defaultAgentId);
+
+      const durationMs = Date.now() - startTime;
+
+      // Parse output back into individual step outputs
+      const stepOutputs = parseCollapsedOutput(output, unit.nodeIds.length);
+
+      // Record state for each node in the chain
+      for (let i = 0; i < unit.nodeIds.length; i++) {
+        const nodeId = unit.nodeIds[i];
+        const node = nodeMap.get(nodeId);
+        if (!node) continue;
+
+        const nodeState = createNodeRunState(nodeId);
+        nodeState.startedAt = startTime;
+        nodeState.output = stepOutputs[i];
+        nodeState.status = 'success';
+        nodeState.finishedAt = Date.now();
+        nodeState.durationMs = durationMs;
+        _runState.nodeStates.set(nodeId, nodeState);
+
+        node.status = 'success';
+        callbacks.onNodeStatusChange(nodeId, 'success');
+
+        callbacks.onEvent({
+          type: 'step-complete',
+          runId: _runState.runId,
+          nodeId,
+          output: stepOutputs[i],
+          durationMs,
+        });
+
+        _runState.outputLog.push({
+          nodeId,
+          nodeLabel: node.label,
+          nodeKind: node.kind,
+          status: 'success',
+          output: stepOutputs[i],
+          durationMs,
+          timestamp: Date.now(),
+        });
+
+        recordEdgeValues(graph, nodeId);
+      }
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      // Mark all nodes in the group as error
+      for (const nodeId of unit.nodeIds) {
+        const node = nodeMap.get(nodeId);
+        if (!node) continue;
+
+        const nodeState = createNodeRunState(nodeId);
+        nodeState.status = 'error';
+        nodeState.error = errorMsg;
+        nodeState.finishedAt = Date.now();
+        nodeState.durationMs = Date.now() - startTime;
+        _runState.nodeStates.set(nodeId, nodeState);
+
+        node.status = 'error';
+        callbacks.onNodeStatusChange(nodeId, 'error');
+      }
+
+      callbacks.onEvent({
+        type: 'step-error',
+        runId: _runState.runId,
+        nodeId: firstNodeId,
+        error: errorMsg,
+        durationMs: Date.now() - startTime,
+      });
+    } finally {
+      // Deactivate edges
+      for (const nodeId of unit.nodeIds) {
+        const inEdges = graph.edges.filter((e) => e.to === nodeId);
+        for (const e of inEdges) {
+          e.active = false;
+          callbacks.onEdgeActive(e.id, false);
+        }
+      }
+    }
+  }
+
+  // ── Convergent Mesh Execution ──────────────────────────────────────────
+
+  async function executeMeshUnit(
+    graph: FlowGraph,
+    unit: ExecutionUnit,
+    nodeMap: Map<string, FlowNode>,
+    defaultAgentId?: string,
+  ): Promise<void> {
+    if (!_runState) return;
+
+    const maxIterations = unit.maxIterations ?? 5;
+    const convergenceThreshold = 0.85;
+    let prevOutputs = new Map<string, string>();
+    const meshContext: string[] = [];
+
+    // Mark mesh nodes as running
+    for (const nodeId of unit.nodeIds) {
+      const node = nodeMap.get(nodeId);
+      if (node) {
+        node.status = 'running';
+        callbacks.onNodeStatusChange(nodeId, 'running');
+      }
+    }
+
+    for (let round = 1; round <= maxIterations; round++) {
+      if (_aborted) break;
+
+      const currOutputs = new Map<string, string>();
+
+      // Execute each node in the mesh with shared context
+      for (const nodeId of unit.nodeIds) {
+        if (_aborted) break;
+        const node = nodeMap.get(nodeId);
+        if (!node) continue;
+
+        const config = getNodeExecConfig(node);
+
+        // Build context: all previous outputs from other mesh members
+        const contextParts = [`[Convergent Mesh — Round ${round}/${maxIterations}]`];
+        if (meshContext.length > 0) {
+          contextParts.push('[Previous round outputs]');
+          contextParts.push(meshContext.join('\n---\n'));
+        }
+        const upstreamInput = contextParts.join('\n\n');
+
+        const output = await executeAgentStep(graph, node, upstreamInput, config, defaultAgentId);
+        currOutputs.set(nodeId, output);
+
+        // Update node state
+        const nodeState = createNodeRunState(nodeId);
+        nodeState.output = output;
+        nodeState.status = 'success';
+        nodeState.startedAt = Date.now();
+        nodeState.finishedAt = Date.now();
+        _runState.nodeStates.set(nodeId, nodeState);
+
+        callbacks.onEvent({
+          type: 'step-progress',
+          runId: _runState.runId,
+          nodeId,
+          delta: `[Round ${round}] ${output.slice(0, 100)}`,
+        });
+      }
+
+      // Build mesh context for next round
+      meshContext.length = 0;
+      for (const [nodeId, output] of currOutputs) {
+        const node = nodeMap.get(nodeId);
+        meshContext.push(`${node?.label ?? nodeId}: ${output}`);
+      }
+
+      // Check convergence
+      if (checkConvergence(prevOutputs, currOutputs, convergenceThreshold)) {
+        console.debug(`[conductor-mesh] Converged at round ${round}`);
+        break;
+      }
+
+      prevOutputs = currOutputs;
+    }
+
+    // Mark mesh nodes as complete
+    for (const nodeId of unit.nodeIds) {
+      const node = nodeMap.get(nodeId);
+      if (node) {
+        node.status = 'success';
+        callbacks.onNodeStatusChange(nodeId, 'success');
+
+        const nodeState = _runState.nodeStates.get(nodeId);
+        if (nodeState) {
+          callbacks.onEvent({
+            type: 'step-complete',
+            runId: _runState.runId,
+            nodeId,
+            output: nodeState.output,
+            durationMs: nodeState.durationMs,
+          });
+
+          _runState.outputLog.push({
+            nodeId,
+            nodeLabel: node.label,
+            nodeKind: node.kind,
+            status: 'success',
+            output: nodeState.output,
+            durationMs: nodeState.durationMs,
+            timestamp: Date.now(),
+          });
+        }
+
+        recordEdgeValues(graph, nodeId);
+      }
+    }
   }
 
   async function executeNode(
@@ -290,6 +643,16 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
         default:
           // Agent/tool/data nodes send prompts to the engine
           output = await executeAgentStep(graph, node, upstreamInput, config, defaultAgentId);
+          break;
+
+        case 'http' as FlowNode['kind']:
+          // HTTP nodes: direct HTTP request via Conductor Extract
+          output = await executeHttpNode(node, upstreamInput, config);
+          break;
+
+        case 'mcp-tool' as FlowNode['kind']:
+          // MCP-tool nodes: direct MCP call via Conductor Extract
+          output = await executeMcpToolNode(node, upstreamInput, config);
           break;
       }
 
@@ -600,6 +963,107 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
   }
 
   /**
+   * Execute a direct HTTP request node (Conductor Extract primitive).
+   * Bypasses LLM entirely — routes directly through Rust backend.
+   */
+  async function executeHttpNode(
+    node: FlowNode,
+    upstreamInput: string,
+    config: NodeExecConfig,
+  ): Promise<string> {
+    const method = config.httpMethod || (node.config.httpMethod as string) || 'GET';
+    let url = config.httpUrl || (node.config.httpUrl as string) || '';
+    const headersStr = config.httpHeaders || (node.config.httpHeaders as string) || '{}';
+    let body = config.httpBody || (node.config.httpBody as string) || undefined;
+
+    if (!url) {
+      throw new Error(`HTTP node "${node.label}" has no URL configured`);
+    }
+
+    // Template substitution: replace {{input}} with upstream data
+    url = url.replace(/\{\{input\}\}/g, encodeURIComponent(upstreamInput));
+    if (body) {
+      body = body.replace(/\{\{input\}\}/g, upstreamInput);
+    }
+
+    let headers: Record<string, string> = {};
+    try {
+      headers = JSON.parse(headersStr);
+    } catch {
+      // Ignore invalid headers JSON
+    }
+
+    try {
+      const response = await pawEngine.flowDirectHttp({
+        method,
+        url,
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
+        body,
+        timeout_ms: config.timeoutMs ?? 30000,
+      });
+
+      return JSON.stringify({
+        status: response.status,
+        body: response.body,
+        duration_ms: response.duration_ms,
+      });
+    } catch (err) {
+      // Fallback: try in-browser fetch (for dev mode without Tauri)
+      const resp = await fetch(url, {
+        method,
+        headers,
+        body: method !== 'GET' ? body : undefined,
+      });
+      const text = await resp.text();
+      return JSON.stringify({ status: resp.status, body: text });
+    }
+  }
+
+  /**
+   * Execute a direct MCP tool call node (Conductor Extract primitive).
+   * Bypasses LLM entirely — routes through Rust MCP registry.
+   */
+  async function executeMcpToolNode(
+    node: FlowNode,
+    upstreamInput: string,
+    config: NodeExecConfig,
+  ): Promise<string> {
+    const toolName = config.mcpToolName || (node.config.mcpToolName as string) || '';
+    const argsStr = config.mcpToolArgs || (node.config.mcpToolArgs as string) || '{}';
+
+    if (!toolName) {
+      throw new Error(`MCP-tool node "${node.label}" has no tool name configured`);
+    }
+
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(argsStr);
+    } catch {
+      // Try using upstream as args
+      try {
+        args = JSON.parse(upstreamInput);
+      } catch {
+        args = { input: upstreamInput };
+      }
+    }
+
+    // Template substitution in args
+    const argsJson = JSON.stringify(args).replace(/\{\{input\}\}/g, upstreamInput);
+    args = JSON.parse(argsJson);
+
+    const response = await pawEngine.flowDirectMcp({
+      tool_name: toolName,
+      arguments: args,
+    });
+
+    if (!response.success) {
+      throw new Error(`MCP tool "${toolName}" failed: ${response.output}`);
+    }
+
+    return response.output;
+  }
+
+  /**
    * Handle condition node results — determine which branches to follow/skip.
    */
   function handleConditionResult(graph: FlowGraph, condNode: FlowNode, response: string): void {
@@ -849,5 +1313,6 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
     toggleBreakpoint,
     getBreakpoints: () => _breakpoints,
     getEdgeValues: () => _edgeValues,
+    getLastStrategy: () => _lastStrategy,
   };
 }

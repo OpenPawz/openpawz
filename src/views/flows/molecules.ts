@@ -934,6 +934,12 @@ export function renderToolbar(
         <button class="flow-tb-btn" data-action="add-output" title="Add Output">
           <span class="ms">${NODE_DEFAULTS.output.icon}</span>
         </button>
+        <button class="flow-tb-btn" data-action="add-http" title="Add HTTP Request (Direct)">
+          <span class="ms">${NODE_DEFAULTS.http.icon}</span>
+        </button>
+        <button class="flow-tb-btn" data-action="add-mcp-tool" title="Add MCP Tool (Direct)">
+          <span class="ms">${NODE_DEFAULTS['mcp-tool'].icon}</span>
+        </button>
       </div>
       <div class="flow-toolbar-divider"></div>
       <div class="flow-toolbar-group">
@@ -999,6 +1005,8 @@ function handleToolbarAction(action: string) {
     'add-code': 'code',
     'add-error': 'error',
     'add-output': 'output',
+    'add-http': 'http' as FlowNodeKind,
+    'add-mcp-tool': 'mcp-tool' as FlowNodeKind,
   };
 
   if (action in addKinds) {
@@ -1504,6 +1512,50 @@ return input.toUpperCase();">${codeVal}</textarea>
     `;
   }
 
+  if (node.kind === 'http') {
+    const httpMethod = (config.httpMethod as string) ?? 'GET';
+    const httpUrl = escAttr((config.httpUrl as string) ?? '');
+    const httpHeaders = escAttr((config.httpHeaders as string) ?? '');
+    const httpBody = escAttr((config.httpBody as string) ?? '');
+    configFieldsHtml += `
+      <label class="flow-panel-field">
+        <span>Method</span>
+        <select class="flow-panel-select" data-config="httpMethod">
+          ${['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => `<option value="${m}"${httpMethod === m ? ' selected' : ''}>${m}</option>`).join('')}
+        </select>
+      </label>
+      <label class="flow-panel-field">
+        <span>URL</span>
+        <input type="text" class="flow-panel-input" data-config="httpUrl" value="${httpUrl}" placeholder="https://api.example.com/endpoint" />
+      </label>
+      <label class="flow-panel-field">
+        <span>Headers (JSON)</span>
+        <textarea class="flow-panel-textarea" data-config="httpHeaders" rows="2" placeholder='{"Content-Type": "application/json"}'>${httpHeaders}</textarea>
+      </label>
+      <label class="flow-panel-field">
+        <span>Body</span>
+        <textarea class="flow-panel-textarea" data-config="httpBody" rows="3" placeholder="Request body — use {{input}} for upstream output">${httpBody}</textarea>
+      </label>
+      <span class="flow-panel-hint">Use <code>{{input}}</code> in URL, headers, or body to inject upstream output.</span>
+    `;
+  }
+
+  if (node.kind === 'mcp-tool') {
+    const mcpToolName = escAttr((config.mcpToolName as string) ?? '');
+    const mcpToolArgs = escAttr((config.mcpToolArgs as string) ?? '');
+    configFieldsHtml += `
+      <label class="flow-panel-field">
+        <span>Tool Name</span>
+        <input type="text" class="flow-panel-input" data-config="mcpToolName" value="${mcpToolName}" placeholder="e.g. search_web, read_file" />
+      </label>
+      <label class="flow-panel-field">
+        <span>Arguments (JSON)</span>
+        <textarea class="flow-panel-textarea" data-config="mcpToolArgs" rows="3" placeholder='{"query": "{{input}}"}'>${mcpToolArgs}</textarea>
+      </label>
+      <span class="flow-panel-hint">Use <code>{{input}}</code> in arguments to inject upstream output.</span>
+    `;
+  }
+
   // Error node config
   if (node.kind === 'error') {
     const errorTargets = (config.errorTargets as string[]) ?? ['log'];
@@ -1537,7 +1589,7 @@ return input.toUpperCase();">${codeVal}</textarea>
   }
 
   // Retry config for executable nodes (agent, tool, data, code)
-  if (['agent', 'tool', 'data', 'code'].includes(node.kind)) {
+  if (['agent', 'tool', 'data', 'code', 'http', 'mcp-tool'].includes(node.kind)) {
     const maxRetries = (config.maxRetries as number) ?? 0;
     const retryDelay = (config.retryDelayMs as number) ?? 1000;
     const retryBackoff = (config.retryBackoff as number) ?? 2;
@@ -1564,7 +1616,7 @@ return input.toUpperCase();">${codeVal}</textarea>
   }
 
   // Timeout field for agent/tool/condition/data/code nodes
-  if (['agent', 'tool', 'condition', 'data', 'code'].includes(node.kind)) {
+  if (['agent', 'tool', 'condition', 'data', 'code', 'http', 'mcp-tool'].includes(node.kind)) {
     configFieldsHtml += `
       <label class="flow-panel-field">
         <span>Timeout (s)</span>

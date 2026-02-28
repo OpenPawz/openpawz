@@ -71,6 +71,10 @@ import type {
   EngineAgentMessage,
   EngineFlow,
   EngineFlowRun,
+  DirectHttpRequest,
+  DirectHttpResponse,
+  DirectMcpRequest,
+  DirectMcpResponse,
 } from '../atoms/types';
 
 export class PawEngineClient {
@@ -653,6 +657,16 @@ export class PawEngineClient {
 
   async flowRunDelete(runId: string): Promise<void> {
     return invoke('engine_flow_run_delete', { runId });
+  }
+
+  // ── Conductor Extract: Direct Execution ──────────────────────────────
+
+  async flowDirectHttp(request: DirectHttpRequest): Promise<DirectHttpResponse> {
+    return invoke<DirectHttpResponse>('engine_flow_direct_http', { request });
+  }
+
+  async flowDirectMcp(request: DirectMcpRequest): Promise<DirectMcpResponse> {
+    return invoke<DirectMcpResponse>('engine_flow_direct_mcp', { request });
   }
 
   // ── Telegram ────────────────────────────────────────────────────────

@@ -48,6 +48,18 @@ export interface NodeExecConfig {
   outputTarget?: 'chat' | 'log' | 'store';
   /** For error nodes: notification targets */
   errorTargets?: ('log' | 'toast' | 'chat')[];
+  /** For http nodes: HTTP method */
+  httpMethod?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  /** For http nodes: URL to request */
+  httpUrl?: string;
+  /** For http nodes: request headers (JSON string) */
+  httpHeaders?: string;
+  /** For http nodes: request body */
+  httpBody?: string;
+  /** For mcp-tool nodes: MCP tool name (e.g. mcp_n8n_slack_post) */
+  mcpToolName?: string;
+  /** For mcp-tool nodes: MCP tool arguments (JSON string) */
+  mcpToolArgs?: string;
   /** Max retries on error (0 = no retry) */
   maxRetries?: number;
   /** Delay between retries in ms (default 1000) */
@@ -514,6 +526,12 @@ export function getNodeExecConfig(node: FlowNode): NodeExecConfig {
     scheduleEnabled: (c.scheduleEnabled as boolean) ?? false,
     outputTarget: (c.outputTarget as 'chat' | 'log' | 'store') ?? 'chat',
     errorTargets: (c.errorTargets as ('log' | 'toast' | 'chat')[]) ?? ['log'],
+    httpMethod: (c.httpMethod as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE') ?? undefined,
+    httpUrl: (c.httpUrl as string) ?? undefined,
+    httpHeaders: (c.httpHeaders as string) ?? undefined,
+    httpBody: (c.httpBody as string) ?? undefined,
+    mcpToolName: (c.mcpToolName as string) ?? undefined,
+    mcpToolArgs: (c.mcpToolArgs as string) ?? undefined,
     maxRetries: (c.maxRetries as number) ?? 0,
     retryDelayMs: (c.retryDelayMs as number) ?? 1000,
     retryBackoff: (c.retryBackoff as number) ?? 2,

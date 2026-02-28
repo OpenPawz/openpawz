@@ -14,7 +14,9 @@ export type FlowNodeKind =
   | 'code' // Inline JavaScript evaluation (sandboxed)
   | 'output' // Terminal output (log, send, store)
   | 'error' // Error handler (logs, alerts, notifications)
-  | 'group'; // Sub-flow / compound node
+  | 'group' // Sub-flow / compound node
+  | 'http' // Direct HTTP request (no LLM — Conductor Extract)
+  | 'mcp-tool'; // Direct MCP tool call (no LLM — Conductor Extract)
 
 export type EdgeKind =
   | 'forward' // Normal A → B
@@ -205,6 +207,8 @@ export const NODE_DEFAULTS: Record<
   output: { width: 160, height: 64, color: 'var(--success)', icon: 'output' },
   error: { width: 180, height: 72, color: 'var(--kinetic-red, #D64045)', icon: 'error' },
   group: { width: 240, height: 120, color: 'var(--border)', icon: 'folder' },
+  http: { width: 180, height: 72, color: 'var(--kinetic-sage, #5BA08C)', icon: 'http' },
+  'mcp-tool': { width: 180, height: 72, color: 'var(--kinetic-steel, #7A8B9A)', icon: 'integration_instructions' },
 };
 
 export const GRID_SIZE = 20;

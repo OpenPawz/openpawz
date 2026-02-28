@@ -944,3 +944,35 @@ export interface EngineFlowRun {
   started_at: string;
   finished_at?: string;
 }
+
+// ── Conductor Extract: Direct Execution ───────────────────────────────
+
+/** Request payload for a direct HTTP call bypassing LLM. */
+export interface DirectHttpRequest {
+  method: string;
+  url: string;
+  headers?: Record<string, string>;
+  body?: string;
+  timeout_ms?: number;
+}
+
+/** Response from a direct HTTP call. */
+export interface DirectHttpResponse {
+  status: number;
+  headers: Record<string, string>;
+  body: string;
+  duration_ms: number;
+}
+
+/** Request payload for calling an MCP tool directly (no LLM). */
+export interface DirectMcpRequest {
+  tool_name: string;
+  arguments: Record<string, unknown>;
+}
+
+/** Response from a direct MCP tool call. */
+export interface DirectMcpResponse {
+  output: string;
+  success: boolean;
+  duration_ms: number;
+}
