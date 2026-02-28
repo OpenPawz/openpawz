@@ -201,6 +201,11 @@ pub async fn provision_docker_container(
         log::warn!("[n8n] Owner setup failed (non-fatal): {}", e);
     }
 
+    // Log the n8n version for diagnostics (MCP requires recent versions)
+    if let Some(version) = super::health::get_n8n_version(&url, &api_key).await {
+        log::info!("[n8n] Docker mode running n8n v{}", version);
+    }
+
     // Enable MCP access (disabled by default even after owner creation)
     if let Err(e) = super::health::enable_mcp_access(&url).await {
         log::warn!("[n8n] MCP access enable failed (non-fatal): {}", e);

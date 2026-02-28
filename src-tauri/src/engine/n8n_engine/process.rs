@@ -51,7 +51,8 @@ pub async fn start_n8n_process(app_handle: &tauri::AppHandle) -> EngineResult<N8
     );
 
     let child = std::process::Command::new("npx")
-        .arg("n8n")
+        .arg("--yes")
+        .arg("n8n@latest")
         .env("N8N_PORT", port.to_string())
         .env("N8N_BASIC_AUTH_ACTIVE", "false")
         .env("N8N_SECURE_COOKIE", "false")
@@ -97,6 +98,11 @@ pub async fn start_n8n_process(app_handle: &tauri::AppHandle) -> EngineResult<N8
     // Set up the owner account for headless operation.
     if let Err(e) = super::health::setup_owner_if_needed(&url).await {
         log::warn!("[n8n] Owner setup failed (non-fatal): {}", e);
+    }
+
+    // Log the n8n version for diagnostics (MCP requires recent versions)
+    if let Some(version) = super::health::get_n8n_version(&url, &api_key).await {
+        log::info!("[n8n] Process mode running n8n v{}", version);
     }
 
     // Enable MCP access (disabled by default even after owner creation)
