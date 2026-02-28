@@ -14,6 +14,8 @@ use tauri::Manager;
 
 pub mod agent_comms;
 pub mod agents;
+pub mod coinbase;
+pub mod dex;
 pub mod discord;
 pub mod exec;
 pub mod fetch;
@@ -25,6 +27,7 @@ pub mod request_tools;
 pub mod skill_output;
 pub mod skill_storage;
 pub mod skills_tools;
+pub mod solana;
 pub mod soul;
 pub mod squads;
 pub mod tasks;
@@ -81,6 +84,9 @@ impl ToolDefinition {
                 "webhook" => tools.extend(integrations::definitions_for("webhook")),
                 "image_gen" => tools.extend(integrations::definitions_for("image_gen")),
                 "discord" => tools.extend(discord::definitions()),
+                "coinbase" => tools.extend(coinbase::definitions()),
+                "solana_dex" => tools.extend(solana::definitions()),
+                "dex" => tools.extend(dex::definitions()),
                 _ => {}
             }
         }
@@ -155,6 +161,9 @@ pub async fn execute_tool(
         .or(telegram::execute(name, &args, app_handle).await)
         .or(integrations::execute(name, &args, app_handle).await)
         .or(n8n::execute(name, &args, app_handle).await)
+        .or(coinbase::execute(name, &args, app_handle).await)
+        .or(solana::execute(name, &args, app_handle).await)
+        .or(dex::execute(name, &args, app_handle).await)
         .or(discord::execute(name, &args, app_handle).await);
 
     // Try MCP tools (prefixed with `mcp_`) if no built-in handled it.

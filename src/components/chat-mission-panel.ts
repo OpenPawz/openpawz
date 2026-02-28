@@ -252,6 +252,20 @@ const APPROVAL_CATEGORIES: ApprovalCategory[] = [
     ],
   },
   {
+    id: 'trading',
+    label: 'Trading',
+    icon: 'candlestick_chart',
+    description: 'Crypto swap, transfer, wallets',
+    tools: [
+      'sol_swap',
+      'sol_transfer',
+      'dex_swap',
+      'dex_transfer',
+      'coinbase_trade',
+      'coinbase_transfer',
+    ],
+  },
+  {
     id: 'media',
     label: 'Media',
     icon: 'image',

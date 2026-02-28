@@ -214,6 +214,45 @@ export const AGENT_TEMPLATE_CATALOG: AgentTemplate[] = [
     popular: true,
   },
 
+  // ── Trading ──
+  {
+    id: 'trading-analyst',
+    name: 'Trading Analyst',
+    icon: 'trending_up',
+    desc: 'Market analysis, portfolio tracking, and trading strategy research',
+    category: 'trading',
+    model: 'default',
+    skills: [
+      'coinbase_prices',
+      'coinbase_balance',
+      'sol_balance',
+      'sol_portfolio',
+      'web_search',
+      'web_read',
+    ],
+    systemPrompt:
+      'You are a trading analyst. Monitor markets, analyze price action, track portfolios, and research trading strategies. Always include risk disclaimers. Never give financial advice — present data and analysis only.',
+    personality: { tone: 'balanced', initiative: 'proactive', detail: 'thorough' },
+  },
+  {
+    id: 'defi-scout',
+    name: 'DeFi Scout',
+    icon: 'explore',
+    desc: 'Monitor DeFi protocols, yield opportunities, and token launches',
+    category: 'trading',
+    model: 'default',
+    skills: [
+      'dex_trending',
+      'dex_token_info',
+      'dex_check_token',
+      'sol_token_info',
+      'web_search',
+      'web_read',
+    ],
+    systemPrompt:
+      'You are a DeFi scout. Monitor decentralized finance protocols, track yield opportunities, analyze new token launches, and flag potential risks. Always verify contract safety before recommending.',
+    personality: { tone: 'casual', initiative: 'proactive', detail: 'thorough' },
+  },
 
 ];
 
@@ -226,6 +265,7 @@ const CATEGORY_META: Record<string, { icon: string; label: string; color: string
   data: { icon: 'query_stats', label: 'Data & Research', color: '#06b6d4' },
   communication: { icon: 'forum', label: 'Communication', color: '#10b981' },
   security: { icon: 'shield', label: 'Security', color: '#ef4444' },
+  trading: { icon: 'trending_up', label: 'Trading', color: '#f59e0b' },
 };
 
 // ── Render functions ───────────────────────────────────────────────────

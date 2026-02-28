@@ -105,6 +105,44 @@ Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into
             default_enabled: false,
         },
         SkillDefinition {
+            id: "coinbase".into(),
+            name: "Coinbase (CDP Agentic Wallet)".into(),
+            description: "Trade crypto, manage wallets, and check prices via Coinbase Developer Platform".into(),
+            icon: "🪙".into(),
+            category: SkillCategory::Vault,
+            tier: SkillTier::Integration,
+            required_credentials: vec![
+                CredentialField { key: "CDP_API_KEY_NAME".into(), label: "API Key Name".into(), description: "The 'name' field from cdp_api_key.json (e.g. organizations/abc123/apiKeys/xyz789). For older keys, use the 'id' field.".into(), required: true, placeholder: "organizations/abc123-def/apiKeys/xyz789-...".into() },
+                CredentialField { key: "CDP_API_KEY_SECRET".into(), label: "API Secret (Private Key)".into(), description: "The 'privateKey' field from cdp_api_key.json. Paste the raw base64 string or PEM block exactly as given.".into(), required: true, placeholder: "+jSZpC...base64...Wg==".into() },
+            ],
+            tool_names: vec!["coinbase_prices".into(), "coinbase_balance".into(), "coinbase_wallet_create".into(), "coinbase_trade".into(), "coinbase_transfer".into()],
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Get API keys at portal.cdp.coinbase.com".into(),
+            agent_instructions: r#"You have Coinbase CDP (Developer Platform) access for crypto trading and wallet management.
+CRITICAL: Credentials are already configured and injected automatically by the engine. Authentication (Ed25519 JWT signing) is handled for you. Do NOT:
+- Read source code files (.rs, .ts, etc.) to understand how tools work
+- Read or inspect cdp_api_key.json or any credential/key files
+- Tell the user their key format is wrong or suggest they need a different key type
+- Guess at authentication issues — just call the tool and report the exact error
+
+When the user asks to check balances, trade, or do anything with Coinbase: IMMEDIATELY call the appropriate tool below. Do not investigate first.
+
+Available tools:
+- **coinbase_prices**: Get current spot prices for crypto assets (e.g. BTC, ETH). Just call it.
+- **coinbase_balance**: Check wallet balances. Just call it.
+- **coinbase_wallet_create**: Create a new MPC wallet. Requires user approval.
+- **coinbase_trade**: Execute a buy/sell order. ALWAYS requires user approval. Include clear reasoning.
+- **coinbase_transfer**: Send crypto to an address. ALWAYS requires user approval. Double-check addresses.
+
+Risk Management Rules:
+- NEVER risk more than 2% of portfolio on a single trade
+- Always state your reasoning before proposing a trade
+- Always include a stop-loss level when proposing trades
+- Prefer limit orders over market orders when possible
+- Check balances before proposing any trade
+- If the user hasn't set risk parameters, ask before trading"#.into(),
+            default_enabled: false,
+        },
+        SkillDefinition {
             id: "notion".into(),
             name: "Notion".into(),
             description: "Create and manage Notion pages, databases, and blocks".into(),
@@ -619,6 +657,81 @@ gifgrep --extract-stills <gif> — extract frames as PNGs."#.into(),
 Commands: camsnap snap <url> [--output frame.jpg], camsnap discover (find cameras on network),
 camsnap stream <url> --frames 10 --interval 1s (capture multiple).
 Supports RTSP, ONVIF, and HTTP MJPEG streams."#.into(),
+            default_enabled: false,
+        },
+        SkillDefinition {
+            id: "dex".into(),
+            name: "DEX Trading (EVM)".into(),
+            description: "Self-custody Ethereum wallet with Uniswap V3 on-chain swaps, whale tracking, and trending tokens".into(),
+            icon: "🦄".into(),
+            category: SkillCategory::Vault,
+            tier: SkillTier::Integration,
+            required_credentials: vec![
+                CredentialField { key: "ETHEREUM_PRIVATE_KEY".into(), label: "Ethereum Private Key".into(), description: "Your Ethereum wallet private key (hex, with or without 0x prefix). Used for signing transactions locally — never sent to any server.".into(), required: true, placeholder: "0xabcdef1234567890...".into() },
+            ],
+            tool_names: vec!["dex_wallet_create".into(), "dex_balance".into(), "dex_quote".into(), "dex_swap".into(), "dex_transfer".into(), "dex_portfolio".into(), "dex_token_info".into(), "dex_check_token".into(), "dex_search_token".into(), "dex_watch_wallet".into(), "dex_whale_transfers".into(), "dex_top_traders".into(), "dex_trending".into()],
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Import or create an Ethereum wallet".into(),
+            agent_instructions: r#"You have EVM DEX trading tools for self-custody Ethereum trading.
+Credentials are injected automatically. Do NOT read source code or key files.
+
+Available tools:
+- **dex_wallet_create**: Create or import an Ethereum wallet. Requires approval.
+- **dex_balance**: Check ETH and token balances.
+- **dex_quote**: Get swap quotes from Uniswap V3 before executing.
+- **dex_swap**: Execute on-chain token swaps. ALWAYS requires approval.
+- **dex_transfer**: Send ETH or tokens. ALWAYS requires approval.
+- **dex_portfolio**: View full portfolio with USD values.
+- **dex_token_info**: Get token details (price, liquidity, contract info).
+- **dex_check_token**: Audit a token contract for rug-pull risks.
+- **dex_search_token**: Search tokens by name or symbol.
+- **dex_watch_wallet**: Track another wallet's activity.
+- **dex_whale_transfers**: Monitor large transfers on-chain.
+- **dex_top_traders**: Find top traders for a specific token.
+- **dex_trending**: Get trending tokens on DEXes.
+
+Risk Management:
+- NEVER risk more than 2% of portfolio on a single swap
+- Always check token safety with dex_check_token before buying new tokens
+- Always get a quote before executing swaps
+- Warn about gas costs on Ethereum mainnet
+- Check liquidity depth before large trades"#.into(),
+            default_enabled: false,
+        },
+        SkillDefinition {
+            id: "solana_dex".into(),
+            name: "Trading: Solana DEX".into(),
+            description: "Solana self-custody wallet with Jupiter aggregator swaps and PumpPortal integration for pump.fun tokens".into(),
+            icon: "☀️".into(),
+            category: SkillCategory::Vault,
+            tier: SkillTier::Integration,
+            required_credentials: vec![
+                CredentialField { key: "SOLANA_PRIVATE_KEY".into(), label: "Solana Private Key".into(), description: "Your Solana wallet private key (base58 encoded). Used for signing transactions locally — never sent to any server.".into(), required: true, placeholder: "4wBqpZ...base58...".into() },
+            ],
+            tool_names: vec!["sol_wallet_create".into(), "sol_balance".into(), "sol_quote".into(), "sol_swap".into(), "sol_transfer".into(), "sol_portfolio".into(), "sol_token_info".into()],
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Import or create a Solana wallet".into(),
+            agent_instructions: r#"You have Solana DEX trading tools for self-custody trading on Solana.
+Credentials are injected automatically. Do NOT read source code or key files.
+
+Available tools:
+- **sol_wallet_create**: Create or import a Solana wallet. Requires approval.
+- **sol_balance**: Check SOL and SPL token balances.
+- **sol_quote**: Get swap quotes from Jupiter aggregator.
+- **sol_swap**: Execute on-chain swaps via Jupiter or PumpPortal (for pump.fun tokens). ALWAYS requires approval.
+- **sol_transfer**: Send SOL or SPL tokens. ALWAYS requires approval.
+- **sol_portfolio**: View full portfolio with USD values.
+- **sol_token_info**: Get token details, price, and metadata.
+
+PumpPortal Integration:
+- For pump.fun tokens, swaps automatically route through PumpPortal
+- These tokens may have extreme volatility — always warn the user
+- Check token age and holder distribution before buying
+
+Risk Management:
+- NEVER risk more than 2% of portfolio on a single swap
+- Always get a quote before executing swaps
+- Warn about pump.fun token risks (rug pulls, low liquidity)
+- Check slippage tolerance — default 1% for established tokens, suggest higher for pump.fun
+- Solana transactions are fast but check for congestion"#.into(),
             default_enabled: false,
         },
     ]
