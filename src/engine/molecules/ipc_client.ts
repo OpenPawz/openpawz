@@ -69,6 +69,8 @@ import type {
   EngineSquad,
   EngineSquadMember,
   EngineAgentMessage,
+  EngineFlow,
+  EngineFlowRun,
 } from '../atoms/types';
 
 export class PawEngineClient {
@@ -617,6 +619,40 @@ export class PawEngineClient {
 
   async tasksCronTick(): Promise<string[]> {
     return invoke<string[]>('engine_tasks_cron_tick');
+  }
+
+  // ── Flows (Visual Pipelines) ──────────────────────────────────────
+
+  async flowsList(): Promise<EngineFlow[]> {
+    return invoke<EngineFlow[]>('engine_flows_list');
+  }
+
+  async flowsGet(flowId: string): Promise<EngineFlow | null> {
+    return invoke<EngineFlow | null>('engine_flows_get', { flowId });
+  }
+
+  async flowsSave(flow: EngineFlow): Promise<void> {
+    return invoke('engine_flows_save', { flow });
+  }
+
+  async flowsDelete(flowId: string): Promise<void> {
+    return invoke('engine_flows_delete', { flowId });
+  }
+
+  async flowRunsList(flowId: string, limit?: number): Promise<EngineFlowRun[]> {
+    return invoke<EngineFlowRun[]>('engine_flow_runs_list', { flowId, limit });
+  }
+
+  async flowRunCreate(run: EngineFlowRun): Promise<void> {
+    return invoke('engine_flow_run_create', { run });
+  }
+
+  async flowRunUpdate(run: EngineFlowRun): Promise<void> {
+    return invoke('engine_flow_run_update', { run });
+  }
+
+  async flowRunDelete(runId: string): Promise<void> {
+    return invoke('engine_flow_run_delete', { runId });
   }
 
   // ── Telegram ────────────────────────────────────────────────────────

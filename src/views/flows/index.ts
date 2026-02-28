@@ -11,6 +11,11 @@ import {
   serializeGraph,
   deserializeGraph,
   instantiateTemplate,
+  type UndoStack,
+  createUndoStack,
+  pushUndo,
+  undo,
+  redo,
 } from './atoms';
 import {
   setMoleculesState,
@@ -30,6 +35,8 @@ import { FLOW_TEMPLATES } from './templates';
 import { createFlowExecutor, type FlowExecutorController } from './executor';
 import { createFlowChatReporter, type FlowChatReporterController } from './chat-reporter';
 import { type FlowSchedule, type ScheduleFireLog, nextCronFire } from './executor-atoms';
+import { pawEngine } from '../../engine/molecules/ipc_client';
+import type { EngineFlow, EngineFlowRun } from '../../engine/atoms/types';
 
 // ── Module State ───────────────────────────────────────────────────────────
 
@@ -40,6 +47,9 @@ let _mounted = false;
 let _executor: FlowExecutorController | null = null;
 let _reporter: FlowChatReporterController | null = null;
 let _sidebarTab: 'flows' | 'templates' = 'flows';
+
+// Undo/redo stack — one per active graph
+const _undoStacks: Map<string, UndoStack> = new Map();
 
 // Schedule state
 let _scheduleTimerId: ReturnType<typeof setInterval> | null = null;
@@ -67,35 +77,164 @@ function initStateBridge() {
     },
     onGraphChanged: () => {
       const g = _graphs.find((gg) => gg.id === _activeGraphId);
-      if (g) g.updatedAt = new Date().toISOString();
+      if (g) {
+        // Push undo snapshot before recording the change
+        const stack = getUndoStack(g.id);
+        pushUndo(stack, g);
+        g.updatedAt = new Date().toISOString();
+      }
       persist();
       updateFlowList();
     },
+    onUndo: () => performUndo(),
+    onRedo: () => performRedo(),
+    onExport: () => exportActiveFlow(),
+    onImport: () => importFlow(),
   });
 }
 
-// ── Persistence (localStorage) ─────────────────────────────────────────────
+// ── Persistence (SQLite backend via Tauri IPC, localStorage fallback) ──────
 
+let _persistTimer: ReturnType<typeof setTimeout> | null = null;
+let _backendAvailable = true; // assume Tauri is present until first failure
+const PERSIST_DEBOUNCE_MS = 1_000; // debounce writes by 1 second
+
+/** Debounced persist — coalesces rapid mutations into a single backend write. */
 function persist() {
+  // Always keep localStorage in sync (fast, synchronous, offline fallback)
   try {
     const data = _graphs.map(serializeGraph);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    // Rebuild schedule registry on any graph change
-    rebuildScheduleRegistry();
   } catch (e) {
-    console.error('[flows] Persist failed:', e);
+    console.error('[flows] localStorage persist failed:', e);
+  }
+
+  // Rebuild schedule registry on any graph change
+  rebuildScheduleRegistry();
+
+  // Debounce backend save
+  if (_persistTimer) clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(() => {
+    _persistTimer = null;
+    persistToBackend();
+  }, PERSIST_DEBOUNCE_MS);
+}
+
+/** Non-debounced: save all graphs to the Rust SQLite backend. */
+async function persistToBackend() {
+  if (!_backendAvailable) return;
+  try {
+    for (const graph of _graphs) {
+      const flow: EngineFlow = {
+        id: graph.id,
+        name: graph.name,
+        description: graph.description,
+        folder: graph.folder,
+        graph_json: serializeGraph(graph),
+        created_at: graph.createdAt,
+        updated_at: graph.updatedAt,
+      };
+      await pawEngine.flowsSave(flow);
+    }
+  } catch (e) {
+    // Tauri not available (browser dev mode) — localStorage only
+    console.warn('[flows] Backend persist unavailable, using localStorage only:', e);
+    _backendAvailable = false;
   }
 }
 
-function restore() {
+/** Save a single graph to backend (used for targeted saves like auto-save on change). */
+async function persistSingleToBackend(graph: FlowGraph) {
+  if (!_backendAvailable) return;
+  try {
+    const flow: EngineFlow = {
+      id: graph.id,
+      name: graph.name,
+      description: graph.description,
+      folder: graph.folder,
+      graph_json: serializeGraph(graph),
+      created_at: graph.createdAt,
+      updated_at: graph.updatedAt,
+    };
+    await pawEngine.flowsSave(flow);
+  } catch {
+    // Silently fall back — localStorage is already up to date
+  }
+}
+
+/** Delete a flow from the backend. */
+async function deleteFromBackend(flowId: string) {
+  if (!_backendAvailable) return;
+  try {
+    await pawEngine.flowsDelete(flowId);
+  } catch {
+    // Silently fall back
+  }
+}
+
+async function restore() {
+  // Try backend first
+  try {
+    const backendFlows = await pawEngine.flowsList();
+    if (backendFlows && backendFlows.length > 0) {
+      _graphs = backendFlows
+        .map((f) => deserializeGraph(f.graph_json))
+        .filter(Boolean) as FlowGraph[];
+      _backendAvailable = true;
+
+      // Migrate any localStorage-only flows that aren't in the backend
+      migrateLocalStorageFlows(backendFlows);
+      return;
+    }
+  } catch {
+    // Tauri not available — fall through to localStorage
+    _backendAvailable = false;
+  }
+
+  // Fallback: localStorage
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const arr = JSON.parse(raw) as string[];
     _graphs = arr.map((s) => deserializeGraph(s)).filter(Boolean) as FlowGraph[];
+
+    // If backend just became available, migrate localStorage flows up
+    if (_backendAvailable && _graphs.length > 0) {
+      persistToBackend();
+    }
   } catch (e) {
     console.error('[flows] Restore failed:', e);
     _graphs = [];
+  }
+}
+
+/** One-time migration: push localStorage flows to backend if they don't exist there. */
+async function migrateLocalStorageFlows(backendFlows: EngineFlow[]) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const arr = JSON.parse(raw) as string[];
+    const localGraphs = arr.map((s) => deserializeGraph(s)).filter(Boolean) as FlowGraph[];
+    const backendIds = new Set(backendFlows.map((f) => f.id));
+
+    let migrated = 0;
+    for (const graph of localGraphs) {
+      if (!backendIds.has(graph.id)) {
+        // This flow exists in localStorage but not in the backend — migrate it
+        await persistSingleToBackend(graph);
+        // Also add to in-memory state if not already present
+        if (!_graphs.find((g) => g.id === graph.id)) {
+          _graphs.push(graph);
+        }
+        migrated++;
+      }
+    }
+
+    if (migrated > 0) {
+      console.info(`[flows] Migrated ${migrated} flow(s) from localStorage to backend`);
+    }
+  } catch {
+    // Migration is best-effort
   }
 }
 
@@ -110,9 +249,9 @@ function el(id: string): HTMLElement | null {
 /**
  * Called when the Flows view is activated (from router.ts switchView).
  */
-export function loadFlows() {
+export async function loadFlows() {
   initStateBridge();
-  restore();
+  await restore();
 
   // Inject available agents from the agents module for agent node dropdowns
   try {
@@ -144,9 +283,9 @@ export function loadFlows() {
  * Create a new flow from text (called from /flow slash command).
  * Returns the created graph.
  */
-export function createFlowFromText(text: string, name?: string): FlowGraph {
+export async function createFlowFromText(text: string, name?: string): Promise<FlowGraph> {
   initStateBridge();
-  restore();
+  await restore();
 
   const result = parseFlowText(text, name);
   _graphs.push(result.graph);
@@ -172,8 +311,8 @@ export function previewFlow(text: string, name?: string) {
 /**
  * Get all stored flows.
  */
-export function getFlows(): FlowGraph[] {
-  restore();
+export async function getFlows(): Promise<FlowGraph[]> {
+  await restore();
   return [..._graphs];
 }
 
@@ -340,6 +479,7 @@ function updateFlowList() {
           _selectedNodeId = null;
         }
         persist();
+        deleteFromBackend(id);
         renderActiveGraph();
         updateFlowList();
       },
@@ -434,6 +574,103 @@ function onAddNodeAtPosition(x: number, y: number) {
   updateNodePanel();
 }
 
+// ── Undo/Redo ──────────────────────────────────────────────────────────────
+
+function getUndoStack(graphId: string): UndoStack {
+  let stack = _undoStacks.get(graphId);
+  if (!stack) {
+    stack = createUndoStack();
+    _undoStacks.set(graphId, stack);
+  }
+  return stack;
+}
+
+function performUndo() {
+  if (!_activeGraphId) return;
+  const graph = _graphs.find((g) => g.id === _activeGraphId);
+  if (!graph) return;
+  const stack = getUndoStack(_activeGraphId);
+  const restored = undo(stack, graph);
+  if (!restored) return;
+  // Replace in-place
+  const idx = _graphs.findIndex((g) => g.id === _activeGraphId);
+  if (idx >= 0) _graphs[idx] = restored;
+  _selectedNodeId = null;
+  persist();
+  renderGraph();
+  updateFlowList();
+  updateNodePanel();
+}
+
+function performRedo() {
+  if (!_activeGraphId) return;
+  const graph = _graphs.find((g) => g.id === _activeGraphId);
+  if (!graph) return;
+  const stack = getUndoStack(_activeGraphId);
+  const restored = redo(stack, graph);
+  if (!restored) return;
+  const idx = _graphs.findIndex((g) => g.id === _activeGraphId);
+  if (idx >= 0) _graphs[idx] = restored;
+  _selectedNodeId = null;
+  persist();
+  renderGraph();
+  updateFlowList();
+  updateNodePanel();
+}
+
+// ── Import/Export ──────────────────────────────────────────────────────────
+
+function exportActiveFlow() {
+  const graph = _graphs.find((g) => g.id === _activeGraphId);
+  if (!graph) return;
+  const json = serializeGraph(graph);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${graph.name.replace(/[^a-zA-Z0-9_-]/g, '_')}.pawflow.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function importFlow() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,.pawflow.json';
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const json = reader.result as string;
+        const graph = deserializeGraph(json);
+        if (!graph) {
+          alert('Invalid flow file: could not parse graph.');
+          return;
+        }
+        // Assign a new ID to avoid collisions with existing flows
+        graph.id = crypto.randomUUID();
+        graph.name = `${graph.name} (imported)`;
+        graph.createdAt = new Date().toISOString();
+        graph.updatedAt = new Date().toISOString();
+        _graphs.push(graph);
+        _activeGraphId = graph.id;
+        _selectedNodeId = null;
+        persist();
+        renderActiveGraph();
+        updateFlowList();
+      } catch (err) {
+        alert(`Import failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+}
+
 function onKeyDown(e: KeyboardEvent) {
   // Only handle when flows view is active
   const flowsView = el('flows-view');
@@ -450,6 +687,9 @@ function onKeyDown(e: KeyboardEvent) {
         !(e.target instanceof HTMLInputElement) &&
         !(e.target instanceof HTMLTextAreaElement)
       ) {
+        // Push undo before deleting
+        const stack = getUndoStack(graph.id);
+        pushUndo(stack, graph);
         graph.nodes = graph.nodes.filter((n) => n.id !== _selectedNodeId);
         graph.edges = graph.edges.filter(
           (ee) => ee.from !== _selectedNodeId && ee.to !== _selectedNodeId,
@@ -467,6 +707,29 @@ function onKeyDown(e: KeyboardEvent) {
       _selectedNodeId = null;
       renderGraph();
       updateNodePanel();
+      break;
+    case 'z':
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        performUndo();
+        e.preventDefault();
+      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+        performRedo();
+        e.preventDefault();
+      }
+      break;
+    case 'Z':
+      // Shift+Ctrl+Z (capital Z on some keyboards)
+      if (e.ctrlKey || e.metaKey) {
+        performRedo();
+        e.preventDefault();
+      }
+      break;
+    case 'y':
+      // Ctrl+Y as alternative redo
+      if (e.ctrlKey || e.metaKey) {
+        performRedo();
+        e.preventDefault();
+      }
       break;
     case 'a':
       if (e.ctrlKey || e.metaKey) {
@@ -552,10 +815,61 @@ async function runActiveFlow() {
 
   updateToolbar();
 
+  // Phase 1.5: Record flow run start in backend
+  const runId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  const flowRun: EngineFlowRun = {
+    id: runId,
+    flow_id: graph.id,
+    status: 'running',
+    started_at: startedAt,
+  };
   try {
-    await _executor.run(graph);
+    await pawEngine.flowRunCreate(flowRun);
+  } catch {
+    // Backend unavailable — continue execution without persistence
+  }
+
+  try {
+    const result = await _executor.run(graph);
+
+    // Phase 1.5: Update flow run with result
+    try {
+      const finishedAt = new Date().toISOString();
+      const updatedRun: EngineFlowRun = {
+        id: runId,
+        flow_id: graph.id,
+        status: result.status === 'success' ? 'success' : 'error',
+        duration_ms: result.totalDurationMs,
+        events_json: JSON.stringify(result.outputLog ?? []),
+        error:
+          result.status === 'error'
+            ? result.outputLog?.find((e) => e.status === 'error')?.error
+            : undefined,
+        started_at: startedAt,
+        finished_at: finishedAt,
+      };
+      await pawEngine.flowRunUpdate(updatedRun);
+    } catch {
+      // Best-effort persistence
+    }
   } catch (err) {
     console.error('[flows] Execution error:', err);
+
+    // Record error in run history
+    try {
+      const updatedRun: EngineFlowRun = {
+        id: runId,
+        flow_id: graph.id,
+        status: 'error',
+        error: err instanceof Error ? err.message : String(err),
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+      };
+      await pawEngine.flowRunUpdate(updatedRun);
+    } catch {
+      // Best-effort
+    }
   }
 
   // Reset node statuses to idle after run

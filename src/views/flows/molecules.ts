@@ -50,6 +50,12 @@ interface MoleculesState {
   getSelectedNodeId: () => string | null;
   setSelectedNodeId: (id: string | null) => void;
   onGraphChanged: () => void;
+  /** Phase 1.3: Undo/Redo callbacks (set by index.ts, called by toolbar/keyboard). */
+  onUndo?: () => void;
+  onRedo?: () => void;
+  /** Phase 1.4: Import/Export callbacks. */
+  onExport?: () => void;
+  onImport?: () => void;
 }
 
 let _state: MoleculesState;
@@ -946,6 +952,24 @@ export function renderToolbar(
       </div>
       <div class="flow-toolbar-divider"></div>
       <div class="flow-toolbar-group">
+        <button class="flow-tb-btn" data-action="undo" title="Undo (Ctrl+Z)">
+          <span class="ms">undo</span>
+        </button>
+        <button class="flow-tb-btn" data-action="redo" title="Redo (Ctrl+Shift+Z)">
+          <span class="ms">redo</span>
+        </button>
+      </div>
+      <div class="flow-toolbar-divider"></div>
+      <div class="flow-toolbar-group">
+        <button class="flow-tb-btn" data-action="export-flow" title="Export Flow (.pawflow.json)">
+          <span class="ms">download</span>
+        </button>
+        <button class="flow-tb-btn" data-action="import-flow" title="Import Flow">
+          <span class="ms">upload</span>
+        </button>
+      </div>
+      <div class="flow-toolbar-divider"></div>
+      <div class="flow-toolbar-group">
         <button class="flow-tb-btn flow-tb-btn-danger" data-action="delete-selected" title="Delete Selected">
           <span class="ms">delete</span>
         </button>
@@ -1015,6 +1039,18 @@ function handleToolbarAction(action: string) {
       break;
     case 'delete-selected':
       deleteSelected();
+      break;
+    case 'undo':
+      _state.onUndo?.();
+      break;
+    case 'redo':
+      _state.onRedo?.();
+      break;
+    case 'export-flow':
+      _state.onExport?.();
+      break;
+    case 'import-flow':
+      _state.onImport?.();
       break;
   }
 }

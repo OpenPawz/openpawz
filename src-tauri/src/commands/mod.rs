@@ -11,6 +11,7 @@ pub mod browser;
 pub mod channels;
 pub mod chat;
 pub mod config;
+pub mod flows;
 pub mod guardrails;
 pub mod health_monitor;
 pub mod integrations;

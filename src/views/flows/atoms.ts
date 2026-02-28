@@ -484,3 +484,64 @@ export function hitTestPort(
   }
   return null;
 }
+
+// ── Undo/Redo Command Stack ───────────────────────────────────────────────
+
+const MAX_UNDO_STACK = 50;
+
+export interface UndoStack {
+  /** Past snapshots (most recent last). */
+  past: string[];
+  /** Future snapshots for redo (most recent first). */
+  future: string[];
+}
+
+export function createUndoStack(): UndoStack {
+  return { past: [], future: [] };
+}
+
+/**
+ * Push a snapshot of the current graph onto the undo stack.
+ * Clears the redo (future) stack — any new mutation invalidates redo history.
+ */
+export function pushUndo(stack: UndoStack, graph: FlowGraph): void {
+  stack.past.push(serializeGraph(graph));
+  if (stack.past.length > MAX_UNDO_STACK) {
+    stack.past.shift(); // drop oldest
+  }
+  stack.future = []; // new mutation clears redo
+}
+
+/**
+ * Undo: pops the last snapshot from past, pushes current graph to future,
+ * returns the restored graph (or null if nothing to undo).
+ */
+export function undo(stack: UndoStack, currentGraph: FlowGraph): FlowGraph | null {
+  const snapshot = stack.past.pop();
+  if (!snapshot) return null;
+  // Save current state for redo
+  stack.future.unshift(serializeGraph(currentGraph));
+  return deserializeGraph(snapshot);
+}
+
+/**
+ * Redo: pops the first snapshot from future, pushes current to past,
+ * returns the restored graph (or null if nothing to redo).
+ */
+export function redo(stack: UndoStack, currentGraph: FlowGraph): FlowGraph | null {
+  const snapshot = stack.future.shift();
+  if (!snapshot) return null;
+  // Save current state for undo
+  stack.past.push(serializeGraph(currentGraph));
+  return deserializeGraph(snapshot);
+}
+
+/** Check if undo is available. */
+export function canUndo(stack: UndoStack): boolean {
+  return stack.past.length > 0;
+}
+
+/** Check if redo is available. */
+export function canRedo(stack: UndoStack): boolean {
+  return stack.future.length > 0;
+}

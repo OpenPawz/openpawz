@@ -354,6 +354,38 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
     )
     .ok();
 
+    // ── Flows (Visual Pipelines) ────────────────────────────────────
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS flows (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT,
+            folder TEXT,
+            graph_json TEXT NOT NULL DEFAULT '{}',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_flows_name ON flows(name);
+        CREATE INDEX IF NOT EXISTS idx_flows_folder ON flows(folder);
+
+        CREATE TABLE IF NOT EXISTS flow_runs (
+            id TEXT PRIMARY KEY,
+            flow_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            duration_ms INTEGER,
+            events_json TEXT,
+            error TEXT,
+            started_at TEXT NOT NULL DEFAULT (datetime('now')),
+            finished_at TEXT,
+            FOREIGN KEY (flow_id) REFERENCES flows(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_flow_runs_flow ON flow_runs(flow_id, started_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_flow_runs_status ON flow_runs(status);
+    ",
+    )
+    .ok();
+
     // ── Seed _standalone sentinel project ───────────────────────────
     // Ensures user-created agents (via create_agent tool) satisfy the FK constraint.
     conn.execute(

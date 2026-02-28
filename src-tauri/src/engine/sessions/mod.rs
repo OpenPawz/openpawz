@@ -25,6 +25,7 @@ mod agent_files;
 mod agent_messages;
 mod config;
 pub(crate) mod embedding;
+mod flows;
 mod memories;
 mod messages;
 mod positions;

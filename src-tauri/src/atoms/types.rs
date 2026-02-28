@@ -648,3 +648,40 @@ pub struct SquadMember {
     pub agent_id: String,
     pub role: String, // coordinator, member
 }
+
+// ── Flows (Visual Pipeline) ───────────────────────────────────────────────
+
+/// A persisted visual flow graph.
+/// The graph payload is stored as a JSON blob — the Rust side doesn't
+/// need to understand node/edge internals; it only indexes metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Flow {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub folder: Option<String>,
+    /// The full FlowGraph JSON (nodes, edges, etc.)
+    pub graph_json: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// A single execution run record for a flow.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FlowRun {
+    pub id: String,
+    pub flow_id: String,
+    pub status: String, // running, success, error, cancelled
+    pub duration_ms: Option<i64>,
+    /// The FlowExecEvent[] JSON array
+    #[serde(default)]
+    pub events_json: Option<String>,
+    /// Optional error message
+    #[serde(default)]
+    pub error: Option<String>,
+    pub started_at: String,
+    #[serde(default)]
+    pub finished_at: Option<String>,
+}

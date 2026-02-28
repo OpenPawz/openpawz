@@ -917,3 +917,30 @@ export interface EngineSquadMember {
   agent_id: string;
   role: string; // coordinator, member
 }
+
+// ── Flows (Visual Pipelines) ──────────────────────────────────────────
+
+/** Persisted flow graph envelope. graph_json holds the full FlowGraph JSON. */
+export interface EngineFlow {
+  id: string;
+  name: string;
+  description?: string;
+  folder?: string;
+  /** Serialized FlowGraph JSON (nodes, edges, metadata) */
+  graph_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A single execution run record for a flow. */
+export interface EngineFlowRun {
+  id: string;
+  flow_id: string;
+  status: string; // running, success, error, cancelled
+  duration_ms?: number;
+  /** Serialized FlowExecEvent[] array */
+  events_json?: string;
+  error?: string;
+  started_at: string;
+  finished_at?: string;
+}
