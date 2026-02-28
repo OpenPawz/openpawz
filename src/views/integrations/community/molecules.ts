@@ -29,6 +29,8 @@ let _results: CommunityPackage[] = [];
 let _installed: InstalledPackage[] = [];
 let _loading = false;
 const _installing: Set<string> = new Set();
+/** Package that was just installed — shows post-install guidance overlay. */
+let _justInstalled: string | null = null;
 let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let _container: HTMLElement | null = null;
 
@@ -62,7 +64,7 @@ function _render(): void {
         </div>
       </div>
 
-      ${_tab === 'browse' ? _renderBrowseTab() : _renderInstalledTab()}
+      ${_justInstalled ? _renderPostInstallGuide(_justInstalled) : (_tab === 'browse' ? _renderBrowseTab() : _renderInstalledTab())}
     </div>
   `;
 
@@ -228,6 +230,67 @@ function _renderLoading(): string {
   `;
 }
 
+// ── Post-install guidance ──────────────────────────────────────────────
+
+function _renderPostInstallGuide(packageName: string): string {
+  const name = displayName(packageName);
+  const pkg = _installed.find((p) => p.packageName === packageName);
+  const nodeCount = pkg?.installedNodes.length ?? 0;
+  const nodeList = pkg?.installedNodes.slice(0, 5) ?? [];
+
+  return `
+    <div class="community-post-install">
+      <div class="community-post-install-icon">
+        <span class="ms" style="font-size:48px;color:var(--success,#4caf50)">check_circle</span>
+      </div>
+      <h2 class="community-post-install-title">${escHtml(name)} Installed</h2>
+      <p class="community-post-install-subtitle">
+        ${nodeCount > 0
+          ? `${nodeCount} new node${nodeCount !== 1 ? 's' : ''} added to your n8n instance.`
+          : `Package installed — n8n will register the nodes on next restart.`}
+      </p>
+
+      ${nodeList.length > 0 ? `
+        <div class="community-post-install-nodes">
+          ${nodeList.map((n) => `<span class="community-node-chip">${escHtml(n.name)}</span>`).join('')}
+          ${(pkg?.installedNodes.length ?? 0) > 5
+            ? `<span class="community-node-chip community-node-more">+${(pkg?.installedNodes.length ?? 0) - 5}</span>`
+            : ''}
+        </div>
+      ` : ''}
+
+      <div class="community-post-install-steps">
+        <h3 class="community-post-install-steps-title">
+          <span class="ms ms-sm">arrow_forward</span> What's Next
+        </h3>
+        <ol class="community-post-install-step-list">
+          <li>
+            <strong>Add credentials</strong> — Most community nodes need an API key or token.
+            Open n8n → <em>Settings → Credentials</em> and add the credentials for ${escHtml(name)}.
+          </li>
+          <li>
+            <strong>Use in a workflow</strong> — Create or edit a workflow in n8n, search for
+            "${escHtml(name)}" in the node panel, and drag it into your flow.
+          </li>
+          <li>
+            <strong>Use via chat</strong> — If MCP is enabled, you can ask your agent to use
+            ${escHtml(name)} actions directly from a conversation.
+          </li>
+        </ol>
+      </div>
+
+      <div class="community-post-install-actions">
+        <button class="btn btn-primary" id="post-install-open-n8n">
+          <span class="ms ms-sm">open_in_new</span> Open n8n
+        </button>
+        <button class="btn btn-ghost" id="post-install-dismiss">
+          <span class="ms ms-sm">arrow_back</span> Back to Browser
+        </button>
+      </div>
+    </div>
+  `;
+}
+
 // ── Data fetching ──────────────────────────────────────────────────────
 
 async function _search(query: string): Promise<void> {
@@ -273,7 +336,6 @@ async function _installPackage(packageName: string): Promise<void> {
 
   try {
     await invoke('engine_n8n_community_packages_install', { packageName });
-    showToast(`Installed ${packageName}`, 'success');
 
     // Auto-deploy MCP workflow and refresh tools
     try {
@@ -284,6 +346,10 @@ async function _installPackage(packageName: string): Promise<void> {
 
     // Refresh installed list
     await _fetchInstalled();
+
+    // Show post-install guidance instead of just a toast
+    _justInstalled = packageName;
+    _render();
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);
     console.error(`[community] Install failed for ${packageName}:`, err);
@@ -361,6 +427,26 @@ function _wireEvents(): void {
       const pkg = (btn as HTMLElement).dataset.pkg;
       if (pkg && confirm(`Uninstall ${pkg}?`)) _uninstallPackage(pkg);
     });
+  });
+
+  // Post-install guidance actions
+  document.getElementById('post-install-dismiss')?.addEventListener('click', () => {
+    _justInstalled = null;
+    _render();
+  });
+  document.getElementById('post-install-open-n8n')?.addEventListener('click', async () => {
+    try {
+      const config = await invoke<{ url: string }>('engine_n8n_get_engine_config');
+      if (config?.url) {
+        window.open(config.url, '_blank', 'noopener');
+      } else {
+        window.open('http://127.0.0.1:5678', '_blank', 'noopener');
+      }
+    } catch {
+      window.open('http://127.0.0.1:5678', '_blank', 'noopener');
+    }
+    _justInstalled = null;
+    _render();
   });
 
   // Stagger installed rows
