@@ -119,8 +119,11 @@ pub async fn provision_docker_container(
         "N8N_COMMUNITY_PACKAGES_ALLOW_UNVERIFIED=true".to_string(),
         // Reinstall previously installed packages on startup
         "N8N_REINSTALL_MISSING_PACKAGES=true".to_string(),
-        // Enable MCP server so workflows can expose tools via MCP
+        // Allow community packages to be used as tools in workflows
         "N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true".to_string(),
+        // Enable the native MCP server endpoint at /mcp so Paw can
+        // discover all node operations as tools without creating workflows.
+        "N8N_MCP_SERVER_ENABLED=true".to_string(),
     ];
 
     let host_config = HostConfig {

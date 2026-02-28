@@ -1407,7 +1407,7 @@ async fn direct_npm_install_docker(package_name: &str) -> Result<(), String> {
         .collect();
 
     let shell_cmd = format!(
-        "{}cd /home/node/.n8n && npm install --save '{}' 2>&1",
+        "{}cd /home/node/.n8n && npm install --save --legacy-peer-deps '{}' 2>&1",
         env_prefix,
         package_name.replace('\'', "'\\''")
     );
@@ -1561,7 +1561,7 @@ async fn direct_npm_install_process(
     }
 
     let mut cmd = Command::new("npm");
-    cmd.args(["install", "--save", package_name])
+    cmd.args(["install", "--save", "--legacy-peer-deps", package_name])
         .current_dir(data_dir);
 
     // Set env vars for packages that need special handling (e.g. skip Chromium download)
