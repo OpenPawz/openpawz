@@ -77,6 +77,15 @@ export function parseFlowText(text: string, name = 'Untitled Flow'): ParseResult
     return parseArrowSyntax(trimmed, name, warnings);
   }
 
+  // Try "then" / "and then" as a lightweight connector (e.g. "webhook then agent then email")
+  // Only match when "then" appears as a standalone word separator (at least 2 segments)
+  if (/\bthen\b/i.test(trimmed)) {
+    const thenSegments = trimmed.split(/\s+(?:and\s+)?then\s+/i).filter(Boolean);
+    if (thenSegments.length >= 2) {
+      return parseArrowSyntax(thenSegments.join(' → '), name, warnings);
+    }
+  }
+
   // Try numbered list
   if (/^\s*\d+[\.\)]\s/m.test(trimmed)) {
     return parseNumberedList(trimmed, name, warnings);
@@ -218,7 +227,7 @@ function parseProse(text: string, name: string, warnings: string[]): ParseResult
 
   if (segments.length < 2) {
     // Can't parse as flow — create single node
-    warnings.push('Could not detect flow steps. Try using arrows (→) or numbered steps.');
+    warnings.push('Could not detect flow steps. Try using arrows (->), "then", pipes (|), or numbered steps.');
     const node = createNode(detectKind(text), cleanLabel(text));
     const graph = createGraph(name, [node], []);
     return { graph, warnings };

@@ -29,6 +29,20 @@ describe('parseFlowText', () => {
       expect(graph.nodes).toHaveLength(3);
     });
 
+    it('parses "then" as a connector', () => {
+      const { graph } = parseFlowText('webhook then agent then send email');
+      expect(graph.nodes).toHaveLength(3);
+      expect(graph.edges).toHaveLength(2);
+      expect(graph.nodes[0].kind).toBe('trigger');
+      expect(graph.nodes[1].kind).toBe('agent');
+    });
+
+    it('parses "and then" as a connector', () => {
+      const { graph } = parseFlowText('webhook and then agent and then send email');
+      expect(graph.nodes).toHaveLength(3);
+      expect(graph.edges).toHaveLength(2);
+    });
+
     it('detects node kinds from keywords', () => {
       const { graph } = parseFlowText('webhook → AI agent → transform data → send email');
       expect(graph.nodes[0].kind).toBe('trigger');
