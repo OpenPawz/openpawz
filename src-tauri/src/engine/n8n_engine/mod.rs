@@ -5,7 +5,7 @@
 // coordinates across docker, process, and health sub-modules.
 
 mod docker;
-mod health;
+pub mod health;
 mod process;
 pub mod types;
 

@@ -1176,32 +1176,40 @@ pub async fn engine_n8n_community_packages_install(
         }
     }
 
-    // After fallback install, query the list endpoint to confirm success
-    info!("[n8n] Direct npm install done, waiting for n8n to reload…");
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    // After fallback install, retry querying the list endpoint to confirm
+    info!("[n8n] Direct npm install done, verifying package registration…");
 
-    // Try to find the package in the installed list
-    let list_resp = client
-        .get(format!(
-            "{}/api/v1/community-packages",
-            base_url.trim_end_matches('/')
-        ))
-        .header("X-N8N-API-KEY", &api_key)
-        .send()
-        .await;
+    // Retry up to 5 times with 2s intervals (n8n may still be loading nodes)
+    for attempt in 1..=5 {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    if let Ok(r) = list_resp {
-        if r.status().is_success() {
-            if let Ok(pkgs) = r.json::<Vec<CommunityPackage>>().await {
-                if let Some(pkg) = pkgs.into_iter().find(|p| p.package_name == package_name) {
-                    info!(
-                        "[n8n] Confirmed {} v{} ({} nodes) via fallback",
-                        pkg.package_name, pkg.installed_version, pkg.installed_nodes.len()
-                    );
-                    return Ok(pkg);
+        let list_resp = client
+            .get(format!(
+                "{}/api/v1/community-packages",
+                base_url.trim_end_matches('/')
+            ))
+            .header("X-N8N-API-KEY", &api_key)
+            .send()
+            .await;
+
+        if let Ok(r) = list_resp {
+            if r.status().is_success() {
+                if let Ok(pkgs) = r.json::<Vec<CommunityPackage>>().await {
+                    if let Some(pkg) = pkgs.into_iter().find(|p| p.package_name == package_name) {
+                        info!(
+                            "[n8n] Confirmed {} v{} ({} nodes) via fallback (attempt {})",
+                            pkg.package_name, pkg.installed_version, pkg.installed_nodes.len(), attempt
+                        );
+                        return Ok(pkg);
+                    }
                 }
             }
         }
+
+        info!(
+            "[n8n] Package '{}' not yet visible in n8n (attempt {}/5)",
+            package_name, attempt
+        );
     }
 
     // Package was npm-installed but n8n hasn't registered it yet — return a synthetic result
@@ -1354,8 +1362,20 @@ async fn restart_n8n_container() {
         .output()
         .await;
 
-    // Brief wait for n8n to come back up
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    // Poll n8n until it responds (up to 60s) instead of sleeping a fixed time
+    info!("[n8n] Waiting for n8n to come back up after restart…");
+    // Need the endpoint to poll — reconstruct from container port
+    let base_url = format!("http://127.0.0.1:{}", 5678);
+    // We don't have the API key here, but probe_n8n accepts any key and just
+    // checks for a 200 or 401 (meaning n8n is alive). Try with empty key first.
+    let ready = n8n_engine::health::poll_n8n_ready(&base_url, "").await;
+    if ready {
+        info!("[n8n] Container restarted and responding");
+    } else {
+        // Fall back to a generous fixed wait if polling failed
+        info!("[n8n] Polling timed out — waiting 10s as fallback");
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    }
 }
 
 /// Install a community node package directly via npm in the process-mode data directory.
