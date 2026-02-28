@@ -11,7 +11,13 @@ export type PawTheme =
   | 'ember'
   | 'arctic'
   | 'violet'
-  | 'solarized';
+  | 'solarized'
+  | 'dracula'
+  | 'nord'
+  | 'cyberpunk'
+  | 'tokyo-night'
+  | 'rose-pine'
+  | 'monokai';
 
 export const THEMES: { id: PawTheme; label: string; icon: string; swatch: string }[] = [
   { id: 'dark', label: 'Dark', icon: 'dark_mode', swatch: '#050505' },
@@ -22,6 +28,12 @@ export const THEMES: { id: PawTheme; label: string; icon: string; swatch: string
   { id: 'arctic', label: 'Arctic', icon: 'ac_unit', swatch: '#EFF4F8' },
   { id: 'violet', label: 'Violet Void', icon: 'auto_awesome', swatch: '#100818' },
   { id: 'solarized', label: 'Solarized', icon: 'wb_twilight', swatch: '#002B36' },
+  { id: 'dracula', label: 'Dracula', icon: 'vampire', swatch: '#282A36' },
+  { id: 'nord', label: 'Nord', icon: 'landscape', swatch: '#2E3440' },
+  { id: 'cyberpunk', label: 'Cyberpunk', icon: 'electric_bolt', swatch: '#0A0A12' },
+  { id: 'tokyo-night', label: 'Tokyo Night', icon: 'apartment', swatch: '#1A1B26' },
+  { id: 'rose-pine', label: 'Rosé Pine', icon: 'spa', swatch: '#191724' },
+  { id: 'monokai', label: 'Monokai', icon: 'code', swatch: '#272822' },
 ];
 
 const ACCENT_MAP: Record<PawTheme, string> = {
@@ -33,6 +45,12 @@ const ACCENT_MAP: Record<PawTheme, string> = {
   arctic: '#2E7DB5',
   violet: '#A78BFA',
   solarized: '#268BD2',
+  dracula: '#BD93F9',
+  nord: '#88C0D0',
+  cyberpunk: '#FF2D78',
+  'tokyo-night': '#7AA2F7',
+  'rose-pine': '#EBBCBA',
+  monokai: '#F92672',
 };
 
 export function getTheme(): PawTheme {
