@@ -419,20 +419,52 @@ pub async fn engine_n8n_mcp_status(
 }
 
 /// Refresh the n8n MCP tool list (re-discovers tools from the running engine).
+/// If the existing connection is stale (e.g., after a container restart),
+/// performs a full disconnect + reconnect cycle.
 #[tauri::command]
 pub async fn engine_n8n_mcp_refresh(app_handle: tauri::AppHandle) -> Result<usize, String> {
     let state = app_handle
         .try_state::<EngineState>()
         .ok_or("Engine state not available")?;
+
     let mut reg = state.mcp_registry.lock().await;
+
     if reg.is_n8n_registered() {
-        reg.refresh_tools("n8n").await?;
-        let tool_count = reg.tool_definitions_for(&["n8n".into()]).len();
-        log::info!("[n8n] MCP tools refreshed — {} tools", tool_count);
-        Ok(tool_count)
-    } else {
-        Err("n8n MCP bridge is not connected".to_string())
+        // Try refreshing on the existing connection first
+        match reg.refresh_tools("n8n").await {
+            Ok(()) => {
+                let tool_count = reg.tool_definitions_for(&["n8n".into()]).len();
+                log::info!("[n8n] MCP tools refreshed — {} tools", tool_count);
+                return Ok(tool_count);
+            }
+            Err(e) => {
+                // Existing connection is likely stale — do a full reconnect
+                log::info!("[n8n] MCP refresh failed ({}), attempting reconnect…", e);
+            }
+        }
     }
+
+    // Full reconnect: disconnect stale client and re-register
+    let (endpoint_url, api_key) = get_n8n_endpoint(&app_handle)?;
+    reg.disconnect_n8n().await;
+    let tool_count = reg
+        .register_n8n(&endpoint_url, &api_key)
+        .await
+        .map_err(|e| format!("MCP reconnection failed: {}", e))?;
+
+    drop(reg);
+
+    // Invalidate tool index so it includes the new tools
+    {
+        let mut idx = state.tool_index.lock().await;
+        *idx = crate::engine::tool_index::ToolIndex::new();
+    }
+
+    log::info!(
+        "[n8n] MCP bridge reconnected via refresh — {} tools",
+        tool_count
+    );
+    Ok(tool_count)
 }
 
 /// Get the current status of the n8n engine (for Settings → Advanced).
@@ -618,6 +650,9 @@ pub async fn engine_n8n_search_ncnodes(
 }
 
 /// List community node packages installed in the n8n engine.
+///
+/// Tries the n8n REST API first, then falls back to reading the container's
+/// package.json via `docker exec` (handles cases where the REST API 404s).
 #[tauri::command]
 pub async fn engine_n8n_community_packages_list(
     app_handle: tauri::AppHandle,
@@ -636,16 +671,81 @@ pub async fn engine_n8n_community_packages_list(
         ))
         .header("X-N8N-API-KEY", &api_key)
         .send()
-        .await
-        .map_err(|e| format!("Failed to list community packages: {}", e))?;
+        .await;
 
-    if !resp.status().is_success() {
-        let status = resp.status().as_u16();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("List packages failed (HTTP {}): {}", status, body));
+    // Try REST API first
+    if let Ok(r) = resp {
+        if r.status().is_success() {
+            if let Ok(packages) = r.json::<Vec<CommunityPackage>>().await {
+                return Ok(packages);
+            }
+        } else {
+            let status = r.status().as_u16();
+            info!(
+                "[n8n] Community packages REST API returned HTTP {} — falling back to docker exec",
+                status
+            );
+        }
     }
 
-    let packages: Vec<CommunityPackage> = resp.json().await.map_err(|e| e.to_string())?;
+    // Fallback: read package.json from the container to discover installed packages
+    list_packages_from_container().await
+}
+
+/// Fallback for listing community packages by reading the container's package.json.
+///
+/// n8n stores community packages as npm dependencies in /home/node/.n8n/package.json.
+/// This approach works even when the REST API endpoint returns 404.
+async fn list_packages_from_container() -> Result<Vec<CommunityPackage>, String> {
+    use tokio::process::Command;
+
+    let output = Command::new("docker")
+        .args([
+            "exec",
+            n8n_engine::types::CONTAINER_NAME,
+            "cat",
+            "/home/node/.n8n/package.json",
+        ])
+        .output()
+        .await
+        .map_err(|e| format!("docker exec failed: {}", e))?;
+
+    if !output.status.success() {
+        // No package.json = no community packages installed
+        return Ok(vec![]);
+    }
+
+    let content = String::from_utf8_lossy(&output.stdout);
+    let pkg_json: serde_json::Value =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse package.json: {}", e))?;
+
+    let mut packages = Vec::new();
+
+    if let Some(deps) = pkg_json.get("dependencies").and_then(|d| d.as_object()) {
+        for (name, version) in deps {
+            // Only include n8n community packages (npm packages for n8n nodes)
+            if name.starts_with("n8n-nodes-")
+                || name.starts_with("@n8n/")
+                || name.contains("-n8n-")
+            {
+                packages.push(CommunityPackage {
+                    package_name: name.clone(),
+                    installed_version: version
+                        .as_str()
+                        .unwrap_or("unknown")
+                        .trim_start_matches('^')
+                        .trim_start_matches('~')
+                        .to_string(),
+                    installed_nodes: vec![], // Node info requires n8n's node registry
+                });
+            }
+        }
+    }
+
+    info!(
+        "[n8n] Found {} community packages via container package.json",
+        packages.len()
+    );
     Ok(packages)
 }
 
@@ -701,31 +801,37 @@ pub async fn engine_n8n_package_credential_schema(
         .build()
         .map_err(|e| e.to_string())?;
 
-    // Step 1: Get installed nodes for this package to find their credential types
-    let installed: Vec<CommunityPackage> = {
+    // Step 1: Try to get installed node types for this package.
+    // First try the REST API, then fall back to matching by package name prefix.
+    let known_node_types: Vec<String> = {
         let list_url = format!("{}/api/v1/community-packages", base);
         let resp = client
             .get(&list_url)
             .header("X-N8N-API-KEY", &api_key)
             .send()
-            .await
-            .map_err(|e| format!("Failed to list packages: {}", e))?;
+            .await;
 
-        if !resp.status().is_success() {
-            return Err(format!(
-                "Failed to list community packages: HTTP {}",
-                resp.status().as_u16()
-            ));
+        match resp {
+            Ok(r) if r.status().is_success() => {
+                let pkgs: Vec<CommunityPackage> = r.json().await.unwrap_or_default();
+                pkgs.iter()
+                    .find(|p| p.package_name == package_name)
+                    .map(|p| {
+                        p.installed_nodes
+                            .iter()
+                            .map(|n| n.node_type.clone())
+                            .collect()
+                    })
+                    .unwrap_or_default()
+            }
+            _ => {
+                info!(
+                    "[n8n] Community packages list unavailable — will discover node types by package name"
+                );
+                vec![]
+            }
         }
-        resp.json()
-            .await
-            .map_err(|e| format!("Failed to parse packages list: {}", e))?
     };
-
-    let pkg = installed
-        .iter()
-        .find(|p| p.package_name == package_name)
-        .ok_or_else(|| format!("Package '{}' not found in installed list", package_name))?;
 
     // Step 2: For each installed node type, discover its credential requirements
     // n8n exposes /types/credentials.json which lists all credential type schemas
@@ -767,20 +873,22 @@ pub async fn engine_n8n_package_credential_schema(
         if resp.status().is_success() {
             if let Ok(nodes_json) = resp.json::<serde_json::Value>().await {
                 if let Some(nodes_arr) = nodes_json.as_array() {
-                    let package_node_types: Vec<&str> = pkg
-                        .installed_nodes
-                        .iter()
-                        .map(|n| n.node_type.as_str())
-                        .collect();
-
                     for node in nodes_arr {
                         let node_name = node
                             .get("name")
                             .and_then(|n| n.as_str())
                             .unwrap_or_default();
 
-                        // Skip nodes not from this package
-                        if !package_node_types.contains(&node_name) {
+                        // Match nodes belonging to this package:
+                        // - If we have known node types from the REST API, match exactly
+                        // - Otherwise, match by package name prefix (e.g., "n8n-nodes-foo.Bar")
+                        let is_pkg_node = if !known_node_types.is_empty() {
+                            known_node_types.iter().any(|t| t == node_name)
+                        } else {
+                            node_name.starts_with(&format!("{}.", package_name))
+                        };
+
+                        if !is_pkg_node {
                             continue;
                         }
 
@@ -854,9 +962,9 @@ pub async fn engine_n8n_package_credential_schema(
         }
     }
 
-    // If we couldn't discover any schemas but we know the package installed nodes,
+    // If we couldn't discover any schemas but we know the package has nodes,
     // emit a generic "API Key" credential as a fallback
-    if schemas.is_empty() && !pkg.installed_nodes.is_empty() {
+    if schemas.is_empty() && !known_node_types.is_empty() {
         let pkg_display = display_name_for_pkg(&package_name);
         schemas.push(N8nCredentialSchema {
             credential_type: format!(
@@ -1148,7 +1256,9 @@ pub async fn engine_n8n_community_packages_install(
 
             // Only restart the container when no other installs are in flight
             if remaining == 0 {
-                restart_n8n_container().await;
+                restart_n8n_container(&base_url, &api_key).await;
+                // Reconnect MCP bridge so the Librarian discovers new tools
+                refresh_mcp_after_install(&app_handle).await;
             } else {
                 info!(
                     "[n8n] Deferring container restart — {} install(s) still in flight",
@@ -1356,7 +1466,7 @@ async fn direct_npm_install_docker(package_name: &str) -> Result<(), String> {
 }
 
 /// Restart the managed n8n container so it picks up newly installed nodes.
-async fn restart_n8n_container() {
+async fn restart_n8n_container(base_url: &str, api_key: &str) {
     use tokio::process::Command;
 
     info!("[n8n] Restarting container to load new nodes…");
@@ -1365,13 +1475,9 @@ async fn restart_n8n_container() {
         .output()
         .await;
 
-    // Poll n8n until it responds (up to 60s) instead of sleeping a fixed time
+    // Poll n8n until it responds (up to 60s)
     info!("[n8n] Waiting for n8n to come back up after restart…");
-    // Need the endpoint to poll — reconstruct from container port
-    let base_url = format!("http://127.0.0.1:{}", 5678);
-    // We don't have the API key here, but probe_n8n accepts any key and just
-    // checks for a 200 or 401 (meaning n8n is alive). Try with empty key first.
-    let ready = n8n_engine::health::poll_n8n_ready(&base_url, "").await;
+    let ready = n8n_engine::health::poll_n8n_ready(base_url, api_key).await;
     if ready {
         info!("[n8n] Container restarted and responding");
     } else {
@@ -1379,6 +1485,65 @@ async fn restart_n8n_container() {
         info!("[n8n] Polling timed out — waiting 10s as fallback");
         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
     }
+}
+
+/// After a community package install + container restart, reconnect the MCP
+/// bridge and invalidate the tool index so the Librarian discovers new tools.
+///
+/// Per the Conductor Protocol / Librarian Method architecture:
+///   1. n8n is a headless MCP service — no workflows needed
+///   2. Community packages add node types that appear as MCP tools
+///   3. After restart the SSE connection is stale — must reconnect
+///   4. Tool index must rebuild so request_tools() finds the new tools
+async fn refresh_mcp_after_install(app_handle: &tauri::AppHandle) {
+    let state = match app_handle.try_state::<EngineState>() {
+        Some(s) => s,
+        None => return,
+    };
+    let (endpoint_url, api_key) = match get_n8n_endpoint(app_handle) {
+        Ok(pair) => pair,
+        Err(_) => return,
+    };
+
+    // 1. Disconnect stale MCP client and re-register with fresh SSE connection
+    let tool_count = {
+        let mut reg = state.mcp_registry.lock().await;
+        reg.disconnect_n8n().await;
+        match reg.register_n8n(&endpoint_url, &api_key).await {
+            Ok(count) => count,
+            Err(e) => {
+                log::warn!(
+                    "[n8n] MCP bridge reconnection failed after install: {}",
+                    e
+                );
+                return;
+            }
+        }
+    };
+
+    info!(
+        "[n8n] MCP bridge reconnected after install — {} tools available",
+        tool_count
+    );
+
+    // 2. Invalidate tool index so it rebuilds with new MCP tools
+    //    on the next request_tools() call (lazy rebuild).
+    {
+        let mut idx = state.tool_index.lock().await;
+        *idx = crate::engine::tool_index::ToolIndex::new();
+    }
+
+    info!("[n8n] Tool index invalidated — will rebuild on next request_tools call");
+
+    // 3. Notify frontend about updated MCP status
+    use tauri::Emitter;
+    let _ = app_handle.emit(
+        "n8n-mcp-status",
+        serde_json::json!({
+            "connected": true,
+            "tool_count": tool_count,
+        }),
+    );
 }
 
 /// Install a community node package directly via npm in the process-mode data directory.

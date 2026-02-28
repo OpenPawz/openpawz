@@ -40,8 +40,6 @@ let _credFormState: 'loading' | 'form' | 'saving' | 'done' | 'error' = 'loading'
 let _credFormError = '';
 let _debounceTimer: ReturnType<typeof setTimeout> | null = null;
 let _container: HTMLElement | null = null;
-/** Locally-tracked installs not yet confirmed by n8n (survives restart delays). */
-const _localInstalled: InstalledPackage[] = [];
 
 // ── Public API ─────────────────────────────────────────────────────────
 
@@ -444,21 +442,10 @@ async function _fetchInstalled(): Promise<void> {
     const pkgs = await invoke<InstalledPackage[]>('engine_n8n_community_packages_list');
     _installed = pkgs;
 
-    // Merge any locally-tracked packages that n8n hasn't registered yet
-    for (const local of _localInstalled) {
-      if (!_installed.some((p) => p.packageName === local.packageName)) {
-        _installed.push(local);
-      }
-    }
-
     // Re-render if on installed tab or to update badges
     if (_tab === 'installed' || _installed.length > 0) _render();
-  } catch {
-    // n8n not running — show locally-tracked packages at minimum
-    if (_localInstalled.length > 0 && _installed.length === 0) {
-      _installed = [..._localInstalled];
-      _render();
-    }
+  } catch (e) {
+    console.warn('[community] Failed to fetch installed packages:', e);
   }
 }
 
@@ -470,28 +457,12 @@ async function _installPackage(packageName: string): Promise<void> {
   showToast(`Installing ${packageName}… this may take a minute or two.`, 'info');
 
   try {
-    const result = await invoke<InstalledPackage>('engine_n8n_community_packages_install', {
+    await invoke<InstalledPackage>('engine_n8n_community_packages_install', {
       packageName,
     });
 
-    // Track locally so the Installed tab works even if n8n is still restarting
-    const localEntry: InstalledPackage = {
-      packageName: result?.packageName ?? packageName,
-      installedVersion: result?.installedVersion ?? 'latest',
-      installedNodes: result?.installedNodes ?? [],
-    };
-    if (!_localInstalled.some((p) => p.packageName === localEntry.packageName)) {
-      _localInstalled.push(localEntry);
-    }
-
-    // Auto-deploy MCP workflow and refresh tools
-    try {
-      await invoke('engine_n8n_deploy_mcp_workflow');
-    } catch {
-      // MCP workflow deploy is best-effort
-    }
-
-    // Refresh installed list (merges with local cache)
+    // Backend handles MCP bridge reconnection + tool index invalidation.
+    // Just refresh the installed list from the backend.
     await _fetchInstalled();
 
     // Show post-install guidance with inline credential form
@@ -588,9 +559,6 @@ async function _saveCredentials(credentialType: string, displayName: string): Pr
 async function _uninstallPackage(packageName: string): Promise<void> {
   try {
     await invoke('engine_n8n_community_packages_uninstall', { packageName });
-    // Remove from local cache too
-    const idx = _localInstalled.findIndex((p) => p.packageName === packageName);
-    if (idx >= 0) _localInstalled.splice(idx, 1);
     showToast(`Uninstalled ${packageName}`, 'success');
     await _fetchInstalled();
     _render();
