@@ -5,11 +5,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { FlowGraph, FlowNode } from './atoms';
-import type {
-  FlowRunState,
-  NodeExecConfig,
-} from './executor-atoms';
 import {
+  type FlowRunState,
+  type NodeExecConfig,
   createNodeRunState,
   getNodeExecConfig,
   collectNodeInput,

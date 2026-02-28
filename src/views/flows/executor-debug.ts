@@ -5,10 +5,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { FlowGraph, FlowNode } from './atoms';
-import type {
-  FlowRunState,
-} from './executor-atoms';
 import {
+  type FlowRunState,
   buildExecutionPlan,
   validateFlowForExecution,
   createFlowRunState,

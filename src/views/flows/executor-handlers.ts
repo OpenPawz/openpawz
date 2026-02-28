@@ -6,12 +6,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { FlowNode, FlowGraph } from './atoms';
-import type {
-  NodeExecConfig,
-  FlowExecEvent,
-  FlowRunState,
-} from './executor-atoms';
 import {
+  type NodeExecConfig,
+  type FlowExecEvent,
+  type FlowRunState,
   getNodeExecConfig,
   resolveVariables,
   parseLoopArray,
