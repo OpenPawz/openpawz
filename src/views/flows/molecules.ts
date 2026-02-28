@@ -49,6 +49,14 @@ interface MoleculesState {
   setGraph: (g: FlowGraph) => void;
   getSelectedNodeId: () => string | null;
   setSelectedNodeId: (id: string | null) => void;
+  /** Phase 3.5: Multi-select — get the set of all selected node IDs */
+  getSelectedNodeIds: () => ReadonlySet<string>;
+  /** Phase 3.5: Multi-select — replace the entire selection set */
+  setSelectedNodeIds: (ids: Set<string>) => void;
+  /** Phase 3.6: Get selected edge ID */
+  getSelectedEdgeId: () => string | null;
+  /** Phase 3.6: Set selected edge ID */
+  setSelectedEdgeId: (id: string | null) => void;
   onGraphChanged: () => void;
   /** Phase 1.3: Undo/Redo callbacks (set by index.ts, called by toolbar/keyboard). */
   onUndo?: () => void;
@@ -92,6 +100,18 @@ let _drawingEdge: {
   cursorX: number;
   cursorY: number;
 } | null = null;
+
+// Phase 3.5: Rubber-band box selection
+let _rubberBand: {
+  startX: number;
+  startY: number;
+  cursorX: number;
+  cursorY: number;
+} | null = null;
+let _rubberBandEl: SVGRectElement | null = null;
+
+// Phase 3.6: Edge selection
+let _selectedEdgeId: string | null = null;
 
 // ── Phase 0.2: rAF render throttle ──────────────────────────────────────
 // During drag/interaction we schedule one render per animation frame instead
@@ -322,8 +342,12 @@ export function renderGraph() {
 
   // Nodes
   const selectedId = _state.getSelectedNodeId();
+  const selectedIds = _state.getSelectedNodeIds();
   for (const node of graph.nodes) {
-    _nodesGroup.appendChild(renderNode(node, node.id === selectedId));
+    const isSelected = selectedIds.size > 0
+      ? selectedIds.has(node.id)
+      : node.id === selectedId;
+    _nodesGroup.appendChild(renderNode(node, isSelected));
     renderPorts(node);
   }
 }
@@ -546,9 +570,10 @@ function renderPorts(node: FlowNode) {
 
 function renderEdge(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode): SVGGElement {
   const g = svgEl('g') as SVGGElement;
+  const isSelected = _selectedEdgeId === edge.id;
   g.setAttribute(
     'class',
-    `flow-edge flow-edge-${edge.kind}${edge.active ? ' flow-edge-active' : ''}`,
+    `flow-edge flow-edge-${edge.kind}${edge.active ? ' flow-edge-active' : ''}${isSelected ? ' flow-edge-selected' : ''}`,
   );
   g.setAttribute('data-edge-id', edge.id);
 
@@ -556,11 +581,21 @@ function renderEdge(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode): SVGGE
   const toPt = getInputPort(toNode, edge.toPort);
   const pathD = buildEdgePath(fromPt, toPt);
 
+  // Invisible wide hit-area for click selection
+  const hitArea = svgEl('path');
+  hitArea.setAttribute('d', pathD);
+  hitArea.setAttribute('fill', 'none');
+  hitArea.setAttribute('stroke', 'transparent');
+  hitArea.setAttribute('stroke-width', '12');
+  hitArea.setAttribute('class', 'flow-edge-hit');
+  hitArea.style.cursor = 'pointer';
+  g.appendChild(hitArea);
+
   const path = svgEl('path');
   path.setAttribute('class', 'flow-edge-path');
   path.setAttribute('d', pathD);
   path.setAttribute('fill', 'none');
-  path.setAttribute('stroke-width', edge.active ? '2.5' : '1.5');
+  path.setAttribute('stroke-width', isSelected ? '3' : (edge.active ? '2.5' : '1.5'));
 
   switch (edge.kind) {
     case 'forward':
@@ -588,6 +623,7 @@ function renderEdge(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode): SVGGE
   }
 
   if (edge.active) path.setAttribute('filter', 'url(#flow-glow)');
+  if (isSelected) path.setAttribute('filter', 'url(#flow-selected-glow)');
   g.appendChild(path);
 
   // Edge label
@@ -694,22 +730,67 @@ function onMouseDown(e: MouseEvent) {
   // Check for node hit (start drag)
   const node = hitTestNode(graph, pt.x, pt.y);
   if (node) {
-    // Shift+click toggles breakpoint
-    if (e.shiftKey) {
+    _selectedEdgeId = null; // Deselect edge when selecting node
+    _state.setSelectedEdgeId(null);
+    // Shift+click toggles breakpoint (without Ctrl)
+    if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
       const event = new CustomEvent('flow:toggle-breakpoint', { detail: { nodeId: node.id } });
       document.dispatchEvent(event);
       e.preventDefault();
       return;
     }
-    _state.setSelectedNodeId(node.id);
+
+    // Ctrl/Meta+click: toggle in multi-select set
+    if (e.ctrlKey || e.metaKey) {
+      const ids = new Set(_state.getSelectedNodeIds());
+      if (ids.has(node.id)) {
+        ids.delete(node.id);
+      } else {
+        ids.add(node.id);
+      }
+      _state.setSelectedNodeIds(ids);
+      _state.setSelectedNodeId(ids.size === 1 ? [...ids][0] : (ids.size > 0 ? node.id : null));
+    } else {
+      // Plain click: single-select (clear multi-select)
+      const selectedIds = _state.getSelectedNodeIds();
+      if (!selectedIds.has(node.id)) {
+        _state.setSelectedNodeIds(new Set([node.id]));
+      }
+      _state.setSelectedNodeId(node.id);
+    }
+
+    // Start drag — if node is in multi-select, we'll drag all selected
     _dragging = { nodeId: node.id, offsetX: pt.x - node.x, offsetY: pt.y - node.y };
     renderGraph();
     e.preventDefault();
     return;
   }
 
-  // Click empty space — deselect + start pan
+  // Phase 3.6: Check for edge hit (click on edge hit-area or path)
+  const target = e.target as SVGElement;
+  const edgeGroup = target.closest('[data-edge-id]') as SVGElement | null;
+  if (edgeGroup) {
+    const edgeId = edgeGroup.getAttribute('data-edge-id');
+    _selectedEdgeId = edgeId;
+    _state.setSelectedEdgeId(edgeId);
+    _state.setSelectedNodeId(null);
+    _state.setSelectedNodeIds(new Set());
+    renderGraph();
+    e.preventDefault();
+    return;
+  }
+
+  // Click empty space — deselect + start pan or rubber-band
+  _selectedEdgeId = null;
+  _state.setSelectedEdgeId(null);
+  if (e.shiftKey || e.ctrlKey || e.metaKey) {
+    // Shift/Ctrl+drag on empty space: rubber-band selection
+    _rubberBand = { startX: pt.x, startY: pt.y, cursorX: pt.x, cursorY: pt.y };
+    e.preventDefault();
+    return;
+  }
   _state.setSelectedNodeId(null);
+  _state.setSelectedNodeIds(new Set());
   _panning = true;
   _panStartX = e.clientX - _panX;
   _panStartY = e.clientY - _panY;
@@ -728,18 +809,46 @@ function onMouseMove(e: MouseEvent) {
   }
 
   // Drag node — Phase 0.2b: dirty-region update (only dragged node + edges)
+  // Phase 3.5: If dragging a node in multi-select, move all selected nodes together
   if (_dragging) {
     const graph = _state.getGraph();
     if (!graph) return;
     const pt = canvasCoords(e);
-    const node =
+    const primaryNode =
       _nodeMap.get(_dragging.nodeId) ?? graph.nodes.find((n) => n.id === _dragging!.nodeId);
-    if (node) {
-      node.x = snapToGrid(pt.x - _dragging.offsetX);
-      node.y = snapToGrid(pt.y - _dragging.offsetY);
-      // Dirty-region: update only this node instead of full rebuild
-      updateDraggedNodePosition(_dragging.nodeId);
+    if (primaryNode) {
+      const newX = snapToGrid(pt.x - _dragging.offsetX);
+      const newY = snapToGrid(pt.y - _dragging.offsetY);
+      const dx = newX - primaryNode.x;
+      const dy = newY - primaryNode.y;
+
+      const selectedIds = _state.getSelectedNodeIds();
+      if (selectedIds.size > 1 && selectedIds.has(_dragging.nodeId)) {
+        // Multi-drag: move all selected nodes by the same delta
+        for (const nid of selectedIds) {
+          const n = _nodeMap.get(nid) ?? graph.nodes.find((nn) => nn.id === nid);
+          if (n) {
+            n.x = snapToGrid(n.x + dx);
+            n.y = snapToGrid(n.y + dy);
+            updateDraggedNodePosition(nid);
+          }
+        }
+      } else {
+        // Single drag
+        primaryNode.x = newX;
+        primaryNode.y = newY;
+        updateDraggedNodePosition(_dragging.nodeId);
+      }
     }
+    return;
+  }
+
+  // Rubber-band selection
+  if (_rubberBand) {
+    const pt = canvasCoords(e);
+    _rubberBand.cursorX = pt.x;
+    _rubberBand.cursorY = pt.y;
+    renderRubberBand();
     return;
   }
 
@@ -791,6 +900,29 @@ function onMouseUp(e: MouseEvent) {
   if (_dragging) {
     _dragging = null;
     _state.onGraphChanged();
+  }
+
+  // Finish rubber-band selection
+  if (_rubberBand && graph) {
+    const x1 = Math.min(_rubberBand.startX, _rubberBand.cursorX);
+    const y1 = Math.min(_rubberBand.startY, _rubberBand.cursorY);
+    const x2 = Math.max(_rubberBand.startX, _rubberBand.cursorX);
+    const y2 = Math.max(_rubberBand.startY, _rubberBand.cursorY);
+
+    const ids = new Set<string>();
+    for (const node of graph.nodes) {
+      // Node center inside rubber-band rectangle
+      const cx = node.x + node.width / 2;
+      const cy = node.y + node.height / 2;
+      if (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2) {
+        ids.add(node.id);
+      }
+    }
+    _state.setSelectedNodeIds(ids);
+    _state.setSelectedNodeId(ids.size === 1 ? [...ids][0] : null);
+    _rubberBand = null;
+    clearRubberBand();
+    renderGraph();
   }
 
   _panning = false;
@@ -867,6 +999,40 @@ function clearEdgePreview() {
   if (_dragPreviewGroup) _dragPreviewGroup.innerHTML = '';
 }
 
+// ── Phase 3.5: Rubber-band rendering ──
+
+function renderRubberBand() {
+  if (!_rubberBand || !_svg) return;
+  clearRubberBand();
+  const x = Math.min(_rubberBand.startX, _rubberBand.cursorX);
+  const y = Math.min(_rubberBand.startY, _rubberBand.cursorY);
+  const w = Math.abs(_rubberBand.cursorX - _rubberBand.startX);
+  const h = Math.abs(_rubberBand.cursorY - _rubberBand.startY);
+  if (w < 2 && h < 2) return;
+
+  const rect = svgEl('rect') as SVGRectElement;
+  rect.setAttribute('x', String(x));
+  rect.setAttribute('y', String(y));
+  rect.setAttribute('width', String(w));
+  rect.setAttribute('height', String(h));
+  rect.setAttribute('fill', 'rgba(78, 205, 196, 0.1)');
+  rect.setAttribute('stroke', 'var(--accent, #4ECDC4)');
+  rect.setAttribute('stroke-width', '1');
+  rect.setAttribute('stroke-dasharray', '4 2');
+  rect.setAttribute('class', 'flow-rubber-band');
+  if (_dragPreviewGroup) {
+    _dragPreviewGroup.appendChild(rect);
+  }
+  _rubberBandEl = rect;
+}
+
+function clearRubberBand() {
+  if (_rubberBandEl) {
+    _rubberBandEl.remove();
+    _rubberBandEl = null;
+  }
+}
+
 // ── Toolbar Rendering ──────────────────────────────────────────────────────
 
 export function renderToolbar(
@@ -940,6 +1106,9 @@ export function renderToolbar(
         <button class="flow-tb-btn" data-action="add-mcp-tool" title="Add MCP Tool (Direct)">
           <span class="ms">${NODE_DEFAULTS['mcp-tool'].icon}</span>
         </button>
+        <button class="flow-tb-btn" data-action="add-loop" title="Add Loop (Iterate)">
+          <span class="ms">${NODE_DEFAULTS.loop.icon}</span>
+        </button>
       </div>
       <div class="flow-toolbar-divider"></div>
       <div class="flow-toolbar-group">
@@ -1007,6 +1176,7 @@ function handleToolbarAction(action: string) {
     'add-output': 'output',
     'add-http': 'http' as FlowNodeKind,
     'add-mcp-tool': 'mcp-tool' as FlowNodeKind,
+    'add-loop': 'loop' as FlowNodeKind,
   };
 
   if (action in addKinds) {
@@ -1094,12 +1264,20 @@ function fitView() {
 function deleteSelected() {
   if (!_state) return;
   const graph = _state.getGraph();
-  const selectedId = _state.getSelectedNodeId();
-  if (!graph || !selectedId) return;
+  if (!graph) return;
 
-  graph.nodes = graph.nodes.filter((n) => n.id !== selectedId);
-  graph.edges = graph.edges.filter((e) => e.from !== selectedId && e.to !== selectedId);
+  const selectedIds = _state.getSelectedNodeIds();
+  const selectedId = _state.getSelectedNodeId();
+  const idsToDelete = selectedIds.size > 0
+    ? selectedIds
+    : (selectedId ? new Set([selectedId]) : new Set<string>());
+
+  if (idsToDelete.size === 0) return;
+
+  graph.nodes = graph.nodes.filter((n) => !idsToDelete.has(n.id));
+  graph.edges = graph.edges.filter((e) => !idsToDelete.has(e.from) && !idsToDelete.has(e.to));
   _state.setSelectedNodeId(null);
+  _state.setSelectedNodeIds(new Set());
   _state.onGraphChanged();
   renderGraph();
 }
@@ -1366,8 +1544,76 @@ export function renderNodePanel(
       return;
     }
 
+    // Phase 3.6: Edge panel when an edge is selected
+    if (_selectedEdgeId && activeGraph) {
+      const edge = activeGraph.edges.find((ee) => ee.id === _selectedEdgeId);
+      if (edge && onGraphUpdate) {
+        const edgeLabel = escAttr(edge.label ?? '');
+        const fromNode = activeGraph.nodes.find((n) => n.id === edge.from);
+        const toNode = activeGraph.nodes.find((n) => n.id === edge.to);
+        container.innerHTML = `
+          <div class="flow-panel">
+            <div class="flow-panel-header">
+              <span class="ms" style="color: var(--accent)">arrow_forward</span>
+              <div>
+                <div class="flow-panel-kind">EDGE</div>
+                <div class="flow-panel-label">${fromNode?.label ?? edge.from} → ${toNode?.label ?? edge.to}</div>
+              </div>
+            </div>
+            <label class="flow-panel-field">
+              <span>Kind</span>
+              <select class="flow-panel-input" data-edge-field="kind">
+                <option value="forward"${edge.kind === 'forward' ? ' selected' : ''}>Forward</option>
+                <option value="reverse"${edge.kind === 'reverse' ? ' selected' : ''}>Reverse</option>
+                <option value="bidirectional"${edge.kind === 'bidirectional' ? ' selected' : ''}>Bidirectional</option>
+                <option value="error"${edge.kind === 'error' ? ' selected' : ''}>Error</option>
+              </select>
+            </label>
+            <label class="flow-panel-field">
+              <span>Label</span>
+              <input type="text" class="flow-panel-input" data-edge-field="label" value="${edgeLabel}" placeholder="Optional label…" />
+            </label>
+            <label class="flow-panel-field">
+              <span>Condition</span>
+              <input type="text" class="flow-panel-input" data-edge-field="conditionExpr" value="${escAttr((edge as unknown as Record<string, unknown>).conditionExpr as string ?? '')}" placeholder="Expression for conditional routing" />
+            </label>
+            <div class="flow-panel-section" style="margin-top: 12px">
+              <button class="flow-btn flow-btn-danger" data-edge-action="delete" style="width:100%">
+                <span class="ms" style="font-size:14px">delete</span> Delete Edge
+              </button>
+            </div>
+          </div>
+        `;
+
+        // Wire edge field changes
+        container.querySelectorAll('[data-edge-field]').forEach((el) => {
+          el.addEventListener('change', () => {
+            const field = (el as HTMLElement).dataset.edgeField!;
+            const value = (el as HTMLInputElement).value;
+            (edge as unknown as Record<string, unknown>)[field] = value;
+            activeGraph.updatedAt = new Date().toISOString();
+            onGraphUpdate({} as Partial<FlowGraph>); // trigger save
+            renderGraph();
+          });
+        });
+
+        // Delete edge button
+        const deleteBtn = container.querySelector('[data-edge-action="delete"]');
+        deleteBtn?.addEventListener('click', () => {
+          activeGraph.edges = activeGraph.edges.filter((ee) => ee.id !== _selectedEdgeId);
+          _selectedEdgeId = null;
+          _state?.setSelectedEdgeId(null);
+          activeGraph.updatedAt = new Date().toISOString();
+          onGraphUpdate({} as Partial<FlowGraph>); // trigger save
+          renderGraph();
+          renderNodePanel(container, null, onUpdate, activeGraph, onGraphUpdate);
+        });
+        return;
+      }
+    }
+
     container.innerHTML =
-      '<div class="flow-panel-empty"><span class="ms">touch_app</span><p>Select a node to edit</p></div>';
+      '<div class="flow-panel-empty"><span class="ms">touch_app</span><p>Select a node or edge to edit</p></div>';
     return;
   }
 
@@ -1540,6 +1786,34 @@ return input.toUpperCase();">${codeVal}</textarea>
     `;
   }
 
+  // Credential binding for HTTP and MCP-tool nodes
+  if (node.kind === 'http' || node.kind === 'mcp-tool') {
+    const credName = escAttr((config.credentialName as string) ?? '');
+    const credType = (config.credentialType as string) ?? 'bearer';
+    configFieldsHtml += `
+      <div class="flow-panel-retry-config" style="margin-top: 8px">
+        <div class="flow-panel-retry-header">
+          <span class="ms" style="font-size:14px;color:var(--kinetic-gold)">key</span>
+          <span>Credential</span>
+        </div>
+        <label class="flow-panel-field">
+          <span>Credential Name</span>
+          <input type="text" class="flow-panel-input" data-config="credentialName" value="${credName}" placeholder="e.g. openai-key, github-token" />
+        </label>
+        <label class="flow-panel-field">
+          <span>Type</span>
+          <select class="flow-panel-input" data-config="credentialType">
+            <option value="bearer"${credType === 'bearer' ? ' selected' : ''}>Bearer Token</option>
+            <option value="api-key"${credType === 'api-key' ? ' selected' : ''}>API Key (header)</option>
+            <option value="basic"${credType === 'basic' ? ' selected' : ''}>Basic Auth</option>
+            <option value="oauth2"${credType === 'oauth2' ? ' selected' : ''}>OAuth2</option>
+          </select>
+        </label>
+        <span class="flow-panel-hint">Or use <code>{{vault.name}}</code> directly in headers/args.</span>
+      </div>
+    `;
+  }
+
   if (node.kind === 'mcp-tool') {
     const mcpToolName = escAttr((config.mcpToolName as string) ?? '');
     const mcpToolArgs = escAttr((config.mcpToolArgs as string) ?? '');
@@ -1553,6 +1827,74 @@ return input.toUpperCase();">${codeVal}</textarea>
         <textarea class="flow-panel-textarea" data-config="mcpToolArgs" rows="3" placeholder='{"query": "{{input}}"}'>${mcpToolArgs}</textarea>
       </label>
       <span class="flow-panel-hint">Use <code>{{input}}</code> in arguments to inject upstream output.</span>
+    `;
+  }
+
+  if (node.kind === ('loop' as typeof node.kind)) {
+    const loopOver = escAttr((config.loopOver as string) ?? '');
+    const loopVar = escAttr((config.loopVar as string) ?? 'item');
+    const loopMaxIter = (config.loopMaxIterations as number) ?? 100;
+    configFieldsHtml += `
+      <div class="flow-panel-loop-config">
+        <div class="flow-panel-retry-header">
+          <span class="ms" style="font-size:14px;color:var(--kinetic-gold)">repeat</span>
+          <span>Loop / Iteration</span>
+        </div>
+        <label class="flow-panel-field">
+          <span>Loop Over</span>
+          <input type="text" class="flow-panel-input" data-config="loopOver" value="${loopOver}" placeholder="e.g. data.items, results" />
+        </label>
+        <label class="flow-panel-field">
+          <span>Item Variable</span>
+          <input type="text" class="flow-panel-input" data-config="loopVar" value="${loopVar}" placeholder="item" />
+        </label>
+        <label class="flow-panel-field">
+          <span>Max Iterations</span>
+          <input type="number" class="flow-panel-input" data-config="loopMaxIterations" value="${loopMaxIter}" min="1" max="1000" step="1" />
+        </label>
+        <span class="flow-panel-hint">Use <code>{{loop.index}}</code> and <code>{{loop.item}}</code> in downstream prompts.</span>
+      </div>
+    `;
+  }
+
+  // Group / sub-flow config
+  if (node.kind === 'group') {
+    const subFlowId = escAttr((config.subFlowId as string) ?? '');
+    configFieldsHtml += `
+      <div class="flow-panel-retry-config" style="margin-top: 8px">
+        <div class="flow-panel-retry-header">
+          <span class="ms" style="font-size:14px;color:var(--kinetic-purple, #A855F7)">account_tree</span>
+          <span>Sub-flow</span>
+        </div>
+        <label class="flow-panel-field">
+          <span>Sub-flow ID</span>
+          <input type="text" class="flow-panel-input" data-config="subFlowId" value="${subFlowId}" placeholder="Paste flow ID to execute" />
+        </label>
+        <span class="flow-panel-hint">The selected flow will be executed with upstream input. Max 5 levels of nesting.</span>
+      </div>
+    `;
+  }
+
+  // Variable assignment — available on all node kinds
+  {
+    const setVarKey = escAttr((config.setVariableKey as string) ?? '');
+    const setVarVal = escAttr((config.setVariable as string) ?? '');
+    configFieldsHtml += `
+      <div class="flow-panel-retry-config" style="margin-top: 8px">
+        <div class="flow-panel-retry-header">
+          <span class="ms" style="font-size:14px">data_object</span>
+          <span>Set Variable</span>
+        </div>
+        <label class="flow-panel-field">
+          <span>Variable Name</span>
+          <input type="text" class="flow-panel-input" data-config="setVariableKey" value="${setVarKey}" placeholder="e.g. summary, lastResult" />
+        </label>
+        <label class="flow-panel-field">
+          <span>Value Expression</span>
+          <input type="text" class="flow-panel-input" data-config="setVariable" value="${setVarVal}" placeholder="Leave empty to use node output" />
+        </label>
+        <span class="flow-panel-hint">Access via <code>{{flow.name}}</code> in downstream prompts.</span>
+      </div>
     `;
   }
 
@@ -1589,7 +1931,7 @@ return input.toUpperCase();">${codeVal}</textarea>
   }
 
   // Retry config for executable nodes (agent, tool, data, code)
-  if (['agent', 'tool', 'data', 'code', 'http', 'mcp-tool'].includes(node.kind)) {
+  if (['agent', 'tool', 'data', 'code', 'http', 'mcp-tool', 'loop'].includes(node.kind)) {
     const maxRetries = (config.maxRetries as number) ?? 0;
     const retryDelay = (config.retryDelayMs as number) ?? 1000;
     const retryBackoff = (config.retryBackoff as number) ?? 2;
@@ -1616,7 +1958,7 @@ return input.toUpperCase();">${codeVal}</textarea>
   }
 
   // Timeout field for agent/tool/condition/data/code nodes
-  if (['agent', 'tool', 'condition', 'data', 'code', 'http', 'mcp-tool'].includes(node.kind)) {
+  if (['agent', 'tool', 'condition', 'data', 'code', 'http', 'mcp-tool', 'loop'].includes(node.kind)) {
     configFieldsHtml += `
       <label class="flow-panel-field">
         <span>Timeout (s)</span>

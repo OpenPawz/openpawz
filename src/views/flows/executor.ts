@@ -16,6 +16,8 @@ import {
   getNodeExecConfig,
   validateFlowForExecution,
   executeCodeSandboxed,
+  resolveVariables,
+  parseLoopArray,
   type FlowRunState,
   type FlowExecEvent,
   type NodeExecConfig,
@@ -42,6 +44,10 @@ export interface FlowExecutorCallbacks {
   onNodeStatusChange: (nodeId: string, status: string) => void;
   /** Called when an edge becomes active (data flowing) */
   onEdgeActive: (edgeId: string, active: boolean) => void;
+  /** Resolve a flow graph by ID (for sub-flow execution) */
+  flowResolver?: (flowId: string) => FlowGraph | null;
+  /** Load a vault credential by name (returns decrypted value, or null) */
+  credentialLoader?: (name: string) => Promise<string | null>;
 }
 
 export interface FlowExecutorController {
@@ -95,6 +101,8 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
   const _edgeValues = new Map<string, string>();
   // Last compiled execution strategy (for UI display)
   let _lastStrategy: ExecutionStrategy | null = null;
+  // Recursion depth for sub-flow execution (max 5)
+  let _subFlowDepth = 0;
 
   async function run(graph: FlowGraph, defaultAgentId?: string): Promise<FlowRunState> {
     // Validate
@@ -107,7 +115,34 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
 
     // Build plan
     const plan = buildExecutionPlan(graph);
-    _runState = createFlowRunState(graph.id, plan);
+
+    // Pre-load vault credentials referenced in any node config
+    const vaultCreds: Record<string, string> = {};
+    if (callbacks.credentialLoader) {
+      const credNames = new Set<string>();
+      for (const node of graph.nodes) {
+        const cfg = node.config ?? {};
+        // Explicit credentialName field
+        if (cfg.credentialName && typeof cfg.credentialName === 'string') {
+          credNames.add(cfg.credentialName);
+        }
+        // Scan string config values for {{vault.NAME}} references
+        for (const val of Object.values(cfg)) {
+          if (typeof val === 'string') {
+            const matches = val.matchAll(/\{\{vault\.(\w[\w.-]*)\}\}/g);
+            for (const m of matches) credNames.add(m[1]);
+          }
+        }
+      }
+      for (const name of credNames) {
+        try {
+          const val = await callbacks.credentialLoader(name);
+          if (val !== null) vaultCreds[name] = val;
+        } catch { /* skip failed loads */ }
+      }
+    }
+
+    _runState = createFlowRunState(graph.id, plan, graph.variables, vaultCreds);
     _aborted = false;
     _paused = false;
     _running = true;
@@ -577,7 +612,13 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
 
     try {
       // Collect input from upstream nodes
-      const upstreamInput = collectNodeInput(graph, node.id, _runState.nodeStates);
+      let upstreamInput = collectNodeInput(graph, node.id, _runState.nodeStates);
+      // Resolve template variables ({{flow.x}}, {{vault.x}}, {{input}}) in upstream
+      upstreamInput = resolveVariables(upstreamInput, {
+        input: upstreamInput,
+        variables: _runState.variables,
+        vaultCredentials: _runState.vaultCredentials,
+      });
       nodeState.input = upstreamInput;
 
       let output: string;
@@ -654,6 +695,16 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
           // MCP-tool nodes: direct MCP call via Conductor Extract
           output = await executeMcpToolNode(node, upstreamInput, config);
           break;
+
+        case 'loop' as FlowNode['kind']:
+          // Loop nodes: iterate over array data, execute children for each item
+          output = await executeLoopNode(graph, node, upstreamInput, config, defaultAgentId);
+          break;
+
+        case 'group':
+          // Group/sub-flow nodes: execute the referenced sub-flow
+          output = await executeSubFlow(node, upstreamInput, config, defaultAgentId);
+          break;
       }
 
       // Success
@@ -663,6 +714,17 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
       nodeState.durationMs = nodeState.finishedAt - nodeState.startedAt;
       node.status = 'success';
       callbacks.onNodeStatusChange(node.id, 'success');
+
+      // Set flow variable if configured
+      if (config.setVariableKey && _runState) {
+        _runState.variables[config.setVariableKey] = config.setVariable
+          ? resolveVariables(config.setVariable, {
+              input: output,
+              variables: _runState.variables,
+              vaultCredentials: _runState.vaultCredentials,
+            })
+          : output;
+      }
 
       callbacks.onEvent({
         type: 'step-complete',
@@ -1064,6 +1126,217 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
   }
 
   /**
+   * Execute a loop node — iterate over array data and execute downstream
+   * nodes for each item. The loop node itself collects all iteration results.
+   */
+  async function executeLoopNode(
+    graph: FlowGraph,
+    node: FlowNode,
+    upstreamInput: string,
+    config: NodeExecConfig,
+    defaultAgentId?: string,
+  ): Promise<string> {
+    const items = parseLoopArray(upstreamInput, config.loopOver);
+    const maxIter = config.loopMaxIterations ?? 100;
+    const loopVar = config.loopVar ?? 'item';
+
+    if (items.length === 0) {
+      return 'Loop: no items to iterate.';
+    }
+
+    const cappedItems = items.slice(0, maxIter);
+    const results: string[] = [];
+
+    // Find downstream nodes connected to this loop node
+    const downstreamEdges = graph.edges.filter((e) => e.from === node.id && e.kind !== 'reverse');
+    const downstreamIds = downstreamEdges.map((e) => e.to);
+
+    for (let i = 0; i < cappedItems.length; i++) {
+      const item = cappedItems[i];
+      const itemStr = typeof item === 'string' ? item : JSON.stringify(item);
+
+      // Set loop context variables in run state
+      if (_runState) {
+        _runState.variables['__loop_index'] = i;
+        _runState.variables['__loop_item'] = item;
+        _runState.variables['__loop_var'] = loopVar;
+        _runState.variables['__loop_total'] = cappedItems.length;
+      }
+
+      callbacks.onEvent({
+        type: 'step-progress' as FlowExecEvent['type'],
+        runId: _runState!.runId,
+        nodeId: node.id,
+        output: `Loop iteration ${i + 1}/${cappedItems.length}`,
+      } as FlowExecEvent);
+
+      // For each downstream node, execute it with the current item as input
+      const iterResults: string[] = [];
+      for (const targetId of downstreamIds) {
+        const targetNode = graph.nodes.find((n) => n.id === targetId);
+        if (!targetNode) continue;
+
+        // Temporarily inject the loop item as this node's upstream
+        const targetConfig = getNodeExecConfig(targetNode);
+        const resolvedInput = resolveVariables(itemStr, {
+          input: itemStr,
+          variables: _runState?.variables,
+          loopIndex: i,
+          loopItem: item,
+          loopVar,
+          vaultCredentials: _runState?.vaultCredentials,
+        });
+
+        try {
+          let iterOutput: string;
+          switch (targetNode.kind) {
+            case 'agent':
+            case 'tool':
+            case 'data':
+              iterOutput = await executeAgentStep(
+                graph,
+                targetNode,
+                resolvedInput,
+                targetConfig,
+                defaultAgentId,
+              );
+              break;
+            case 'code': {
+              const codeSource = (targetNode.config.code as string) ?? targetConfig.prompt ?? '';
+              const codeResult = executeCodeSandboxed(codeSource, resolvedInput, targetConfig.timeoutMs ?? 5000);
+              if (codeResult.error) throw new Error(`Code error: ${codeResult.error}`);
+              iterOutput = codeResult.output;
+              break;
+            }
+            default:
+              iterOutput = resolvedInput;
+          }
+          iterResults.push(iterOutput);
+        } catch (err) {
+          iterResults.push(`Error in iteration ${i + 1}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      results.push(
+        downstreamIds.length > 0
+          ? iterResults.join('\n')
+          : itemStr,
+      );
+    }
+
+    // Mark downstream nodes as handled (they were executed inside the loop)
+    for (const targetId of downstreamIds) {
+      _skipNodes.add(targetId);
+    }
+
+    // Clean up loop context
+    if (_runState) {
+      delete _runState.variables['__loop_index'];
+      delete _runState.variables['__loop_item'];
+      delete _runState.variables['__loop_var'];
+      delete _runState.variables['__loop_total'];
+    }
+
+    return results.join('\n---\n');
+  }
+
+  /**
+   * Execute a sub-flow (group node) — look up a referenced flow graph by ID
+   * and execute it recursively, passing the upstream input as initial data.
+   * Max recursion depth: 5.
+   */
+  async function executeSubFlow(
+    node: FlowNode,
+    upstreamInput: string,
+    config: NodeExecConfig,
+    defaultAgentId?: string,
+  ): Promise<string> {
+    const subFlowId = config.subFlowId;
+    if (!subFlowId) {
+      return 'Group node: no sub-flow selected.';
+    }
+
+    if (!callbacks.flowResolver) {
+      return 'Group node: flow resolver unavailable.';
+    }
+
+    if (_subFlowDepth >= 5) {
+      throw new Error('Sub-flow recursion depth exceeded (max 5). Possible circular reference.');
+    }
+
+    const subGraph = callbacks.flowResolver(subFlowId);
+    if (!subGraph) {
+      throw new Error(`Sub-flow not found: ${subFlowId}`);
+    }
+
+    callbacks.onEvent({
+      type: 'step-progress' as FlowExecEvent['type'],
+      runId: _runState!.runId,
+      nodeId: node.id,
+      output: `Entering sub-flow: ${subGraph.name}`,
+    } as FlowExecEvent);
+
+    // Inject upstream input into the sub-flow's trigger node (if any)
+    const subGraphCopy: FlowGraph = JSON.parse(JSON.stringify(subGraph));
+    const triggerNode = subGraphCopy.nodes.find((n) => n.kind === 'trigger');
+    if (triggerNode) {
+      triggerNode.config = triggerNode.config ?? {};
+      triggerNode.config.prompt = upstreamInput;
+    }
+
+    // Merge parent variables into sub-flow
+    if (_runState?.variables) {
+      subGraphCopy.variables = { ..._runState.variables, ...subGraphCopy.variables };
+    }
+
+    // Create a child executor for the sub-flow
+    _subFlowDepth++;
+    try {
+      const childExecutor = createFlowExecutor({
+        onEvent: (event) => {
+          // Forward sub-flow events (prefix node IDs for traceability)
+          callbacks.onEvent(event);
+        },
+        onNodeStatusChange: () => {
+          /* sub-flow node status changes don't affect parent canvas */
+        },
+        onEdgeActive: () => {
+          /* sub-flow edge changes don't affect parent canvas */
+        },
+        flowResolver: callbacks.flowResolver,
+      });
+
+      // Propagate recursion depth through the child
+      const childState = await childExecutor.run(subGraphCopy, defaultAgentId);
+
+      // Collect output from the sub-flow: use the output node's value, or the last successful node
+      let subOutput = '';
+      const nodeStatesArr = [...childState.nodeStates.values()];
+      const outputNodeState = nodeStatesArr.find(
+        (ns) => subGraphCopy.nodes.find((n) => n.id === ns.nodeId)?.kind === 'output',
+      );
+      if (outputNodeState?.output) {
+        subOutput = outputNodeState.output;
+      } else {
+        // Fall back to last successful node's output
+        const successNodes = nodeStatesArr
+          .filter((ns) => ns.status === 'success' && ns.output)
+          .sort((a, b) => (b.finishedAt ?? 0) - (a.finishedAt ?? 0));
+        subOutput = successNodes[0]?.output ?? 'Sub-flow completed with no output.';
+      }
+
+      // Propagate any variables set by the sub-flow back to parent
+      if (_runState && childState.variables) {
+        Object.assign(_runState.variables, childState.variables);
+      }
+
+      return subOutput;
+    } finally {
+      _subFlowDepth--;
+    }
+  }
+
+  /**
    * Handle condition node results — determine which branches to follow/skip.
    */
   function handleConditionResult(graph: FlowGraph, condNode: FlowNode, response: string): void {
@@ -1135,7 +1408,7 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
     }
 
     const plan = buildExecutionPlan(graph);
-    _runState = createFlowRunState(graph.id, plan);
+    _runState = createFlowRunState(graph.id, plan, graph.variables);
     _aborted = false;
     _paused = false;
     _running = false;

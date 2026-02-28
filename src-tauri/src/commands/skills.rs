@@ -51,6 +51,26 @@ pub fn engine_skill_set_credential(
 }
 
 #[tauri::command]
+pub fn engine_skill_get_credential(
+    state: State<'_, EngineState>,
+    skill_id: String,
+    key: String,
+) -> Result<Option<String>, String> {
+    let encrypted = state
+        .store
+        .get_skill_credential(&skill_id, &key)
+        .map_err(|e| e.to_string())?;
+    match encrypted {
+        Some(enc) => {
+            let vault_key = skills::get_vault_key()?;
+            let decrypted = skills::decrypt_credential(&enc, &vault_key)?;
+            Ok(Some(decrypted))
+        }
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
 pub fn engine_skill_delete_credential(
     state: State<'_, EngineState>,
     skill_id: String,

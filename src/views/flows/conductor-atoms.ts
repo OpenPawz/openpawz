@@ -79,6 +79,8 @@ const DIRECT_KINDS: Set<FlowNodeKind> = new Set([
   'error',
   'http' as FlowNodeKind,
   'mcp-tool' as FlowNodeKind,
+  'loop' as FlowNodeKind,
+  'group',
 ]);
 
 /** Kinds that are passthrough (no real execution). */

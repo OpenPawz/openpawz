@@ -229,6 +229,7 @@ pub fn run() {
             commands::skills::engine_skill_set_enabled,
             commands::skills::engine_skill_bulk_enable,
             commands::skills::engine_skill_set_credential,
+            commands::skills::engine_skill_get_credential,
             commands::skills::engine_skill_delete_credential,
             commands::skills::engine_skill_revoke_all,
             commands::skills::engine_skill_get_instructions,

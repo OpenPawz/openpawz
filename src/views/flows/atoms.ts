@@ -16,7 +16,8 @@ export type FlowNodeKind =
   | 'error' // Error handler (logs, alerts, notifications)
   | 'group' // Sub-flow / compound node
   | 'http' // Direct HTTP request (no LLM — Conductor Extract)
-  | 'mcp-tool'; // Direct MCP tool call (no LLM — Conductor Extract)
+  | 'mcp-tool' // Direct MCP tool call (no LLM — Conductor Extract)
+  | 'loop'; // ForEach iterator over arrays
 
 export type EdgeKind =
   | 'forward' // Normal A → B
@@ -76,6 +77,8 @@ export interface FlowGraph {
   folder?: string;
   nodes: FlowNode[];
   edges: FlowEdge[];
+  /** Flow-level variables: key-value store accessible via {{flow.key}} */
+  variables?: Record<string, unknown>;
   /** Created timestamp */
   createdAt: string;
   /** Last modified */
@@ -209,6 +212,7 @@ export const NODE_DEFAULTS: Record<
   group: { width: 240, height: 120, color: 'var(--border)', icon: 'folder' },
   http: { width: 180, height: 72, color: 'var(--kinetic-sage, #5BA08C)', icon: 'http' },
   'mcp-tool': { width: 180, height: 72, color: 'var(--kinetic-steel, #7A8B9A)', icon: 'integration_instructions' },
+  loop: { width: 180, height: 80, color: 'var(--kinetic-gold, #D4A853)', icon: 'repeat' },
 };
 
 export const GRID_SIZE = 20;

@@ -366,6 +366,10 @@ export class PawEngineClient {
     return invoke('engine_skill_set_credential', { skillId, key, value });
   }
 
+  async skillGetCredential(skillId: string, key: string): Promise<string | null> {
+    return invoke<string | null>('engine_skill_get_credential', { skillId, key });
+  }
+
   async skillDeleteCredential(skillId: string, key: string): Promise<void> {
     return invoke('engine_skill_delete_credential', { skillId, key });
   }

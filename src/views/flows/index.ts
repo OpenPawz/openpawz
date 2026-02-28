@@ -5,9 +5,12 @@
 
 import {
   type FlowGraph,
+  type FlowNode,
+  type FlowEdge,
   type FlowTemplate,
   createGraph,
   createNode as createNodeFn,
+  createEdge,
   serializeGraph,
   deserializeGraph,
   instantiateTemplate,
@@ -43,6 +46,9 @@ import type { EngineFlow, EngineFlowRun } from '../../engine/atoms/types';
 let _graphs: FlowGraph[] = [];
 let _activeGraphId: string | null = null;
 let _selectedNodeId: string | null = null;
+let _selectedNodeIds = new Set<string>();
+let _selectedEdgeId: string | null = null;
+let _clipboard: { nodes: FlowNode[]; edges: FlowEdge[] } | null = null;
 let _mounted = false;
 let _executor: FlowExecutorController | null = null;
 let _reporter: FlowChatReporterController | null = null;
@@ -73,6 +79,15 @@ function initStateBridge() {
     getSelectedNodeId: () => _selectedNodeId,
     setSelectedNodeId: (id: string | null) => {
       _selectedNodeId = id;
+      updateNodePanel();
+    },
+    getSelectedNodeIds: () => _selectedNodeIds,
+    setSelectedNodeIds: (ids: Set<string>) => {
+      _selectedNodeIds = ids;
+    },
+    getSelectedEdgeId: () => _selectedEdgeId,
+    setSelectedEdgeId: (id: string | null) => {
+      _selectedEdgeId = id;
       updateNodePanel();
     },
     onGraphChanged: () => {
@@ -354,6 +369,14 @@ function mount() {
     onEdgeActive: (_edgeId, _active) => {
       syncDebugState();
       renderGraph();
+    },
+    flowResolver: (flowId: string) => _graphs.find((g) => g.id === flowId) ?? null,
+    credentialLoader: async (name: string) => {
+      try {
+        return await pawEngine.skillGetCredential('flow-vault', name);
+      } catch {
+        return null;
+      }
     },
   });
 
@@ -683,28 +706,47 @@ function onKeyDown(e: KeyboardEvent) {
     case 'Delete':
     case 'Backspace':
       if (
-        _selectedNodeId &&
         !(e.target instanceof HTMLInputElement) &&
         !(e.target instanceof HTMLTextAreaElement)
       ) {
-        // Push undo before deleting
-        const stack = getUndoStack(graph.id);
-        pushUndo(stack, graph);
-        graph.nodes = graph.nodes.filter((n) => n.id !== _selectedNodeId);
-        graph.edges = graph.edges.filter(
-          (ee) => ee.from !== _selectedNodeId && ee.to !== _selectedNodeId,
-        );
-        _selectedNodeId = null;
-        graph.updatedAt = new Date().toISOString();
-        persist();
-        renderGraph();
-        updateFlowList();
-        updateNodePanel();
-        e.preventDefault();
+        // Collect nodes to delete: multi-select or single
+        const idsToDelete = _selectedNodeIds.size > 0
+          ? new Set(_selectedNodeIds)
+          : (_selectedNodeId ? new Set([_selectedNodeId]) : new Set<string>());
+        if (idsToDelete.size > 0) {
+          const stack = getUndoStack(graph.id);
+          pushUndo(stack, graph);
+          graph.nodes = graph.nodes.filter((n) => !idsToDelete.has(n.id));
+          graph.edges = graph.edges.filter(
+            (ee) => !idsToDelete.has(ee.from) && !idsToDelete.has(ee.to),
+          );
+          _selectedNodeId = null;
+          _selectedNodeIds = new Set();
+          _selectedEdgeId = null;
+          graph.updatedAt = new Date().toISOString();
+          persist();
+          renderGraph();
+          updateFlowList();
+          updateNodePanel();
+          e.preventDefault();
+        } else if (_selectedEdgeId) {
+          // Delete selected edge
+          const stack = getUndoStack(graph.id);
+          pushUndo(stack, graph);
+          graph.edges = graph.edges.filter((ee) => ee.id !== _selectedEdgeId);
+          _selectedEdgeId = null;
+          graph.updatedAt = new Date().toISOString();
+          persist();
+          renderGraph();
+          updateNodePanel();
+          e.preventDefault();
+        }
       }
       break;
     case 'Escape':
       _selectedNodeId = null;
+      _selectedNodeIds = new Set();
+      _selectedEdgeId = null;
       renderGraph();
       updateNodePanel();
       break;
@@ -733,7 +775,75 @@ function onKeyDown(e: KeyboardEvent) {
       break;
     case 'a':
       if (e.ctrlKey || e.metaKey) {
-        // Select all — noop for now
+        // Select all nodes
+        _selectedNodeIds = new Set(graph.nodes.map((n) => n.id));
+        _selectedNodeId = null;
+        renderGraph();
+        e.preventDefault();
+      }
+      break;
+    case 'c':
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
+        // Copy selected nodes to clipboard
+        const copyIds = _selectedNodeIds.size > 0
+          ? _selectedNodeIds
+          : (_selectedNodeId ? new Set([_selectedNodeId]) : new Set<string>());
+        if (copyIds.size > 0) {
+          const copiedNodes = graph.nodes
+            .filter((n) => copyIds.has(n.id))
+            .map((n) => JSON.parse(JSON.stringify(n)) as FlowNode);
+          const copiedEdges = graph.edges
+            .filter((ee) => copyIds.has(ee.from) && copyIds.has(ee.to))
+            .map((ee) => JSON.parse(JSON.stringify(ee)) as FlowEdge);
+          _clipboard = { nodes: copiedNodes, edges: copiedEdges };
+          e.preventDefault();
+        }
+      }
+      break;
+    case 'v':
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && _clipboard && _clipboard.nodes.length > 0) {
+        // Paste from clipboard with new IDs and offset positions
+        const stack = getUndoStack(graph.id);
+        pushUndo(stack, graph);
+
+        const idMap = new Map<string, string>();
+        const PASTE_OFFSET = 40;
+        const newIds = new Set<string>();
+
+        for (const srcNode of _clipboard.nodes) {
+          const newNode = createNodeFn(
+            srcNode.kind,
+            srcNode.label,
+            srcNode.x + PASTE_OFFSET,
+            srcNode.y + PASTE_OFFSET,
+          );
+          newNode.config = JSON.parse(JSON.stringify(srcNode.config ?? {}));
+          newNode.width = srcNode.width;
+          newNode.height = srcNode.height;
+          idMap.set(srcNode.id, newNode.id);
+          newIds.add(newNode.id);
+          graph.nodes.push(newNode);
+        }
+
+        for (const srcEdge of _clipboard.edges) {
+          const newFrom = idMap.get(srcEdge.from);
+          const newTo = idMap.get(srcEdge.to);
+          if (newFrom && newTo) {
+            const newEdge = createEdge(newFrom, newTo, srcEdge.kind, {
+              fromPort: srcEdge.fromPort,
+              toPort: srcEdge.toPort,
+              label: srcEdge.label,
+            });
+            graph.edges.push(newEdge);
+          }
+        }
+
+        _selectedNodeIds = newIds;
+        _selectedNodeId = newIds.size === 1 ? [...newIds][0] : null;
+        graph.updatedAt = new Date().toISOString();
+        persist();
+        renderGraph();
+        updateFlowList();
         e.preventDefault();
       }
       break;
