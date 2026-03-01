@@ -576,4 +576,178 @@ export const TEMPLATES_ADVANCED: FlowTemplate[] = [
       { fromIdx: 3, toIdx: 6, label: 'false' },
     ],
   },
+
+  // ── Convergent Mesh Templates ──────────────────────────────────────────
+
+  {
+    id: 'tpl-agent-debate',
+    name: 'Agent Debate',
+    description: 'Two agents argue opposing viewpoints until they converge on a consensus answer.',
+    category: 'ai',
+    tags: ['debate', 'mesh', 'bidirectional', 'convergent', 'consensus'],
+    icon: 'forum',
+    nodes: [
+      {
+        kind: 'trigger',
+        label: 'Topic Input',
+        description: 'Question or topic',
+        config: { prompt: 'Provide a topic or question for the debate' },
+      },
+      {
+        kind: 'agent',
+        label: 'Advocate',
+        description: 'Argues FOR',
+        config: {
+          prompt:
+            "You argue IN FAVOUR of the proposition. Read the other agent's latest rebuttal and refine your argument. Be rigorous and cite evidence.",
+        },
+      },
+      {
+        kind: 'agent',
+        label: 'Critic',
+        description: 'Argues AGAINST',
+        config: {
+          prompt:
+            "You argue AGAINST the proposition. Read the other agent's latest argument and provide a counter-argument. Be rigorous and cite evidence.",
+        },
+      },
+      {
+        kind: 'condition',
+        label: 'Consensus?',
+        config: {
+          conditionExpr: 'Both agents agree or max rounds reached',
+        },
+      },
+      {
+        kind: 'output',
+        label: 'Verdict',
+        description: 'Final synthesis',
+        config: { outputTarget: 'chat' },
+      },
+    ],
+    edges: [
+      { fromIdx: 0, toIdx: 1 },
+      { fromIdx: 0, toIdx: 2 },
+      { fromIdx: 1, toIdx: 2, kind: 'bidirectional' as const },
+      { fromIdx: 1, toIdx: 3 },
+      { fromIdx: 2, toIdx: 3 },
+      { fromIdx: 3, toIdx: 4, label: 'Yes' },
+      { fromIdx: 3, toIdx: 1, label: 'No', kind: 'reverse' as const },
+    ],
+  },
+
+  {
+    id: 'tpl-draft-review-loop',
+    name: 'Draft & Review Loop',
+    description:
+      'A writer agent drafts content while an editor agent reviews and requests revisions in a convergent loop.',
+    category: 'ai',
+    tags: ['review', 'loop', 'mesh', 'bidirectional', 'editing', 'writing'],
+    icon: 'rate_review',
+    nodes: [
+      {
+        kind: 'trigger',
+        label: 'Brief',
+        description: 'Writing brief',
+        config: { prompt: 'Provide the writing brief or topic' },
+      },
+      {
+        kind: 'agent',
+        label: 'Writer',
+        description: 'Drafts content',
+        config: {
+          prompt:
+            'Write or revise the content based on the brief and any editor feedback. Produce a complete draft.',
+        },
+      },
+      {
+        kind: 'agent',
+        label: 'Editor',
+        description: 'Reviews & critiques',
+        config: {
+          prompt:
+            "Review the writer's draft for clarity, accuracy, tone, and completeness. Return specific revision requests or approve.",
+        },
+      },
+      {
+        kind: 'condition',
+        label: 'Approved?',
+        config: { conditionExpr: 'Editor approved the draft' },
+      },
+      {
+        kind: 'output',
+        label: 'Final Draft',
+        description: 'Polished content',
+        config: { outputTarget: 'chat' },
+      },
+    ],
+    edges: [
+      { fromIdx: 0, toIdx: 1 },
+      { fromIdx: 1, toIdx: 2, kind: 'bidirectional' as const },
+      { fromIdx: 2, toIdx: 3 },
+      { fromIdx: 3, toIdx: 4, label: 'Yes' },
+      { fromIdx: 3, toIdx: 1, label: 'Revise', kind: 'reverse' as const },
+    ],
+  },
+
+  {
+    id: 'tpl-self-correcting-pipeline',
+    name: 'Self-Correcting Pipeline',
+    description:
+      'An agent produces output that a validator checks; failures loop back for correction until the output passes.',
+    category: 'ai',
+    tags: ['self-correcting', 'validation', 'mesh', 'bidirectional', 'loop', 'quality'],
+    icon: 'auto_fix_high',
+    nodes: [
+      {
+        kind: 'trigger',
+        label: 'Task',
+        description: 'Input task',
+        config: { prompt: 'Describe the task to be completed with quality constraints' },
+      },
+      {
+        kind: 'agent',
+        label: 'Generator',
+        description: 'Produces output',
+        config: {
+          prompt:
+            'Generate or revise output for the given task. If validator feedback is provided, fix the identified issues.',
+        },
+      },
+      {
+        kind: 'agent',
+        label: 'Validator',
+        description: 'Checks quality',
+        config: {
+          prompt:
+            'Validate the generator output against quality criteria. List specific issues if any, or approve if it meets all requirements.',
+        },
+      },
+      {
+        kind: 'condition',
+        label: 'Passes?',
+        config: { conditionExpr: 'Validator approved the output' },
+      },
+      {
+        kind: 'output',
+        label: 'Verified Output',
+        description: 'Quality-assured result',
+        config: { outputTarget: 'chat' },
+      },
+      {
+        kind: 'error',
+        label: 'Max Retries',
+        description: 'Exceeded retry limit',
+        config: { errorTargets: ['chat', 'log'] },
+      },
+    ],
+    edges: [
+      { fromIdx: 0, toIdx: 1 },
+      { fromIdx: 1, toIdx: 2, kind: 'bidirectional' as const },
+      { fromIdx: 2, toIdx: 3 },
+      { fromIdx: 3, toIdx: 4, label: 'Pass' },
+      { fromIdx: 3, toIdx: 1, label: 'Fix', kind: 'reverse' as const },
+      { fromIdx: 3, toIdx: 5, label: 'Max retries', kind: 'error' as const },
+    ],
+  },
 ];

@@ -45,7 +45,8 @@ function detectKind(text: string): FlowNodeKind {
 // ── Edge Kind Detection ────────────────────────────────────────────────────
 
 const REVERSE_MARKERS = /\b(pull|request|fetch from|get from|ask for|needs|requires)\b/i;
-const BIDI_MARKERS = /\b(sync|handshake|exchange|negotiate|bi-?directional|two-?way)\b/i;
+const BIDI_MARKERS =
+  /\b(sync|handshake|exchange|negotiate|bi-?directional|two-?way|debate|argue|discuss|refine|iterative|review\s*loop|back\s*and\s*forth|until\s*agree|consensus|critique|converge|mesh|self-?correct)\b/i;
 
 function detectEdgeKind(text: string): EdgeKind {
   if (BIDI_MARKERS.test(text)) return 'bidirectional';

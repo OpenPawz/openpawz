@@ -1746,13 +1746,39 @@
   fill: var(--kinetic-red, #D64045) !important;
 }
 
+/* Reverse edge styling — dotted pull-arrows */
+.flow-edge-reverse .flow-edge-path {
+  stroke: var(--status-info, #4EA8DE);
+  stroke-dasharray: 3 4;
+  opacity: 0.85;
+}
+.flow-edge-reverse.flow-edge-active .flow-edge-path {
+  opacity: 1;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px rgba(78, 168, 222, 0.4));
+}
+
+/* Bidirectional edge styling — bold gold handshake */
+.flow-edge-bidirectional .flow-edge-path {
+  stroke: var(--kinetic-gold, #D4A853);
+  stroke-width: 2;
+  filter: drop-shadow(0 0 3px rgba(212, 168, 83, 0.25));
+}
+.flow-edge-bidirectional.flow-edge-active .flow-edge-path {
+  stroke-width: 3;
+  filter: drop-shadow(0 0 6px rgba(212, 168, 83, 0.5));
+}
+.flow-edge-bidirectional.flow-edge-selected .flow-edge-path {
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 8px rgba(212, 168, 83, 0.6));
+}
+
 /* Error edge styling */
 .flow-edge-error .flow-edge-path {
   stroke: var(--kinetic-red, #D64045);
   stroke-dasharray: 8 4;
   opacity: 0.7;
 }
-
 .flow-edge-error.flow-edge-active .flow-edge-path {
   opacity: 1;
   stroke-width: 2.5;
@@ -2082,4 +2108,69 @@
   border: 1px solid var(--border, #333);
   border-radius: 3px;
   line-height: 1.4;
+}
+
+/* ─── Edge Context Menu (right-click kind toggle) ─── */
+
+.flow-edge-ctx-menu {
+  position: fixed;
+  z-index: 9000;
+  min-width: 160px;
+  background: var(--bg-secondary, #1a1a2e);
+  border: 1px solid var(--border, #333);
+  border-radius: var(--radius-md, 8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.flow-edge-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border: none;
+  border-radius: var(--radius-sm, 4px);
+  background: transparent;
+  color: var(--text-secondary, #aaa);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  text-align: left;
+  width: 100%;
+}
+
+.flow-edge-ctx-item:hover {
+  background: var(--bg-hover, var(--bg-tertiary, #252540));
+  color: var(--text-primary, #e8e4dd);
+}
+
+.flow-edge-ctx-item-active {
+  background: var(--bg-hover, var(--bg-tertiary, #252540));
+  color: var(--text-primary, #e8e4dd);
+  font-weight: 600;
+}
+
+/* ─── Mesh Group Enclosure ─── */
+
+.flow-mesh-group {
+  fill: rgba(212, 168, 83, 0.04);
+  stroke: var(--kinetic-gold, #D4A853);
+  stroke-width: 1;
+  stroke-dasharray: 6 3;
+  rx: 12;
+  ry: 12;
+  pointer-events: none;
+}
+
+.flow-mesh-group-label {
+  fill: var(--kinetic-gold, #D4A853);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
 }

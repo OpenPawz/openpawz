@@ -272,12 +272,14 @@ export function renderEdge(edge: FlowEdge, fromNode: FlowNode, toNode: FlowNode)
       path.setAttribute('marker-end', 'url(#flow-arrow-fwd)');
       break;
     case 'reverse':
-      path.setAttribute('stroke', 'var(--status-info)');
-      path.setAttribute('stroke-dasharray', '6 3');
+      path.setAttribute('stroke', edge.active ? 'var(--status-info)' : 'var(--status-info)');
+      path.setAttribute('stroke-dasharray', '3 4');
       path.setAttribute('marker-start', 'url(#flow-arrow-rev)');
+      if (!isSelected) path.setAttribute('opacity', '0.85');
       break;
     case 'bidirectional':
       path.setAttribute('stroke', 'var(--kinetic-gold)');
+      path.setAttribute('stroke-width', isSelected ? '3.5' : edge.active ? '3' : '2');
       path.setAttribute('marker-end', 'url(#flow-arrow-bi-end)');
       path.setAttribute('marker-start', 'url(#flow-arrow-bi-start)');
       break;

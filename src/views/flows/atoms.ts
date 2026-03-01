@@ -395,7 +395,88 @@ export function applyLayout(graph: FlowGraph): { width: number; height: number }
     maxH = Math.max(maxH, node.y + node.height + CANVAS_PADDING);
   }
 
+  // Post-layout: cluster mesh groups (bidirectional cycles) closer together
+  const meshGroups = detectMeshGroups(graph);
+  for (const group of meshGroups) {
+    if (group.length < 2) continue;
+    const meshNodes = group
+      .map((id) => graph.nodes.find((n) => n.id === id))
+      .filter(Boolean) as FlowNode[];
+    if (meshNodes.length < 2) continue;
+
+    // Place mesh nodes side-by-side at the same layer with tighter spacing
+    const avgX = meshNodes.reduce((s, n) => s + n.x, 0) / meshNodes.length;
+    const avgY = meshNodes.reduce((s, n) => s + n.y, 0) / meshNodes.length;
+    const meshSpacingY = Math.min(MIN_NODE_SPACING_Y, 100);
+    const meshSpacingX = Math.min(MIN_NODE_SPACING_X * 0.6, 140);
+
+    // Arrange in a horizontal pair/row centered on their average position
+    const totalWidth = meshNodes.length * meshSpacingX;
+    const startX = avgX - totalWidth / 2 + meshSpacingX / 2;
+    const totalHeight = meshNodes.length * meshSpacingY;
+    const startY = avgY - totalHeight / 2 + meshSpacingY / 2;
+
+    for (let i = 0; i < meshNodes.length; i++) {
+      // For 2 nodes: side by side. For 3+: stagger vertically too
+      if (meshNodes.length <= 2) {
+        meshNodes[i].x = snapToGrid(startX + i * meshSpacingX);
+        meshNodes[i].y = snapToGrid(avgY);
+      } else {
+        meshNodes[i].x = snapToGrid(startX + i * meshSpacingX);
+        meshNodes[i].y = snapToGrid(startY + i * meshSpacingY);
+      }
+    }
+  }
+
+  // Recompute bounds after mesh clustering
+  for (const node of graph.nodes) {
+    maxW = Math.max(maxW, node.x + node.width + CANVAS_PADDING);
+    maxH = Math.max(maxH, node.y + node.height + CANVAS_PADDING);
+  }
+
   return { width: Math.max(maxW, 600), height: Math.max(maxH, 400) };
+}
+
+// ── Mesh Group Detection ───────────────────────────────────────────────────
+
+/**
+ * Detect groups of nodes connected by bidirectional or reverse edges (mesh groups).
+ * Uses union-find to cluster connected components of bidirectional edges.
+ * Returns arrays of node ID groups.
+ */
+export function detectMeshGroups(graph: FlowGraph): string[][] {
+  const parent = new Map<string, string>();
+  const find = (x: string): string => {
+    if (!parent.has(x)) parent.set(x, x);
+    if (parent.get(x) !== x) parent.set(x, find(parent.get(x)!));
+    return parent.get(x)!;
+  };
+  const union = (a: string, b: string): void => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  // Union nodes connected by bidirectional edges
+  for (const edge of graph.edges) {
+    if (edge.kind === 'bidirectional') {
+      union(edge.from, edge.to);
+    }
+  }
+
+  // Group by root
+  const groups = new Map<string, string[]>();
+  for (const edge of graph.edges) {
+    if (edge.kind === 'bidirectional') {
+      const root = find(edge.from);
+      if (!groups.has(root)) groups.set(root, []);
+      const g = groups.get(root)!;
+      if (!g.includes(edge.from)) g.push(edge.from);
+      if (!g.includes(edge.to)) g.push(edge.to);
+    }
+  }
+
+  return [...groups.values()].filter((g) => g.length >= 2);
 }
 
 /**

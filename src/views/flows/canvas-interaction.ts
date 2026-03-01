@@ -5,6 +5,7 @@
 
 import {
   type Point,
+  type EdgeKind,
   hitTestNode,
   hitTestPort,
   snapToGrid,
@@ -364,3 +365,82 @@ function clearRubberBand(): void {
     cs.rubberBandEl = null;
   }
 }
+
+// ── Edge Context Menu (right-click to toggle edge kind) ────────────────────
+
+const EDGE_KINDS: { kind: EdgeKind; label: string; icon: string; color: string }[] = [
+  { kind: 'forward', label: 'Forward', icon: 'arrow_forward', color: 'var(--text-muted)' },
+  { kind: 'reverse', label: 'Reverse', icon: 'arrow_back', color: 'var(--status-info, #4EA8DE)' },
+  {
+    kind: 'bidirectional',
+    label: 'Bidirectional',
+    icon: 'sync_alt',
+    color: 'var(--kinetic-gold, #D4A853)',
+  },
+  { kind: 'error', label: 'Error', icon: 'error_outline', color: 'var(--kinetic-red, #D64045)' },
+];
+
+let _activeContextMenu: HTMLElement | null = null;
+
+function dismissEdgeContextMenu(): void {
+  if (_activeContextMenu) {
+    _activeContextMenu.remove();
+    _activeContextMenu = null;
+  }
+}
+
+export function onContextMenu(e: MouseEvent): void {
+  const target = e.target as SVGElement;
+  const edgeGroup = target.closest('[data-edge-id]') as SVGElement | null;
+  if (!edgeGroup) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+  dismissEdgeContextMenu();
+
+  const edgeId = edgeGroup.getAttribute('data-edge-id');
+  const _state = getMoleculesState();
+  if (!_state) return;
+  const graph = _state.getGraph();
+  if (!graph || !edgeId) return;
+
+  const edge = graph.edges.find((ed) => ed.id === edgeId);
+  if (!edge) return;
+
+  // Select this edge
+  setSelectedEdgeIdLocal(edgeId);
+  _state.setSelectedEdgeId(edgeId);
+  _state.setSelectedNodeId(null);
+  _state.setSelectedNodeIds(new Set());
+
+  // Build the floating menu
+  const menu = document.createElement('div');
+  menu.className = 'flow-edge-ctx-menu';
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top = `${e.clientY}px`;
+
+  for (const opt of EDGE_KINDS) {
+    const item = document.createElement('button');
+    item.className = `flow-edge-ctx-item${opt.kind === edge.kind ? ' flow-edge-ctx-item-active' : ''}`;
+    item.innerHTML = `<span class="ms" style="font-size:16px;color:${opt.color}">${opt.icon}</span><span>${opt.label}</span>`;
+    item.addEventListener('click', () => {
+      edge.kind = opt.kind;
+      _state.onGraphChanged();
+      renderGraph();
+      dismissEdgeContextMenu();
+    });
+    menu.appendChild(item);
+  }
+
+  document.body.appendChild(menu);
+  _activeContextMenu = menu;
+
+  // Close on next click anywhere
+  const closeHandler = () => {
+    dismissEdgeContextMenu();
+    document.removeEventListener('mousedown', closeHandler, true);
+  };
+  setTimeout(() => document.addEventListener('mousedown', closeHandler, true), 0);
+}
+
+export { dismissEdgeContextMenu };

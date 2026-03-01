@@ -4,7 +4,7 @@
 // Sub-modules: canvas-state, canvas-render, canvas-interaction.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { type FlowGraph, GRID_SIZE } from './atoms';
+import { type FlowGraph, type FlowNode, GRID_SIZE, detectMeshGroups } from './atoms';
 import { getMoleculesState } from './molecule-state';
 import { cs, svgEl, applyTransform } from './canvas-state';
 import { renderNode, renderPorts, renderEdge } from './canvas-render';
@@ -15,6 +15,8 @@ import {
   onMouseUp,
   onWheel,
   onDoubleClick,
+  onContextMenu,
+  dismissEdgeContextMenu,
 } from './canvas-interaction';
 
 /** Schedule a single renderGraph() call on the next animation frame. */
@@ -183,6 +185,7 @@ export function mountCanvas(container: HTMLElement) {
   cs.svg.addEventListener('mouseup', onMouseUp);
   cs.svg.addEventListener('wheel', onWheel, { passive: false });
   cs.svg.addEventListener('dblclick', onDoubleClick);
+  cs.svg.addEventListener('contextmenu', onContextMenu);
 
   applyTransform();
 }
@@ -194,9 +197,11 @@ export function unmountCanvas() {
     cs.svg.removeEventListener('mouseup', onMouseUp);
     cs.svg.removeEventListener('wheel', onWheel);
     cs.svg.removeEventListener('dblclick', onDoubleClick);
+    cs.svg.removeEventListener('contextmenu', onContextMenu);
     cs.svg.remove();
     cs.svg = null;
   }
+  dismissEdgeContextMenu();
   cs.nodesGroup = null;
   cs.edgesGroup = null;
   cs.portsGroup = null;
@@ -245,6 +250,42 @@ export function renderGraph() {
   cs.edgesGroup.innerHTML = '';
   cs.nodesGroup.innerHTML = '';
   cs.portsGroup.innerHTML = '';
+
+  // Render mesh group enclosures (behind everything)
+  const meshGroups = detectMeshGroups(graph);
+  for (const group of meshGroups) {
+    const meshNodes = group
+      .map((id) => graph.nodes.find((n) => n.id === id))
+      .filter(Boolean) as FlowNode[];
+    if (meshNodes.length < 2) continue;
+
+    const pad = 20;
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    for (const n of meshNodes) {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.width);
+      maxY = Math.max(maxY, n.y + n.height);
+    }
+
+    const enclosure = svgEl('rect');
+    enclosure.setAttribute('class', 'flow-mesh-group');
+    enclosure.setAttribute('x', String(minX - pad));
+    enclosure.setAttribute('y', String(minY - pad - 14));
+    enclosure.setAttribute('width', String(maxX - minX + pad * 2));
+    enclosure.setAttribute('height', String(maxY - minY + pad * 2 + 14));
+    cs.edgesGroup.appendChild(enclosure);
+
+    const label = svgEl('text');
+    label.setAttribute('class', 'flow-mesh-group-label');
+    label.setAttribute('x', String(minX - pad + 8));
+    label.setAttribute('y', String(minY - pad - 2));
+    label.textContent = 'Convergent Mesh';
+    cs.edgesGroup.appendChild(label);
+  }
 
   for (const edge of graph.edges) {
     const fromNode = cs.nodeMap.get(edge.from);
