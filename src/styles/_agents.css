@@ -140,6 +140,32 @@
   margin: -4px 0 16px;
 }
 
+/* ── Collapsible Section Toggle ── */
+.agents-section-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.agents-section-toggle:hover {
+  opacity: 0.85;
+}
+.agents-section-chevron {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin-left: auto;
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+.agents-section-collapsible {
+  overflow: hidden;
+  transition: max-height 0.25s ease, opacity 0.2s ease;
+}
+.agents-section-collapsible.agents-collapsed {
+  max-height: 0 !important;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ── Fleet Grid ── */
 .agents-grid {
   margin-top: 0;

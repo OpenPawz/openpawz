@@ -293,6 +293,24 @@ export function initAgents() {
   renderTemplateGrid((templateId) => _installTemplate(templateId));
   initAgentsKinetic();
 
+  // ── Collapsible section toggles ────────────────────────────────────────
+  document.querySelectorAll('.agents-section-toggle').forEach((toggle) => {
+    toggle.addEventListener('click', (e) => {
+      // Don't collapse when clicking view-toggle buttons inside the header
+      if ((e.target as HTMLElement).closest('.agents-toggle-btns')) return;
+
+      const bodyId = (toggle as HTMLElement).dataset.toggle;
+      if (!bodyId) return;
+      const body = document.getElementById(bodyId);
+      if (!body) return;
+
+      const isOpen = !body.classList.contains('agents-collapsed');
+      body.classList.toggle('agents-collapsed', isOpen);
+      const chevron = toggle.querySelector('.agents-section-chevron');
+      if (chevron) chevron.textContent = isOpen ? 'expand_more' : 'expand_less';
+    });
+  });
+
   // Quick actions in side panel
   document.getElementById('agents-qa-create')?.addEventListener('click', () => {
     openAgentCreator(makeEditorCallbacks());
