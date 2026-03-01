@@ -70,7 +70,7 @@ Five principles guide every architectural decision in Engram:
 
 2. **Forgetting is a feature, not a bug.** Graceful decay via the Ebbinghaus curve is essential. Without measured forgetting, the memory store grows unbounded, retrieval precision degrades, and stale information pollutes context. Every forgetting cycle is measured: chain integrity percentage and NDCG delta are computed before and after garbage collection. If quality degrades, the cycle rolls back.
 
-3. **Local-first, always offline.** All storage is local SQLite. All search is local (BM25 + optional local embeddings). No cloud dependency, no telemetry, no external vector stores. The system degrades gracefully — without an embedding model, search falls back to BM25-only with no loss in keyword accuracy.
+3. **Local-first, always offline.** All storage is local. All search is local (BM25 full-text + optional vector semantic search). No cloud dependency, no telemetry, no external vector stores. The system degrades gracefully — without an embedding model, search falls back to BM25-only with no loss in keyword accuracy.
 
 4. **Security by default.** PII is detected automatically and encrypted before it touches disk. The database itself supports full-disk encryption. Anti-forensic measures prevent side-channel leakage through file size changes. GDPR compliance is built in.
 
@@ -91,12 +91,12 @@ flowchart TD
     E --> CAP["Post-Capture\n(auto-extract facts, preferences, outcomes)"]
     CAP --> ENC["Encryption Layer\n(PII detect → AES-256-GCM)"]
     ENC --> BR["Engram Bridge\n(dedup → embed → store)"]
-    BR --> DB[("SQLite — Long-Term Memory\n(Tier 2)")]
+    BR --> DB[("Long-Term Memory\n(Tier 2)")]
 
     subgraph LTM["Long-Term Memory Graph"]
         direction LR
         G["Episodic Store\n(what happened)"]
-        H["Semantic Store\n(what is true)"]
+        H["Knowledge Store\n(what is true)"]
         I["Procedural Store\n(how to do things)"]
     end
 
@@ -152,7 +152,7 @@ The system is implemented as 23 Rust modules under `src-tauri/src/engine/engram/
 | `sensory_buffer.rs` | Ring buffer for current-turn incoming data |
 | `working_memory.rs` | Priority-evicted slots with token budget |
 | `graph.rs` | Memory graph operations (store, search, edges, activation) |
-| `store.rs` / `schema.rs` | SQLite schema, migrations, CRUD operations |
+| `store.rs` / `schema.rs` | Storage schema, migrations, CRUD operations |
 | `consolidation.rs` | Background pattern detection, clustering, contradiction resolution |
 | `retrieval.rs` | Retrieval cortex with quality metrics |
 | `retrieval_quality.rs` | NDCG scoring and relevance warnings |
@@ -196,7 +196,7 @@ A priority-sorted array of memory slots with a hard token budget. Represents the
 - Capacity: configurable token budget (default 4,096 tokens)
 - Eviction: lowest-priority slot evicted when budget exceeded
 - Sources: recalled long-term memories, sensory buffer overflow, tool results, user mentions
-- Persistence: snapshots saved to SQLite on agent switch, restored when agent resumes
+- Persistence: snapshots saved to the persistent store on agent switch, restored when agent resumes
 
 **Slot structure:**
 ```
@@ -214,7 +214,7 @@ WorkingMemorySlot {
 
 ### Tier 3: Long-Term Memory Graph
 
-Persistent storage in SQLite with three distinct memory types, connected by typed graph edges.
+Three persistent stores — episodic, knowledge, and procedural — connected by typed graph edges.
 
 #### Episodic Store
 *What happened* — concrete events, conversations, task results, session summaries.
@@ -229,7 +229,7 @@ Each episodic memory has:
 - Access tracking (count + last accessed timestamp)
 - Consolidation state (fresh → consolidated → archived)
 
-#### Semantic Store
+#### Knowledge Store
 *What is true* — structured knowledge as subject-predicate-object triples.
 
 Examples:
@@ -282,7 +282,7 @@ flowchart LR
     Q["Search Query"] --> RG["Retrieval Gate\n(Skip / Retrieve / Deep)"]
     RG -- Skip --> SKIP["Return empty\n(no search needed)"]
     RG -- Retrieve / Deep --> CL["Query Classifier\n(factual vs conceptual)"]
-    CL --> BM["BM25\n(SQLite FTS5)"]
+    CL --> BM["BM25\n(Full-Text Index)"]
     CL --> VS["Vector Similarity\n(Ollama embeddings)"]
     BM --> RRF["Reciprocal Rank Fusion\nRRF_score = Σ 1/(k + rank)"]
     VS --> RRF
@@ -294,9 +294,9 @@ flowchart LR
     RF --> CL
 ```
 
-### 1. BM25 Full-Text Search (SQLite FTS5)
+### 1. BM25 Full-Text Search
 
-SQLite's FTS5 extension with `porter unicode61` tokenizer. Handles exact keyword matches, stemming, and phrase queries. All FTS5 query operators are sanitized before execution to prevent injection.
+Full-text index with `porter unicode61` tokenizer. Handles exact keyword matches, stemming, and phrase queries. All full-text query operators are sanitized before execution to prevent injection.
 
 ### 2. Vector Similarity Search
 
@@ -383,7 +383,7 @@ The Atkinson-Shiffrin model of human memory describes three stores with decreasi
 |------|---------------|-------------------|------------|-----------------|
 | Tier 0 | `SensoryBuffer` | Iconic / echoic memory | **Perceptual cache** — raw stimuli before attentional filtering | FIFO ring; oldest entry evicted on overflow |
 | Tier 1 | `WorkingMemory` | Baddeley's central executive | **Attention cache** — what the agent is actively thinking about | Priority-based; lowest-priority slot evicted when token budget exceeded |
-| Tier 2 | LTM Graph + SQLite | Hippocampal long-term store | **Persistent store** — everything known, accessed via retrieval | Ebbinghaus strength decay → GC below threshold |
+| Tier 2 | LTM Graph | Hippocampal long-term store | **Persistent store** — everything known, accessed via retrieval | Ebbinghaus strength decay → GC below threshold |
 
 This is not a loose analogy. The eviction cascade is functionally identical to memory trace transfer in cognitive psychology: sensory traces that receive attention are promoted to working memory; working memory items that are rehearsed are consolidated to long-term storage. Items that fail to be promoted are lost — the system forgets gracefully.
 
@@ -406,7 +406,7 @@ The returned evicted entry is the promotion signal — it tells the caller "this
 - **Priority eviction:** `evict_lowest()` removes the slot with the lowest priority score — items that haven't been referenced decay naturally
 - **Priority decay:** `decay_priorities(0.95)` is called each turn, multiplicatively reducing all slot priorities. Unreferenced items age out over ~20 turns
 - **Priority boost:** `boost_priority(id, delta)` refreshes recently-accessed items, equivalent to an LRU "touch" operation
-- **Snapshot persistence:** on agent switch, the entire working memory is serialized to SQLite and restored when the agent resumes — cache state survives context switches
+- **Snapshot persistence:** on agent switch, the entire working memory is serialized to the persistent store and restored when the agent resumes — cache state survives context switches
 
 ### Momentum Cache
 
@@ -470,7 +470,7 @@ Where *S₀* is initial strength (1.0), *λ* is the decay rate, and *t* is time 
 
 Memories with strength below a threshold (default 0.1) are candidates for deletion. Important memories (importance ≥ 0.7) are protected from GC regardless of strength. Deletion is two-phase: content fields are zeroed before the row is deleted (anti-forensic measure).
 
-After GC, the SQLite database is re-padded to 512KB bucket boundaries to prevent file-size side-channel leakage.
+After GC, the database is re-padded to 512KB bucket boundaries to prevent file-size side-channel leakage.
 
 ### Gap Detection
 
@@ -583,13 +583,13 @@ flowchart TD
     E --> F{"Tier"}
     F -- Sensitive --> G["AES-256-GCM Encrypt\nenc:base64(nonce‖ciphertext‖tag)"]
     F -- Confidential --> G
-    G --> H["Store encrypted in SQLite"]
+    G --> H["Store encrypted in database"]
     H --> I["On retrieval: decrypt with keychain key"]
 ```
 
 ### Query Sanitization
 
-FTS5 operators are stripped from user queries before they reach SQLite. This prevents FTS5 injection attacks that could extract data via crafted queries.
+Full-text search operators are stripped from user queries before they reach the storage engine. This prevents full-text injection attacks that could extract data via crafted queries.
 
 ### Prompt Injection Scanning
 
@@ -601,7 +601,7 @@ Every recalled memory is scanned against 10 injection patterns before being retu
 - **Vault-size quantization** — Database padded to 512KB buckets
 - **8KB pages** — Reduces file-size granularity
 - **Incremental auto-vacuum** — Prevents immediate file shrinkage after deletions
-- **PRAGMA secure_delete = ON** — SQLite zeros freed pages
+- **Secure delete** — freed pages are zeroed by the storage engine
 
 ### GDPR Compliance
 
@@ -636,7 +636,7 @@ flowchart TD
     QG --> CTX["ContextBuilder\n(budget-aware inject into prompt)"]
 
     PC & PC2 & PC3 & PC4 & PC5 --> BR["Engram Bridge\n(PII encrypt → dedup → embed → store)"]
-    BR --> DB[("SQLite\nEpisodic / Semantic / Procedural")]
+    BR --> DB[("Persistent Store\nEpisodic / Knowledge / Procedural")]
     DB --> HS
 
     AT["Agent Tools\n(store, search, knowledge,\nstats, delete, update, list)"] <--> BR
@@ -690,18 +690,18 @@ Agents have direct access to memory through 7 tools:
 
 ## Concurrency Architecture
 
-A desktop AI platform serves multiple concurrent consumers: the chat UI, background tasks, orchestration pipelines, 11+ channel bridges, and the consolidation engine — all reading and writing memory simultaneously. The concurrency model must handle this without blocking the Tokio runtime or causing SQLite write contention.
+A desktop AI platform serves multiple concurrent consumers: the chat UI, background tasks, orchestration pipelines, 11+ channel bridges, and the consolidation engine — all reading and writing memory simultaneously. The concurrency model must handle this without blocking the Tokio runtime or causing write contention.
 
 ### Read Pool + Write Channel
 
 Engram separates reads from writes using a two-path architecture:
 
-- **Read path** — An r2d2 connection pool with 8 SQLite connections operating in WAL (Write-Ahead Logging) mode. All search queries, graph traversals, and stat reads execute on the pool concurrently. WAL mode allows readers to proceed without blocking on writers.
-- **Write path** — A dedicated writer task receives all mutations through a `tokio::mpsc` channel. The writer serializes all inserts, updates, deletions, and consolidation writes through a single connection, eliminating SQLite write contention entirely.
+- **Read path** — A connection pool with 8 read-only connections operating in WAL (Write-Ahead Logging) mode. All search queries, graph traversals, and stat reads execute on the pool concurrently. WAL mode allows readers to proceed without blocking on writers.
+- **Write path** — A dedicated writer task receives all mutations through a `tokio::mpsc` channel. The writer serializes all inserts, updates, deletions, and consolidation writes through a single connection, eliminating write contention entirely.
 
 ```
-Read requests ──→ r2d2 pool [8 WAL connections] ──→ result
-Write requests ──→ mpsc channel ──→ dedicated writer task ──→ SQLite
+Read requests ──→ connection pool [8 WAL connections] ──→ result
+Write requests ──→ mpsc channel ──→ dedicated writer task ──→ storage engine
 ```
 
 The `mpsc::send()` + `oneshot::recv()` pattern is fully async-safe — no synchronous mutexes appear in async code, which prevents Tokio thread starvation under load.
@@ -724,7 +724,7 @@ pub trait MemoryBackend: Send + Sync {
 }
 ```
 
-This trait enables `MockMemoryStore` for test isolation, future backend swaps (RocksDB, PostgreSQL), and clean dependency injection across all modules.
+This trait enables `MockMemoryStore` for test isolation, backend swaps, and clean dependency injection across all modules.
 
 ### Vector Index Strategy
 
@@ -815,7 +815,7 @@ Unknown categories gracefully fall back to `general` via the `FromStr` implement
 
 ## Schema Design
 
-Six SQLite tables with FTS5 virtual tables and 13 indices:
+Six tables with full-text virtual tables and 13 indices:
 
 ```sql
 -- Episodic memories (what happened)
@@ -862,7 +862,7 @@ memory_audit_log (
 )
 ```
 
-FTS5 virtual tables are created for `episodic_memories` and `semantic_memories` to enable full-text search. Triggers keep FTS tables synchronized.
+Full-text virtual tables are created for `episodic_memories` and `semantic_memories` to enable keyword search. Triggers keep full-text tables synchronized.
 
 ---
 
@@ -898,7 +898,7 @@ Eight modules extend the core architecture with cognitive capabilities drawn fro
 
 - **Intent-aware retrieval weighting** — The `intent_classifier.rs` module implements a 6-intent classifier (informational, procedural, comparative, debugging, exploratory, confirmatory) that dynamically weights all retrieval signals per query type. A debugging query boosts error logs and technical memories. An exploratory query triggers broader graph activation. The intent signal feeds into the retrieval gate and the reranking pipeline.
 
-- **HNSW vector index** — O(log n) approximate nearest neighbor search using `sqlite-vec` or a custom implementation
+- **HNSW vector index** — O(log n) approximate nearest neighbor search using a vector backend
 - **Proposition-level storage** — LLM-based decomposition of complex statements into atomic, independently retrievable facts
 - **Smart history compression** — Three-tier message storage (verbatim → compressed → summary) with automatic tiering based on age
 - **Topic-change detection** — Cosine divergence between consecutive messages to trigger working memory eviction
