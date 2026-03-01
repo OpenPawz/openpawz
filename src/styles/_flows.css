@@ -2174,3 +2174,103 @@
   letter-spacing: 0.06em;
   opacity: 0.7;
 }
+
+/* ─── Tesseract 4D Visualization ─── */
+
+/* Cell enclosures (Schlegel projection rectangles) */
+.flow-tesseract-cell {
+  pointer-events: none;
+  transition:
+    opacity 0.3s ease,
+    stroke-width 0.2s ease;
+}
+
+.flow-tesseract-cell-w0 {
+  filter: drop-shadow(0 0 4px rgba(143, 176, 160, 0.15));
+}
+
+.flow-tesseract-cell-w1 {
+  filter: drop-shadow(0 0 4px rgba(212, 168, 83, 0.15));
+}
+
+.flow-tesseract-cell-w2 {
+  filter: drop-shadow(0 0 4px rgba(168, 85, 247, 0.15));
+}
+
+.flow-tesseract-cell-w3 {
+  filter: drop-shadow(0 0 4px rgba(255, 77, 77, 0.15));
+}
+
+/* Phase/depth label on cell */
+.flow-tesseract-label {
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Schlegel corner connector lines (outer→inner) */
+.flow-tesseract-connector {
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+/* Event horizon pulse ring */
+.flow-horizon-pulse {
+  pointer-events: none;
+  animation: horizon-breathe 3s ease-in-out infinite;
+}
+
+@keyframes horizon-breathe {
+  0%,
+  100% {
+    opacity: 0.2;
+    stroke-width: 1;
+  }
+  50% {
+    opacity: 0.45;
+    stroke-width: 1.5;
+  }
+}
+
+/* Event horizon phase-transition label */
+.flow-horizon-label {
+  pointer-events: none;
+  user-select: none;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Node-level horizon ring (on the node itself) */
+.flow-node-horizon-ring {
+  pointer-events: none;
+  animation: horizon-ring-spin 8s linear infinite;
+}
+
+@keyframes horizon-ring-spin {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 24;
+  }
+}
+
+.flow-node-horizon-glow {
+  pointer-events: none;
+  animation: horizon-breathe 3s ease-in-out infinite;
+}
+
+/* Depth/phase badge on node */
+.flow-node-dim-badge {
+  pointer-events: none;
+  user-select: none;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  letter-spacing: 0.04em;
+}
+
+/* Event-horizon node kind styling */
+.flow-node-event-horizon .flow-node-body {
+  stroke: var(--kinetic-purple, #A855F7);
+  filter: drop-shadow(0 0 6px rgba(168, 85, 247, 0.3));
+}

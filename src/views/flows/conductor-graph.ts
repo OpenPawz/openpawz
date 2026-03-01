@@ -30,7 +30,7 @@ const DIRECT_KINDS: Set<FlowNodeKind> = new Set([
 ]);
 
 /** Kinds that are passthrough (no real execution). */
-const PASSTHROUGH_KINDS: Set<FlowNodeKind> = new Set(['trigger']);
+const PASSTHROUGH_KINDS: Set<FlowNodeKind> = new Set(['trigger', 'event-horizon' as FlowNodeKind]);
 
 /**
  * Classify how a node should be executed.

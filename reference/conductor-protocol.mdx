@@ -236,6 +236,135 @@ No other automation platform can express this pattern. In n8n, you would need to
 
 ---
 
+## Primitive 5: Tesseract (Hyper-Dimensional Flows)
+
+**Parallel workflow cells operating across depth and phase dimensions, converging at event horizons.**
+
+Primitives 1–4 operate on a flat graph — sequence (X) and parallelism (Y) on a 2D canvas. But the Conductor already works in higher dimensions implicitly. When a convergent mesh iterates, each round is a distinct state — the same topology executing with accumulated context. When parallel branches run independently before merging, they occupy separate "spaces" that collapse at a join point.
+
+The Tesseract primitive makes these hidden dimensions explicit and controllable.
+
+### The four dimensions of a workflow
+
+| Dimension | Axis | Represents | Example |
+|-----------|------|-----------|---------|
+| **1st** (X) | Sequence | Step ordering, causality | A → B → C |
+| **2nd** (Y) | Parallelism | Concurrent branches, condition splits | A → {B ‖ C} → D |
+| **3rd** (Z) | Depth | Iteration layers, abstraction nesting, sub-flow stacking | Mesh round 1 → round 2 → round 3 (helix, not loop) |
+| **4th** (W) | Phase | Behavioral mode shifts as context accumulates | Exploration → Refinement → Convergence → Crystallized |
+
+A standard flow is a 2D projection (X × Y). A convergent mesh is a 3D helix (X × Y × Z). A tesseract flow is the full 4D object (X × Y × Z × W) — independent workflow cells that can operate in parallel across all four dimensions, connecting only at designated **event horizons** where they synchronize and merge.
+
+### Cube-in-cube: the Schlegel diagram
+
+A tesseract (4D hypercube) has 8 cubic cells. When projected into 2D for display, it appears as a **cube inside a cube** — the Schlegel diagram. In workflow terms:
+
+```
+┌─────────────────────────────────────────────┐
+│ Outer Cell (W=0: Exploration)               │
+│  ┌───────────────────────────────────┐      │
+│  │ Inner Cell (W=1: Refinement)      │      │
+│  │                                   │      │
+│  │   Agent A ↔ Agent B               │      │
+│  │                                   │      │
+│  └───────────────────────────────────┘      │
+│                                             │
+│  Agent C ──→ Agent D                        │
+│                   │                         │
+│          ● Event Horizon ●                  │
+└─────────────────────────────────────────────┘
+```
+
+The **inner cell** and **outer cell** are independent workflow regions that operate in parallel — potentially across different depth layers (Z) and different behavioral phases (W). They connect only at **event horizon** nodes: synchronization points where all cells must converge before the flow can proceed.
+
+### Event horizons
+
+An event horizon is a node where multiple tesseract cells collapse into a single output. It is the 4D equivalent of a join node, but with richer semantics:
+
+- **All cells must reach the horizon** before the flow continues — it is a hard synchronization barrier
+- **Phase transitions happen at horizons** — the W coordinate shifts (e.g., from "exploration" to "refinement")
+- **Depth resets at horizons** — completed iteration rounds crystallize into a single state (Z folds)
+- **Context merges** — accumulated state from all cells is unified into a shared context
+
+This is fundamentally different from a simple parallel join. A join waits for branches. An event horizon synchronizes across dimensions, triggers phase transitions, and controls how accumulated state from different depths and phases merges.
+
+### Why this matters for AI workflows
+
+Consider a complex research pipeline:
+
+**Cell A (Outer — Exploration):** Three research agents independently search different domains, iterating with a supervisor (Z=0..3, mesh refinement). Phase W=0 (exploring).
+
+**Cell B (Inner — Analysis):** Two analyst agents debate findings from a previous run, refining their synthesis (Z=0..2, convergent mesh). Phase W=1 (already refining from prior data).
+
+These cells work independently — different topics, different models, different iteration depths. At the **event horizon**, their outputs merge: the research feeds the analysts, the analysis redirects the researchers, and the combined system transitions from W=1 to W=2 (convergence phase) where all agents work toward a single unified output.
+
+No other automation platform can represent this. It requires reasoning about time (iteration depth), behavioral mode (phase), and spatial independence (parallel cells) — all simultaneously.
+
+### Implementation: how it compiles
+
+The Conductor treats each tesseract cell as an independent sub-strategy:
+
+```typescript
+interface TesseractCell {
+  id: string;
+  phase: number;          // W coordinate — behavioral mode
+  depthRange: [number, number]; // Z range — iteration bounds
+  subgraph: FlowGraph;    // The 2D flow within this cell
+  strategy: ExecutionStrategy;  // Pre-compiled strategy for this cell
+}
+
+interface EventHorizon {
+  id: string;
+  cellIds: string[];      // Which cells converge here
+  mergePolicy: 'concat' | 'synthesize' | 'vote' | 'last-wins';
+  phaseTransition?: number; // New W value after horizon
+}
+
+interface TesseractStrategy {
+  cells: TesseractCell[];
+  horizons: EventHorizon[];
+  // Cells between horizons run as concurrent Promise.all groups
+  // Horizons are sequential barriers
+}
+```
+
+Execution:
+1. All cells before the first event horizon run concurrently (`Promise.all`)
+2. Each cell executes its own compiled strategy (Collapse, Extract, Parallelize, Converge all apply within cells)
+3. At the event horizon, execution pauses — all cells must complete
+4. Context merges according to the horizon's merge policy
+5. Phase transitions apply (W increments)
+6. Cells after the horizon execute with the merged context
+
+This is the natural extension of the Conductor's existing architecture. Parallelize already runs independent branches concurrently. Converge already handles iterative depth. The Tesseract simply makes these dimensions first-class and adds the event horizon as a synchronization primitive.
+
+### Mapping to Conductor primitives
+
+| Primitive | 2D role | 4D role |
+|-----------|---------|---------|
+| **Collapse** | Merge adjacent agent chains | Merge chains *within a cell* |
+| **Extract** | Bypass LLM for deterministic nodes | Same — applies within cells |
+| **Parallelize** | Run branches concurrently | Run *cells* concurrently |
+| **Converge** | Iterate mesh until stable | Iterate within a cell (Z) |
+| **Tesseract** | — | Orchestrate cells across phase (W) and depth (Z), sync at horizons |
+
+### Visualization: progressive disclosure
+
+The canvas uses **progressive disclosure** to avoid overwhelming users:
+
+1. **Default (2D):** Standard flat canvas — most users never need more
+2. **Mesh lift (3D):** When a convergent mesh iterates, a depth indicator shows Z layers — the "helix view"
+3. **Tesseract (4D):** When a flow contains event horizons and parallel cells, a Schlegel overlay renders the cube-in-cube with phase rings and horizon markers
+
+The Schlegel projection shows:
+- **Outer rectangle:** The current phase cell
+- **Inner rectangle:** Nested or parallel-phase cells
+- **Corner lines:** Phase transition edges (W-axis connections)
+- **Horizon ring:** A glowing ring at the convergence point where cells meet
+- **Phase badge:** Small label showing the current W value for each cell
+
+---
+
 ## Execution Strategy
 
 The Conductor compiles all four primitives into a unified `ExecutionStrategy`:

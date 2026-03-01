@@ -72,6 +72,8 @@ function mkNode(kind: FlowNodeKind, overrides: Partial<FlowNode> = {}): FlowNode
     width: NODE_DEFAULTS[kind]?.width ?? 180,
     height: NODE_DEFAULTS[kind]?.height ?? 72,
     status: 'idle',
+    depth: 0,
+    phase: 0,
     config: overrides.config ?? {},
     inputs: ['in'],
     outputs: ['out'],

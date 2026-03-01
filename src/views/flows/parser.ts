@@ -33,6 +33,10 @@ const KIND_KEYWORDS: [RegExp, FlowNodeKind][] = [
   [/\b(if|else|condition|branch|switch|check|decide|filter|gate|test)\b/i, 'condition'],
   [/\b(data|transform|map|parse|format|convert|extract|merge|split)\b/i, 'data'],
   [/\b(output|send|email|notify|log|store|save|write|return|respond|emit|post)\b/i, 'output'],
+  [
+    /\b(event.?horizon|sync.?point|converge.?all|barrier|tesseract.?sync)\b/i,
+    'event-horizon' as FlowNodeKind,
+  ],
 ];
 
 function detectKind(text: string): FlowNodeKind {

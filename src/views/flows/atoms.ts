@@ -20,7 +20,8 @@ export type FlowNodeKind =
   | 'loop' // ForEach iterator over arrays
   | 'squad' // Multi-agent squad invocation
   | 'memory' // Write to agent memory (Librarian)
-  | 'memory-recall'; // Search/read agent memory (Librarian)
+  | 'memory-recall' // Search/read agent memory (Librarian)
+  | 'event-horizon'; // Tesseract sync point — cells converge here
 
 export type EdgeKind =
   | 'forward' // Normal A → B
@@ -46,6 +47,12 @@ export interface FlowNode {
   height: number;
   /** Runtime status overlay */
   status: FlowStatus;
+  /** Depth layer (Z axis) — iteration / abstraction depth. 0 = surface. */
+  depth: number;
+  /** Phase (W axis) — behavioral mode. 0 = default. */
+  phase: number;
+  /** Tesseract cell assignment (undefined = root cell) */
+  cellId?: string;
   /** Configuration payload (kind-specific) */
   config: Record<string, unknown>;
   /** Ports: named connection points */
@@ -101,6 +108,41 @@ export type FlowTemplateCategory =
   | 'finance'
   | 'support'
   | 'custom';
+
+// ── Tesseract Types (4D Workflow) ──────────────────────────────────────────
+
+export type HorizonMergePolicy = 'concat' | 'synthesize' | 'vote' | 'last-wins';
+
+/**
+ * A tesseract cell — an independent sub-flow operating at a specific
+ * phase (W) and depth range (Z). Cells run in parallel and converge
+ * at event horizons.
+ */
+export interface TesseractCell {
+  id: string;
+  label: string;
+  /** Behavioral phase (W coordinate) */
+  phase: number;
+  /** Iteration depth bounds [min, max] (Z coordinate range) */
+  depthRange: [number, number];
+  /** Node IDs belonging to this cell */
+  nodeIds: string[];
+}
+
+/**
+ * An event horizon — a hard synchronization barrier where tesseract
+ * cells collapse into unified context before the flow proceeds.
+ */
+export interface EventHorizon {
+  /** The event-horizon node ID */
+  nodeId: string;
+  /** Cell IDs that converge at this horizon */
+  cellIds: string[];
+  /** How to merge outputs from converging cells */
+  mergePolicy: HorizonMergePolicy;
+  /** Phase value after crossing the horizon (W transition) */
+  phaseAfter: number;
+}
 
 export interface FlowTemplate {
   id: string;
@@ -229,6 +271,12 @@ export const NODE_DEFAULTS: Record<
     color: 'var(--kinetic-gold, #D4A853)',
     icon: 'manage_search',
   },
+  'event-horizon': {
+    width: 200,
+    height: 80,
+    color: 'var(--kinetic-purple, #A855F7)',
+    icon: 'blur_on',
+  },
 };
 
 export const GRID_SIZE = 20;
@@ -262,9 +310,11 @@ export function createNode(
     width: defaults.width,
     height: defaults.height,
     status: 'idle',
+    depth: 0,
+    phase: 0,
     config: {},
     inputs: kind === 'trigger' ? [] : ['in'],
-    outputs: kind === 'output' ? [] : kind === 'error' ? [] : ['out', 'err'],
+    outputs: kind === 'output' || kind === 'error' ? [] : ['out', 'err'],
     ...overrides,
   };
 }
@@ -477,6 +527,68 @@ export function detectMeshGroups(graph: FlowGraph): string[][] {
   }
 
   return [...groups.values()].filter((g) => g.length >= 2);
+}
+
+// ── Tesseract Detection ────────────────────────────────────────────────────
+
+/**
+ * Detect tesseract cells and event horizons in a graph.
+ *
+ * Cells are regions of nodes assigned to the same `cellId`.
+ * Event horizons are `event-horizon` nodes that connect cells.
+ * If no explicit cellIds are set, falls back to heuristic:
+ * nodes between event horizons are assigned to auto-generated cells.
+ */
+export function detectTesseract(
+  graph: FlowGraph,
+): { cells: TesseractCell[]; horizons: EventHorizon[] } | null {
+  const horizonNodes = graph.nodes.filter((n) => n.kind === 'event-horizon');
+  if (horizonNodes.length === 0) return null;
+
+  // Collect explicitly assigned cells
+  const cellMap = new Map<string, TesseractCell>();
+  for (const node of graph.nodes) {
+    if (node.kind === 'event-horizon') continue;
+    const cid = node.cellId ?? '__root__';
+    if (!cellMap.has(cid)) {
+      cellMap.set(cid, {
+        id: cid,
+        label: cid === '__root__' ? 'Primary' : cid,
+        phase: node.phase,
+        depthRange: [node.depth, node.depth],
+        nodeIds: [],
+      });
+    }
+    const cell = cellMap.get(cid)!;
+    cell.nodeIds.push(node.id);
+    cell.depthRange = [
+      Math.min(cell.depthRange[0], node.depth),
+      Math.max(cell.depthRange[1], node.depth),
+    ];
+  }
+
+  // Build horizons
+  const horizons: EventHorizon[] = horizonNodes.map((hn) => {
+    // Find which cells feed into this horizon
+    const incomingCellIds = new Set<string>();
+    for (const edge of graph.edges) {
+      if (edge.to === hn.id) {
+        const sourceNode = graph.nodes.find((n) => n.id === edge.from);
+        if (sourceNode) {
+          incomingCellIds.add(sourceNode.cellId ?? '__root__');
+        }
+      }
+    }
+    return {
+      nodeId: hn.id,
+      cellIds: [...incomingCellIds],
+      mergePolicy: (hn.config.mergePolicy as HorizonMergePolicy) ?? 'synthesize',
+      phaseAfter: (hn.config.phaseAfter as number) ?? hn.phase + 1,
+    };
+  });
+
+  const cells = [...cellMap.values()];
+  return cells.length > 0 ? { cells, horizons } : null;
 }
 
 /**
