@@ -22,6 +22,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
 }
 
 .inbox-conv-title {
@@ -30,6 +31,26 @@
   color: var(--text-primary);
   letter-spacing: 0.04em;
   text-transform: uppercase;
+  flex: 1;
+}
+
+.inbox-conv-collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.inbox-conv-collapse-btn:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
 }
 
 .inbox-new-chat-btn {

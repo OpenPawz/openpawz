@@ -73,6 +73,7 @@ export function mountInbox(): void {
     onFilter: handleFilter,
     onSearch: handleSearch,
     onAction: handleConversationAction,
+    onToggle: handleToggleConvlist,
   });
 
   _thread = createInboxThread({

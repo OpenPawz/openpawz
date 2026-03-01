@@ -50,6 +50,8 @@ export interface ConversationListCallbacks {
   onSearch: (query: string) => void;
   /** Context menu action */
   onAction?: (agentId: string, action: 'rename' | 'delete' | 'pin') => void;
+  /** Toggle (collapse/expand) this panel */
+  onToggle?: () => void;
 }
 
 // ── Factory ──────────────────────────────────────────────────────────────
@@ -77,6 +79,13 @@ export function createConversationList(
   const title = document.createElement('span');
   title.className = 'inbox-conv-title';
   title.textContent = 'Agents';
+
+  // Collapse toggle button (hides this panel)
+  const collapseBtn = document.createElement('button');
+  collapseBtn.className = 'inbox-conv-collapse-btn';
+  collapseBtn.title = 'Collapse panel';
+  collapseBtn.innerHTML = `<span class="ms" style="font-size:16px">left_panel_close</span>`;
+  collapseBtn.addEventListener('click', () => callbacks.onToggle?.());
 
   // New chat button with dropdown
   const newBtnWrap = document.createElement('div');
@@ -127,6 +136,7 @@ export function createConversationList(
   newBtnWrap.appendChild(newDropdown);
 
   titleRow.appendChild(title);
+  titleRow.appendChild(collapseBtn);
   titleRow.appendChild(newBtnWrap);
   header.appendChild(titleRow);
 
