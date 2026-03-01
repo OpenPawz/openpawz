@@ -201,10 +201,10 @@ async fn run_worker_loop(
                     .entry(tc_delta.index)
                     .or_insert_with(|| (String::new(), String::new(), String::new()));
                 if let Some(id) = &tc_delta.id {
-                    entry.0.push_str(id);
+                    entry.0 = id.clone();
                 }
                 if let Some(name) = &tc_delta.function_name {
-                    entry.1.push_str(name);
+                    entry.1 = name.clone();
                 }
                 if let Some(args) = &tc_delta.arguments_delta {
                     entry.2.push_str(args);

@@ -312,6 +312,12 @@ pub async fn engine_chat_send(
     let mut builder = engram::context_builder::ContextBuilder::new(&model)
         .context_window(context_window_override);
 
+    // ── Inject platform awareness + foreman protocol (priority 0 — never dropped)
+    // These were missing from the ContextBuilder path, causing the agent to lose
+    // self-awareness of what OpenPawz is and what tools/capabilities it has.
+    builder = builder.platform_awareness(chat_org::build_platform_awareness());
+    builder = builder.foreman_protocol(chat_org::build_foreman_awareness().to_string());
+
     if let Some(ref bp) = base_system_prompt {
         builder = builder.base_prompt(bp.clone());
     }

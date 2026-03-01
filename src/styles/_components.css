@@ -47,11 +47,18 @@
 }
 
 /* ─── Chat Abort Button ─── */
+.chat-stream-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 10px auto 0;
+  flex-wrap: wrap;
+}
 .chat-abort-btn {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 10px auto 0;
   padding: 7px 18px;
   border: 1.5px solid var(--error);
   border-radius: var(--radius-pill);
@@ -75,6 +82,68 @@
   width: 13px;
   height: 13px;
   stroke-width: 2.5;
+}
+
+/* ─── Chat Stream Action Buttons ─── */
+.chat-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+  white-space: nowrap;
+}
+.chat-action-btn svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2;
+}
+.chat-action-btn:active {
+  transform: scale(0.97);
+}
+
+/* Stop & Send */
+.chat-action-stop-send {
+  border-color: var(--warning, #e8a700);
+  background: color-mix(in srgb, var(--warning, #e8a700) 8%, transparent);
+  color: var(--warning, #e8a700);
+}
+.chat-action-stop-send:hover {
+  background: var(--warning, #e8a700);
+  color: white;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning, #e8a700) 15%, transparent);
+}
+
+/* Add to Queue */
+.chat-action-queue {
+  border-color: var(--accent);
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+.chat-action-queue:hover {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+
+/* Steer */
+.chat-action-steer {
+  border-color: var(--success, #22c55e);
+  background: color-mix(in srgb, var(--success, #22c55e) 8%, transparent);
+  color: var(--success, #22c55e);
+}
+.chat-action-steer:hover {
+  background: var(--success, #22c55e);
+  color: white;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success, #22c55e) 15%, transparent);
 }
 
 /* ─── Chat Attach Button ─── */

@@ -125,7 +125,8 @@ pub fn build_chat_tools(
 
 /// Build the compact runtime context block injected into every system prompt.
 ///
-/// Contains: model, provider, session, agent, current time, workspace path.
+/// Contains: model, provider, session, agent, current time, workspace path,
+/// and full environment awareness (OS, arch, shell, hostname, username, version).
 /// All inputs are plain strings extracted by the command layer from locked state.
 pub fn build_runtime_context(
     model: &str,
@@ -150,17 +151,54 @@ pub fn build_runtime_context(
 
     let ws = tools::agent_workspace(agent_id);
 
+    // ── Environment self-awareness ──────────────────────────────────────
+    let os_name = std::env::consts::OS; // "macos", "linux", "windows"
+    let os_arch = std::env::consts::ARCH; // "aarch64", "x86_64"
+    let hostname = std::env::var("HOSTNAME")
+        .or_else(|_| std::env::var("COMPUTERNAME"))
+        .or_else(|_| {
+            // macOS/Linux fallback: read /etc/hostname or use scutil
+            std::fs::read_to_string("/etc/hostname").map(|s| s.trim().to_string())
+        })
+        .unwrap_or_else(|_| "localhost".into());
+    let username = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "unknown".into());
+    let home_dir = dirs::home_dir()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "~".into());
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+        if cfg!(target_os = "windows") {
+            "powershell".into()
+        } else {
+            "/bin/zsh".into()
+        }
+    });
+    let app_version = env!("CARGO_PKG_VERSION");
+
     format!(
         "## Runtime\n\
         Model: {} | Provider: {} | Session: {} | Agent: {}\n\
         Time: {}\n\
-        Workspace: {}",
+        Workspace: {}\n\
+        \n\
+        ## Environment\n\
+        OS: {} ({}) | Shell: {}\n\
+        Host: {} | User: {} | Home: {}\n\
+        OpenPawz: v{}",
         model,
         provider_name,
         session_id,
         agent_id,
         time_str,
         ws.display(),
+        os_name,
+        os_arch,
+        shell,
+        hostname,
+        username,
+        home_dir,
+        app_version,
     )
 }
 

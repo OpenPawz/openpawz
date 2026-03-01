@@ -11,10 +11,12 @@ import { appState } from '../../state';
 
 type AgentEventHandler = (payload: unknown) => void;
 type ToolApprovalHandler = (event: EngineEvent) => void;
+type QueueReadyHandler = (sessionId: string, message: string, model?: string) => Promise<void>;
 
 let _engineListening = false;
 const _agentHandlers: AgentEventHandler[] = [];
 const _toolApprovalHandlers: ToolApprovalHandler[] = [];
+let _queueReadyHandler: QueueReadyHandler | null = null;
 
 /** Whether the engine mode is active. */
 export function isEngineMode(): boolean {
@@ -38,6 +40,15 @@ export function onEngineAgent(handler: AgentEventHandler): void {
  */
 export function onEngineToolApproval(handler: ToolApprovalHandler): void {
   _toolApprovalHandlers.push(handler);
+}
+
+/**
+ * Register a handler for queue-ready events.
+ * The handler is responsible for setting up the streaming UI pipeline
+ * and processing the queued message through the full chat flow.
+ */
+export function registerQueueReadyHandler(handler: QueueReadyHandler): void {
+  _queueReadyHandler = handler;
 }
 
 /**
@@ -107,9 +118,16 @@ export async function startEngineBridge(): Promise<void> {
       }
 
       try {
-        // The Rust queue processor does NOT store the message — it will be
-        // stored when engineChatSend triggers the normal engine_chat_send flow.
-        await engineChatSend(sessionId, message, { model: model || undefined });
+        if (_queueReadyHandler) {
+          // Use the registered handler (from chat_controller) which sets up
+          // the full streaming pipeline: showStreamingMessage → stream state
+          // → engineChatSend → await response → finalizeStreaming.
+          await _queueReadyHandler(sessionId, message, model || undefined);
+        } else {
+          // Fallback: bare engine send (streaming UI won't be set up)
+          console.warn('[bridge] No queue-ready handler registered — falling back to bare send');
+          await engineChatSend(sessionId, message, { model: model || undefined });
+        }
       } catch (e) {
         console.error('[bridge] Queue re-send failed:', e);
       }

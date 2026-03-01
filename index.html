@@ -689,10 +689,24 @@
                     data-icon="arrow-up"
                   ></button>
                 </div>
-                <button class="chat-abort-btn" id="chat-abort-btn" style="display: none">
-                  <span data-icon="square"></span>
-                  Stop
-                </button>
+                <div class="chat-stream-actions" id="chat-stream-actions" style="display: none">
+                  <button class="chat-abort-btn" id="chat-abort-btn">
+                    <span data-icon="square"></span>
+                    Stop
+                  </button>
+                  <button class="chat-action-btn chat-action-stop-send" id="chat-stop-send-btn" title="Stop the current response and send your message">
+                    <span data-icon="rotate-cw"></span>
+                    Stop &amp; Send
+                  </button>
+                  <button class="chat-action-btn chat-action-queue" id="chat-queue-btn" title="Queue your message to send after the current response finishes">
+                    <span data-icon="list-plus"></span>
+                    Add to Queue
+                  </button>
+                  <button class="chat-action-btn chat-action-steer" id="chat-steer-btn" title="Steer the agent — wrap up current response and process your message next">
+                    <span data-icon="compass"></span>
+                    Steer
+                  </button>
+                </div>
               </div>
             </div>
 
