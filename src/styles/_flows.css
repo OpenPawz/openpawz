@@ -278,6 +278,11 @@
   padding: 2px !important;
 }
 
+/* Hide redundant header from renderTemplateBrowser — panel wrapper has its own */
+.flows-templates-panel .flow-tpl-header {
+  display: none;
+}
+
 .flows-templates-content {
   flex: 1;
   min-height: 0;
