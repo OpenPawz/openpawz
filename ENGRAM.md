@@ -384,14 +384,13 @@ This ensures the event-driven memory pipeline never accumulates unbounded backlo
 
 The three tiers maintain coherence through directional data flow:
 
-```
-Sensory Buffer → (promotion) → Working Memory → (consolidation) → Long-Term Memory
-     ↑                               ↑                                    |
-     |                               |                                    |
-  new input                    boost on access                    recall on search
-                                                                         |
-                                                                         ↓
-                                                              Working Memory (insert)
+```mermaid
+flowchart LR
+    IN["New Input"] --> SB["Sensory Buffer\n(Tier 0)"]
+    SB -- "promotion" --> WM["Working Memory\n(Tier 1)"]
+    WM -- "consolidation" --> LTM["Long-Term Memory\n(Tier 2)"]
+    LTM -- "recall on search" --> WM
+    WM -. "boost on access" .-> WM
 ```
 
 There is no cache invalidation problem because the tiers are write-forward: data flows from fast/volatile to slow/persistent. Long-term memory never writes back to the sensory buffer. When a long-term memory is recalled via search, it enters working memory as a *new slot* with source `Recalled` — it does not attempt to synchronize with any existing tier-0 entry.
