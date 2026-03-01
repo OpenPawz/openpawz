@@ -357,7 +357,7 @@
 }
 
 .mission-agent-select:hover { border-color: var(--accent-muted, var(--accent)); }
-.mission-agent-select:focus { outline: none; border-color: var(--accent); }
+.mission-agent-select:focus { outline: none; border-color: var(--border-focus); }
 
 .mission-agent-select option {
   background: var(--bg-primary);

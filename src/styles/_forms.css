@@ -20,16 +20,41 @@
   color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+  outline: none !important;
 }
 
 .form-input:focus {
-  outline: none;
-  border-color: var(--accent);
+  outline: none !important;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 1px var(--border-focus);
 }
 
 .form-input::placeholder {
   color: var(--text-muted);
+}
+
+/* Catch-all: any input/select/textarea inside settings, modals, or
+   integration panels that doesn't have .form-input still gets proper
+   focus behavior (no red outline) */
+.settings-section input:focus,
+.settings-section select:focus,
+.settings-section textarea:focus,
+.settings-subsection input:focus,
+.settings-subsection select:focus,
+.settings-subsection textarea:focus,
+.settings-tab-panel input:focus,
+.settings-tab-panel select:focus,
+.settings-tab-panel textarea:focus,
+.tasks-modal input:focus,
+.tasks-modal select:focus,
+.tasks-modal textarea:focus,
+.integrations-toolbar input:focus,
+.integrations-toolbar select:focus,
+.automations-toolbar input:focus,
+.queries-toolbar input:focus {
+  outline: none !important;
+  border-color: var(--border-focus);
 }
 
 .form-hint {

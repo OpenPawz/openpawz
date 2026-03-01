@@ -482,7 +482,7 @@
 }
 
 .inbox-group-name-input:focus {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 
 .inbox-group-agent-list {

@@ -243,7 +243,7 @@
   color: var(--text-primary);
 }
 .palace-search-input:focus {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
   outline: none;
 }
 .palace-filter-select {
@@ -454,7 +454,7 @@
   resize: none;
 }
 .palace-recall-input:focus {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
   outline: none;
 }
 .palace-recall-results {

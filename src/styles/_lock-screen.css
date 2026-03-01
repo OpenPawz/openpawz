@@ -197,7 +197,7 @@
 }
 
 .lock-input:focus {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 
 .lock-input::placeholder {

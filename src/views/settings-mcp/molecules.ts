@@ -181,27 +181,27 @@ function showAddServerForm(container: HTMLElement) {
   form.innerHTML = `
     <h3 style="margin:0 0 12px;font-size:14px;font-weight:600">Add MCP Server</h3>
     <div style="display:flex;flex-direction:column;gap:10px;max-width:460px">
-      <label style="font-size:12px;font-weight:600">Name
-        <input type="text" id="mcp-add-name" placeholder="My MCP Server" style="${inputStyle}" />
-      </label>
-      <label style="font-size:12px;font-weight:600">Transport
-        <select id="mcp-add-transport" style="${inputStyle}">
+      <div style="font-size:12px;font-weight:600">Name
+        <input type="text" id="mcp-add-name" class="form-input" placeholder="My MCP Server" style="${inputStyle}" />
+      </div>
+      <div style="font-size:12px;font-weight:600">Transport
+        <select id="mcp-add-transport" class="form-input" style="${inputStyle}">
           <option value="stdio" selected>Stdio (local process)</option>
           <option value="sse">SSE (HTTP endpoint)</option>
         </select>
-      </label>
+      </div>
       <div id="mcp-add-stdio-fields">
-        <label style="font-size:12px;font-weight:600">Command
-          <input type="text" id="mcp-add-command" placeholder="npx -y @modelcontextprotocol/server-filesystem" style="${inputStyle}" />
-        </label>
-        <label style="font-size:12px;font-weight:600;margin-top:8px;display:block">Arguments <span style="font-weight:normal;color:var(--text-muted)">(one per line)</span>
-          <textarea id="mcp-add-args" rows="2" placeholder="/home/user/documents" style="${inputStyle};resize:vertical;font-family:monospace"></textarea>
-        </label>
+        <div style="font-size:12px;font-weight:600">Command
+          <input type="text" id="mcp-add-command" class="form-input" placeholder="npx -y @modelcontextprotocol/server-filesystem" style="${inputStyle}" />
+        </div>
+        <div style="font-size:12px;font-weight:600;margin-top:8px;display:block">Arguments <span style="font-weight:normal;color:var(--text-muted)">(one per line)</span>
+          <textarea id="mcp-add-args" class="form-input" rows="2" placeholder="/home/user/documents" style="${inputStyle};resize:vertical;font-family:monospace"></textarea>
+        </div>
       </div>
       <div id="mcp-add-sse-fields" style="display:none">
-        <label style="font-size:12px;font-weight:600">URL
-          <input type="url" id="mcp-add-url" placeholder="http://localhost:8080/sse" style="${inputStyle}" />
-        </label>
+        <div style="font-size:12px;font-weight:600">URL
+          <input type="url" id="mcp-add-url" class="form-input" placeholder="http://localhost:8080/sse" style="${inputStyle}" />
+        </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn btn-primary btn-sm" id="mcp-add-save">Add Server</button>
@@ -290,32 +290,32 @@ function showEditServerForm(card: HTMLElement, server: McpServerConfig) {
 
   form.innerHTML = `
     <div style="display:flex;flex-direction:column;gap:10px;max-width:460px">
-      <label style="font-size:12px;font-weight:600">Name
-        <input type="text" id="mcp-edit-name" value="${esc(server.name)}" style="${inputStyle}" />
-      </label>
-      <label style="font-size:12px;font-weight:600">Transport
-        <select id="mcp-edit-transport" style="${inputStyle}">
+      <div style="font-size:12px;font-weight:600">Name
+        <input type="text" id="mcp-edit-name" class="form-input" value="${esc(server.name)}" style="${inputStyle}" />
+      </div>
+      <div style="font-size:12px;font-weight:600">Transport
+        <select id="mcp-edit-transport" class="form-input" style="${inputStyle}">
           <option value="stdio" ${server.transport === 'stdio' ? 'selected' : ''}>Stdio (local process)</option>
           <option value="sse" ${server.transport === 'sse' ? 'selected' : ''}>SSE (HTTP endpoint)</option>
         </select>
-      </label>
+      </div>
       <div id="mcp-edit-stdio-fields" style="${server.transport === 'sse' ? 'display:none' : ''}">
-        <label style="font-size:12px;font-weight:600">Command
-          <input type="text" id="mcp-edit-command" value="${esc(server.command)}" style="${inputStyle}" />
-        </label>
-        <label style="font-size:12px;font-weight:600;margin-top:8px;display:block">Arguments <span style="font-weight:normal;color:var(--text-muted)">(one per line)</span>
-          <textarea id="mcp-edit-args" rows="2" style="${inputStyle};resize:vertical;font-family:monospace">${esc(server.args.join('\n'))}</textarea>
-        </label>
+        <div style="font-size:12px;font-weight:600">Command
+          <input type="text" id="mcp-edit-command" class="form-input" value="${esc(server.command)}" style="${inputStyle}" />
+        </div>
+        <div style="font-size:12px;font-weight:600;margin-top:8px;display:block">Arguments <span style="font-weight:normal;color:var(--text-muted)">(one per line)</span>
+          <textarea id="mcp-edit-args" class="form-input" rows="2" style="${inputStyle};resize:vertical;font-family:monospace">${esc(server.args.join('\n'))}</textarea>
+        </div>
       </div>
       <div id="mcp-edit-sse-fields" style="${server.transport === 'stdio' ? 'display:none' : ''}">
-        <label style="font-size:12px;font-weight:600">URL
-          <input type="url" id="mcp-edit-url" value="${esc(server.url)}" style="${inputStyle}" />
-        </label>
+        <div style="font-size:12px;font-weight:600">URL
+          <input type="url" id="mcp-edit-url" class="form-input" value="${esc(server.url)}" style="${inputStyle}" />
+        </div>
       </div>
-      <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+      <div style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
         <input type="checkbox" id="mcp-edit-enabled" ${server.enabled ? 'checked' : ''} />
         <span style="font-weight:600">Enabled</span>
-      </label>
+      </div>
       <div style="display:flex;gap:8px;margin-top:4px">
         <button class="btn btn-primary btn-sm" id="mcp-edit-save">Save</button>
         <button class="btn btn-ghost btn-sm" id="mcp-edit-cancel">Cancel</button>

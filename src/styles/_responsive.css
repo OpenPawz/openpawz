@@ -14,14 +14,10 @@
 }
 
 /* ─── Focus ─── */
-:focus-visible {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
-}
-
-button:focus:not(:focus-visible) {
-  outline: none;
-}
+/* Focus outlines are handled globally in _reset.css.
+   Interactive elements use border-color changes, not outlines.
+   DO NOT add :focus-visible outline rules here — they leak to
+   <label>, <div>, and scrollable containers in WebKit/WKWebView. */
 
 /* ─── Chat Header Responsive ─── */
 @media (max-width: 900px) {

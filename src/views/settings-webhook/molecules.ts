@@ -89,39 +89,44 @@ export async function loadWebhookSettings() {
   form.style.cssText = 'display:flex;flex-direction:column;gap:12px;max-width:400px;margin-top:8px';
 
   const inputStyle =
-    'width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px';
+    'width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none';
 
   form.innerHTML = `
-    <label style="font-size:12px;font-weight:600">Bind Address
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Bind Address</label>
       <input type="text" id="wh-bind" value="${esc(config.bind_address)}" placeholder="127.0.0.1"
-        style="${inputStyle}" />
-    </label>
-    <label style="font-size:12px;font-weight:600">Port
+        class="form-input" style="${inputStyle}" />
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Port</label>
       <input type="number" id="wh-port" value="${config.port}" min="1" max="65535"
-        style="${inputStyle}" />
-    </label>
-    <label style="font-size:12px;font-weight:600">Auth Token
+        class="form-input" style="${inputStyle}" />
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Auth Token</label>
       <div style="display:flex;gap:6px;margin-top:4px">
         <input type="password" id="wh-token" value="${esc(config.auth_token)}" readonly
-          style="${inputStyle};flex:1;font-family:monospace" />
+          class="form-input" style="${inputStyle};flex:1;font-family:monospace" />
         <button class="btn btn-ghost btn-sm" id="wh-show-token" title="Toggle visibility" style="white-space:nowrap">Show</button>
         <button class="btn btn-ghost btn-sm" id="wh-copy-token" title="Copy to clipboard" style="white-space:nowrap">Copy</button>
         <button class="btn btn-ghost btn-sm" id="wh-regen-token" title="Regenerate token" style="white-space:nowrap">Regen</button>
       </div>
-    </label>
-    <label style="font-size:12px;font-weight:600">Default Agent ID <span style="font-weight:normal;color:var(--text-muted)">(used when URL omits agent_id)</span>
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Default Agent ID <span style="font-weight:normal;color:var(--text-muted)">(used when URL omits agent_id)</span></label>
       <input type="text" id="wh-agent-id" value="${esc(config.default_agent_id)}" placeholder="default"
-        style="${inputStyle}" />
-    </label>
-    <label style="font-size:12px;font-weight:600">Rate Limit <span style="font-weight:normal;color:var(--text-muted)">(requests/min per IP, 0 = unlimited)</span>
+        class="form-input" style="${inputStyle}" />
+    </div>
+    <div class="form-group" style="margin-bottom:12px">
+      <label class="form-label">Rate Limit <span style="font-weight:normal;color:var(--text-muted)">(requests/min per IP, 0 = unlimited)</span></label>
       <input type="number" id="wh-rate" value="${config.rate_limit_per_minute}" min="0" max="10000"
-        style="${inputStyle}" />
-    </label>
-    <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+        class="form-input" style="${inputStyle}" />
+    </div>
+    <div style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
       <input type="checkbox" id="wh-dangerous" ${config.allow_dangerous_tools ? 'checked' : ''} />
       <span style="font-weight:600">Allow dangerous tools</span>
       <span style="color:var(--warning);font-size:11px">⚠️ Lets webhook-triggered agents run shell commands, file I/O, etc.</span>
-    </label>
+    </div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="btn btn-primary btn-sm" id="wh-save-config">Save Config</button>
       <button class="btn btn-ghost btn-sm" id="wh-reload">Reload</button>

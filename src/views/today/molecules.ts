@@ -86,8 +86,9 @@ function showLocationEditor(weatherEl: HTMLElement, currentLocation: string) {
   inp.type = 'text';
   inp.value = currentLocation;
   inp.placeholder = 'Enter city (e.g. New York, London, Tokyo)';
+  inp.className = 'form-input';
   inp.style.cssText =
-    'font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);width:200px';
+    'font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text);width:200px;outline:none';
   const saveBtn = document.createElement('button');
   saveBtn.className = 'btn btn-sm';
   saveBtn.textContent = 'Save';

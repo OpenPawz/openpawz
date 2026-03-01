@@ -7,7 +7,7 @@ import { $ } from '../../components/helpers';
 import { esc, makeBtn, workflowCountLabel } from './atoms';
 
 const INPUT_STYLE =
-  'width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px';
+  'width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none';
 
 export async function loadN8nSettings() {
   const container = $('settings-n8n-content');
@@ -34,29 +34,29 @@ export async function loadN8nSettings() {
   form.style.cssText = 'display:flex;flex-direction:column;gap:12px;max-width:480px;margin-top:8px';
 
   form.innerHTML = `
-    <label style="font-size:12px;font-weight:600">n8n Instance URL
-      <input type="text" id="n8n-url" value="${esc(config.url)}" placeholder="https://your-n8n.example.com"
+    <div style="font-size:12px;font-weight:600">n8n Instance URL
+      <input type="text" id="n8n-url" class="form-input" value="${esc(config.url)}" placeholder="https://your-n8n.example.com"
         style="${INPUT_STYLE}" />
-    </label>
-    <label style="font-size:12px;font-weight:600">API Key
+    </div>
+    <div style="font-size:12px;font-weight:600">API Key
       <div style="display:flex;gap:6px;margin-top:4px">
-        <input type="password" id="n8n-api-key" value="${esc(config.api_key)}" placeholder="n8n API key"
+        <input type="password" id="n8n-api-key" class="form-input" value="${esc(config.api_key)}" placeholder="n8n API key"
           style="${INPUT_STYLE};flex:1;font-family:monospace" />
         <button class="btn btn-ghost btn-sm" id="n8n-show-key" title="Toggle visibility" style="white-space:nowrap">Show</button>
       </div>
-    </label>
-    <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+    </div>
+    <div style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
       <input type="checkbox" id="n8n-enabled" ${config.enabled ? 'checked' : ''} />
       Enable n8n integration
-    </label>
-    <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+    </div>
+    <div style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
       <input type="checkbox" id="n8n-auto-discover" ${config.auto_discover ? 'checked' : ''} />
       Auto-discover workflows on connect
-    </label>
-    <label style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
+    </div>
+    <div style="font-size:12px;display:flex;align-items:center;gap:8px;cursor:pointer">
       <input type="checkbox" id="n8n-mcp-mode" ${config.mcp_mode ? 'checked' : ''} />
       Use MCP bridge mode <span style="font-weight:normal;color:var(--text-muted)">(Phase 3)</span>
-    </label>`;
+    </div>`;
 
   formSection.appendChild(form);
   container.appendChild(formSection);

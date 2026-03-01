@@ -33,7 +33,7 @@
 }
 .ide-project-select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 .ide-body {
   display: flex;

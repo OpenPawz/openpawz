@@ -79,7 +79,7 @@
   /* Borders — sharp 1px grid */
   --border: #1a1a1a;
   --border-subtle: #111111;
-  --border-focus: #FF4D4D;
+  --border-focus: #3a3a3a;
   --border-light: #2a2a2a;
 
   /* Radius — sharp industrial */
@@ -217,7 +217,7 @@
   /* Borders — warm soft edges */
   --border: #D4CFC8;
   --border-subtle: #DDD8D2;
-  --border-focus: #CC3333;
+  --border-focus: #A09A92;
   --border-light: #E3DED8;
 
   /* Shadows — soft, minimal */

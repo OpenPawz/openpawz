@@ -114,7 +114,7 @@
 }
 .chat-model-select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 .chat-model-select option {
   background: var(--bg-primary);
@@ -566,7 +566,7 @@
 }
 
 .chat-input-wrapper:focus-within {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 
 /* When attachment preview is visible, fuse it seamlessly with the input */
@@ -586,7 +586,7 @@
   border-radius: var(--radius-md);
 }:focus-within {
   box-shadow:
-    0 0 0 3px var(--accent-subtle),
+    0 0 0 1px var(--border-focus),
     var(--shadow-sm);
 }
 

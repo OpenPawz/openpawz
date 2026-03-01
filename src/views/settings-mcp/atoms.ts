@@ -21,4 +21,4 @@ export function makeBtn(label: string, cls: string, handler: () => void): HTMLBu
 
 /** Input styling constant */
 export const inputStyle =
-  'width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px';
+  'width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none';

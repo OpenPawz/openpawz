@@ -174,18 +174,18 @@ export async function loadTailscaleSettings() {
   form.style.cssText = 'display:flex;flex-direction:column;gap:12px;max-width:400px;margin-top:8px';
 
   form.innerHTML = `
-    <label style="font-size:12px;font-weight:600">Serve Port
-      <input type="number" id="ts-serve-port" value="${config.serve_port}" min="1" max="65535"
-        style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px" />
-    </label>
-    <label style="font-size:12px;font-weight:600">Auth Key <span style="font-weight:normal;color:var(--text-muted)">(optional, for headless connect)</span>
-      <input type="password" id="ts-auth-key" value="${esc(config.auth_key)}" placeholder="tskey-auth-..."
-        style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px" />
-    </label>
-    <label style="font-size:12px;font-weight:600">Hostname Override <span style="font-weight:normal;color:var(--text-muted)">(optional)</span>
-      <input type="text" id="ts-hostname" value="${esc(config.hostname_override)}" placeholder="pawz-desktop"
-        style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px" />
-    </label>
+    <div style="font-size:12px;font-weight:600">Serve Port
+      <input type="number" id="ts-serve-port" class="form-input" value="${config.serve_port}" min="1" max="65535"
+        style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none" />
+    </div>
+    <div style="font-size:12px;font-weight:600">Auth Key <span style="font-weight:normal;color:var(--text-muted)">(optional, for headless connect)</span>
+      <input type="password" id="ts-auth-key" class="form-input" value="${esc(config.auth_key)}" placeholder="tskey-auth-..."
+        style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none" />
+    </div>
+    <div style="font-size:12px;font-weight:600">Hostname Override <span style="font-weight:normal;color:var(--text-muted)">(optional)</span>
+      <input type="text" id="ts-hostname" class="form-input" value="${esc(config.hostname_override)}" placeholder="pawz-desktop"
+        style="width:100%;margin-top:4px;padding:8px;border-radius:6px;border:1px solid var(--border);background:var(--bg-secondary);color:var(--text-primary);font-size:13px;outline:none" />
+    </div>
     <div style="display:flex;gap:8px;margin-top:4px">
       <button class="btn btn-primary btn-sm" id="ts-save-config">Save Config</button>
       <button class="btn btn-ghost btn-sm" id="ts-reload">Reload</button>

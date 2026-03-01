@@ -890,8 +890,8 @@
 }
 
 .setup-guide-input:focus {
-  border-color: var(--accent, #FF4D4D);
-  box-shadow: 0 0 0 2px rgba(255, 77, 77, 0.15);
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 1px var(--border-focus);
 }
 
 .setup-guide-input-error {

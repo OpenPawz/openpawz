@@ -109,6 +109,30 @@
   box-shadow: none;
 }
 
+/* Settings containers must never visually react to descendant focus */
+.settings-content,
+.settings-tab-panel,
+.settings-section,
+.settings-layout,
+.settings-subsection {
+  outline: none !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+.settings-content:focus,
+.settings-content:focus-within,
+.settings-tab-panel:focus,
+.settings-tab-panel:focus-within,
+.settings-section:focus,
+.settings-section:focus-within,
+.settings-layout:focus,
+.settings-layout:focus-within,
+.settings-subsection:focus,
+.settings-subsection:focus-within {
+  outline: none !important;
+  border-color: var(--border) !important;
+  box-shadow: none !important;
+}
+
 .settings-section-title {
   font-family: var(--font-sans);
   font-size: 8px;

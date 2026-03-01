@@ -43,6 +43,41 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Focus suppression (single source of truth) ─────────────────────────
+   WebKit/WKWebView on macOS draws dashed focus rings on scrollable
+   containers and propagates them to parent elements when any descendant
+   is focused. We suppress ALL outlines globally and handle focus
+   indication via border-color changes on interactive elements only.
+   This MUST use !important to beat later rules in _responsive.css etc. */
+*:focus,
+*:focus-visible,
+*:focus-within {
+  outline: none !important;
+  outline-width: 0 !important;
+  -webkit-focus-ring-color: transparent !important;
+}
+
+/* <label> wrapping <input> — WebKit outlines the label on :focus-within */
+label:focus-within,
+label:focus {
+  outline: none !important;
+  border-color: inherit !important;
+}
+
+/* Non-interactive block elements must never show focus indicators */
+div:focus, div:focus-within,
+section:focus, section:focus-within,
+main:focus, main:focus-within,
+article:focus, nav:focus,
+aside:focus, header:focus,
+footer:focus, form:focus,
+fieldset:focus {
+  outline: none !important;
+  border-color: inherit !important;
+  box-shadow: none !important;
 }
 
 body {

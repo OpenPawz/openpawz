@@ -10,18 +10,24 @@
   font-weight: 400;
   font-family: inherit;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast), transform var(--transition-fast);
   border: 1px solid var(--border);
   width: auto;
   white-space: nowrap;
   flex-shrink: 0;
   letter-spacing: 0.02em;
+  outline: none !important;
 }
 
 .btn-primary {
   background: transparent;
   color: var(--accent);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-muted, rgba(255, 77, 77, 0.18));
+}
+
+.btn-primary:focus {
+  border-color: var(--border-focus);
+  box-shadow: none;
 }
 
 .btn-primary:hover {

@@ -73,7 +73,7 @@
   transition: border-color var(--transition-fast);
 }
 .community-search-wrap:focus-within {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 .community-search-wrap .ms {
   color: var(--text-muted);
@@ -564,7 +564,7 @@
 }
 .community-cred-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 .community-cred-toggle-vis {
   flex-shrink: 0;

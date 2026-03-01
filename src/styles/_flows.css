@@ -183,7 +183,7 @@
 
 .flows-text-box:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 
 /* ── Sidebar: Flow List ─────────────────────────────────────────────────── */
@@ -812,7 +812,7 @@
 .flow-panel-input:focus,
 .flow-panel-select:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--border-focus);
 }
 
 .flow-panel-section {
@@ -886,7 +886,7 @@
 }
 
 .flow-panel-textarea:focus {
-  border-color: var(--accent);
+  border-color: var(--border-focus);
   outline: none;
 }
 
@@ -1113,7 +1113,7 @@
 
 .flow-tpl-search-input:focus {
   outline: none;
-  border-color: var(--kinetic-red, #FF4D4D);
+  border-color: var(--border-focus);
 }
 
 .flow-tpl-search-input::placeholder {
