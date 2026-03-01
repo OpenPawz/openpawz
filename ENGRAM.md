@@ -27,18 +27,19 @@ All code is open source under the MIT License.
 5. [Long-Term Memory Graph](#long-term-memory-graph)
 6. [Hybrid Search — BM25 + Vector Fusion](#hybrid-search)
 7. [Retrieval Intelligence](#retrieval-intelligence)
-8. [Consolidation Engine](#consolidation-engine)
-9. [Memory Fusion](#memory-fusion)
-10. [Context Window Intelligence](#context-window-intelligence)
-11. [Memory Security](#memory-security)
-12. [Memory Lifecycle Integration](#memory-lifecycle-integration)
-13. [Concurrency Architecture](#concurrency-architecture)
-14. [Observability](#observability)
-15. [Category Taxonomy](#category-taxonomy)
-16. [Schema Design](#schema-design)
-17. [Configuration](#configuration)
-18. [Frontier Capabilities](#frontier-capabilities)
-19. [Quality Evaluation](#quality-evaluation)
+8. [Caching Architecture](#caching-architecture)
+9. [Consolidation Engine](#consolidation-engine)
+10. [Memory Fusion](#memory-fusion)
+11. [Context Window Intelligence](#context-window-intelligence)
+12. [Memory Security](#memory-security)
+13. [Memory Lifecycle Integration](#memory-lifecycle-integration)
+14. [Concurrency Architecture](#concurrency-architecture)
+15. [Observability](#observability)
+16. [Category Taxonomy](#category-taxonomy)
+17. [Schema Design](#schema-design)
+18. [Configuration](#configuration)
+19. [Frontier Capabilities](#frontier-capabilities)
+20. [Quality Evaluation](#quality-evaluation)
 
 ---
 
@@ -322,6 +323,80 @@ After search returns results, the `QualityGate` evaluates whether the results ar
 4. **Graceful refusal** — If reformulation and expansion both fail, the system refuses rather than injecting low-quality memories.
 
 This two-stage pipeline means Engram retrieves when it should, skips when it shouldn't, and corrects when results are weak — rather than blindly injecting whatever the search returns.
+
+---
+
+## Caching Architecture
+
+Engram's three-tier design is itself a caching hierarchy. Each tier operates as a bounded cache with a distinct eviction policy, TTL, and access pattern — mirroring the cache hierarchy in both CPU architecture and biological cognition.
+
+### The Biological Cache Model
+
+The Atkinson-Shiffrin model of human memory describes three stores with decreasing access speed and increasing capacity. Engram's tiers map directly:
+
+| Tier | Engram Module | Biological Analog | Cache Role | Eviction Policy |
+|------|---------------|-------------------|------------|-----------------|
+| Tier 0 | `SensoryBuffer` | Iconic / echoic memory | **Perceptual cache** — raw stimuli before attentional filtering | FIFO ring; oldest entry evicted on overflow |
+| Tier 1 | `WorkingMemory` | Baddeley's central executive | **Attention cache** — what the agent is actively thinking about | Priority-based; lowest-priority slot evicted when token budget exceeded |
+| Tier 2 | LTM Graph + SQLite | Hippocampal long-term store | **Persistent store** — everything known, accessed via retrieval | Ebbinghaus strength decay → GC below threshold |
+
+This is not a loose analogy. The eviction cascade is functionally identical to memory trace transfer in cognitive psychology: sensory traces that receive attention are promoted to working memory; working memory items that are rehearsed are consolidated to long-term storage. Items that fail to be promoted are lost — the system forgets gracefully.
+
+### Tier 0: Sensory Cache
+
+The `SensoryBuffer` is a bounded `VecDeque` ring buffer with explicit cache semantics:
+
+- **Capacity-bounded:** configurable max entries (default 20)
+- **FIFO eviction:** when full, `push()` evicts the oldest entry and returns it for promotion to working memory
+- **Token-aware:** tracks cumulative token count; `drain_within_budget()` returns items that fit within a given token limit
+- **Volatile:** contents are discarded after each agent turn
+
+The returned evicted entry is the promotion signal — it tells the caller "this item was pushed out of sensory attention; decide whether it deserves a working memory slot." This mirrors the attentional gate in human perception.
+
+### Tier 1: Attention Cache
+
+`WorkingMemory` implements a priority-managed cache with LRU-like refresh semantics:
+
+- **Token-budget-bounded:** total slot tokens cannot exceed the configured budget (default 4,096)
+- **Priority eviction:** `evict_lowest()` removes the slot with the lowest priority score — items that haven't been referenced decay naturally
+- **Priority decay:** `decay_priorities(0.95)` is called each turn, multiplicatively reducing all slot priorities. Unreferenced items age out over ~20 turns
+- **Priority boost:** `boost_priority(id, delta)` refreshes recently-accessed items, equivalent to an LRU "touch" operation
+- **Snapshot persistence:** on agent switch, the entire working memory is serialized to SQLite and restored when the agent resumes — cache state survives context switches
+
+### Momentum Cache
+
+Working memory maintains a sliding window of recent query embeddings (`momentum_embeddings: Vec<Vec<f32>>`, capped at 5). This trajectory cache serves two purposes:
+
+1. **Priming** — biases retrieval toward the current conversation direction, exactly as semantic priming works in human cognition
+2. **Anticipation** — the momentum vector (centroid of recent embeddings) predicts where the conversation is heading, enabling pre-fetch of likely-needed memories before the user asks
+
+### Publication Buffer
+
+The `MemoryBus` maintains a bounded FIFO publication queue with TTL-based eviction:
+
+- **TTL expiry:** publications older than `PUBLICATION_TTL_SECS` are discarded on each insertion
+- **Capacity cap:** when `MAX_PENDING_PUBLICATIONS` is reached, the oldest publication is evicted
+- **Subscriber fan-out:** pending publications are delivered to registered subscribers upon drain, then removed
+
+This ensures the event-driven memory pipeline never accumulates unbounded backlog, even if consumers stall.
+
+### Cache Coherence
+
+The three tiers maintain coherence through directional data flow:
+
+```
+Sensory Buffer → (promotion) → Working Memory → (consolidation) → Long-Term Memory
+     ↑                               ↑                                    |
+     |                               |                                    |
+  new input                    boost on access                    recall on search
+                                                                         |
+                                                                         ↓
+                                                              Working Memory (insert)
+```
+
+There is no cache invalidation problem because the tiers are write-forward: data flows from fast/volatile to slow/persistent. Long-term memory never writes back to the sensory buffer. When a long-term memory is recalled via search, it enters working memory as a *new slot* with source `Recalled` — it does not attempt to synchronize with any existing tier-0 entry.
+
+This unidirectional flow eliminates the coherence complexity that plagues traditional multi-level caches.
 
 ---
 
