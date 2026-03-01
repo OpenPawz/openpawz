@@ -487,28 +487,34 @@
             <div class="agents-main-col">
               <!-- Fleet section -->
               <div class="agents-section k-row k-materialise">
-                <div class="agents-section-header">
+                <div class="agents-section-header agents-section-toggle" data-toggle="agents-fleet-body">
                   <span class="ms agents-section-icon">groups</span>
                   <span class="agents-section-title">Your Fleet</span>
                   <div class="agents-toggle-btns" id="agents-toggle-btns">
                     <!-- filled by JS -->
                   </div>
+                  <span class="ms agents-section-chevron">expand_less</span>
                 </div>
-                <div class="agents-grid" id="agents-grid">
-                  <!-- Agent cards render here -->
+                <div class="agents-section-collapsible" id="agents-fleet-body">
+                  <div class="agents-grid" id="agents-grid">
+                    <!-- Agent cards render here -->
+                  </div>
                 </div>
               </div>
 
               <!-- Templates marketplace section -->
               <div class="agents-section k-row k-materialise">
-                <div class="agents-section-header">
+                <div class="agents-section-header agents-section-toggle" data-toggle="agents-templates-body">
                   <span class="ms agents-section-icon">store</span>
                   <span class="agents-section-title">Agent Templates</span>
                   <span class="agents-section-badge">Install &amp; Go</span>
+                  <span class="ms agents-section-chevron">expand_less</span>
                 </div>
-                <p class="agents-section-desc">Pre-configured agent blueprints — one click to deploy</p>
-                <div class="agents-templates-grid" id="agents-templates-grid">
-                  <!-- filled by JS -->
+                <div class="agents-section-collapsible" id="agents-templates-body">
+                  <p class="agents-section-desc">Pre-configured agent blueprints — one click to deploy</p>
+                  <div class="agents-templates-grid" id="agents-templates-grid">
+                    <!-- filled by JS -->
+                  </div>
                 </div>
               </div>
             </div>
@@ -517,32 +523,40 @@
             <div class="agents-side-panel k-stagger">
               <!-- Capabilities card -->
               <div class="agents-panel-card k-row k-spring k-materialise">
-                <div class="agents-panel-card-header">
+                <div class="agents-panel-card-header agents-section-toggle" data-toggle="agents-capabilities-body">
                   <span class="ms agents-panel-card-icon">bolt</span>
                   <span class="agents-panel-card-title">Capabilities</span>
+                  <span class="ms agents-section-chevron">expand_less</span>
                 </div>
-                <div class="agents-capabilities-list" id="agents-capabilities-list">
-                  <!-- filled by JS -->
+                <div class="agents-section-collapsible" id="agents-capabilities-body">
+                  <div class="agents-capabilities-list" id="agents-capabilities-list">
+                    <!-- filled by JS -->
+                  </div>
                 </div>
               </div>
 
               <!-- Recent Activity card -->
               <div class="agents-panel-card k-row k-spring k-materialise">
-                <div class="agents-panel-card-header">
+                <div class="agents-panel-card-header agents-section-toggle" data-toggle="agents-activity-body">
                   <span class="ms agents-panel-card-icon">history</span>
                   <span class="agents-panel-card-title">Recent Activity</span>
+                  <span class="ms agents-section-chevron">expand_less</span>
                 </div>
-                <div class="agents-activity-list" id="agents-activity-list">
-                  <div class="agents-activity-empty">No activity yet</div>
+                <div class="agents-section-collapsible" id="agents-activity-body">
+                  <div class="agents-activity-list" id="agents-activity-list">
+                    <div class="agents-activity-empty">No activity yet</div>
+                  </div>
                 </div>
               </div>
 
               <!-- Quick Actions card -->
               <div class="agents-panel-card k-row k-spring k-materialise">
-                <div class="agents-panel-card-header">
+                <div class="agents-panel-card-header agents-section-toggle" data-toggle="agents-actions-body">
                   <span class="ms agents-panel-card-icon">rocket_launch</span>
                   <span class="agents-panel-card-title">Quick Actions</span>
+                  <span class="ms agents-section-chevron">expand_less</span>
                 </div>
+                <div class="agents-section-collapsible" id="agents-actions-body">
                 <div class="agents-quick-actions">
                   <button class="agents-quick-btn" id="agents-qa-create">
                     <span class="ms">add_circle</span> New Agent
@@ -553,6 +567,7 @@
                   <button class="agents-quick-btn" id="agents-qa-export">
                     <span class="ms">upload</span> Export Fleet
                   </button>
+                </div>
                 </div>
               </div>
             </div>
