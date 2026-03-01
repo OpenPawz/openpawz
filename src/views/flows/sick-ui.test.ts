@@ -120,6 +120,8 @@ function mkNode(id: string, kind: FlowNodeKind, x = 0, y = 0): FlowNode {
     height: 80,
     config: {},
     status: 'idle' as FlowStatus,
+    depth: 0,
+    phase: 0,
     inputs: ['in'],
     outputs: ['out'],
   };

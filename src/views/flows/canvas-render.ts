@@ -189,6 +189,52 @@ export function renderNode(node: FlowNode, selected: boolean): SVGGElement {
   badge.textContent = node.kind.toUpperCase();
   g.appendChild(badge);
 
+  // Depth/Phase badge (only when non-zero — 4D tesseract indicators)
+  if (node.depth > 0 || node.phase > 0) {
+    const dpBadge = svgEl('text');
+    dpBadge.setAttribute('class', 'flow-node-dim-badge');
+    dpBadge.setAttribute('x', String(node.width - 8));
+    dpBadge.setAttribute('y', String(node.height - 6));
+    dpBadge.setAttribute('text-anchor', 'end');
+    dpBadge.setAttribute('fill', 'var(--kinetic-purple, #A855F7)');
+    dpBadge.setAttribute('font-size', '8');
+    dpBadge.setAttribute('opacity', '0.8');
+    const parts: string[] = [];
+    if (node.depth > 0) parts.push(`Z${node.depth}`);
+    if (node.phase > 0) parts.push(`W${node.phase}`);
+    dpBadge.textContent = parts.join(' ');
+    g.appendChild(dpBadge);
+  }
+
+  // Event Horizon special rendering — radial glow ring
+  if (node.kind === 'event-horizon') {
+    const horizonRing = svgEl('ellipse');
+    horizonRing.setAttribute('class', 'flow-node-horizon-ring');
+    horizonRing.setAttribute('cx', String(node.width / 2));
+    horizonRing.setAttribute('cy', String(node.height / 2));
+    horizonRing.setAttribute('rx', String(node.width / 2 + 10));
+    horizonRing.setAttribute('ry', String(node.height / 2 + 10));
+    horizonRing.setAttribute('fill', 'none');
+    horizonRing.setAttribute('stroke', 'var(--kinetic-purple, #A855F7)');
+    horizonRing.setAttribute('stroke-width', '1.5');
+    horizonRing.setAttribute('stroke-dasharray', '4 2');
+    horizonRing.setAttribute('opacity', '0.5');
+    g.appendChild(horizonRing);
+
+    // Inner glow ellipse
+    const horizonGlow = svgEl('ellipse');
+    horizonGlow.setAttribute('class', 'flow-node-horizon-glow');
+    horizonGlow.setAttribute('cx', String(node.width / 2));
+    horizonGlow.setAttribute('cy', String(node.height / 2));
+    horizonGlow.setAttribute('rx', String(node.width / 2 + 6));
+    horizonGlow.setAttribute('ry', String(node.height / 2 + 6));
+    horizonGlow.setAttribute('fill', 'none');
+    horizonGlow.setAttribute('stroke', 'var(--kinetic-purple, #A855F7)');
+    horizonGlow.setAttribute('stroke-width', '0.5');
+    horizonGlow.setAttribute('opacity', '0.25');
+    g.appendChild(horizonGlow);
+  }
+
   return g;
 }
 

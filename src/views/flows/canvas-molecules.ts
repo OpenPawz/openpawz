@@ -4,7 +4,15 @@
 // Sub-modules: canvas-state, canvas-render, canvas-interaction.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { type FlowGraph, type FlowNode, GRID_SIZE, detectMeshGroups } from './atoms';
+import {
+  type FlowGraph,
+  type FlowNode,
+  type TesseractCell,
+  type EventHorizon,
+  GRID_SIZE,
+  detectMeshGroups,
+  detectTesseract,
+} from './atoms';
 import { getMoleculesState } from './molecule-state';
 import { cs, svgEl, applyTransform } from './canvas-state';
 import { renderNode, renderPorts, renderEdge } from './canvas-render';
@@ -287,6 +295,12 @@ export function renderGraph() {
     cs.edgesGroup.appendChild(label);
   }
 
+  // ── Tesseract Schlegel projection (cube-in-cube) ──────────────────────
+  const tess = detectTesseract(graph);
+  if (tess && tess.cells.length > 0) {
+    renderTesseractOverlay(graph, tess);
+  }
+
   for (const edge of graph.edges) {
     const fromNode = cs.nodeMap.get(edge.from);
     const toNode = cs.nodeMap.get(edge.to);
@@ -301,6 +315,174 @@ export function renderGraph() {
     const isSelected = selectedIds.size > 0 ? selectedIds.has(node.id) : node.id === selectedId;
     cs.nodesGroup.appendChild(renderNode(node, isSelected));
     renderPorts(node);
+  }
+}
+
+// ── Tesseract Schlegel Overlay ──────────────────────────────────────────────
+
+/**
+ * Render the tesseract cube-in-cube (Schlegel diagram) overlay.
+ * Each cell gets a bounding rectangle. The largest cell is the outer cube,
+ * smaller cells are rendered inset. Event horizons get a radial connector
+ * linking the cell boundaries.
+ */
+function renderTesseractOverlay(
+  graph: FlowGraph,
+  tess: { cells: TesseractCell[]; horizons: EventHorizon[] },
+): void {
+  if (!cs.edgesGroup) return;
+
+  const PAD = 30;
+  const INSET = 12;
+
+  // Compute bounding rect for each cell
+  const cellBounds: Map<
+    string,
+    { minX: number; minY: number; maxX: number; maxY: number; phase: number }
+  > = new Map();
+
+  for (const cell of tess.cells) {
+    const nodes = cell.nodeIds
+      .map((id) => graph.nodes.find((n) => n.id === id))
+      .filter(Boolean) as FlowNode[];
+    if (nodes.length === 0) continue;
+
+    let minX = Infinity,
+      minY = Infinity,
+      maxX = -Infinity,
+      maxY = -Infinity;
+    for (const n of nodes) {
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.width);
+      maxY = Math.max(maxY, n.y + n.height);
+    }
+    cellBounds.set(cell.id, { minX, minY, maxX, maxY, phase: cell.phase });
+  }
+
+  if (cellBounds.size === 0) return;
+
+  // Sort cells by area (largest = outer cube, smaller = inner cubes)
+  const sorted = [...cellBounds.entries()].sort((a, b) => {
+    const areaA = (a[1].maxX - a[1].minX) * (a[1].maxY - a[1].minY);
+    const areaB = (b[1].maxX - b[1].minX) * (b[1].maxY - b[1].minY);
+    return areaB - areaA;
+  });
+
+  // Phase color palette
+  const phaseColors = [
+    'var(--kinetic-sage, #8FB0A0)',
+    'var(--kinetic-gold, #D4A853)',
+    'var(--kinetic-purple, #A855F7)',
+    'var(--kinetic-red, #FF4D4D)',
+  ];
+
+  // Render cell enclosures (largest first = behind)
+  for (let i = 0; i < sorted.length; i++) {
+    const [cellId, bounds] = sorted[i];
+    const cell = tess.cells.find((c) => c.id === cellId);
+    if (!cell) continue;
+
+    const inset = i * INSET;
+    const color = phaseColors[cell.phase % phaseColors.length];
+
+    // Cell rectangle
+    const rect = svgEl('rect');
+    rect.setAttribute('class', `flow-tesseract-cell flow-tesseract-cell-w${cell.phase}`);
+    rect.setAttribute('x', String(bounds.minX - PAD + inset));
+    rect.setAttribute('y', String(bounds.minY - PAD - 18 + inset));
+    rect.setAttribute('width', String(bounds.maxX - bounds.minX + PAD * 2 - inset * 2));
+    rect.setAttribute('height', String(bounds.maxY - bounds.minY + PAD * 2 + 18 - inset * 2));
+    rect.setAttribute('rx', String(16 - i * 2));
+    rect.setAttribute('ry', String(16 - i * 2));
+    rect.setAttribute('fill', 'none');
+    rect.setAttribute('stroke', color);
+    rect.setAttribute('stroke-width', i === 0 ? '1.5' : '1');
+    rect.setAttribute('stroke-dasharray', i === 0 ? '8 4' : '4 3');
+    rect.setAttribute('opacity', String(0.4 + i * 0.1));
+    cs.edgesGroup.appendChild(rect);
+
+    // Phase label
+    const lbl = svgEl('text');
+    lbl.setAttribute('class', 'flow-tesseract-label');
+    lbl.setAttribute('x', String(bounds.minX - PAD + inset + 10));
+    lbl.setAttribute('y', String(bounds.minY - PAD - 4 + inset));
+    lbl.setAttribute('fill', color);
+    lbl.setAttribute('font-size', '9');
+    lbl.setAttribute('font-weight', '600');
+    lbl.setAttribute('opacity', '0.7');
+    const depthStr =
+      cell.depthRange[0] === cell.depthRange[1]
+        ? `Z${cell.depthRange[0]}`
+        : `Z${cell.depthRange[0]}–${cell.depthRange[1]}`;
+    lbl.textContent = `W${cell.phase} ${cell.label} · ${depthStr}`;
+    cs.edgesGroup.appendChild(lbl);
+
+    // Corner connectors (Schlegel projection lines from outer to inner)
+    if (i > 0 && sorted.length > 1) {
+      const outer = sorted[0][1];
+      const outerPad = PAD;
+      const corners: [number, number][] = [
+        [bounds.minX - PAD + inset, bounds.minY - PAD - 18 + inset],
+        [bounds.maxX + PAD - inset, bounds.minY - PAD - 18 + inset],
+        [bounds.maxX + PAD - inset, bounds.maxY + PAD - inset],
+        [bounds.minX - PAD + inset, bounds.maxY + PAD - inset],
+      ];
+      const outerCorners: [number, number][] = [
+        [outer.minX - outerPad, outer.minY - outerPad - 18],
+        [outer.maxX + outerPad, outer.minY - outerPad - 18],
+        [outer.maxX + outerPad, outer.maxY + outerPad],
+        [outer.minX - outerPad, outer.maxY + outerPad],
+      ];
+
+      for (let c = 0; c < 4; c++) {
+        const line = svgEl('line');
+        line.setAttribute('class', 'flow-tesseract-connector');
+        line.setAttribute('x1', String(outerCorners[c][0]));
+        line.setAttribute('y1', String(outerCorners[c][1]));
+        line.setAttribute('x2', String(corners[c][0]));
+        line.setAttribute('y2', String(corners[c][1]));
+        line.setAttribute('stroke', 'var(--kinetic-purple, #A855F7)');
+        line.setAttribute('stroke-width', '0.5');
+        line.setAttribute('stroke-dasharray', '2 3');
+        line.setAttribute('opacity', '0.3');
+        cs.edgesGroup.appendChild(line);
+      }
+    }
+  }
+
+  // Render event horizon sync markers
+  for (const horizon of tess.horizons) {
+    const hNode = graph.nodes.find((n) => n.id === horizon.nodeId);
+    if (!hNode) continue;
+
+    // Radial pulse ring behind the node
+    const ring = svgEl('circle');
+    ring.setAttribute('class', 'flow-horizon-pulse');
+    ring.setAttribute('cx', String(hNode.x + hNode.width / 2));
+    ring.setAttribute('cy', String(hNode.y + hNode.height / 2));
+    ring.setAttribute('r', String(Math.max(hNode.width, hNode.height) / 2 + 18));
+    ring.setAttribute('fill', 'none');
+    ring.setAttribute('stroke', 'var(--kinetic-purple, #A855F7)');
+    ring.setAttribute('stroke-width', '1');
+    ring.setAttribute('opacity', '0.3');
+    ring.setAttribute('stroke-dasharray', '3 2');
+    cs.edgesGroup.appendChild(ring);
+
+    // Phase transition label
+    const phLabel = svgEl('text');
+    phLabel.setAttribute('class', 'flow-horizon-label');
+    phLabel.setAttribute('x', String(hNode.x + hNode.width / 2));
+    phLabel.setAttribute(
+      'y',
+      String(hNode.y + hNode.height / 2 + Math.max(hNode.width, hNode.height) / 2 + 28),
+    );
+    phLabel.setAttribute('text-anchor', 'middle');
+    phLabel.setAttribute('fill', 'var(--kinetic-purple, #A855F7)');
+    phLabel.setAttribute('font-size', '8');
+    phLabel.setAttribute('opacity', '0.6');
+    phLabel.textContent = `→ W${horizon.phaseAfter} · ${horizon.mergePolicy}`;
+    cs.edgesGroup.appendChild(phLabel);
   }
 }
 

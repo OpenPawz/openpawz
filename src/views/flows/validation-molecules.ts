@@ -88,6 +88,7 @@ const VALID_TARGETS: Record<string, FlowNodeKind[] | 'all'> = {
   'mcp-tool': 'all',
   group: 'all',
   error: 'all',
+  'event-horizon': 'all',
   output: [], // output can't connect to anything
 };
 

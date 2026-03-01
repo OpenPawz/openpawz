@@ -40,6 +40,8 @@ function mkNode(kind: FlowNodeKind, overrides: Partial<FlowNode> = {}): FlowNode
     width: 180,
     height: 72,
     status: 'idle',
+    depth: 0,
+    phase: 0,
     config: overrides.config ?? {},
     inputs: ['in'],
     outputs: ['out'],

@@ -750,4 +750,102 @@ export const TEMPLATES_ADVANCED: FlowTemplate[] = [
       { fromIdx: 3, toIdx: 5, label: 'Max retries', kind: 'error' as const },
     ],
   },
+
+  // ── Tesseract Templates ────────────────────────────────────────────────
+
+  {
+    id: 'tpl-tesseract-research',
+    name: 'Tesseract Research Pipeline',
+    description:
+      'Two independent research cells (exploration + analysis) operating in parallel, converging at an event horizon to synthesize findings.',
+    category: 'ai',
+    tags: ['tesseract', '4d', 'research', 'event-horizon', 'parallel-cells', 'convergent'],
+    icon: 'blur_on',
+    nodes: [
+      {
+        kind: 'trigger',
+        label: 'Research Brief',
+        description: 'Topic input',
+        config: { prompt: 'Provide the research topic and objectives' },
+      },
+      {
+        kind: 'agent',
+        label: 'Explorer A',
+        description: 'Domain search',
+        config: {
+          prompt:
+            'Search and gather information from domain A. Iterate with your reviewer to improve coverage.',
+          cellId: 'cell-explore',
+          phase: 0,
+        },
+      },
+      {
+        kind: 'agent',
+        label: 'Explorer B',
+        description: 'Alt domain',
+        config: {
+          prompt:
+            'Search and gather information from domain B independently. Iterate with your reviewer.',
+          cellId: 'cell-explore',
+          phase: 0,
+        },
+      },
+      {
+        kind: 'agent',
+        label: 'Analyst',
+        description: 'Pattern finder',
+        config: {
+          prompt:
+            'Analyze available data for patterns, contradictions, and gaps. Debate findings with the critic.',
+          cellId: 'cell-analyze',
+          phase: 1,
+        },
+      },
+      {
+        kind: 'agent',
+        label: 'Critic',
+        description: 'Challenges findings',
+        config: {
+          prompt:
+            'Challenge the analyst conclusions. Identify weak evidence, biases, and missing perspectives.',
+          cellId: 'cell-analyze',
+          phase: 1,
+        },
+      },
+      {
+        kind: 'event-horizon' as 'trigger',
+        label: 'Synthesis Horizon',
+        description: 'Cells converge',
+        config: { mergePolicy: 'synthesize', phaseAfter: 2 },
+      },
+      {
+        kind: 'agent',
+        label: 'Synthesizer',
+        description: 'Final report',
+        config: {
+          prompt:
+            'Synthesize all research and analysis into a comprehensive, balanced report with citations.',
+          phase: 2,
+        },
+      },
+      {
+        kind: 'output',
+        label: 'Report',
+        description: 'Final output',
+        config: { outputTarget: 'chat' },
+      },
+    ],
+    edges: [
+      { fromIdx: 0, toIdx: 1 },
+      { fromIdx: 0, toIdx: 2 },
+      { fromIdx: 1, toIdx: 2, kind: 'bidirectional' as const },
+      { fromIdx: 3, toIdx: 4, kind: 'bidirectional' as const },
+      { fromIdx: 1, toIdx: 5 },
+      { fromIdx: 2, toIdx: 5 },
+      { fromIdx: 3, toIdx: 5 },
+      { fromIdx: 4, toIdx: 5 },
+      { fromIdx: 5, toIdx: 6 },
+      { fromIdx: 6, toIdx: 7 },
+    ],
+  },
 ];

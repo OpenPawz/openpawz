@@ -91,6 +91,9 @@ export function renderToolbar(
         <button class="flow-tb-btn" data-action="add-loop" title="Add Loop (Iterate)">
           <span class="ms">${NODE_DEFAULTS.loop.icon}</span>
         </button>
+        <button class="flow-tb-btn" data-action="add-event-horizon" title="Add Event Horizon (Tesseract Sync)">
+          <span class="ms">${NODE_DEFAULTS['event-horizon'].icon}</span>
+        </button>
       </div>
       <div class="flow-toolbar-divider"></div>
       <div class="flow-toolbar-group">
@@ -178,6 +181,7 @@ function handleToolbarAction(action: string) {
     'add-http': 'http' as FlowNodeKind,
     'add-mcp-tool': 'mcp-tool' as FlowNodeKind,
     'add-loop': 'loop' as FlowNodeKind,
+    'add-event-horizon': 'event-horizon' as FlowNodeKind,
   };
 
   if (action in addKinds) {
