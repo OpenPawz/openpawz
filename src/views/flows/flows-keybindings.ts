@@ -35,6 +35,7 @@ export interface KeybindingDeps {
   togglePanel: () => void;
   toggleList: () => void;
   toggleAgent: () => void;
+  toggleTemplates: () => void;
 }
 
 let _deps: KeybindingDeps | null = null;
@@ -149,6 +150,13 @@ export function onKeyDown(e: KeyboardEvent) {
       if (e.ctrlKey || e.metaKey) {
         // Toggle flow architect agent panel (Ctrl+J)
         _deps.toggleAgent();
+        e.preventDefault();
+      }
+      break;
+    case 't':
+      if (e.ctrlKey || e.metaKey) {
+        // Toggle templates panel (Ctrl+T)
+        _deps.toggleTemplates();
         e.preventDefault();
       }
       break;

@@ -139,6 +139,9 @@ export function renderToolbar(
         <button class="flow-tb-btn" data-action="toggle-list" title="Toggle Flow List (Ctrl+B)">
           <span class="ms">left_panel_close</span>
         </button>
+        <button class="flow-tb-btn" data-action="toggle-templates" title="Toggle Templates (Ctrl+T)">
+          <span class="ms">dashboard_customize</span>
+        </button>
         <button class="flow-tb-btn" data-action="toggle-minimap" title="Toggle Minimap (M)">
           <span class="ms">map</span>
         </button>
@@ -240,6 +243,7 @@ function handleToolbarAction(action: string) {
     case 'toggle-panel':
     case 'toggle-list':
     case 'toggle-agent':
+    case 'toggle-templates':
       // Handled by UI orchestrator in index.ts
       document.dispatchEvent(new CustomEvent('flow:toolbar', { detail: { action } }));
       break;

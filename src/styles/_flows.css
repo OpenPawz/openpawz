@@ -50,14 +50,14 @@
 }
 
 /* List collapsed — hide left sidebar, expand canvas */
-.flows-view.active.flows-list-collapsed {
+.flows-view.active.flows-list-collapsed:not(.flows-templates-open) {
   grid-template-columns: 1fr 240px;
   grid-template-areas:
     "hero   hero"
     "toolbar panel"
     "canvas  panel";
 }
-.flows-view.active.flows-list-collapsed.flows-agent-open {
+.flows-view.active.flows-list-collapsed:not(.flows-templates-open).flows-agent-open {
   grid-template-rows: auto auto 1fr 260px;
   grid-template-areas:
     "hero   hero"
@@ -65,25 +65,47 @@
     "canvas  panel"
     "agent   panel";
 }
-.flows-view.active.flows-list-collapsed #flows-list {
+.flows-view.active.flows-list-collapsed:not(.flows-templates-open) .flows-sidebar {
   display: none;
 }
 
-/* Both collapsed */
-.flows-view.active.flows-panel-collapsed.flows-list-collapsed {
+/* List collapsed BUT templates open — keep sidebar for templates */
+.flows-view.active.flows-list-collapsed.flows-templates-open #flows-list {
+  display: none;
+}
+
+/* Both collapsed (no templates) */
+.flows-view.active.flows-panel-collapsed.flows-list-collapsed:not(.flows-templates-open) {
   grid-template-columns: 1fr;
   grid-template-areas:
     "hero"
     "toolbar"
     "canvas";
 }
-.flows-view.active.flows-panel-collapsed.flows-list-collapsed.flows-agent-open {
+.flows-view.active.flows-panel-collapsed.flows-list-collapsed:not(.flows-templates-open).flows-agent-open {
   grid-template-rows: auto auto 1fr 260px;
   grid-template-areas:
     "hero"
     "toolbar"
     "canvas"
     "agent";
+}
+
+/* Panel collapsed, list collapsed, templates open — keep sidebar for templates */
+.flows-view.active.flows-panel-collapsed.flows-list-collapsed.flows-templates-open {
+  grid-template-columns: 220px 1fr;
+  grid-template-areas:
+    "hero   hero"
+    "list   toolbar"
+    "list   canvas";
+}
+.flows-view.active.flows-panel-collapsed.flows-list-collapsed.flows-templates-open.flows-agent-open {
+  grid-template-rows: auto auto 1fr 260px;
+  grid-template-areas:
+    "hero   hero"
+    "list   toolbar"
+    "list   canvas"
+    "list   agent";
 }
 
 .flows-hero {
@@ -186,47 +208,80 @@
   border-color: var(--accent);
 }
 
+/* ── Sidebar: Wrapper ───────────────────────────────────────────────────── */
+
+.flows-sidebar {
+  grid-area: list;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-sidebar);
+}
+
 /* ── Sidebar: Flow List ─────────────────────────────────────────────────── */
 
 #flows-list {
-  grid-area: list;
-  border-right: 1px solid var(--border);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  background: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
 }
 
-/* Sidebar tabs — Flows / Templates */
-.flow-sidebar-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+/* ── Sidebar: Templates Panel ───────────────────────────────────────────── */
+
+.flows-templates-panel {
+  display: none;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  max-height: 50%;
+  min-height: 180px;
+  overflow: hidden;
 }
 
-.flow-sidebar-tab {
-  flex: 1;
-  padding: 8px 0;
-  border: none;
-  background: none;
-  color: var(--text-muted);
+.flows-view.active.flows-templates-open .flows-templates-panel {
+  display: flex;
+}
+
+.flows-templates-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+}
+
+.flows-templates-header-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.flows-templates-icon {
+  font-size: 16px;
+  color: var(--kinetic-red, #FF4D4D);
+}
+
+.flows-templates-title {
   font-family: var(--font-pixel, 'Share Tech Mono', monospace);
   font-size: var(--type-micro);
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-weight: 600;
 }
 
-.flow-sidebar-tab:hover {
-  color: var(--text-primary);
-  background: var(--bg-hover);
+.flows-templates-close {
+  padding: 2px !important;
 }
 
-.flow-sidebar-tab.active {
-  color: var(--kinetic-red, #FF4D4D);
-  border-bottom-color: var(--kinetic-red, #FF4D4D);
+.flows-templates-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .flow-sidebar-content {
