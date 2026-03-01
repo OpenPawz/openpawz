@@ -4,7 +4,7 @@
 // All rendering, input, metering, and TTS logic lives in molecules.
 
 import { pawEngine } from '../../engine';
-import { engineChatSend } from '../molecules/bridge';
+import { engineChatSend, registerQueueReadyHandler } from '../molecules/bridge';
 import {
   appState,
   agentSessionMap,
@@ -154,8 +154,8 @@ function teardownStream(sessionKey: string, reason: string): void {
   // Clean up streaming UI
   document.getElementById('streaming-message')?.remove();
   clearActiveJobs();
-  const abortBtn = document.getElementById('chat-abort-btn');
-  if (abortBtn) abortBtn.style.display = 'none';
+  const actionsBar = document.getElementById('chat-stream-actions');
+  if (actionsBar) actionsBar.style.display = 'none';
 }
 
 // ── Render opts builder ──────────────────────────────────────────────────
@@ -251,8 +251,8 @@ export function showStreamingMessage(): void {
   ss.el = contentEl;
   appState.activeStreams.set(key, ss);
 
-  const abortBtn = $('chat-abort-btn');
-  if (abortBtn) abortBtn.style.display = '';
+  const actionsBar = $('chat-stream-actions');
+  if (actionsBar) actionsBar.style.display = '';
   scrollToBottom();
 
   const modelName =
@@ -299,8 +299,8 @@ export function finalizeStreaming(
   const thinkingContent = ss?.thinkingContent || undefined;
   appState.activeStreams.delete(key);
 
-  const abortBtn = $('chat-abort-btn');
-  if (abortBtn) abortBtn.style.display = 'none';
+  const actionsBar = $('chat-stream-actions');
+  if (actionsBar) actionsBar.style.display = 'none';
 
   const currentAgent = AgentsModule.getCurrentAgent();
   if (streamingAgent && currentAgent && streamingAgent !== currentAgent.id) {
@@ -413,6 +413,212 @@ export function renderMessages(): void {
 }
 
 // ── Send message ──────────────────────────────────────────────────────────
+
+// ── Stop & Send ──────────────────────────────────────────────────────────
+// Abort the current streaming response, then immediately send the user's
+// pending input as a new message.
+
+export async function stopAndSend(): Promise<void> {
+  const currentKey = appState.currentSessionKey ?? '';
+  if (appState.activeStreams.has(currentKey)) {
+    teardownStream(currentKey, 'Stop & Send');
+  }
+  // Small tick so the teardown clears before re-send
+  await new Promise((r) => setTimeout(r, 50));
+  await sendMessage();
+}
+
+// ── Add to Queue ─────────────────────────────────────────────────────────
+// Queue the user's input so it is sent automatically once the current
+// streaming response finishes.  The Rust backend already supports per-
+// session request queuing — we pass the message through `engineChatSend`
+// which queues it server-side and sets the yield signal.  Here we surface
+// it in the UI by showing the new message optimistically and providing a
+// toast so the user knows it was queued.
+
+export async function queueMessage(): Promise<void> {
+  const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+  const content = chatInput?.value.trim();
+  const currentKey = appState.currentSessionKey ?? '';
+  if (!content) return;
+
+  // Show the user message in the UI immediately
+  addMessage({ role: 'user', content, timestamp: new Date() });
+  if (chatInput) {
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+  }
+  clearPendingAttachments();
+
+  const { showToast } = await import('../../components/toast');
+
+  // If there's no active stream, just send normally
+  if (!appState.activeStreams.has(currentKey)) {
+    await sendMessage();
+    return;
+  }
+
+  // Forward to backend — it will queue and signal yield
+  try {
+    const chatModelSelect = document.getElementById(
+      'chat-model-select',
+    ) as HTMLSelectElement | null;
+    const chatOpts: Record<string, unknown> = {};
+    const currentAgent = AgentsModule.getCurrentAgent();
+    if (currentAgent) {
+      if (currentAgent.model && currentAgent.model !== 'default')
+        chatOpts.model = currentAgent.model;
+      chatOpts.agentProfile = currentAgent;
+    }
+    const chatModelVal = chatModelSelect?.value;
+    if (chatModelVal && chatModelVal !== 'default') chatOpts.model = chatModelVal;
+
+    const sessionKey = currentKey || 'default';
+    const result = await engineChatSend(
+      sessionKey,
+      content,
+      chatOpts as Parameters<typeof engineChatSend>[2],
+    );
+    console.debug('[chat] Queue ack:', JSON.stringify(result).slice(0, 200));
+    showToast('Message queued — it will be sent after the current response', 'info');
+  } catch (err) {
+    console.error('[chat] Queue send failed:', err);
+    showToast(`Queue failed: ${err instanceof Error ? err.message : err}`, 'error');
+  }
+}
+
+// ── Steer with Message ───────────────────────────────────────────────────
+// Inject a steering instruction.  The backend signals the active agent
+// to yield, then processes the user's message next.  Functionally this is
+// the queue pathway with an explicit "wrap up now" nudge.
+
+export async function steerWithMessage(): Promise<void> {
+  const chatInput = document.getElementById('chat-input') as HTMLTextAreaElement | null;
+  const content = chatInput?.value.trim();
+  const currentKey = appState.currentSessionKey ?? '';
+  if (!content) return;
+
+  // If no active stream, send normally
+  if (!appState.activeStreams.has(currentKey)) {
+    await sendMessage();
+    return;
+  }
+
+  // Show the steering message in the UI
+  addMessage({ role: 'user', content: `🧭 *Steering:* ${content}`, timestamp: new Date() });
+  if (chatInput) {
+    chatInput.value = '';
+    chatInput.style.height = 'auto';
+  }
+  clearPendingAttachments();
+
+  const { showToast } = await import('../../components/toast');
+
+  // Forward to backend — it queues and signals yield (agent wraps up)
+  try {
+    const chatModelSelect = document.getElementById(
+      'chat-model-select',
+    ) as HTMLSelectElement | null;
+    const chatOpts: Record<string, unknown> = {};
+    const currentAgent = AgentsModule.getCurrentAgent();
+    if (currentAgent) {
+      if (currentAgent.model && currentAgent.model !== 'default')
+        chatOpts.model = currentAgent.model;
+      chatOpts.agentProfile = currentAgent;
+    }
+    const chatModelVal = chatModelSelect?.value;
+    if (chatModelVal && chatModelVal !== 'default') chatOpts.model = chatModelVal;
+
+    const sessionKey = currentKey || 'default';
+    const result = await engineChatSend(
+      sessionKey,
+      content,
+      chatOpts as Parameters<typeof engineChatSend>[2],
+    );
+    console.debug('[chat] Steer ack:', JSON.stringify(result).slice(0, 200));
+    showToast('Steering the agent — wrapping up and redirecting…', 'info');
+  } catch (err) {
+    console.error('[chat] Steer send failed:', err);
+    showToast(`Steer failed: ${err instanceof Error ? err.message : err}`, 'error');
+  }
+}
+
+// ── Queue-ready handler ──────────────────────────────────────────────────
+// Called by bridge.ts when the backend finishes a run and has a queued
+// message to process.  This sets up the full streaming pipeline so
+// response deltas are properly captured and rendered.
+
+async function handleQueueReady(sessionId: string, message: string, model?: string): Promise<void> {
+  console.debug(`[chat] Queue-ready: processing message for session ${sessionId}`);
+
+  // Ensure we're on the right session
+  if (appState.currentSessionKey && appState.currentSessionKey !== sessionId) {
+    console.debug('[chat] Queue-ready: session mismatch — skipping UI pipeline');
+    // Still send so the backend processes it, but skip streaming UI
+    await engineChatSend(sessionId, message, { model });
+    return;
+  }
+
+  // Set up streaming UI + stream state (same as sendMessage does)
+  showStreamingMessage();
+
+  const streamKey = appState.currentSessionKey ?? '';
+  const ss = appState.activeStreams.get(streamKey);
+  if (!ss) {
+    console.error('[chat] Queue-ready: stream state missing after showStreamingMessage');
+    return;
+  }
+
+  const responsePromise = new Promise<string>((resolve) => {
+    ss.resolve = resolve;
+    ss.timeout = setTimeout(() => {
+      console.warn('[chat] Queue-ready: streaming timeout — auto-finalizing');
+      resolve(ss.content || '(Response timed out)');
+    }, 600_000);
+  });
+
+  try {
+    const chatOpts: Record<string, unknown> = {};
+    const currentAgent = AgentsModule.getCurrentAgent();
+    if (currentAgent) {
+      if (currentAgent.model && currentAgent.model !== 'default')
+        chatOpts.model = currentAgent.model;
+      chatOpts.agentProfile = currentAgent;
+    }
+    if (model) chatOpts.model = model;
+
+    const result = await engineChatSend(
+      sessionId,
+      message,
+      chatOpts as Parameters<typeof engineChatSend>[2],
+    );
+    console.debug('[chat] Queue-ready ack:', JSON.stringify(result).slice(0, 200));
+    handleSendResult(result, ss, streamKey);
+
+    const finalText = await responsePromise;
+    if (appState.activeStreams.has(streamKey)) {
+      finalizeStreaming(finalText, undefined, streamKey);
+    }
+    loadSessions({ skipHistory: true }).catch(() => {});
+  } catch (error) {
+    console.error('[chat] Queue-ready error:', error);
+    if (ss?.el && appState.activeStreams.has(streamKey)) {
+      const errMsg = error instanceof Error ? error.message : 'Failed to get response';
+      finalizeStreaming(ss.content || `Error: ${errMsg}`, undefined, streamKey);
+    }
+  } finally {
+    const finalKey = appState.currentSessionKey ?? streamKey;
+    appState.activeStreams.delete(finalKey);
+    appState.activeStreams.delete(streamKey);
+    if (ss?.timeout) {
+      clearTimeout(ss.timeout);
+      ss.timeout = null;
+    }
+  }
+}
+
+// Register the queue-ready handler with the bridge
+registerQueueReadyHandler(handleQueueReady);
 
 function buildSlashCommandContext(chatModelSelect: HTMLSelectElement | null): CommandContext {
   return {
@@ -656,6 +862,9 @@ export async function sendMessage(): Promise<void> {
 export function initChatListeners(): void {
   _initChatListeners({
     sendMessage,
+    stopAndSend,
+    queueMessage,
+    steerWithMessage,
     switchToAgent,
     loadSessions,
     loadChatHistory,

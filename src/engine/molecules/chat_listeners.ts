@@ -17,6 +17,9 @@ import type { TokenMeterController, TokenMeterState } from './token_meter';
 /** Callbacks/deps the listeners need from the organism. */
 export interface ChatListenerDeps {
   sendMessage: () => Promise<void>;
+  stopAndSend: () => Promise<void>;
+  queueMessage: () => Promise<void>;
+  steerWithMessage: () => Promise<void>;
   switchToAgent: (agentId: string) => Promise<void>;
   loadSessions: (opts?: { skipHistory?: boolean }) => Promise<void>;
   loadChatHistory: (key: string) => Promise<void>;
@@ -180,6 +183,10 @@ export function initChatListeners(deps: ChatListenerDeps): void {
     deps.teardownStream(key, 'Stopped');
     showToast('Agent stopped', 'info');
   });
+
+  $('chat-stop-send-btn')?.addEventListener('click', () => deps.stopAndSend());
+  $('chat-queue-btn')?.addEventListener('click', () => deps.queueMessage());
+  $('chat-steer-btn')?.addEventListener('click', () => deps.steerWithMessage());
 
   $('session-rename-btn')?.addEventListener('click', async () => {
     if (!appState.currentSessionKey || !appState.wsConnected) return;

@@ -115,13 +115,25 @@ pub async fn execute_tool(
     let args: serde_json::Value = match serde_json::from_str(args_str) {
         Ok(v) => v,
         Err(parse_err) => {
+            let truncated = &args_str[..args_str.len().min(300)];
             log::warn!(
                 "[engine] Malformed tool args for '{}' — JSON parse failed: {}. Args: {}",
                 name,
                 parse_err,
-                &args_str[..args_str.len().min(300)]
+                truncated,
             );
-            serde_json::json!({})
+            // Return an explicit error to the model instead of silently
+            // proceeding with empty args — that caused the model to retry
+            // with the same (still-broken) arguments, wasting API rounds.
+            return ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                output: format!(
+                    "ERROR: Your tool arguments for '{}' were malformed JSON. Parse error: {}. \
+                     Please re-emit the tool call with valid JSON arguments.",
+                    name, parse_err,
+                ),
+                success: false,
+            };
         }
     };
 
