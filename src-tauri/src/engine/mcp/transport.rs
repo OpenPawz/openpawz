@@ -328,7 +328,19 @@ impl SseTransport {
         let sse_url = format!("{}/sse", base_url.trim_end_matches('/'));
         info!("[mcp:sse] Connecting to {}", sse_url);
 
+        // Build default headers so auth is included on every POST (not just the SSE GET).
+        let mut default_headers = reqwest::header::HeaderMap::new();
+        for (k, v) in headers {
+            if let (Ok(name), Ok(val)) = (
+                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                reqwest::header::HeaderValue::from_str(v),
+            ) {
+                default_headers.insert(name, val);
+            }
+        }
+
         let http = reqwest::Client::builder()
+            .default_headers(default_headers)
             .timeout(std::time::Duration::from_secs(300)) // long-lived SSE
             .build()
             .map_err(|e| format!("HTTP client error: {}", e))?;

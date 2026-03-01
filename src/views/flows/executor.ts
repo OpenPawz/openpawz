@@ -424,12 +424,22 @@ export function createFlowExecutor(callbacks: FlowExecutorCallbacks): FlowExecut
 
         case 'http' as FlowNode['kind']:
           // HTTP nodes: direct HTTP request via Conductor Extract
-          output = await executeHttpRequest(node, upstreamInput, config);
+          output = await executeHttpRequest(
+            node,
+            upstreamInput,
+            config,
+            _runState.vaultCredentials,
+          );
           break;
 
         case 'mcp-tool' as FlowNode['kind']:
           // MCP-tool nodes: direct MCP call via Conductor Extract
-          output = await executeMcpToolCall(node, upstreamInput, config);
+          output = await executeMcpToolCall(
+            node,
+            upstreamInput,
+            config,
+            _runState.vaultCredentials,
+          );
           break;
 
         case 'loop' as FlowNode['kind']:
