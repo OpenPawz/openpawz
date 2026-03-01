@@ -12,13 +12,36 @@ export interface FlowAgentMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: string;
+  /** Inline thinking blocks accumulated during streaming */
+  thinking?: string;
+  /** Tool invocations that happened during this response */
+  tools?: FlowAgentToolUse[];
 }
+
+export interface FlowAgentToolUse {
+  name: string;
+  status: 'running' | 'done';
+  startedAt: string;
+  endedAt?: string;
+}
+
+export type ThinkingLevel = 'off' | 'low' | 'medium' | 'high';
 
 export interface FlowAgentState {
   sessionKey: string;
   messages: FlowAgentMessage[];
   isStreaming: boolean;
   streamContent: string;
+  /** Accumulated thinking text during current stream */
+  streamThinking: string;
+  /** Tool uses during current stream */
+  streamTools: FlowAgentToolUse[];
+  /** Selected agent ID — null means built-in Flow Architect */
+  selectedAgentId: string | null;
+  /** Selected model override — null means agent/account default */
+  selectedModel: string | null;
+  /** Extended thinking level */
+  thinkingLevel: ThinkingLevel;
 }
 
 // ── Suggested Action Chips ─────────────────────────────────────────────────

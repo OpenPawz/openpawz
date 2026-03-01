@@ -2536,6 +2536,179 @@
   cursor: not-allowed;
 }
 
+/* ── Controls toolbar ─────────────────────────────────────────────────── */
+
+.flows-agent-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-sidebar);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.flows-agent-controls::-webkit-scrollbar {
+  display: none;
+}
+
+.flows-agent-select {
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  color: var(--text-primary);
+  cursor: pointer;
+  outline: none;
+  max-width: 130px;
+  min-width: 0;
+  text-overflow: ellipsis;
+  transition: border-color 0.15s;
+}
+
+.flows-agent-select:focus {
+  border-color: var(--kinetic-cyan, #06b6d4);
+}
+
+.flows-agent-ctrl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.flows-agent-ctrl-btn .ms {
+  font-size: 15px;
+}
+
+.flows-agent-thinking-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.flows-agent-ctrl-btn.active {
+  background: var(--kinetic-cyan, #06b6d4);
+  color: #000;
+}
+
+.flows-agent-ctrl-btn.active .flows-agent-thinking-label {
+  color: #000;
+}
+
+.flows-agent-controls-spacer {
+  flex: 1;
+}
+
+/* ── Stop button (replaces send when streaming) ───────────────────────── */
+
+.flows-agent-send.streaming {
+  background: var(--kinetic-red, #ef4444);
+}
+
+.flows-agent-send.streaming .ms {
+  color: #fff;
+}
+
+/* ── Thinking blocks ──────────────────────────────────────────────────── */
+
+.flows-agent-thinking-block {
+  margin: 4px 0;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.flows-agent-thinking-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  padding: 4px 8px;
+  background: var(--bg-hover);
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.flows-agent-thinking-toggle:hover {
+  background: var(--bg-active);
+}
+
+.flows-agent-thinking-toggle .ms {
+  font-size: 14px;
+  transition: transform 0.2s;
+}
+
+.flows-agent-thinking-block.open .flows-agent-thinking-toggle .ms {
+  transform: rotate(90deg);
+}
+
+.flows-agent-thinking-content {
+  display: none;
+  padding: 6px 8px;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+  border-top: 1px solid var(--border-color);
+  max-height: 120px;
+  overflow-y: auto;
+}
+
+.flows-agent-thinking-block.open .flows-agent-thinking-content {
+  display: block;
+}
+
+/* ── Tool use blocks ──────────────────────────────────────────────────── */
+
+.flows-agent-tool-block {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0;
+  padding: 4px 8px;
+  background: var(--bg-hover);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.flows-agent-tool-block .ms {
+  font-size: 14px;
+}
+
+.flows-agent-tool-block.running .ms {
+  animation: tool-spin 1s linear infinite;
+  color: var(--kinetic-cyan, #06b6d4);
+}
+
+.flows-agent-tool-block.done .ms {
+  color: var(--kinetic-green, #22c55e);
+}
+
+.flows-agent-tool-name {
+  font-weight: 600;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
+
+@keyframes tool-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ── Resize handle ────────────────────────────────────────────────────── */
 
 .flows-agent-resize {
