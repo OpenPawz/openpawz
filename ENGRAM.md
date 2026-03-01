@@ -565,20 +565,26 @@ All calculations use `ceil()` to round up and are UTF-8 safe (truncation never s
 
 Memories containing PII are encrypted with AES-256-GCM before storage. The encryption key is stored in the OS keychain under a dedicated entry (`paw-memory-vault`), separate from the credential vault key.
 
-**Automatic PII detection** uses 9 compiled regex patterns to identify sensitive content:
-- SSN, credit card, phone numbers
-- Email addresses, physical addresses
+**Automatic PII detection** uses a two-layer approach:
+
+**Layer 1 — Static pattern matching.** 17 compiled regex patterns run on every memory at storage time, covering:
+- SSN (with and without hyphens), credit card (including Amex), phone numbers (US and international)
+- Email addresses, physical addresses, IP addresses (IPv4)
 - Person names, geographic locations
-- Credentials (passwords, API keys)
-- Government IDs
+- Credentials (passwords, API keys, JWT tokens, AWS access keys, private key blocks)
+- Government IDs, IBAN bank account numbers
+
+**Layer 2 — LLM-assisted secondary scan.** During idle-time consolidation, memories stored as cleartext are re-scanned using the configured model as a PII classifier. This catches semantic PII that no regex can detect — unstructured references to names, addresses, health conditions, and context-dependent identifiers. Memories retroactively found to contain PII are encrypted in place.
 
 **Encryption flow:**
 
 ```mermaid
 flowchart TD
-    A["New Memory Content"] --> B["detect_pii(content)\n9 regex patterns"]
+    A["New Memory Content"] --> B["detect_pii(content)\n17 regex patterns"]
     B --> C{"PII Found?"}
-    C -- No --> D["Cleartext\nStore as-is"]
+    C -- No --> L2["LLM secondary scan\n(during consolidation)"]
+    L2 -- "PII found" --> E
+    L2 -- Clean --> D["Cleartext\nStore as-is"]
     C -- Yes --> E["classify_tier(pii_types)"]
     E --> F{"Tier"}
     F -- Sensitive --> G["AES-256-GCM Encrypt\nenc:base64(nonce‖ciphertext‖tag)"]
@@ -587,13 +593,26 @@ flowchart TD
     H --> I["On retrieval: decrypt with keychain key"]
 ```
 
+### Inter-Agent Memory Trust
+
+The memory bus enables cross-agent knowledge sharing, but shared memory introduces a trust boundary — a compromised or misconfigured agent could inject poisoned memories into the fleet. Engram defends against this at three layers:
+
+1. **Publish-side validation** — Every memory published to the bus passes through the injection scanner before entering the queue. Detected payloads are blocked at publish time, not just at recall time.
+2. **Capability-scoped publishing** — Each agent receives a signed capability token at creation that encodes its maximum publish scope (agent-only, squad, project, or global), maximum self-assignable importance, and per-cycle rate limit. Attempts to exceed the capability ceiling are rejected with an audit log entry.
+3. **Trust-weighted contradiction resolution** — When a published memory contradicts an existing fact, the resolution factors in the source agent's trust score, not just recency. A less-trusted agent cannot override a more-trusted agent's knowledge without a significant confidence differential.
+
 ### Query Sanitization
 
 Full-text search operators are stripped from user queries before they reach the storage engine. This prevents full-text injection attacks that could extract data via crafted queries.
 
-### Prompt Injection Scanning
+### Prompt Injection Defense
 
-Every recalled memory is scanned against 10 injection patterns before being returned to the agent. Matches are logged and flagged but not suppressed — the agent receives the content with a warning annotation.
+Every recalled memory passes through a two-stage sanitization pipeline before reaching the agent:
+
+1. **Pattern redaction** — 10 compiled regex patterns detect common injection payloads ("ignore previous instructions", "you are now", system prompt markers, override/bypass attempts). Matched regions are replaced with `[REDACTED:injection]` — the payload never reaches the model.
+2. **Structural isolation** — Recalled memories are wrapped in explicit data-boundary markers in the prompt, instructing the model to treat memory content as data, not instructions.
+
+Injection attempts that evade static patterns remain a known limitation of regex-based scanning. The current defense is a first layer — it blocks known attack shapes but cannot guarantee coverage against novel obfuscation techniques (unicode substitution, multi-turn payload assembly, encoded instructions). The architecture is designed for a future secondary scan using the model itself as a classifier.
 
 ### Anti-Forensic Measures
 
@@ -911,7 +930,7 @@ Eight modules extend the core architecture with cognitive capabilities drawn fro
 
 - **Hierarchical semantic compression** — The `abstraction.rs` module builds a multi-level abstraction tree: individual memories → clusters → super-clusters → domain summaries. This enables navigation of knowledge at any zoom level — from a single data point up to a high-level summary of an entire domain. The compression tree is rebuilt incrementally during consolidation.
 
-- **Multi-agent memory sync** — The `memory_bus.rs` module implements a CRDT-inspired protocol for peer-to-peer knowledge sharing between agents. Vector-clock conflict resolution ensures convergence when multiple agents modify related memories concurrently. Agents can share discoveries, coordinate on projects, and maintain consistent world models without a central coordinator.
+- **Multi-agent memory sync** — The `memory_bus.rs` module implements a CRDT-inspired protocol for peer-to-peer knowledge sharing between agents. Vector-clock conflict resolution ensures convergence when multiple agents modify related memories concurrently. Agents can share discoveries, coordinate on projects, and maintain consistent world models without a central coordinator. Publish-side authentication prevents rogue agents from injecting poisoned memories — every publication is validated against the agent's capability token and scanned for injection payloads before entering the bus.
 
 - **Memory replay and dream consolidation** — The `dream_replay.rs` module runs during idle periods, implementing hippocampal-inspired memory replay. During replay, memories are reactivated, latent connections between temporally distant memories are discovered, and embeddings are regenerated with evolved context. This mirrors the role of sleep in biological memory consolidation — strengthening important memories and discovering patterns that weren't obvious during waking activity.
 

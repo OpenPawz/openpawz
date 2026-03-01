@@ -179,7 +179,7 @@ OpenPawz takes a defense-in-depth approach with 10 security layers. The agent ne
 7. **Credential vault** — OS keychain + AES-256-GCM encrypted SQLite; keys never appear in prompts or logs
 8. **TLS certificate pinning** — Custom `rustls` config pinned to Mozilla root CAs; OS trust store excluded to prevent MITM from compromised CAs
 9. **Outbound request signing** — Every provider request SHA-256 signed (`provider ‖ model ‖ timestamp ‖ body`) with 500-entry audit ring buffer
-10. **Memory encryption** — Engram memory system encrypts PII-containing memories with AES-256-GCM (separate keychain key). API keys wrapped in `Zeroizing<String>`, zeroed from RAM on drop. FTS5 query sanitization and prompt injection scanning on all recalled content
+10. **Memory encryption** — Engram memory system encrypts PII-containing memories with AES-256-GCM (separate keychain key). API keys wrapped in `Zeroizing<String>`, zeroed from RAM on drop. Parameterized query sanitization and prompt injection scanning on all recalled content
 
 ### Why This Matters
 
@@ -269,11 +269,12 @@ Telegram · Discord · IRC · Slack · Matrix · Mattermost · Nextcloud Talk ·
 Each bridge includes user approval flows, per-agent routing, and uniform start/stop/config commands. The same agent brain, memory, and tools work across every platform.
 
 ### Memory System — Project Engram
-- **Three-tier architecture** — Sensory buffer (ring buffer for current turn) → Working memory (priority-evicted slots) → Long-term graph (episodic, semantic, procedural stores)
-- **Hybrid search** — BM25 full-text + vector similarity (Ollama embeddings) with reciprocal rank fusion and spreading activation across memory graph edges
+- **Three-tier architecture** — Sensory buffer (ring buffer for current turn) → Working memory (priority-evicted slots) → Long-term graph (episodic, knowledge, procedural stores)
+- **Hybrid search** — BM25 full-text + vector similarity with reciprocal rank fusion and spreading activation across memory graph edges
 - **Automatic consolidation** — Background engine runs pattern clustering, contradiction detection, Ebbinghaus strength decay, and garbage collection on a 5-minute cycle
 - **18 memory categories** — Unified across Rust backend, agent tools, and frontend UI (general, preference, fact, project, person, technical, insight, procedure, etc.)
-- **PII-aware encryption** — Automatic detection of 9 PII types with field-level AES-256-GCM encryption before storage. Separate keychain key from credential vault
+- **PII-aware encryption** — Two-layer defense: 17 regex patterns (emails, SSNs, credit cards, JWTs, AWS keys, private keys, etc.) plus LLM-assisted secondary scan for context-dependent PII. Field-level AES-256-GCM encryption before storage with separate keychain key from credential vault
+- **Inter-agent memory trust** — Capability-scoped publishing on the memory bus, publish-side injection scanning, and trust-weighted contradiction resolution prevent cross-agent memory poisoning
 - **Memory lifecycle** — Auto-recall injects relevant memories before agent turns; auto-capture stores results after task/orchestrator/compaction completion
 - **Channel-scoped memories** — Memories from Discord, Slack, Telegram etc. are tagged with channel + user scope for isolated recall
 - **GDPR Article 17** — Right-to-erasure API securely purges all memories for given user identifiers
@@ -713,6 +714,7 @@ OpenPawz is built by one developer and needs your help. Every contribution matte
 | [SECURITY.md](SECURITY.md) | Complete security architecture — 7 layers, threat model, credential handling |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Development setup, code style, testing, PR guidelines |
 | [ENTERPRISE_PLAN.md](ENTERPRISE_PLAN.md) | Enterprise hardening audit — all phases with test counts |
+| [ENGRAM.md](ENGRAM.md) | Engram memory system whitepaper — three-tier architecture, security model, formal proofs |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and release notes |
 | [Docs Site](https://www.openpawz.ai) | Full documentation with guides, channel setup, and API reference |
 
