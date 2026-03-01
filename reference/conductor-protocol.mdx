@@ -1,12 +1,12 @@
 ---
 title: "The Conductor Protocol"
-description: "AI-Compiled Flow Execution via Collapse, Extract, Parallelize, and Converge — a novel architecture that treats workflow graphs as blueprints of intent and compiles them into optimized execution strategies."
+description: "AI-Compiled Flow Execution via Collapse, Extract, Parallelize, Converge, and Tesseract — a novel architecture that treats workflow graphs as blueprints of intent and compiles them into optimized execution strategies."
 sidebarTitle: "The Conductor Protocol"
 ---
 
 # The Conductor Protocol
 
-**AI-Compiled Flow Execution — Collapse, Extract, Parallelize, Converge**
+**AI-Compiled Flow Execution — Collapse, Extract, Parallelize, Converge, Tesseract**
 
 *Open source (MIT). Part of the OpenPawz project.*
 
@@ -44,9 +44,9 @@ Traditional platforms interpret flows imperatively — "do this, then this, then
 
 The compilation step produces an `ExecutionStrategy`: a sequence of phases, where each phase contains units that run concurrently, and each unit represents one or more original nodes merged or classified for optimal execution.
 
-### Four Primitives
+### Five Primitives
 
-The Conductor analyzes any flow graph and applies four optimization primitives:
+The Conductor analyzes any flow graph and applies five optimization primitives:
 
 ```mermaid actions={false}
 graph TD
@@ -65,6 +65,7 @@ graph TD
         I["2. Extract — bypass LLM for deterministic nodes"]
         J["3. Parallelize — run independent branches concurrently"]
         K["4. Converge — handle cycles with iterative rounds"]
+        K2["5. Tesseract — orchestrate cells across dimensions"]
     end
 
     subgraph Output["Execution Strategy"]
@@ -259,23 +260,48 @@ A standard flow is a 2D projection (X × Y). A convergent mesh is a 3D helix (X 
 
 A tesseract (4D hypercube) has 8 cubic cells. When projected into 2D for display, it appears as a **cube inside a cube** — the Schlegel diagram. In workflow terms:
 
-```
-┌─────────────────────────────────────────────┐
-│ Outer Cell (W=0: Exploration)               │
-│  ┌───────────────────────────────────┐      │
-│  │ Inner Cell (W=1: Refinement)      │      │
-│  │                                   │      │
-│  │   Agent A ↔ Agent B               │      │
-│  │                                   │      │
-│  └───────────────────────────────────┘      │
-│                                             │
-│  Agent C ──→ Agent D                        │
-│                   │                         │
-│          ● Event Horizon ●                  │
-└─────────────────────────────────────────────┘
+```mermaid actions={false}
+graph TD
+    subgraph Outer["◻ Cell W=0 — Exploration"]
+        C["🔍 Agent C\n(research)"] --> D["📊 Agent D\n(classify)"]
+        subgraph Inner["◻ Cell W=1 — Refinement"]
+            A["🧠 Agent A\n(analyst)"] <-.-> B["🧠 Agent B\n(critic)"]
+        end
+    end
+    D --> H{"⬡ Event Horizon"}
+    B --> H
+    H --> Next["✦ Merged Output\nW → 2 (Convergence)"]
+    style Outer fill:#1a1a2e,stroke:#8b5cf6,stroke-width:2px
+    style Inner fill:#0f0f23,stroke:#06b6d4,stroke-width:2px
+    style H fill:#f59e0b,stroke:#f59e0b,color:#000,stroke-width:3px
+    style Next fill:#10b981,stroke:#10b981,color:#000
 ```
 
 The **inner cell** and **outer cell** are independent workflow regions that operate in parallel — potentially across different depth layers (Z) and different behavioral phases (W). They connect only at **event horizon** nodes: synchronization points where all cells must converge before the flow can proceed.
+
+### Dimensional progression
+
+Flows naturally escalate through dimensions as they gain complexity:
+
+```mermaid actions={false}
+graph LR
+    subgraph D2["2D — Flat Flow (X × Y)"]
+        a1["A"] --> b1["B"] --> c1["C"]
+        a1 --> d1["D"] --> c1
+    end
+    subgraph D3["3D — Mesh Helix (X × Y × Z)"]
+        a2["Agent α"] <-.-> b2["Agent β"]
+        b2 -.->|"round 2"| a2
+        a2 -->|"round 3"| out2["converged"]
+    end
+    subgraph D4["4D — Tesseract (X × Y × Z × W)"]
+        cell1["Cell W=0"] --> hz["⬡ Horizon"]
+        cell2["Cell W=1"] --> hz
+        hz --> cell3["Cell W=2"]
+    end
+    D2 -->|"add cycles"| D3
+    D3 -->|"add phases"| D4
+```
 
 ### Event horizons
 
@@ -295,6 +321,26 @@ Consider a complex research pipeline:
 **Cell A (Outer — Exploration):** Three research agents independently search different domains, iterating with a supervisor (Z=0..3, mesh refinement). Phase W=0 (exploring).
 
 **Cell B (Inner — Analysis):** Two analyst agents debate findings from a previous run, refining their synthesis (Z=0..2, convergent mesh). Phase W=1 (already refining from prior data).
+
+```mermaid actions={false}
+graph TD
+    subgraph CellA["◻ Cell A — W=0 Exploration"]
+        R1["🔍 Research 1"] <-.-> S["👁 Supervisor"]
+        R2["🔍 Research 2"] <-.-> S
+        R3["🔍 Research 3"] <-.-> S
+        S -.->|"Z=0..3\niterate"| R1
+    end
+    subgraph CellB["◻ Cell B — W=1 Analysis"]
+        An1["🧠 Analyst 1"] <-.->|"debate\nZ=0..2"| An2["🧠 Analyst 2"]
+    end
+    S --> EH{"⬡ Event Horizon\nmerge: synthesize"}
+    An2 --> EH
+    EH -->|"W → 2"| Conv["✦ Convergence Cell\nAll agents unified"]
+    style CellA fill:#1a1a2e,stroke:#8b5cf6,stroke-width:2px
+    style CellB fill:#0f0f23,stroke:#06b6d4,stroke-width:2px
+    style EH fill:#f59e0b,stroke:#f59e0b,color:#000,stroke-width:3px
+    style Conv fill:#10b981,stroke:#10b981,color:#000
+```
 
 These cells work independently — different topics, different models, different iteration depths. At the **event horizon**, their outputs merge: the research feeds the analysts, the analysis redirects the researchers, and the combined system transitions from W=1 to W=2 (convergence phase) where all agents work toward a single unified output.
 
@@ -336,6 +382,25 @@ Execution:
 5. Phase transitions apply (W increments)
 6. Cells after the horizon execute with the merged context
 
+```mermaid actions={false}
+sequenceDiagram
+    participant Conductor
+    participant CellA as Cell A (W=0)
+    participant CellB as Cell B (W=1)
+    participant Horizon as ⬡ Event Horizon
+    participant CellC as Cell C (W=2)
+
+    Conductor->>CellA: Promise.all — launch
+    Conductor->>CellB: Promise.all — launch
+    Note over CellA: Collapse + Parallelize<br/>within cell (Z=0..3)
+    Note over CellB: Converge mesh<br/>within cell (Z=0..2)
+    CellA-->>Horizon: output (exploration)
+    CellB-->>Horizon: output (analysis)
+    Note over Horizon: Merge policy: synthesize<br/>Phase transition: W → 2
+    Horizon->>CellC: merged context
+    Note over CellC: All agents unified<br/>convergence phase
+```
+
 This is the natural extension of the Conductor's existing architecture. Parallelize already runs independent branches concurrently. Converge already handles iterative depth. The Tesseract simply makes these dimensions first-class and adds the event horizon as a synchronization primitive.
 
 ### Mapping to Conductor primitives
@@ -367,7 +432,7 @@ The Schlegel projection shows:
 
 ## Execution Strategy
 
-The Conductor compiles all four primitives into a unified `ExecutionStrategy`:
+The Conductor compiles all five primitives into a unified `ExecutionStrategy`:
 
 ```typescript
 interface ExecutionStrategy {
@@ -382,6 +447,7 @@ interface ExecutionStrategy {
     parallelPhases: number;        // phases with >1 concurrent unit
     meshCount: number;             // convergent meshes
     extractedNodes: number;        // nodes bypassing LLM
+    tesseractCells: number;        // hyper-dimensional cells
   };
 }
 
@@ -392,10 +458,12 @@ interface ExecutionPhase {
 
 interface ExecutionUnit {
   id: string;
-  type: 'collapsed-agent' | 'direct-action' | 'single-agent' | 'single-direct' | 'mesh';
+  type: 'collapsed-agent' | 'direct-action' | 'single-agent' | 'single-direct' | 'mesh' | 'tesseract';
   nodeIds: string[];               // original nodes this unit represents
   mergedPrompt?: string;           // for collapsed units
   maxIterations?: number;          // for mesh units
+  cells?: TesseractCell[];         // for tesseract units
+  horizons?: EventHorizon[];       // for tesseract units
   dependsOn: string[];             // inter-unit dependencies
 }
 ```
@@ -429,6 +497,7 @@ Benchmarks comparing sequential DAG walk (n8n/Zapier model) against Conductor-co
 | Fan-out (parallel branches) | 8 | 35–70s | 5–10s | **5–7×** | 3 (collapse + parallel) |
 | Bidirectional debate | 6 | ∞ (impossible) | 15–25s | **∞** | N/A (new capability) |
 | Production pipeline | 20 | 80–160s | 8–18s | **8–10×** | 12+ (all primitives) |
+| Tesseract research pipeline | 12 | ∞ (impossible) | 20–40s | **∞** | N/A (new capability) |
 
 The gains compound: Collapse reduces total LLM calls, Extract eliminates unnecessary ones, and Parallelize runs the remaining work concurrently. On a 20-node production flow, the Conductor can reduce wall-clock time by an order of magnitude.
 
@@ -449,6 +518,7 @@ The gains compound: Collapse reduces total LLM calls, Extract eliminates unneces
 | **Self-healing** | No | Retry only | Retry only | Retry only | Error diagnosis + fix proposals + auto-retry |
 | **Memory integration** | No | No | No | No | Memory-write/recall nodes |
 | **Multi-agent teams** | No | No | No | No | Squad nodes |
+| **4D hyper-dimensional flows** | No | No | No | No | Tesseract cells + event horizons |
 | **Cost** | Self-hosted free / Cloud paid | Per-task pricing | Per-operation pricing | Self-hosted free | Free local (Ollama) or cloud |
 
 ### The fundamental difference
@@ -510,7 +580,7 @@ The Conductor Protocol is the third of OpenPawz's three complementary inventions
 |----------|---------|----------|
 | [**The Librarian Method**](/reference/librarian-method) | *Which* tool to use among many? | Intent-driven discovery via semantic embeddings |
 | [**The Foreman Protocol**](/reference/foreman-protocol) | *How* to execute tools cheaply? | Worker model delegation via self-describing MCP |
-| **The Conductor Protocol** | *What's the optimal execution plan?* | AI-compiled flow strategies: Collapse, Extract, Parallelize, Converge |
+| **The Conductor Protocol** | *What's the optimal execution plan?* | AI-compiled flow strategies: Collapse, Extract, Parallelize, Converge, Tesseract |
 
 In a single flow execution:
 1. The **Conductor** compiles the graph into an optimized strategy — collapsing agents, extracting direct actions, parallelizing branches
@@ -572,7 +642,7 @@ graph LR
 2. **NLP parsing** — The text-to-flow parser identifies node types, relationships, and configurations from the description
 3. **Graph construction** — A complete `FlowGraph` is built with nodes, edges, positions, and default configurations
 4. **Conductor compilation** — The graph is analyzed and compiled into an optimized `ExecutionStrategy`
-5. **Execution** — The strategy runs with all four primitives applied
+5. **Execution** — The strategy runs with all five primitives applied
 
 The entire path from "I want a webhook that classifies incoming data and posts urgent items to Slack" to compiled, optimized, executing flow happens without the user ever dragging a node or wiring a connection.
 
@@ -682,6 +752,20 @@ async function runConductorStrategy(strategy: ExecutionStrategy) {
 3. Add an output node downstream
 4. Run — watch the agents iterate until convergence
 
+### Try a tesseract flow
+
+1. Open **Flows** and create a new flow
+2. Add several agent nodes across two logical groups (e.g., "research" agents and "analysis" agents)
+3. Add an **event-horizon** node from the toolbar (⬡ button)
+4. Connect both groups into the event horizon
+5. Add an output node after the horizon
+6. Run — watch cells execute concurrently, then converge at the horizon with a phase transition
+7. The Schlegel overlay appears automatically, showing the cube-in-cube projection with phase-colored borders
+
+Or describe it in natural language:
+
+> *"three research agents explore in parallel, two analysts debate findings, event horizon merges into final synthesis"*
+
 ---
 
 ## License & Attribution
@@ -690,4 +774,4 @@ The Conductor Protocol is part of **OpenPawz** and is released under the **MIT L
 
 If you reference this work in academic papers or technical writing:
 
-> OpenPawz (2025). "The Conductor Protocol: AI-Compiled Flow Execution via Collapse, Extract, Parallelize, and Converge." https://github.com/OpenPawz/openpawz
+> OpenPawz (2025). "The Conductor Protocol: AI-Compiled Flow Execution via Collapse, Extract, Parallelize, Converge, and Tesseract." https://github.com/OpenPawz/openpawz
