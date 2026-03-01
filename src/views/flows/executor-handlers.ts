@@ -45,19 +45,37 @@ export interface LoopHandlerDeps {
 /**
  * Execute a direct HTTP request node (Conductor Extract primitive).
  * Bypasses LLM entirely — routes directly through Rust backend.
+ *
+ * Credential injection:
+ *   - `{{vault.NAME}}` templates in URL, headers, and body are resolved
+ *   - If `credentialName` is set, the matching vault value is injected as
+ *     an auth header according to `credentialType` (bearer/api-key/basic).
  */
 export async function executeHttpRequest(
   node: FlowNode,
   upstreamInput: string,
   config: NodeExecConfig,
+  vaultCredentials?: Record<string, string>,
 ): Promise<string> {
   const method = config.httpMethod || (node.config.httpMethod as string) || 'GET';
   let url = config.httpUrl || (node.config.httpUrl as string) || '';
-  const headersStr = config.httpHeaders || (node.config.httpHeaders as string) || '{}';
+  let headersStr = config.httpHeaders || (node.config.httpHeaders as string) || '{}';
   let body = config.httpBody || (node.config.httpBody as string) || undefined;
 
   if (!url) {
     throw new Error(`HTTP node "${node.label}" has no URL configured`);
+  }
+
+  // Resolve {{vault.NAME}} templates in config fields
+  if (vaultCredentials) {
+    const rv = (s: string) =>
+      s.replace(
+        /\{\{vault\.(\w[\w.-]*)\}\}/g,
+        (_, name: string) => vaultCredentials[name] ?? `{{vault.${name}}}`,
+      );
+    url = rv(url);
+    headersStr = rv(headersStr);
+    if (body) body = rv(body);
   }
 
   // Template substitution: replace {{input}} with upstream data
@@ -71,6 +89,29 @@ export async function executeHttpRequest(
     headers = JSON.parse(headersStr);
   } catch {
     // Ignore invalid headers JSON
+  }
+
+  // Auto-inject credential from vault if credentialName is configured
+  if (config.credentialName && vaultCredentials) {
+    const credValue = vaultCredentials[config.credentialName];
+    if (credValue) {
+      const credType = config.credentialType ?? 'bearer';
+      switch (credType) {
+        case 'bearer':
+          headers['Authorization'] = `Bearer ${credValue}`;
+          break;
+        case 'api-key':
+          headers['X-API-Key'] = credValue;
+          break;
+        case 'basic':
+          headers['Authorization'] = `Basic ${btoa(credValue)}`;
+          break;
+        // oauth2: token is already a Bearer token
+        case 'oauth2':
+          headers['Authorization'] = `Bearer ${credValue}`;
+          break;
+      }
+    }
   }
 
   try {
@@ -104,17 +145,30 @@ export async function executeHttpRequest(
 /**
  * Execute a direct MCP tool call node (Conductor Extract primitive).
  * Bypasses LLM entirely — routes through Rust MCP registry.
+ *
+ * The MCP server's own transport auth (Bearer token) is already baked into
+ * the registered connection. `{{vault.NAME}}` templates in tool arguments
+ * are resolved here so credential values can flow into tool parameters.
  */
 export async function executeMcpToolCall(
   node: FlowNode,
   upstreamInput: string,
   config: NodeExecConfig,
+  vaultCredentials?: Record<string, string>,
 ): Promise<string> {
   const toolName = config.mcpToolName || (node.config.mcpToolName as string) || '';
-  const argsStr = config.mcpToolArgs || (node.config.mcpToolArgs as string) || '{}';
+  let argsStr = config.mcpToolArgs || (node.config.mcpToolArgs as string) || '{}';
 
   if (!toolName) {
     throw new Error(`MCP-tool node "${node.label}" has no tool name configured`);
+  }
+
+  // Resolve {{vault.NAME}} templates in tool arguments
+  if (vaultCredentials) {
+    argsStr = argsStr.replace(
+      /\{\{vault\.(\w[\w.-]*)\}\}/g,
+      (_, name: string) => vaultCredentials[name] ?? `{{vault.${name}}}`,
+    );
   }
 
   let args: Record<string, unknown> = {};
@@ -130,7 +184,14 @@ export async function executeMcpToolCall(
   }
 
   // Template substitution in args
-  const argsJson = JSON.stringify(args).replace(/\{\{input\}\}/g, upstreamInput);
+  let argsJson = JSON.stringify(args).replace(/\{\{input\}\}/g, upstreamInput);
+  // Also resolve any remaining {{vault.x}} in serialized args (nested templates)
+  if (vaultCredentials) {
+    argsJson = argsJson.replace(
+      /\{\{vault\.(\w[\w.-]*)\}\}/g,
+      (_, name: string) => vaultCredentials[name] ?? `{{vault.${name}}}`,
+    );
+  }
   args = JSON.parse(argsJson);
 
   const response = await pawEngine.flowDirectMcp({
