@@ -1094,16 +1094,20 @@ pub async fn engine_n8n_package_credential_schema(
     let (base_url, api_key) = get_n8n_endpoint(&app_handle)?;
     let base = base_url.trim_end_matches('/');
 
-    let client = reqwest::Client::builder()
+    let api_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .map_err(|e| e.to_string())?;
+
+    // Obtain a session-authenticated client for /types/* endpoints.
+    // These endpoints require a browser-style session cookie, NOT the API key.
+    let session_client = n8n_engine::health::session_client(&base_url).await.ok();
 
     // Step 1: Try to get installed node types for this package.
     // First try the REST API, then fall back to matching by package name prefix.
     let known_node_types: Vec<String> = {
         let list_url = format!("{}/api/v1/community-packages", base);
-        let resp = client
+        let resp = api_client
             .get(&list_url)
             .header("X-N8N-API-KEY", &api_key)
             .send()
@@ -1131,75 +1135,95 @@ pub async fn engine_n8n_package_credential_schema(
         }
     };
 
-    // Step 2: For each installed node type, discover its credential requirements
-    // n8n's /types/ endpoints require session-based auth (not API key),
-    // so we try multiple approaches:
-    //   a) /types/credentials.json with API key header (works in some n8n versions)
-    //   b) /types/nodes.json with API key header (same)
-    //   c) /api/v1/credentials/schema/{type} per-credential REST API fallback
-    let cred_types_url = format!("{}/types/credentials.json", base);
-    let cred_resp = client
-        .get(&cred_types_url)
-        .header("X-N8N-API-KEY", &api_key)
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch credential types: {}", e))?;
-
-    let all_cred_types: serde_json::Value = if cred_resp.status().is_success() {
-        cred_resp
-            .json()
-            .await
-            .unwrap_or(serde_json::Value::Array(vec![]))
+    // Step 2: Fetch /types/credentials.json (bulk credential definitions).
+    // This endpoint requires session auth — use session_client if available,
+    // otherwise fall back to API key (which will likely 401).
+    let all_cred_types: serde_json::Value = if let Some(ref sc) = session_client {
+        let cred_types_url = format!("{}/types/credentials.json", base);
+        match sc.get(&cred_types_url).send().await {
+            Ok(r) if r.status().is_success() => {
+                info!("[n8n] /types/credentials.json fetched via session auth");
+                r.json().await.unwrap_or(serde_json::Value::Array(vec![]))
+            }
+            Ok(r) => {
+                info!(
+                    "[n8n] /types/credentials.json returned HTTP {} via session",
+                    r.status().as_u16()
+                );
+                serde_json::Value::Array(vec![])
+            }
+            Err(e) => {
+                warn!("[n8n] /types/credentials.json session request failed: {}", e);
+                serde_json::Value::Array(vec![])
+            }
+        }
     } else {
-        info!(
-            "[n8n] /types/credentials.json returned HTTP {} — will use per-credential API fallback",
-            cred_resp.status().as_u16()
-        );
-        serde_json::Value::Array(vec![])
+        // No session available — try API key as last resort
+        let cred_types_url = format!("{}/types/credentials.json", base);
+        match api_client.get(&cred_types_url).header("X-N8N-API-KEY", &api_key).send().await {
+            Ok(r) if r.status().is_success() => r.json().await.unwrap_or(serde_json::Value::Array(vec![])),
+            _ => serde_json::Value::Array(vec![]),
+        }
     };
 
-    // Step 3: Get the node types to figure out which credential types they need
-    let node_types_url = format!("{}/types/nodes.json", base);
-    let nodes_resp = client
-        .get(&node_types_url)
-        .header("X-N8N-API-KEY", &api_key)
-        .send()
-        .await;
-
-    // Build a set of credential type names needed by this package's nodes
+    // Step 3: Get /types/nodes.json to discover which credential types nodes need.
+    // Same session-auth requirement as Step 2.
     let mut needed_cred_types: Vec<String> = Vec::new();
 
-    if let Ok(resp) = nodes_resp {
-        if resp.status().is_success() {
-            if let Ok(nodes_json) = resp.json::<serde_json::Value>().await {
-                if let Some(nodes_arr) = nodes_json.as_array() {
-                    for node in nodes_arr {
-                        let node_name = node
-                            .get("name")
-                            .and_then(|n| n.as_str())
-                            .unwrap_or_default();
+    let nodes_json_result: Option<serde_json::Value> = if let Some(ref sc) = session_client {
+        let node_types_url = format!("{}/types/nodes.json", base);
+        match sc.get(&node_types_url).send().await {
+            Ok(r) if r.status().is_success() => {
+                info!("[n8n] /types/nodes.json fetched via session auth");
+                r.json().await.ok()
+            }
+            Ok(r) => {
+                info!(
+                    "[n8n] /types/nodes.json returned HTTP {} via session",
+                    r.status().as_u16()
+                );
+                None
+            }
+            Err(e) => {
+                warn!("[n8n] /types/nodes.json session request failed: {}", e);
+                None
+            }
+        }
+    } else {
+        let node_types_url = format!("{}/types/nodes.json", base);
+        match api_client.get(&node_types_url).header("X-N8N-API-KEY", &api_key).send().await {
+            Ok(r) if r.status().is_success() => r.json().await.ok(),
+            _ => None,
+        }
+    };
 
-                        // Match nodes belonging to this package:
-                        // - If we have known node types from the REST API, match exactly
-                        // - Otherwise, match by package name prefix (e.g., "n8n-nodes-foo.Bar")
-                        let is_pkg_node = if !known_node_types.is_empty() {
-                            known_node_types.iter().any(|t| t == node_name)
-                        } else {
-                            node_name.starts_with(&format!("{}.", package_name))
-                        };
+    if let Some(nodes_json) = nodes_json_result {
+        if let Some(nodes_arr) = nodes_json.as_array() {
+            for node in nodes_arr {
+                let node_name = node
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .unwrap_or_default();
 
-                        if !is_pkg_node {
-                            continue;
-                        }
+                // Match nodes belonging to this package:
+                // - If we have known node types from the REST API, match exactly
+                // - Otherwise, match by package name prefix (e.g., "n8n-nodes-foo.Bar")
+                let is_pkg_node = if !known_node_types.is_empty() {
+                    known_node_types.iter().any(|t| t == node_name)
+                } else {
+                    node_name.starts_with(&format!("{}.", package_name))
+                };
 
-                        // Extract credential type names from node definition
-                        if let Some(cred_arr) = node.get("credentials").and_then(|c| c.as_array()) {
-                            for cred in cred_arr {
-                                if let Some(cred_name) = cred.get("name").and_then(|n| n.as_str()) {
-                                    if !needed_cred_types.contains(&cred_name.to_string()) {
-                                        needed_cred_types.push(cred_name.to_string());
-                                    }
-                                }
+                if !is_pkg_node {
+                    continue;
+                }
+
+                // Extract credential type names from node definition
+                if let Some(cred_arr) = node.get("credentials").and_then(|c| c.as_array()) {
+                    for cred in cred_arr {
+                        if let Some(cred_name) = cred.get("name").and_then(|n| n.as_str()) {
+                            if !needed_cred_types.contains(&cred_name.to_string()) {
+                                needed_cred_types.push(cred_name.to_string());
                             }
                         }
                     }
@@ -1207,6 +1231,13 @@ pub async fn engine_n8n_package_credential_schema(
             }
         }
     }
+
+    info!(
+        "[n8n] Discovered {} credential type(s) for '{}': {:?}",
+        needed_cred_types.len(),
+        package_name,
+        needed_cred_types
+    );
 
     // Step 4: For each needed credential type, extract its schema
     let mut schemas: Vec<N8nCredentialSchema> = Vec::new();
@@ -1235,7 +1266,7 @@ pub async fn engine_n8n_package_credential_schema(
         } else {
             // Fallback: try the REST API schema endpoint
             let schema_url = format!("{}/api/v1/credentials/schema/{}", base, cred_type_name);
-            if let Ok(resp) = client
+            if let Ok(resp) = api_client
                 .get(&schema_url)
                 .header("X-N8N-API-KEY", &api_key)
                 .send()
