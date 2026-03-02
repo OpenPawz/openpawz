@@ -4,6 +4,7 @@
 // Top services are hand-curated with setup guides; remaining are auto-generated.
 
 import type { ServiceDefinition, ServiceCategory, CredentialField, SetupGuide } from './atoms';
+import { CREDENTIAL_OVERRIDES } from './credential-data';
 
 // ── Helpers for auto-generation ────────────────────────────────────────
 
@@ -41,6 +42,8 @@ function svc(
   queryExamples?: string[],
   automationExamples?: string[],
 ): ServiceDefinition {
+  // Use extracted credential schemas when no explicit fields are provided
+  const override = CREDENTIAL_OVERRIDES[nodeType];
   return {
     id,
     name,
@@ -52,8 +55,8 @@ function svc(
     n8nNodeType: nodeType,
     docsUrl,
     popular,
-    credentialFields: credentialFields ?? [apiKeyField],
-    setupGuide: setupGuide ?? genericGuide(name),
+    credentialFields: credentialFields ?? override?.fields ?? [apiKeyField],
+    setupGuide: setupGuide ?? override?.guide ?? genericGuide(name),
     queryExamples: queryExamples ?? [`What's new in ${name}?`],
     automationExamples: automationExamples ?? [`When something happens in ${name}, notify me.`],
   };
@@ -128,33 +131,8 @@ const CURATED: ServiceDefinition[] = [
     'n8n-nodes-base.gmail',
     'https://developers.google.com/gmail/api',
     true,
-    [
-      {
-        key: 'oauth',
-        label: 'n8n Credential Name',
-        type: 'text',
-        placeholder: 'e.g. My Gmail Account',
-        required: true,
-        helpText: 'The name you gave your Gmail credential in n8n (step 4 above).',
-      },
-    ],
-    {
-      title: 'Connect Gmail',
-      steps: [
-        {
-          instruction: 'Open your n8n instance and go to Credentials',
-          link: 'http://localhost:5678/home/credentials',
-          tip: 'If n8n is on a different port, adjust the URL accordingly',
-        },
-        { instruction: 'Click "Add Credential", search for "Gmail", and select it' },
-        {
-          instruction: 'Click "Sign in with Google" in n8n\'s credential form and authorize access',
-        },
-        { instruction: 'Name the credential (e.g. "My Gmail Account") and click Save' },
-        { instruction: 'Paste that same credential name below' },
-      ],
-      estimatedTime: '3 minutes',
-    },
+    undefined,
+    undefined,
     [
       'Any emails from investors today?',
       'Show unread emails',
@@ -214,36 +192,8 @@ const CURATED: ServiceDefinition[] = [
     'n8n-nodes-base.googleSheets',
     'https://developers.google.com/sheets/api',
     true,
-    [
-      {
-        key: 'oauth',
-        label: 'n8n Credential Name',
-        type: 'text',
-        placeholder: 'e.g. My Google Sheets',
-        required: true,
-        helpText: 'The name you gave your Google Sheets credential in n8n (step 4 above).',
-      },
-    ],
-    {
-      title: 'Connect Google Sheets',
-      steps: [
-        {
-          instruction: 'Open your n8n instance and go to Credentials',
-          link: 'http://localhost:5678/home/credentials',
-          tip: 'If n8n is on a different port, adjust the URL accordingly',
-        },
-        {
-          instruction:
-            'Click "Add Credential", search for "Google Sheets", and select the OAuth2 option',
-        },
-        {
-          instruction: 'Click "Sign in with Google" in n8n\'s credential form and authorize access',
-        },
-        { instruction: 'Name the credential (e.g. "My Google Sheets") and click Save' },
-        { instruction: 'Paste that same credential name below' },
-      ],
-      estimatedTime: '3 minutes',
-    },
+    undefined,
+    undefined,
     ['Read the Sales sheet', 'How many rows in my tracker?', 'What are the column headers?'],
     ['When a new row is added, send a Slack message', 'Sync CRM deals to a spreadsheet daily'],
   ),
@@ -1086,36 +1036,8 @@ const AUTO: ServiceDefinition[] = [
     'n8n-nodes-base.googleCalendar',
     'https://developers.google.com/calendar/api',
     true,
-    [
-      {
-        key: 'oauth',
-        label: 'n8n Credential Name',
-        type: 'text',
-        placeholder: 'e.g. My Google Calendar',
-        required: true,
-        helpText: 'The name you gave your Google Calendar credential in n8n (step 4 above).',
-      },
-    ],
-    {
-      title: 'Connect Google Calendar',
-      steps: [
-        {
-          instruction: 'Open your n8n instance and go to Credentials',
-          link: 'http://localhost:5678/home/credentials',
-          tip: 'If n8n is on a different port, adjust the URL accordingly',
-        },
-        {
-          instruction:
-            'Click "Add Credential", search for "Google Calendar", and select the OAuth2 option',
-        },
-        {
-          instruction: 'Click "Sign in with Google" in n8n\'s credential form and authorize access',
-        },
-        { instruction: 'Name the credential (e.g. "My Google Calendar") and click Save' },
-        { instruction: 'Paste that same credential name below' },
-      ],
-      estimatedTime: '3 minutes',
-    },
+    undefined,
+    undefined,
     ['What meetings do I have today?', 'Am I free tomorrow at 2pm?', "Show this week's events"],
     ['When a meeting is created, post in Slack', 'Daily agenda briefing at 8am'],
   ),
