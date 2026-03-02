@@ -379,3 +379,49 @@ pub async fn retrieve_mcp_token(base_url: &str) -> Result<String, String> {
         &resp_str[..resp_str.len().min(300)]
     ))
 }
+
+// ── Session-authenticated client ───────────────────────────────────────
+
+/// Create a `reqwest::Client` that is logged into n8n with the owner
+/// session cookie. This is needed for `/types/*` endpoints which do NOT
+/// accept the `X-N8N-API-KEY` header — they require a browser-style
+/// session obtained via `POST /rest/login`.
+///
+/// Returns `Ok(client)` with the session cookie already stored, or
+/// `Err` if login fails (e.g. owner not set up yet).
+pub async fn session_client(base_url: &str) -> Result<reqwest::Client, String> {
+    let base = base_url.trim_end_matches('/');
+
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+        .map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let login_url = format!("{}/rest/login", base);
+    let login_body = serde_json::json!({
+        "emailOrLdapLoginId": OWNER_EMAIL,
+        "password": OWNER_PASSWORD
+    });
+
+    let resp = client
+        .post(&login_url)
+        .header("Content-Type", "application/json")
+        .json(&login_body)
+        .send()
+        .await
+        .map_err(|e| format!("n8n session login failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!(
+            "n8n session login HTTP {}: {}",
+            status,
+            &body[..body.len().min(200)]
+        ));
+    }
+
+    log::debug!("[n8n] Session login successful — cookie-authenticated client ready");
+    Ok(client)
+}
