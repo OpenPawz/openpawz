@@ -174,7 +174,7 @@ function parsePropertyObject(objStr) {
   // Skip 'notice' and 'hidden' types — not user-facing
   if (prop.type === 'notice' || prop.type === 'hidden') return null;
 
-  // Filter out displayOptions-only fields (like scope fields) 
+  // Filter out displayOptions-only fields (like scope fields)
   // that are hidden from the user
   if (!prop.name && !prop.displayName) return null;
 
