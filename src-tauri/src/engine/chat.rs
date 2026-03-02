@@ -503,15 +503,28 @@ pub fn compose_chat_system_prompt_budgeted(
 ///    messages — the model is repeating itself with minor rewording.
 /// 2. **Question loop**: Both last assistant messages end in `?` — the model
 ///    keeps asking clarifying questions instead of acting.
-/// 3. **Topic divergence**: The user changed topic but the model's response
-///    still addresses the old topic — detected via keyword overlap between
-///    the user's message and the assistant's previous response.
-/// 4. **Topic-ignoring**: The last user message has very low keyword overlap
-///    with the model's response while the model keeps repeating itself.
+/// 3. **Topic fixation**: The user's message has near-zero keyword overlap
+///    with the model's response AND the model's last two responses are similar
+///    to each other — meaning the model is stuck on an old topic and ignoring
+///    the user. This combined check avoids false positives from natural topic
+///    shifts (where the model just hasn't responded yet).
+/// 4. **Topic-ignoring + repetition**: Low keyword overlap combined with
+///    moderate inter-response similarity — subtler fixation.
+///
+/// **Escalation:** If a previous redirect was already injected and the model
+/// STILL isn't addressing the user, injects a progressively stronger redirect.
+/// Crucially, **no messages are ever pruned** — the user may return to any
+/// earlier topic. The escalation is purely in redirect strength.
 ///
 /// In all cases, a system-role redirect is injected telling the model to
 /// stop repeating itself and respond to the user's actual request.
 pub fn detect_response_loop(messages: &mut Vec<Message>) {
+    let last_user_text = messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::User)
+        .map(|m| m.content.as_text_ref().to_lowercase());
+
     let assistant_msgs: Vec<&str> = messages
         .iter()
         .rev()
@@ -537,13 +550,24 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
         0.0
     };
 
+    // Count how many redirects we've already injected — determines escalation level
+    let prior_redirect_count = messages
+        .iter()
+        .filter(|m| {
+            m.role == Role::System
+                && (m.content.as_text_ref().contains("TOPIC CHANGE")
+                    || m.content.as_text_ref().contains("stuck repeating")
+                    || m.content.as_text_ref().contains("response loop"))
+        })
+        .count();
+
     // ── Check 1: assistant repeating itself (> 40% overlap) ────────────
     if similarity > 0.40 {
         warn!(
             "[engine] Response loop detected (similarity={:.0}%) — injecting redirect",
             similarity * 100.0
         );
-        inject_loop_break(messages);
+        inject_loop_break(messages, prior_redirect_count);
         return;
     }
 
@@ -554,36 +578,19 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
     let b_is_question = b.trim_end().ends_with('?');
     if a_is_question && b_is_question {
         warn!("[engine] Question loop detected — assistant asked two consecutive questions");
-        inject_loop_break(messages);
+        inject_loop_break(messages, prior_redirect_count);
         return;
     }
 
-    // ── Check 3: topic divergence — user changed topic, model didn't ──
+    // ── Check 3: topic fixation — model stuck on old topic ─────────────
     // Compare what the user asked about vs what the model responded about.
-    // If the user's keywords don't overlap with the response at all, the
-    // model is stuck on a previous topic (refusal, error, or anything).
-    // This is the most common "stuck" pattern: user says "tell me about X"
-    // and the model keeps talking about Y from 5 messages ago.
-    let last_user = messages
-        .iter()
-        .rev()
-        .find(|m| m.role == Role::User)
-        .map(|m| m.content.as_text_ref().to_lowercase());
-
-    if let Some(user_text) = last_user {
-        let stop_words: std::collections::HashSet<&str> = [
-            "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has",
-            "had", "do", "does", "did", "will", "would", "could", "should", "may", "might", "can",
-            "shall", "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into",
-            "about", "like", "through", "after", "over", "between", "out", "against", "during",
-            "i", "you", "he", "she", "it", "we", "they", "me", "him", "her", "us", "them", "my",
-            "your", "his", "its", "our", "their", "this", "that", "these", "those", "and", "but",
-            "or", "nor", "not", "so", "if", "then", "than", "too", "very", "just", "don't", "im",
-            "i'd", "i'm", "i'll", "i've", "you're", "it's", "what", "how", "all", "each", "which",
-            "who", "when", "where", "why",
-        ]
-        .into_iter()
-        .collect();
+    // CRITICAL: We only fire when BOTH conditions are true:
+    //   1. Near-zero keyword overlap (user and model talking about different things)
+    //   2. Model's response is similar to its PREVIOUS response (it's fixated)
+    // This avoids false positives from natural topic shifts where the model
+    // simply hasn't responded to the new topic yet.
+    if let Some(ref user_text) = last_user_text {
+        let stop_words = build_stop_words();
 
         let user_keywords: std::collections::HashSet<&str> = user_text
             .split_whitespace()
@@ -594,9 +601,8 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
             .filter(|w| w.len() > 2 && !stop_words.contains(w))
             .collect();
 
-        // Check for short affirmative/directive user messages — "both", "yes",
-        // "do it", "go ahead". If the user gives a brief directive and the
-        // model responds with another question, that's a loop.
+        // Short affirmatives: "yes", "both", "do it", "go ahead"
+        // If the model asks another question after a directive, that's a loop.
         let short_directive = user_text.split_whitespace().count() <= 4;
         if short_directive && a_is_question && similarity > 0.20 {
             warn!(
@@ -605,7 +611,7 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
                 user_text,
                 similarity * 100.0
             );
-            inject_loop_break(messages);
+            inject_loop_break(messages, prior_redirect_count);
             return;
         }
 
@@ -613,23 +619,24 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
             let topic_overlap = user_keywords.intersection(&asst_keywords).count();
             let topic_ratio = topic_overlap as f64 / user_keywords.len() as f64;
 
-            // ── Check 3a: near-zero topic overlap = topic change ignored ──
-            // The user introduced new keywords the model didn't address at all.
-            // This fires even without inter-response similarity — one bad
-            // response is enough if the model clearly ignored the user's words.
-            if topic_ratio < 0.10 {
+            // ── Check 3a: zero overlap + model repeating itself = fixation ──
+            // The model ignored the user AND is producing similar content to
+            // its previous response. This is the "stuck on SerpAPI" pattern.
+            // Both conditions must be true to avoid false positives from
+            // natural topic shifts (Jira → president → back to Jira).
+            if topic_ratio < 0.10 && similarity > 0.15 {
                 warn!(
-                    "[engine] Topic divergence: user keywords overlap={:.0}% — \
-                    model is not addressing the user's current topic",
-                    topic_ratio * 100.0
+                    "[engine] Topic fixation: user keywords overlap={:.0}%, \
+                    inter-response similarity={:.0}% — model is stuck on old topic",
+                    topic_ratio * 100.0,
+                    similarity * 100.0
                 );
-                inject_topic_redirect(messages);
+                inject_topic_redirect(messages, prior_redirect_count);
                 return;
             }
 
-            // ── Check 3b: low overlap + model repeating itself ────────────
-            // Weaker topic drift combined with the model parroting its last
-            // response — still a stuck loop, just subtler.
+            // ── Check 3b: low overlap + moderate repetition ───────────────
+            // Weaker fixation — model is drifting but not completely stuck.
             if topic_ratio < 0.20 && similarity > 0.25 {
                 warn!(
                     "[engine] Topic-ignoring loop: user keywords overlap={:.0}%, \
@@ -637,14 +644,35 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
                     topic_ratio * 100.0,
                     similarity * 100.0
                 );
-                inject_loop_break(messages);
+                inject_loop_break(messages, prior_redirect_count);
             }
         }
     }
 }
 
+/// Build the common stop-word set used by topic analysis.
+fn build_stop_words() -> std::collections::HashSet<&'static str> {
+    [
+        "the", "a", "an", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
+        "do", "does", "did", "will", "would", "could", "should", "may", "might", "can", "shall",
+        "to", "of", "in", "for", "on", "with", "at", "by", "from", "as", "into", "about", "like",
+        "through", "after", "over", "between", "out", "against", "during", "i", "you", "he", "she",
+        "it", "we", "they", "me", "him", "her", "us", "them", "my", "your", "his", "its", "our",
+        "their", "this", "that", "these", "those", "and", "but", "or", "nor", "not", "so", "if",
+        "then", "than", "too", "very", "just", "don't", "im", "i'd", "i'm", "i'll", "i've",
+        "you're", "it's", "what", "how", "all", "each", "which", "who", "when", "where", "why",
+    ]
+    .into_iter()
+    .collect()
+}
+
 /// Inject a system message that breaks the agent out of a response loop.
-fn inject_loop_break(messages: &mut Vec<Message>) {
+///
+/// `prior_redirect_count` controls escalation intensity — the more prior
+/// redirects the model has ignored, the stronger the language becomes.
+/// Messages are NEVER pruned; the model keeps full conversation history
+/// so it can naturally return to earlier topics when the user circles back.
+fn inject_loop_break(messages: &mut Vec<Message>, prior_redirect_count: usize) {
     let last_user_text = messages
         .iter()
         .rev()
@@ -653,13 +681,23 @@ fn inject_loop_break(messages: &mut Vec<Message>) {
         .unwrap_or_default();
 
     let redirect = if last_user_text.is_empty() {
-        "IMPORTANT: You are stuck in a response loop — repeating the same topic despite the \
-        user's request. Read the user's MOST RECENT message carefully and respond ONLY to \
-        what they actually asked. Do NOT ask another question. Take action with your tools NOW."
+        "IMPORTANT: You are stuck in a response loop — repeating the same content. \
+        Read the user's MOST RECENT message carefully and respond ONLY to what they \
+        actually asked. Do NOT ask another question. Take action with your tools NOW."
             .to_string()
+    } else if prior_redirect_count >= 2 {
+        format!(
+            "URGENT — REPEATED LOOP (redirected {} times already): You keep repeating \
+            yourself and IGNORING the user. This is the user's actual request:\n\n\
+            >>> {} <<<\n\n\
+            STOP everything else. Respond ONLY to the text above. If the user said \
+            'yes', 'do it', 'go ahead', etc. — proceed immediately. Call tools NOW.",
+            prior_redirect_count,
+            &last_user_text[..last_user_text.len().min(300)]
+        )
     } else {
         format!(
-            "CRITICAL: You are stuck repeating yourself instead of acting. STOP. \
+            "IMPORTANT: You are stuck repeating yourself instead of acting. STOP. \
             The user's actual request is: \"{}\"\n\n\
             Take action NOW. Use your tools to do what the user asked. \
             If they said 'yes', 'both', 'do it', 'go ahead', or similar — proceed with ALL \
@@ -677,13 +715,21 @@ fn inject_loop_break(messages: &mut Vec<Message>) {
     });
 }
 
-/// Inject a system message specifically for topic-change situations.
+/// Inject a system message for topic-fixation situations.
 ///
-/// Distinct from `inject_loop_break` because the model isn't necessarily
-/// repeating itself — it may be giving a perfectly fine response, just to
-/// the *wrong* topic. The redirect needs to explicitly tell it to drop the
-/// previous topic and address the new one.
-fn inject_topic_redirect(messages: &mut Vec<Message>) {
+/// The model is producing responses that address an *old* topic while the
+/// user has moved on. Unlike `inject_loop_break`, the model may not be
+/// literally repeating itself — it's giving valid responses to the wrong
+/// question.
+///
+/// **Key design decision:** We tell the model to *prioritize* the new topic
+/// but do NOT say "the old topic is DEAD." The user may naturally circle
+/// back (e.g. Jira → "who is president?" → back to Jira), so all context
+/// must be preserved.
+///
+/// Escalation is controlled by `prior_redirect_count` — the more prior
+/// redirects the model ignored, the more forceful the language.
+fn inject_topic_redirect(messages: &mut Vec<Message>, prior_redirect_count: usize) {
     let last_user_text = messages
         .iter()
         .rev()
@@ -691,15 +737,26 @@ fn inject_topic_redirect(messages: &mut Vec<Message>) {
         .map(|m| m.content.as_text_ref().to_string())
         .unwrap_or_default();
 
-    let redirect = format!(
-        "IMPORTANT — TOPIC CHANGE: The user has moved on to a new topic. \
-        Their previous requests are no longer relevant. \
-        Completely disregard all earlier topics in this conversation and respond ONLY to \
-        the user's latest message: \"{}\"\n\n\
-        Do NOT reference, continue, or circle back to anything discussed earlier. \
-        Treat this as a fresh question on a new subject.",
-        &last_user_text[..last_user_text.len().min(300)]
-    );
+    let redirect = if prior_redirect_count >= 2 {
+        format!(
+            "URGENT — TOPIC CHANGE (redirected {} times): You keep responding to an \
+            OLD topic the user has ALREADY moved past. The user's CURRENT message is:\n\n\
+            >>> {} <<<\n\n\
+            Respond ONLY to this message RIGHT NOW. Do NOT continue the previous thread. \
+            Every word of your response must address what the user just said.",
+            prior_redirect_count,
+            &last_user_text[..last_user_text.len().min(300)]
+        )
+    } else {
+        format!(
+            "TOPIC CHANGE: The user has moved to a new question or topic. \
+            Address their current message FIRST:\n\n\
+            \"{}\"\n\n\
+            Respond directly to this. Do not continue the previous topic unless \
+            the user explicitly asks to return to it.",
+            &last_user_text[..last_user_text.len().min(300)]
+        )
+    };
 
     messages.push(Message {
         role: Role::System,

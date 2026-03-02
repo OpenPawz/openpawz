@@ -447,13 +447,18 @@ export function buildSystemHint(matches: IntentMatch[], _connectedIds: Set<strin
 
   if (connected.length) {
     parts.push(
-      `[Integration Context] The following services are connected and available for this request: ${connected.map((m) => `${m.serviceName} (${m.actionLabel})`).join(', ')}. Use these integrations to fulfill the user's request when appropriate.`,
+      `[Integration Context] The following services are connected and READY TO USE for this request: ${connected.map((m) => `${m.serviceName} (${m.actionLabel})`).join(', ')}. These integrations are live — use the corresponding tools immediately. Do NOT ask the user for credentials, API keys, or setup steps. Do NOT say you need to refresh the tool list.`,
     );
   }
 
-  if (disconnected.length && !connected.length) {
+  if (disconnected.length) {
+    // Always surface disconnected services — even if some connected matches exist.
+    // The agent needs to know what ELSE could help so it can offer to set it up.
+    const label = connected.length
+      ? `Additionally, these related services are available but NOT yet connected`
+      : `The user's request could benefit from these integrations which are NOT yet connected`;
     parts.push(
-      `[Integration Context] The user's request could benefit from these integrations which are NOT yet connected: ${disconnected.map((m) => m.serviceName).join(', ')}. You may suggest connecting them via Settings → Integrations.`,
+      `[Integration Context] ${label}: ${disconnected.map((m) => m.serviceName).join(', ')}. Guide the user to connect them via Settings → Integrations in the sidebar. Do NOT ask the user for API keys or credentials directly — all setup is handled through the Integrations UI. If the user just finished connecting a service and tools still aren't working, they may need to complete the credential setup in Settings → Integrations → [service].`,
     );
   }
 

@@ -45,10 +45,28 @@ The worker can be **any model from any provider**:
 
 5. **Don't guess tool names** — all MCP tools start with `mcp_` and include the service name.
 
+### Integration Engine Awareness
+
+OpenPawz has a built-in integration engine (n8n) that runs automatically in the background. **You do NOT need to configure, start, or manage it.**
+
+**NEVER:**
+- Ask the user for the n8n URL, API key, or any n8n configuration
+- Say "let me refresh the tool list to pick up the new integration"
+- Tell the user to provide an n8n instance or credentials
+- Suggest manual n8n setup steps
+
+**Instead:** When an integration is connected in Settings → Integrations, its MCP tools appear in your tool set automatically on the next turn. Just use them.
+
 ### When No Tool Exists
 
 If the user asks you to interact with a service and neither native tools nor `mcp_*` tools exist for it:
 
-1. **Tell the user** the service isn't connected yet
-2. **Guide them** to go to **Integrations** in the sidebar, search for the service, and set it up
-3. After setup, the tools will appear in your tool list automatically
+1. **Search first** — Call `request_tools` with the service name to check if dedicated tools exist but aren't loaded yet.
+2. **Search community packages** — Call `search_ncnodes` with the service name to find installable community integrations. If found, offer to install with `install_n8n_node`.
+3. **Guide manual setup** — If nothing is found above, tell the user the service isn't connected yet and guide them to **Settings → Integrations** to set it up, or suggest building a TOML skill.
+4. After setup, the tools will appear in your tool list automatically — no refresh needed.
+
+**When a service tool fails with credential/authentication errors:**
+- The service is likely connected but credentials are missing or expired
+- Tell the user to check **Settings → Integrations → [service]** to update their API key
+- Do NOT ask the user to paste credentials in chat

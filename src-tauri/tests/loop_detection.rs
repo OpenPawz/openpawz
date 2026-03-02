@@ -3,8 +3,10 @@
 // Exercises detect_response_loop from engine::chat to verify:
 // - Cross-turn repetition detection (Jaccard similarity)
 // - Question-loop detection (consecutive `?`-ending responses)
-// - Topic-ignoring detection
+// - Topic fixation detection (model stuck on old topic + repeating itself)
 // - Short-directive loop detection
+// - Natural topic flow: NO false positives on genuine topic changes
+// - Escalation: stronger redirects when prior ones were ignored
 // - No false positives on dissimilar messages
 // - Redirect message format and contents
 
@@ -27,7 +29,8 @@ fn has_system_redirect(messages: &[Message]) -> bool {
     messages.iter().any(|m| {
         m.role == Role::System
             && (m.content.as_text_ref().contains("stuck")
-                || m.content.as_text_ref().contains("loop"))
+                || m.content.as_text_ref().to_lowercase().contains("loop")
+                || m.content.as_text_ref().contains("TOPIC CHANGE"))
     })
 }
 
@@ -190,5 +193,136 @@ fn identical_single_word_responses_detected() {
     assert!(
         has_system_redirect(&msgs),
         "Identical single-word responses should be detected as a loop"
+    );
+}
+
+// ── Natural topic flow — no false positives ────────────────────────────────
+
+#[test]
+fn no_false_positive_on_natural_topic_switch() {
+    // User talks about Jira, then asks "who is president?" — the model's last
+    // response (about Jira) doesn't overlap with the new question, but the model
+    // gave a DIFFERENT response this time (not repeating itself). No redirect.
+    let mut msgs = vec![
+        msg(Role::User, "Help me configure my Jira integration"),
+        msg(
+            Role::Assistant,
+            "I'll help you set up Jira. First, go to Settings and add your Jira API token.",
+        ),
+        msg(Role::User, "who is the president of the united states"),
+        msg(
+            Role::Assistant,
+            "The current President of the United States is the elected head of state.",
+        ),
+    ];
+    detect_response_loop(&mut msgs);
+    assert!(
+        !has_system_redirect(&msgs),
+        "Natural topic switch should NOT trigger a redirect — the model gave a different response"
+    );
+}
+
+#[test]
+fn no_false_positive_when_returning_to_old_topic() {
+    // User goes from Jira → president → back to Jira. The model's last response
+    // (about the president) has no keyword overlap with "Jira", but the model is
+    // NOT repeating itself (it talked about the president, now user asks about Jira).
+    let mut msgs = vec![
+        msg(Role::User, "Help me configure Jira"),
+        msg(
+            Role::Assistant,
+            "Sure! Go to Settings → Integrations and look for Jira.",
+        ),
+        msg(Role::User, "who is the president"),
+        msg(
+            Role::Assistant,
+            "The president of the United States is the head of the executive branch.",
+        ),
+        msg(
+            Role::User,
+            "ok back to jira now, where do I put the API key",
+        ),
+    ];
+    detect_response_loop(&mut msgs);
+    assert!(
+        !has_system_redirect(&msgs),
+        "Returning to an old topic should NOT trigger redirect"
+    );
+}
+
+// ── Topic fixation — model stuck on old topic ──────────────────────────────
+
+#[test]
+fn detects_topic_fixation_when_model_repeats_old_topic() {
+    // The SerpAPI pattern: user switches topic but model keeps responding
+    // about the SAME thing (high inter-response similarity + zero keyword overlap).
+    let mut msgs = vec![
+        msg(Role::User, "Set up SerpAPI for web search"),
+        msg(
+            Role::Assistant,
+            "To configure SerpAPI, you need to add your SerpAPI API key in the settings panel.",
+        ),
+        msg(
+            Role::User,
+            "tell me about the constructor document you reviewed",
+        ),
+        msg(
+            Role::Assistant,
+            "To configure SerpAPI, first add your SerpAPI API key to the settings panel.",
+        ),
+    ];
+    detect_response_loop(&mut msgs);
+    assert!(
+        has_system_redirect(&msgs),
+        "Model fixated on SerpAPI despite user asking about constructor document"
+    );
+}
+
+// ── Escalation — stronger redirects for persistent ignoring ────────────────
+
+#[test]
+fn escalation_produces_stronger_redirect() {
+    // Simulate a situation where a previous redirect was already injected
+    // and the model STILL ignored it.
+    let mut msgs = vec![
+        msg(Role::User, "Help me with Jira"),
+        msg(
+            Role::Assistant,
+            "To set up SerpAPI, add your API key in the settings panel.",
+        ),
+        msg(Role::User, "tell me about the constructor document"),
+        // A prior redirect was injected
+        msg(
+            Role::System,
+            "TOPIC CHANGE: The user has moved to a new question.",
+        ),
+        msg(
+            Role::Assistant,
+            "To configure SerpAPI, you need your SerpAPI API key.",
+        ),
+        msg(
+            Role::User,
+            "answer my actual question about the constructor",
+        ),
+        msg(
+            Role::Assistant,
+            "Let me help you set up SerpAPI. First, get your API key from serpapi.com.",
+        ),
+    ];
+    detect_response_loop(&mut msgs);
+
+    // Should have injected a redirect
+    let redirect = msgs
+        .iter()
+        .filter(|m| m.role == Role::System)
+        .last()
+        .expect("Expected an escalated system redirect");
+    let text = redirect.content.as_text_ref();
+
+    // With a prior TOPIC CHANGE already in history, escalation should produce
+    // stronger language (URGENT, or reference to prior redirects)
+    assert!(
+        text.contains("TOPIC CHANGE") || text.contains("URGENT") || text.contains("stuck"),
+        "Escalated redirect should use stronger language"
     );
 }

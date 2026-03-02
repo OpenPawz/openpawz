@@ -160,12 +160,12 @@ fn load_n8n_config(app_handle: &tauri::AppHandle) -> Result<N8nConnection, Strin
         api_key: String,
     }
     let cfg: Cfg = channels::load_channel_config(app_handle, "n8n_config").map_err(|_| {
-        "n8n is not configured. Set up n8n in Settings → Integrations first.".to_string()
+        "n8n integration engine is still starting up. Try again in a few seconds, or check that n8n is running in Settings → Integrations.".to_string()
     })?;
 
     if cfg.url.is_empty() || cfg.api_key.is_empty() {
         return Err(
-            "n8n URL or API key is empty. Configure n8n in Settings → Integrations.".into(),
+            "n8n integration engine is not ready yet. It may still be starting. Try again in a few seconds.".into(),
         );
     }
 
@@ -715,7 +715,8 @@ async fn execute_search_ncnodes(args: &serde_json::Value) -> Result<String, Stri
     );
 
     let results =
-        crate::commands::n8n::engine_n8n_search_ncnodes(query.to_string(), Some(limit), None).await?;
+        crate::commands::n8n::engine_n8n_search_ncnodes(query.to_string(), Some(limit), None)
+            .await?;
 
     if results.is_empty() {
         return Ok(format!(

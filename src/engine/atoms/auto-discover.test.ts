@@ -170,7 +170,7 @@ describe('buildSystemHint', () => {
     expect(hint).toContain('Jira');
   });
 
-  it('does not suggest disconnected when connected services exist', () => {
+  it('surfaces disconnected services alongside connected ones', () => {
     const matches: IntentMatch[] = [
       {
         service: 'slack',
@@ -190,7 +190,9 @@ describe('buildSystemHint', () => {
       },
     ];
     const hint = buildSystemHint(matches, new Set(['slack']));
-    expect(hint).not.toContain('NOT yet connected');
+    expect(hint).toContain('READY TO USE');
+    expect(hint).toContain('NOT yet connected');
+    expect(hint).toContain('Discord');
   });
 });
 

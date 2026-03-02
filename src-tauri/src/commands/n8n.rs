@@ -762,10 +762,7 @@ async fn fetch_npm_weekly_downloads<'a>(
     // Bulk fetch unscoped packages (npm supports comma-separated, up to ~128)
     if !unscoped.is_empty() {
         let joined = unscoped.join(",");
-        let url = format!(
-            "https://api.npmjs.org/downloads/point/last-week/{}",
-            joined
-        );
+        let url = format!("https://api.npmjs.org/downloads/point/last-week/{}", joined);
         if let Ok(resp) = client.get(&url).send().await {
             if let Ok(body) = resp.json::<serde_json::Value>().await {
                 if let Some(obj) = body.as_object() {
@@ -1155,15 +1152,25 @@ pub async fn engine_n8n_package_credential_schema(
                 serde_json::Value::Array(vec![])
             }
             Err(e) => {
-                warn!("[n8n] /types/credentials.json session request failed: {}", e);
+                warn!(
+                    "[n8n] /types/credentials.json session request failed: {}",
+                    e
+                );
                 serde_json::Value::Array(vec![])
             }
         }
     } else {
         // No session available — try API key as last resort
         let cred_types_url = format!("{}/types/credentials.json", base);
-        match api_client.get(&cred_types_url).header("X-N8N-API-KEY", &api_key).send().await {
-            Ok(r) if r.status().is_success() => r.json().await.unwrap_or(serde_json::Value::Array(vec![])),
+        match api_client
+            .get(&cred_types_url)
+            .header("X-N8N-API-KEY", &api_key)
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => {
+                r.json().await.unwrap_or(serde_json::Value::Array(vec![]))
+            }
             _ => serde_json::Value::Array(vec![]),
         }
     };
@@ -1193,7 +1200,12 @@ pub async fn engine_n8n_package_credential_schema(
         }
     } else {
         let node_types_url = format!("{}/types/nodes.json", base);
-        match api_client.get(&node_types_url).header("X-N8N-API-KEY", &api_key).send().await {
+        match api_client
+            .get(&node_types_url)
+            .header("X-N8N-API-KEY", &api_key)
+            .send()
+            .await
+        {
             Ok(r) if r.status().is_success() => r.json().await.ok(),
             _ => None,
         }
@@ -1261,7 +1273,7 @@ pub async fn engine_n8n_package_credential_schema(
             let doc_url = ct
                 .get("documentationUrl")
                 .and_then(|d| d.as_str())
-                .map(|s| resolve_n8n_doc_url(s));
+                .map(resolve_n8n_doc_url);
 
             let fields = extract_credential_fields(ct);
 
@@ -1291,7 +1303,7 @@ pub async fn engine_n8n_package_credential_schema(
                         let doc_url = schema_json
                             .get("documentationUrl")
                             .and_then(|d| d.as_str())
-                            .map(|s| resolve_n8n_doc_url(s));
+                            .map(resolve_n8n_doc_url);
 
                         let fields = extract_credential_fields(&schema_json);
 
@@ -1313,10 +1325,7 @@ pub async fn engine_n8n_package_credential_schema(
     // inaccessible (they often require session auth, not API key auth).
     if schemas.is_empty() {
         let pkg_display = display_name_for_pkg(&package_name);
-        let npm_url = format!(
-            "https://www.npmjs.com/package/{}",
-            package_name
-        );
+        let npm_url = format!("https://www.npmjs.com/package/{}", package_name);
 
         schemas.push(N8nCredentialSchema {
             credential_type: format!(
@@ -1342,10 +1351,7 @@ pub async fn engine_n8n_package_credential_schema(
     // For community packages, the setup guide lives in the npm package README,
     // not on n8n's docs site.  Override any n8n-internal documentationUrl with
     // the npm page so users land on the actual community node's instructions.
-    let npm_doc_url = format!(
-        "https://www.npmjs.com/package/{}",
-        package_name
-    );
+    let npm_doc_url = format!("https://www.npmjs.com/package/{}", package_name);
     for schema in &mut schemas {
         schema.documentation_url = Some(npm_doc_url.clone());
     }
