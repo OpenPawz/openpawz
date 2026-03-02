@@ -790,17 +790,19 @@ pub async fn engine_n8n_community_packages_list(
 
 /// Fallback for listing community packages by reading the container's package.json.
 ///
-/// n8n stores community packages as npm dependencies in /home/node/.n8n/package.json.
+/// n8n stores community packages as npm dependencies in `CONTAINER_DATA_DIR/package.json`.
 /// This approach works even when the REST API endpoint returns 404.
 async fn list_packages_from_container() -> Result<Vec<CommunityPackage>, String> {
     use tokio::process::Command;
+
+    let data_dir = n8n_engine::types::CONTAINER_DATA_DIR;
 
     let output = Command::new("docker")
         .args([
             "exec",
             n8n_engine::types::CONTAINER_NAME,
             "cat",
-            "/home/node/.n8n/package.json",
+            &format!("{}/package.json", data_dir),
         ])
         .output()
         .await
@@ -828,6 +830,27 @@ async fn list_packages_from_container() -> Result<Vec<CommunityPackage>, String>
                 name.as_str()
             };
             if unscoped.starts_with("n8n-nodes-") || name.contains("-n8n-") {
+                // Try to read node types from the package's own package.json
+                let node_pkg_json_str = String::from_utf8(
+                    tokio::process::Command::new("docker")
+                        .args([
+                            "exec",
+                            n8n_engine::types::CONTAINER_NAME,
+                            "cat",
+                            &format!("{}/node_modules/{}/package.json", data_dir, name),
+                        ])
+                        .output()
+                        .await
+                        .map(|o| o.stdout)
+                        .unwrap_or_default(),
+                )
+                .unwrap_or_default();
+
+                let installed_nodes = serde_json::from_str::<serde_json::Value>(&node_pkg_json_str)
+                    .ok()
+                    .map(|pj| discover_nodes_from_package_json(&pj))
+                    .unwrap_or_default();
+
                 packages.push(CommunityPackage {
                     package_name: name.clone(),
                     installed_version: version
@@ -836,7 +859,7 @@ async fn list_packages_from_container() -> Result<Vec<CommunityPackage>, String>
                         .trim_start_matches('^')
                         .trim_start_matches('~')
                         .to_string(),
-                    installed_nodes: vec![], // Node info requires n8n's node registry
+                    installed_nodes,
                 });
             }
         }
@@ -847,6 +870,44 @@ async fn list_packages_from_container() -> Result<Vec<CommunityPackage>, String>
         packages.len()
     );
     Ok(packages)
+}
+
+/// Discover n8n node types from a community package's own `package.json`.
+///
+/// n8n community packages declare their nodes under `"n8n" > "nodes"` in
+/// their package.json, e.g.:
+///   { "n8n": { "nodes": [ "dist/nodes/MyNode/MyNode.node.js" ] } }
+///
+/// We derive a human-readable name from the file path and return as
+/// `CommunityNode` entries.
+fn discover_nodes_from_package_json(pkg_json: &serde_json::Value) -> Vec<CommunityNode> {
+    let mut nodes = Vec::new();
+
+    // Path 1: n8n.nodes (array of dist paths)
+    if let Some(n8n_section) = pkg_json.get("n8n").and_then(|v| v.as_object()) {
+        if let Some(node_entries) = n8n_section.get("nodes").and_then(|v| v.as_array()) {
+            for entry in node_entries {
+                if let Some(path) = entry.as_str() {
+                    // e.g. "dist/nodes/Telegram/Telegram.node.js" → "Telegram"
+                    let file_name = std::path::Path::new(path)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or(path);
+                    // Strip ".node" suffix if present
+                    let name = file_name.strip_suffix(".node").unwrap_or(file_name);
+                    nodes.push(CommunityNode {
+                        name: name.to_string(),
+                        node_type: format!("n8n-nodes-base.{}", name.to_lowercase()),
+                    });
+                }
+            }
+        }
+    }
+
+    // Path 2: n8n.credentials (so the count includes cred-only types)
+    // Intentionally left out — users care about *nodes*, not credential types.
+
+    nodes
 }
 
 /// Read community packages from the local n8n data directory's package.json.
@@ -861,6 +922,7 @@ fn list_packages_from_data_dir(
     let pkg_json: serde_json::Value = serde_json::from_str(&content)
         .map_err(|e| format!("Failed to parse package.json: {}", e))?;
 
+    let node_modules = data_dir.join("node_modules");
     let mut packages = Vec::new();
 
     if let Some(deps) = pkg_json.get("dependencies").and_then(|d| d.as_object()) {
@@ -871,6 +933,20 @@ fn list_packages_from_data_dir(
                 name.as_str()
             };
             if unscoped.starts_with("n8n-nodes-") || name.contains("-n8n-") {
+                // Read the package's own package.json for node discovery
+                let pkg_dir = node_modules.join(name);
+                let installed_nodes = std::fs::read_to_string(pkg_dir.join("package.json"))
+                    .ok()
+                    .and_then(|c| serde_json::from_str::<serde_json::Value>(&c).ok())
+                    .map(|pj| discover_nodes_from_package_json(&pj))
+                    .unwrap_or_default();
+
+                info!(
+                    "[n8n] Package {} has {} discovered nodes",
+                    name,
+                    installed_nodes.len()
+                );
+
                 packages.push(CommunityPackage {
                     package_name: name.clone(),
                     installed_version: version
@@ -879,7 +955,7 @@ fn list_packages_from_data_dir(
                         .trim_start_matches('^')
                         .trim_start_matches('~')
                         .to_string(),
-                    installed_nodes: vec![],
+                    installed_nodes,
                 });
             }
         }
@@ -1478,9 +1554,10 @@ pub async fn engine_n8n_community_packages_install(
                         "Install of '{}' timed out after 5 minutes. \
                          This package may need additional system dependencies \
                          or have a very large download. Try installing manually \
-                         via `docker exec {} sh -c 'cd /home/node/.n8n && npm install {}'`.",
+                         via `docker exec {} sh -c 'cd {} && npm install {}'`.",
                         package_name,
                         n8n_engine::types::CONTAINER_NAME,
+                        n8n_engine::types::CONTAINER_DATA_DIR,
                         package_name
                     ));
                 }
@@ -1830,8 +1907,9 @@ async fn direct_npm_install_docker(package_name: &str) -> Result<(), String> {
         .collect();
 
     let shell_cmd = format!(
-        "{}cd /home/node/.n8n && npm install --save --legacy-peer-deps '{}' 2>&1",
+        "{}cd {} && npm install --save --legacy-peer-deps '{}' 2>&1",
         env_prefix,
+        n8n_engine::types::CONTAINER_DATA_DIR,
         package_name.replace('\'', "'\\''")
     );
 
@@ -2127,7 +2205,11 @@ pub async fn engine_n8n_community_packages_uninstall(
                         n8n_engine::types::CONTAINER_NAME,
                         "sh",
                         "-c",
-                        &format!("cd /home/node/.n8n && npm uninstall {}", package_name),
+                        &format!(
+                            "cd {} && npm uninstall {}",
+                            n8n_engine::types::CONTAINER_DATA_DIR,
+                            package_name
+                        ),
                     ])
                     .output()
                     .await
@@ -3264,4 +3346,84 @@ fn map_integration_to_skill(
     };
 
     (skill_id.to_string(), mapped)
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn discover_nodes_basic() {
+        let pkg_json: serde_json::Value = serde_json::json!({
+            "name": "n8n-nodes-telegram-trigger",
+            "n8n": {
+                "nodes": [
+                    "dist/nodes/Telegram/TelegramTrigger.node.js"
+                ]
+            }
+        });
+        let nodes = discover_nodes_from_package_json(&pkg_json);
+        assert_eq!(nodes.len(), 1);
+        assert_eq!(nodes[0].name, "TelegramTrigger");
+        assert_eq!(nodes[0].node_type, "n8n-nodes-base.telegramtrigger");
+    }
+
+    #[test]
+    fn discover_nodes_multiple() {
+        let pkg_json: serde_json::Value = serde_json::json!({
+            "n8n": {
+                "nodes": [
+                    "dist/nodes/MyService/MyService.node.js",
+                    "dist/nodes/MyTrigger/MyTrigger.node.js"
+                ],
+                "credentials": [
+                    "dist/credentials/MyServiceApi.credentials.js"
+                ]
+            }
+        });
+        let nodes = discover_nodes_from_package_json(&pkg_json);
+        assert_eq!(nodes.len(), 2);
+        assert_eq!(nodes[0].name, "MyService");
+        assert_eq!(nodes[1].name, "MyTrigger");
+    }
+
+    #[test]
+    fn discover_nodes_empty_when_no_n8n_section() {
+        let pkg_json: serde_json::Value = serde_json::json!({
+            "name": "some-random-package",
+            "version": "1.0.0"
+        });
+        let nodes = discover_nodes_from_package_json(&pkg_json);
+        assert!(nodes.is_empty());
+    }
+
+    #[test]
+    fn discover_nodes_empty_when_no_nodes_key() {
+        let pkg_json: serde_json::Value = serde_json::json!({
+            "n8n": {
+                "credentials": ["dist/credentials/Foo.credentials.js"]
+            }
+        });
+        let nodes = discover_nodes_from_package_json(&pkg_json);
+        assert!(nodes.is_empty());
+    }
+
+    #[test]
+    fn display_name_for_pkg_strips_prefix() {
+        assert_eq!(display_name_for_pkg("n8n-nodes-puppeteer"), "Puppeteer");
+        assert_eq!(
+            display_name_for_pkg("n8n-nodes-google-sheets"),
+            "Google Sheets"
+        );
+        assert_eq!(display_name_for_pkg("@scope/n8n-nodes-foo-bar"), "Foo Bar");
+    }
+
+    #[test]
+    fn is_heavy_package_detection() {
+        assert!(is_heavy_package("n8n-nodes-puppeteer"));
+        assert!(is_heavy_package("n8n-nodes-playwright-extra"));
+        assert!(!is_heavy_package("n8n-nodes-telegram"));
+    }
 }

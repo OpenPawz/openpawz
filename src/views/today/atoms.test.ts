@@ -10,10 +10,15 @@ import {
   activityIcon,
   relativeTime,
   truncateContent,
+  formatTokens,
+  formatCost,
+  agentStatus,
   buildCapabilityGroups,
   buildShowcaseData,
+  buildHeatmapData,
+  TOUR_STEPS,
 } from './atoms';
-import type { EngineTask, EngineSkillStatus } from '../../engine/atoms/types';
+import type { EngineTask, EngineSkillStatus, EngineTaskActivity } from '../../engine/atoms/types';
 
 // ── getWeatherIcon ─────────────────────────────────────────────────────
 
@@ -364,5 +369,154 @@ describe('buildShowcaseData', () => {
     const data = buildShowcaseData();
     expect(data.tokenCount).toBeGreaterThan(0);
     expect(data.cost).toBeGreaterThan(0);
+  });
+});
+
+// ── formatTokens ──────────────────────────────────────────────────────
+
+describe('formatTokens', () => {
+  it('formats millions', () => {
+    expect(formatTokens(1_500_000)).toBe('1.5M');
+  });
+
+  it('formats thousands with k', () => {
+    expect(formatTokens(14_200)).toBe('14.2k');
+  });
+
+  it('returns raw for small numbers', () => {
+    expect(formatTokens(42)).toBe('42');
+  });
+
+  it('handles exact boundaries', () => {
+    expect(formatTokens(1_000)).toBe('1.0k');
+    expect(formatTokens(1_000_000)).toBe('1.0M');
+  });
+
+  it('handles zero', () => {
+    expect(formatTokens(0)).toBe('0');
+  });
+});
+
+// ── formatCost ────────────────────────────────────────────────────────
+
+describe('formatCost', () => {
+  it('formats with dollar sign and 2 decimals', () => {
+    expect(formatCost(1.24)).toBe('$1.24');
+  });
+
+  it('formats zero', () => {
+    expect(formatCost(0)).toBe('$0.00');
+  });
+
+  it('rounds correctly', () => {
+    expect(formatCost(1.999)).toBe('$2.00');
+  });
+});
+
+// ── agentStatus ───────────────────────────────────────────────────────
+
+describe('agentStatus', () => {
+  it('returns offline when no timestamp', () => {
+    expect(agentStatus()).toBe('offline');
+    expect(agentStatus(undefined)).toBe('offline');
+  });
+
+  it('returns active within 60 seconds', () => {
+    const recent = new Date(Date.now() - 10_000).toISOString();
+    expect(agentStatus(recent)).toBe('active');
+  });
+
+  it('returns idle after 60 seconds', () => {
+    const old = new Date(Date.now() - 120_000).toISOString();
+    expect(agentStatus(old)).toBe('idle');
+  });
+});
+
+// ── buildHeatmapData ──────────────────────────────────────────────────
+
+describe('buildHeatmapData', () => {
+  it('returns 30 days of data', () => {
+    const result = buildHeatmapData([]);
+    expect(result).toHaveLength(30);
+  });
+
+  it('returns zero for empty input', () => {
+    const result = buildHeatmapData([]);
+    expect(result.every((d) => d.count === 0)).toBe(true);
+  });
+
+  it('counts activities per day', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const activities: EngineTaskActivity[] = [
+      {
+        id: '1',
+        task_id: 't1',
+        kind: 'created',
+        content: '',
+        created_at: `${today}T10:00:00Z`,
+      } as any,
+      {
+        id: '2',
+        task_id: 't1',
+        kind: 'comment',
+        content: '',
+        created_at: `${today}T11:00:00Z`,
+      } as any,
+    ];
+    const result = buildHeatmapData(activities);
+    const todayEntry = result.find((d) => d.date === today);
+    expect(todayEntry).toBeDefined();
+    expect(todayEntry!.count).toBe(2);
+  });
+
+  it('counts sessions when provided', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const result = buildHeatmapData(
+      [],
+      [{ created_at: `${today}T08:00:00Z`, updated_at: `${today}T09:00:00Z` }],
+    );
+    const todayEntry = result.find((d) => d.date === today);
+    expect(todayEntry!.count).toBe(1);
+  });
+
+  it('uses updated_at for session date', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const result = buildHeatmapData(
+      [],
+      [{ created_at: '2024-01-01T00:00:00Z', updated_at: `${today}T12:00:00Z` }],
+    );
+    const todayEntry = result.find((d) => d.date === today);
+    expect(todayEntry!.count).toBe(1);
+  });
+
+  it('each entry has date and count', () => {
+    const result = buildHeatmapData([]);
+    for (const entry of result) {
+      expect(entry.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(typeof entry.count).toBe('number');
+    }
+  });
+});
+
+// ── TOUR_STEPS ────────────────────────────────────────────────────────
+
+describe('TOUR_STEPS', () => {
+  it('has steps with required fields', () => {
+    for (const step of TOUR_STEPS) {
+      expect(step.target).toBeTruthy();
+      expect(step.title).toBeTruthy();
+      expect(step.description).toBeTruthy();
+      expect(['right', 'bottom', 'left']).toContain(step.position);
+    }
+  });
+
+  it('has at least 3 tour steps', () => {
+    expect(TOUR_STEPS.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('targets use data-view selectors', () => {
+    for (const step of TOUR_STEPS) {
+      expect(step.target).toContain('[data-view=');
+    }
   });
 });

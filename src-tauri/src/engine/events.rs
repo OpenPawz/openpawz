@@ -238,4 +238,105 @@ mod tests {
         };
         assert!(!matches_event(&trigger, &event));
     }
+
+    #[test]
+    fn agent_message_trigger_does_not_match_webhook() {
+        let trigger = serde_json::json!({"type": "agent_message"});
+        let event = EngineEvent::Webhook {
+            path: "/deploy".into(),
+            agent_id: "default".into(),
+            payload: "{}".into(),
+        };
+        assert!(!matches_event(&trigger, &event));
+    }
+
+    #[test]
+    fn unknown_trigger_type_no_match() {
+        let trigger = serde_json::json!({"type": "cron"});
+        let event = EngineEvent::Webhook {
+            path: "/test".into(),
+            agent_id: "default".into(),
+            payload: "{}".into(),
+        };
+        assert!(!matches_event(&trigger, &event));
+    }
+
+    #[test]
+    fn missing_trigger_type_no_match() {
+        let trigger = serde_json::json!({});
+        let event = EngineEvent::Webhook {
+            path: "/test".into(),
+            agent_id: "default".into(),
+            payload: "{}".into(),
+        };
+        assert!(!matches_event(&trigger, &event));
+    }
+
+    #[test]
+    fn agent_message_matches_all_no_filters() {
+        let trigger = serde_json::json!({"type": "agent_message"});
+        let event = EngineEvent::AgentMessage {
+            from_agent: "anyone".into(),
+            to_agent: "default".into(),
+            channel: "any_channel".into(),
+            content: "anything".into(),
+        };
+        assert!(matches_event(&trigger, &event));
+    }
+
+    #[test]
+    fn agent_message_both_filters_must_match() {
+        let trigger =
+            serde_json::json!({"type": "agent_message", "channel": "alerts", "from": "monitor"});
+
+        // Both match
+        let ok = EngineEvent::AgentMessage {
+            from_agent: "monitor".into(),
+            to_agent: "default".into(),
+            channel: "alerts".into(),
+            content: "disk full".into(),
+        };
+        assert!(matches_event(&trigger, &ok));
+
+        // Channel matches but from doesn't
+        let wrong_from = EngineEvent::AgentMessage {
+            from_agent: "bob".into(),
+            to_agent: "default".into(),
+            channel: "alerts".into(),
+            content: "hello".into(),
+        };
+        assert!(!matches_event(&trigger, &wrong_from));
+
+        // From matches but channel doesn't
+        let wrong_channel = EngineEvent::AgentMessage {
+            from_agent: "monitor".into(),
+            to_agent: "default".into(),
+            channel: "general".into(),
+            content: "hello".into(),
+        };
+        assert!(!matches_event(&trigger, &wrong_channel));
+    }
+
+    #[test]
+    fn webhook_path_partial_match() {
+        let trigger = serde_json::json!({"type": "webhook", "path": "deploy"});
+        // Path contains "deploy" (partial match)
+        let event = EngineEvent::Webhook {
+            path: "/api/v2/deploy/prod".into(),
+            agent_id: "default".into(),
+            payload: "{}".into(),
+        };
+        assert!(matches_event(&trigger, &event));
+    }
+
+    #[test]
+    fn webhook_path_no_partial_match() {
+        let trigger = serde_json::json!({"type": "webhook", "path": "deploy"});
+        let event = EngineEvent::Webhook {
+            path: "/api/v2/status".into(),
+            agent_id: "default".into(),
+            payload: "{}".into(),
+        };
+        assert!(!matches_event(&trigger, &event));
+    }
 }

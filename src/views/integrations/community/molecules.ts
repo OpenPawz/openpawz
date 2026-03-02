@@ -48,6 +48,35 @@ let _container: HTMLElement | null = null;
 /** Unlisten handle for install progress events. */
 let _progressUnlisten: UnlistenFn | null = null;
 
+// ── Install queue ──────────────────────────────────────────────────────
+//
+// Serialises package installs so only one runs at a time. Rapid-fire
+// clicks on different "Install" buttons add to the queue instead of
+// firing concurrent IPC calls (which can race on the npm lock / restart).
+
+const _installQueue: string[] = [];
+let _installQueueRunning = false;
+
+function _enqueueInstall(packageName: string): void {
+  if (_installing.has(packageName) || _installQueue.includes(packageName)) return;
+  _installQueue.push(packageName);
+  _render(); // Show spinner immediately for queued package
+  _drainInstallQueue();
+}
+
+async function _drainInstallQueue(): Promise<void> {
+  if (_installQueueRunning) return;
+  _installQueueRunning = true;
+  try {
+    while (_installQueue.length > 0) {
+      const pkg = _installQueue.shift()!;
+      await _installPackage(pkg);
+    }
+  } finally {
+    _installQueueRunning = false;
+  }
+}
+
 // ── Public API ─────────────────────────────────────────────────────────
 
 /** Mount the community browser into a container element. */
@@ -223,7 +252,8 @@ function _renderPackageList(): string {
 
 function _renderPackageCard(pkg: CommunityPackage): string {
   const installed = isInstalled(pkg, _installed);
-  const isInstalling = _installing.has(pkg.package_name);
+  const isInstalling =
+    _installing.has(pkg.package_name) || _installQueue.includes(pkg.package_name);
   const name = displayName(pkg.package_name);
 
   return `
@@ -693,7 +723,7 @@ function _wireEvents(): void {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const pkg = (btn as HTMLElement).dataset.pkg;
-      if (pkg) _installPackage(pkg);
+      if (pkg) _enqueueInstall(pkg);
     });
   });
 

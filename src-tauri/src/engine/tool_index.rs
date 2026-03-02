@@ -501,3 +501,316 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f64 {
         dot / denom
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── tool_domain ────────────────────────────────────────────────
+
+    #[test]
+    fn system_tool() {
+        assert_eq!(tool_domain("exec"), "system");
+    }
+
+    #[test]
+    fn filesystem_tools() {
+        assert_eq!(tool_domain("read_file"), "filesystem");
+        assert_eq!(tool_domain("write_file"), "filesystem");
+        assert_eq!(tool_domain("append_file"), "filesystem");
+        assert_eq!(tool_domain("delete_file"), "filesystem");
+        assert_eq!(tool_domain("list_directory"), "filesystem");
+    }
+
+    #[test]
+    fn web_tools() {
+        assert_eq!(tool_domain("fetch"), "web");
+        assert_eq!(tool_domain("web_search"), "web");
+        assert_eq!(tool_domain("web_read"), "web");
+        assert_eq!(tool_domain("web_screenshot"), "web");
+        assert_eq!(tool_domain("web_browse"), "web");
+    }
+
+    #[test]
+    fn identity_tools() {
+        assert_eq!(tool_domain("soul_read"), "identity");
+        assert_eq!(tool_domain("soul_write"), "identity");
+        assert_eq!(tool_domain("soul_list"), "identity");
+        assert_eq!(tool_domain("self_info"), "identity");
+        assert_eq!(tool_domain("update_profile"), "identity");
+    }
+
+    #[test]
+    fn memory_tools() {
+        assert_eq!(tool_domain("memory_store"), "memory");
+        assert_eq!(tool_domain("memory_search"), "memory");
+    }
+
+    #[test]
+    fn agent_tools() {
+        assert_eq!(tool_domain("create_agent"), "agents");
+        assert_eq!(tool_domain("agent_list"), "agents");
+        assert_eq!(tool_domain("agent_skills"), "agents");
+        assert_eq!(tool_domain("agent_skill_assign"), "agents");
+        assert_eq!(tool_domain("manage_session"), "agents");
+    }
+
+    #[test]
+    fn communication_tools() {
+        assert_eq!(tool_domain("agent_send_message"), "communication");
+        assert_eq!(tool_domain("agent_read_messages"), "communication");
+    }
+
+    #[test]
+    fn squad_tools() {
+        assert_eq!(tool_domain("create_squad"), "squads");
+        assert_eq!(tool_domain("list_squads"), "squads");
+        assert_eq!(tool_domain("manage_squad"), "squads");
+        assert_eq!(tool_domain("squad_broadcast"), "squads");
+    }
+
+    #[test]
+    fn task_tools() {
+        assert_eq!(tool_domain("create_task"), "tasks");
+        assert_eq!(tool_domain("list_tasks"), "tasks");
+        assert_eq!(tool_domain("manage_task"), "tasks");
+    }
+
+    #[test]
+    fn skill_tools() {
+        assert_eq!(tool_domain("skill_search"), "skills");
+        assert_eq!(tool_domain("skill_install"), "skills");
+        assert_eq!(tool_domain("skill_list"), "skills");
+    }
+
+    #[test]
+    fn dashboard_tools() {
+        assert_eq!(tool_domain("skill_output"), "dashboard");
+        assert_eq!(tool_domain("delete_skill_output"), "dashboard");
+    }
+
+    #[test]
+    fn storage_tools() {
+        assert_eq!(tool_domain("skill_store_set"), "storage");
+        assert_eq!(tool_domain("skill_store_get"), "storage");
+        assert_eq!(tool_domain("skill_store_list"), "storage");
+        assert_eq!(tool_domain("skill_store_delete"), "storage");
+    }
+
+    #[test]
+    fn email_tools() {
+        assert_eq!(tool_domain("email_send"), "email");
+        assert_eq!(tool_domain("email_read"), "email");
+    }
+
+    #[test]
+    fn messaging_tools() {
+        assert_eq!(tool_domain("slack_send"), "messaging");
+        assert_eq!(tool_domain("slack_read"), "messaging");
+        assert_eq!(tool_domain("telegram_send"), "messaging");
+        assert_eq!(tool_domain("telegram_read"), "messaging");
+    }
+
+    #[test]
+    fn discord_prefix_tools() {
+        assert_eq!(tool_domain("discord_send"), "discord");
+        assert_eq!(tool_domain("discord_list_channels"), "discord");
+        assert_eq!(tool_domain("discord_create_channel"), "discord");
+    }
+
+    #[test]
+    fn trello_prefix_tools() {
+        assert_eq!(tool_domain("trello_boards"), "trello");
+        assert_eq!(tool_domain("trello_cards"), "trello");
+        assert_eq!(tool_domain("trello_create_card"), "trello");
+    }
+
+    #[test]
+    fn github_tool() {
+        assert_eq!(tool_domain("github_api"), "github");
+    }
+
+    #[test]
+    fn google_prefix_tools() {
+        assert_eq!(tool_domain("google_calendar"), "google");
+        assert_eq!(tool_domain("google_drive"), "google");
+        assert_eq!(tool_domain("google_sheets"), "google");
+    }
+
+    #[test]
+    fn integration_tools() {
+        assert_eq!(tool_domain("rest_api_call"), "integrations");
+        assert_eq!(tool_domain("webhook_send"), "integrations");
+        assert_eq!(tool_domain("image_generate"), "integrations");
+    }
+
+    #[test]
+    fn coinbase_trading_tools() {
+        assert_eq!(tool_domain("coinbase_prices"), "coinbase");
+        assert_eq!(tool_domain("coinbase_balance"), "coinbase");
+        assert_eq!(tool_domain("coinbase_wallet_create"), "coinbase");
+        assert_eq!(tool_domain("coinbase_trade"), "coinbase");
+        assert_eq!(tool_domain("coinbase_transfer"), "coinbase");
+    }
+
+    #[test]
+    fn dex_prefix_tools() {
+        assert_eq!(tool_domain("dex_swap"), "dex");
+        assert_eq!(tool_domain("dex_quote"), "dex");
+    }
+
+    #[test]
+    fn solana_prefix_tools() {
+        assert_eq!(tool_domain("sol_swap"), "solana");
+        assert_eq!(tool_domain("sol_balance"), "solana");
+    }
+
+    #[test]
+    fn mcp_prefix_tools() {
+        assert_eq!(tool_domain("mcp_custom_tool"), "mcp");
+        assert_eq!(tool_domain("mcp_server_action"), "mcp");
+    }
+
+    #[test]
+    fn meta_tool() {
+        assert_eq!(tool_domain("request_tools"), "meta");
+    }
+
+    #[test]
+    fn unknown_tool_returns_other() {
+        assert_eq!(tool_domain("completely_unknown"), "other");
+        assert_eq!(tool_domain(""), "other");
+    }
+
+    // ── cosine_similarity ──────────────────────────────────────────
+
+    #[test]
+    fn identical_vectors() {
+        let v = vec![1.0f32, 2.0, 3.0];
+        let sim = cosine_similarity(&v, &v);
+        assert!((sim - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn orthogonal_vectors() {
+        let a = vec![1.0f32, 0.0, 0.0];
+        let b = vec![0.0f32, 1.0, 0.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!(sim.abs() < 1e-6);
+    }
+
+    #[test]
+    fn opposite_vectors() {
+        let a = vec![1.0f32, 0.0];
+        let b = vec![-1.0f32, 0.0];
+        let sim = cosine_similarity(&a, &b);
+        assert!((sim - (-1.0)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn different_length_returns_zero() {
+        let a = vec![1.0f32, 2.0];
+        let b = vec![1.0f32, 2.0, 3.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn empty_vectors_return_zero() {
+        let a: Vec<f32> = vec![];
+        let b: Vec<f32> = vec![];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn zero_magnitude_returns_zero() {
+        let a = vec![0.0f32, 0.0, 0.0];
+        let b = vec![1.0f32, 2.0, 3.0];
+        assert_eq!(cosine_similarity(&a, &b), 0.0);
+    }
+
+    #[test]
+    fn similar_vectors_high_similarity() {
+        let a = vec![1.0f32, 2.0, 3.0];
+        let b = vec![1.1f32, 2.1, 3.1];
+        let sim = cosine_similarity(&a, &b);
+        assert!(sim > 0.99);
+    }
+
+    // ── CORE_TOOLS ─────────────────────────────────────────────────
+
+    #[test]
+    fn core_tools_contains_essentials() {
+        assert!(CORE_TOOLS.contains(&"memory_store"));
+        assert!(CORE_TOOLS.contains(&"memory_search"));
+        assert!(CORE_TOOLS.contains(&"read_file"));
+        assert!(CORE_TOOLS.contains(&"write_file"));
+        assert!(CORE_TOOLS.contains(&"request_tools"));
+    }
+
+    #[test]
+    fn core_tools_count() {
+        assert_eq!(CORE_TOOLS.len(), 10);
+    }
+
+    // ── domain_summaries ───────────────────────────────────────────
+
+    #[test]
+    fn domain_summaries_not_empty() {
+        let summaries = domain_summaries();
+        assert!(summaries.len() >= 20);
+    }
+
+    #[test]
+    fn domain_summaries_have_unique_ids() {
+        let summaries = domain_summaries();
+        let ids: Vec<_> = summaries.iter().map(|(id, _, _)| *id).collect();
+        let unique: HashSet<_> = ids.iter().collect();
+        assert_eq!(ids.len(), unique.len(), "domain IDs should be unique");
+    }
+
+    #[test]
+    fn domain_summaries_include_key_domains() {
+        let summaries = domain_summaries();
+        let ids: Vec<_> = summaries.iter().map(|(id, _, _)| *id).collect();
+        assert!(ids.contains(&"system"));
+        assert!(ids.contains(&"filesystem"));
+        assert!(ids.contains(&"web"));
+        assert!(ids.contains(&"email"));
+        assert!(ids.contains(&"tasks"));
+        assert!(ids.contains(&"discord"));
+        assert!(ids.contains(&"trello"));
+    }
+
+    // ── ToolIndex::new ─────────────────────────────────────────────
+
+    #[test]
+    fn new_index_not_ready() {
+        let idx = ToolIndex::new();
+        assert!(!idx.is_ready());
+    }
+
+    #[test]
+    fn new_index_empty_definitions() {
+        let idx = ToolIndex::new();
+        assert!(idx.all_definitions().is_empty());
+    }
+
+    #[test]
+    fn new_index_has_tool_returns_false() {
+        let idx = ToolIndex::new();
+        assert!(!idx.has_tool("read_file"));
+    }
+
+    #[test]
+    fn default_is_same_as_new() {
+        let idx = ToolIndex::default();
+        assert!(!idx.is_ready());
+        assert!(idx.all_definitions().is_empty());
+    }
+
+    #[test]
+    fn get_domain_tools_empty_index() {
+        let idx = ToolIndex::new();
+        assert!(idx.get_domain_tools("filesystem").is_empty());
+    }
+}

@@ -375,4 +375,112 @@ mod tests {
         let config = CompactionConfig::default();
         assert!(needs_compaction(&msgs, &config)); // 25 * 3004 = 75100 > 60000
     }
+
+    #[test]
+    fn test_estimate_tokens_with_tool_calls() {
+        let msg = StoredMessage {
+            id: "1".into(),
+            session_id: "s1".into(),
+            role: "assistant".into(),
+            content: "Calling tool".into(), // 12 chars
+            tool_calls_json: Some(r#"[{"name":"exec","args":"ls -la"}]"#.into()), // 33 chars
+            tool_call_id: None,
+            name: None,
+            created_at: "2025-01-01".into(),
+        };
+        let tokens = estimate_message_tokens(&msg);
+        // (12 + 33) / 4 + 4 = 11 + 4 = 15
+        assert_eq!(tokens, (12 + 33) / 4 + 4);
+    }
+
+    #[test]
+    fn test_estimate_tokens_empty_content() {
+        let msg = StoredMessage {
+            id: "1".into(),
+            session_id: "s1".into(),
+            role: "user".into(),
+            content: "".into(),
+            tool_calls_json: None,
+            tool_call_id: None,
+            name: None,
+            created_at: "2025-01-01".into(),
+        };
+        let tokens = estimate_message_tokens(&msg);
+        assert_eq!(tokens, 4); // 0/4 + 4 = 4 (overhead)
+    }
+
+    #[test]
+    fn test_needs_compaction_exact_min_messages() {
+        // Exactly at min_messages with short content — still below token threshold
+        let msgs: Vec<StoredMessage> = (0..20)
+            .map(|i| StoredMessage {
+                id: format!("m{}", i),
+                session_id: "s1".into(),
+                role: "user".into(),
+                content: "Hello".into(), // 5 chars → 5 tokens
+                tool_calls_json: None,
+                tool_call_id: None,
+                name: None,
+                created_at: "2025-01-01".into(),
+            })
+            .collect();
+
+        let config = CompactionConfig::default();
+        // 20 messages but only ~100 tokens total — below 60k threshold
+        assert!(!needs_compaction(&msgs, &config));
+    }
+
+    #[test]
+    fn test_needs_compaction_19_messages_rejected() {
+        // Just under min_messages — should return false even with huge tokens
+        let long_content = "x".repeat(50_000);
+        let msgs: Vec<StoredMessage> = (0..19)
+            .map(|i| StoredMessage {
+                id: format!("m{}", i),
+                session_id: "s1".into(),
+                role: "user".into(),
+                content: long_content.clone(),
+                tool_calls_json: None,
+                tool_call_id: None,
+                name: None,
+                created_at: "2025-01-01".into(),
+            })
+            .collect();
+
+        let config = CompactionConfig::default();
+        assert!(!needs_compaction(&msgs, &config));
+    }
+
+    #[test]
+    fn test_compaction_config_default() {
+        let config = CompactionConfig::default();
+        assert_eq!(config.min_messages, 20);
+        assert_eq!(config.token_threshold, 60_000);
+        assert_eq!(config.keep_recent, 6);
+        assert_eq!(config.max_summary_tokens, 2000);
+    }
+
+    #[test]
+    fn test_needs_compaction_empty_messages() {
+        let msgs: Vec<StoredMessage> = vec![];
+        let config = CompactionConfig::default();
+        assert!(!needs_compaction(&msgs, &config));
+    }
+
+    #[test]
+    fn test_estimate_tokens_long_tool_calls() {
+        let long_json = "a".repeat(4000);
+        let msg = StoredMessage {
+            id: "1".into(),
+            session_id: "s1".into(),
+            role: "assistant".into(),
+            content: "Calling complex tool".into(), // 20 chars
+            tool_calls_json: Some(long_json),       // 4000 chars
+            tool_call_id: None,
+            name: None,
+            created_at: "2025-01-01".into(),
+        };
+        let tokens = estimate_message_tokens(&msg);
+        assert_eq!(tokens, (20 + 4000) / 4 + 4); // 1005 + 4 = 1009
+    }
 }

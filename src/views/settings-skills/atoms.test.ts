@@ -3,9 +3,13 @@ import {
   msIcon,
   skillIcon,
   formatInstalls,
+  tierBadge,
   CATEGORY_META,
   POPULAR_REPOS,
   POPULAR_TAGS,
+  TIER_META,
+  PAWZHUB_CATEGORIES,
+  SKILL_ICON_MAP,
 } from './atoms';
 
 describe('msIcon', () => {
@@ -66,5 +70,85 @@ describe('POPULAR_TAGS', () => {
   it('has common tags', () => {
     expect(POPULAR_TAGS).toContain('trading');
     expect(POPULAR_TAGS).toContain('coding');
+  });
+});
+
+// ── tierBadge ──────────────────────────────────────────────────────────────
+
+describe('tierBadge', () => {
+  it('renders known tier badge', () => {
+    const badge = tierBadge('skill');
+    expect(badge).toContain('pawzhub-tier-badge');
+    expect(badge).toContain('🔵');
+    expect(badge).toContain('Skill');
+    expect(badge).toContain(TIER_META.skill.color);
+  });
+
+  it('renders integration tier', () => {
+    const badge = tierBadge('integration');
+    expect(badge).toContain('🟣');
+    expect(badge).toContain('Integration');
+  });
+
+  it('renders mcp tier', () => {
+    const badge = tierBadge('mcp');
+    expect(badge).toContain('🔴');
+    expect(badge).toContain('MCP Server');
+  });
+
+  it('falls back to skill for unknown tier', () => {
+    const badge = tierBadge('unknown-tier');
+    expect(badge).toContain('🔵');
+    expect(badge).toContain('Skill');
+  });
+});
+
+// ── TIER_META ──────────────────────────────────────────────────────────────
+
+describe('TIER_META', () => {
+  it('has all expected tiers', () => {
+    expect(TIER_META.skill).toBeDefined();
+    expect(TIER_META.integration).toBeDefined();
+    expect(TIER_META.extension).toBeDefined();
+    expect(TIER_META.mcp).toBeDefined();
+  });
+
+  it('each tier has label, emoji, color', () => {
+    for (const meta of Object.values(TIER_META)) {
+      expect(meta.label).toBeTruthy();
+      expect(meta.emoji).toBeTruthy();
+      expect(meta.color).toMatch(/^#/);
+    }
+  });
+});
+
+// ── PAWZHUB_CATEGORIES ─────────────────────────────────────────────────────
+
+describe('PAWZHUB_CATEGORIES', () => {
+  it('starts with "all"', () => {
+    expect(PAWZHUB_CATEGORIES[0]).toBe('all');
+  });
+
+  it('has common categories', () => {
+    expect(PAWZHUB_CATEGORIES).toContain('development');
+    expect(PAWZHUB_CATEGORIES).toContain('productivity');
+    expect(PAWZHUB_CATEGORIES).toContain('finance');
+  });
+});
+
+// ── SKILL_ICON_MAP ─────────────────────────────────────────────────────────
+
+describe('SKILL_ICON_MAP', () => {
+  it('maps emoji to Material Symbol names', () => {
+    expect(SKILL_ICON_MAP['📧']).toBe('mail');
+    expect(SKILL_ICON_MAP['💬']).toBe('chat');
+    expect(SKILL_ICON_MAP['🔐']).toBe('lock');
+  });
+
+  it('all values are non-empty strings', () => {
+    for (const val of Object.values(SKILL_ICON_MAP)) {
+      expect(typeof val).toBe('string');
+      expect(val.length).toBeGreaterThan(0);
+    }
   });
 });

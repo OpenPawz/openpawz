@@ -864,6 +864,9 @@ pub fn compute_next_run(
 ) -> Option<String> {
     let s = schedule.as_deref()?;
     let s = s.trim().to_lowercase();
+    if s.is_empty() {
+        return None;
+    }
 
     if s.starts_with("every ") {
         let rest = s.strip_prefix("every ")?.trim();
@@ -894,4 +897,151 @@ pub fn compute_next_run(
     }
 
     Some((*from + chrono::Duration::hours(1)).to_rfc3339())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn utc(y: i32, m: u32, d: u32, h: u32, min: u32) -> chrono::DateTime<chrono::Utc> {
+        chrono::Utc.with_ymd_and_hms(y, m, d, h, min, 0).unwrap()
+    }
+
+    // ── None schedule ──────────────────────────────────────────────
+
+    #[test]
+    fn none_schedule_returns_none() {
+        let from = utc(2025, 6, 15, 10, 0);
+        assert!(compute_next_run(&None, &from).is_none());
+    }
+
+    #[test]
+    fn empty_string_schedule_returns_none() {
+        let from = utc(2025, 6, 15, 10, 0);
+        assert!(compute_next_run(&Some(String::new()), &from).is_none());
+    }
+
+    // ── "every Xm" ────────────────────────────────────────────────
+
+    #[test]
+    fn every_5m() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let next = compute_next_run(&Some("every 5m".into()), &from).unwrap();
+        assert!(next.contains("10:05"));
+    }
+
+    #[test]
+    fn every_30m() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let next = compute_next_run(&Some("every 30m".into()), &from).unwrap();
+        assert!(next.contains("10:30"));
+    }
+
+    #[test]
+    fn every_1m() {
+        let from = utc(2025, 6, 15, 10, 30);
+        let next = compute_next_run(&Some("every 1m".into()), &from).unwrap();
+        assert!(next.contains("10:31"));
+    }
+
+    // ── "every Xh" ────────────────────────────────────────────────
+
+    #[test]
+    fn every_2h() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let next = compute_next_run(&Some("every 2h".into()), &from).unwrap();
+        assert!(next.contains("12:00"));
+    }
+
+    #[test]
+    fn every_1h() {
+        let from = utc(2025, 6, 15, 23, 0);
+        let next = compute_next_run(&Some("every 1h".into()), &from).unwrap();
+        // Should wrap to next day
+        assert!(next.contains("2025-06-16"));
+    }
+
+    // ── "daily HH:MM" ─────────────────────────────────────────────
+
+    #[test]
+    fn daily_before_target_time() {
+        let from = utc(2025, 6, 15, 8, 0);
+        let next = compute_next_run(&Some("daily 09:00".into()), &from).unwrap();
+        assert!(next.contains("2025-06-15"));
+        assert!(next.contains("09:00"));
+    }
+
+    #[test]
+    fn daily_after_target_time_wraps_to_tomorrow() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let next = compute_next_run(&Some("daily 09:00".into()), &from).unwrap();
+        assert!(next.contains("2025-06-16"));
+        assert!(next.contains("09:00"));
+    }
+
+    #[test]
+    fn daily_exact_target_time_wraps_to_tomorrow() {
+        // When "from" is exactly 09:00, target is NOT > from, so wraps
+        let from = utc(2025, 6, 15, 9, 0);
+        let next = compute_next_run(&Some("daily 09:00".into()), &from).unwrap();
+        assert!(next.contains("2025-06-16"));
+    }
+
+    #[test]
+    fn daily_2330() {
+        let from = utc(2025, 6, 15, 20, 0);
+        let next = compute_next_run(&Some("daily 23:30".into()), &from).unwrap();
+        assert!(next.contains("2025-06-15"));
+        assert!(next.contains("23:30"));
+    }
+
+    // ── Case insensitivity ─────────────────────────────────────────
+
+    #[test]
+    fn case_insensitive_every() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let next = compute_next_run(&Some("Every 5m".into()), &from).unwrap();
+        assert!(next.contains("10:05"));
+    }
+
+    #[test]
+    fn case_insensitive_daily() {
+        let from = utc(2025, 6, 15, 8, 0);
+        let next = compute_next_run(&Some("Daily 09:00".into()), &from).unwrap();
+        assert!(next.contains("09:00"));
+    }
+
+    // ── Fallback behavior ──────────────────────────────────────────
+
+    #[test]
+    fn unknown_format_defaults_to_1h() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let next = compute_next_run(&Some("every monday".into()), &from).unwrap();
+        // Unrecognized format → fallback +1 hour
+        assert!(next.contains("11:00"));
+    }
+
+    #[test]
+    fn whitespace_trimmed() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let next = compute_next_run(&Some("  every 5m  ".into()), &from).unwrap();
+        assert!(next.contains("10:05"));
+    }
+
+    // ── Invalid parse values ───────────────────────────────────────
+
+    #[test]
+    fn every_invalid_number_returns_none() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let result = compute_next_run(&Some("every abcm".into()), &from);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn every_invalid_hours_returns_none() {
+        let from = utc(2025, 6, 15, 10, 0);
+        let result = compute_next_run(&Some("every XYZh".into()), &from);
+        assert!(result.is_none());
+    }
 }

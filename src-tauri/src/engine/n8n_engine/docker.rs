@@ -152,8 +152,9 @@ pub async fn provision_docker_container(
     let host_config = HostConfig {
         port_bindings: Some(port_bindings),
         binds: Some(vec![format!(
-            "{}:/home/node/.n8n",
-            data_dir.to_string_lossy()
+            "{}:{}",
+            data_dir.to_string_lossy(),
+            super::types::CONTAINER_DATA_DIR,
         )]),
         restart_policy: Some(RestartPolicy {
             name: Some(RestartPolicyNameEnum::UNLESS_STOPPED),

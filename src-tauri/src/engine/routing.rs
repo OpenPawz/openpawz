@@ -230,4 +230,123 @@ mod tests {
         let result = resolve_route(&config, "telegram", "u1", None);
         assert_eq!(result.agent_id, "default");
     }
+
+    #[test]
+    fn test_first_match_wins() {
+        let config = RoutingConfig {
+            rules: vec![
+                make_rule("telegram", "first_agent", "First"),
+                make_rule("telegram", "second_agent", "Second"),
+            ],
+            default_agent_id: "default".into(),
+        };
+        let result = resolve_route(&config, "telegram", "u1", None);
+        assert_eq!(result.agent_id, "first_agent");
+        assert_eq!(result.matched_rule_label.unwrap(), "First");
+    }
+
+    #[test]
+    fn test_channel_id_filter() {
+        let config = RoutingConfig {
+            rules: vec![RoutingRule {
+                id: "r1".into(),
+                channel: "discord".into(),
+                user_filter: vec![],
+                channel_id_filter: vec!["#general".into(), "#alerts".into()],
+                agent_id: "channel_agent".into(),
+                label: "Specific channels".into(),
+                enabled: true,
+            }],
+            default_agent_id: "default".into(),
+        };
+
+        let matched = resolve_route(&config, "discord", "u1", Some("#general"));
+        assert_eq!(matched.agent_id, "channel_agent");
+
+        let unmatched = resolve_route(&config, "discord", "u1", Some("#random"));
+        assert_eq!(unmatched.agent_id, "default");
+    }
+
+    #[test]
+    fn test_channel_id_filter_none_passes() {
+        // When channel_id is None but filter is non-empty, the rule should still
+        // match because the filter check is gated on channel_id being Some
+        let config = RoutingConfig {
+            rules: vec![RoutingRule {
+                id: "r1".into(),
+                channel: "discord".into(),
+                user_filter: vec![],
+                channel_id_filter: vec!["#specific".into()],
+                agent_id: "filtered_agent".into(),
+                label: "Filtered".into(),
+                enabled: true,
+            }],
+            default_agent_id: "default".into(),
+        };
+
+        let result = resolve_route(&config, "discord", "u1", None);
+        assert_eq!(result.agent_id, "filtered_agent");
+    }
+
+    #[test]
+    fn test_user_and_channel_combined_filter() {
+        let config = RoutingConfig {
+            rules: vec![RoutingRule {
+                id: "r1".into(),
+                channel: "telegram".into(),
+                user_filter: vec!["admin".into()],
+                channel_id_filter: vec!["tg-chat-123".into()],
+                agent_id: "restricted_agent".into(),
+                label: "Admin in specific chat".into(),
+                enabled: true,
+            }],
+            default_agent_id: "default".into(),
+        };
+
+        // Both match
+        let ok = resolve_route(&config, "telegram", "admin", Some("tg-chat-123"));
+        assert_eq!(ok.agent_id, "restricted_agent");
+
+        // User matches but channel doesn't
+        let wrong_channel = resolve_route(&config, "telegram", "admin", Some("tg-chat-999"));
+        assert_eq!(wrong_channel.agent_id, "default");
+
+        // Channel matches but user doesn't
+        let wrong_user = resolve_route(&config, "telegram", "guest", Some("tg-chat-123"));
+        assert_eq!(wrong_user.agent_id, "default");
+    }
+
+    #[test]
+    fn test_empty_rules_uses_default() {
+        let config = RoutingConfig {
+            rules: vec![],
+            default_agent_id: "my_default".into(),
+        };
+        let result = resolve_route(&config, "telegram", "u1", None);
+        assert_eq!(result.agent_id, "my_default");
+        assert!(result.matched_rule_id.is_none());
+    }
+
+    #[test]
+    fn test_routing_config_default() {
+        let config = RoutingConfig::default();
+        assert!(config.rules.is_empty());
+        assert_eq!(config.default_agent_id, "default");
+    }
+
+    #[test]
+    fn test_disabled_then_enabled_fallthrough() {
+        let config = RoutingConfig {
+            rules: vec![
+                RoutingRule {
+                    enabled: false,
+                    ..make_rule("telegram", "disabled_agent", "Disabled")
+                },
+                make_rule("telegram", "active_agent", "Active"),
+            ],
+            default_agent_id: "default".into(),
+        };
+        let result = resolve_route(&config, "telegram", "u1", None);
+        assert_eq!(result.agent_id, "active_agent");
+    }
 }

@@ -13,6 +13,13 @@ pub const DEFAULT_PORT: u16 = 5678;
 pub const HEALTH_ENDPOINT: &str = "/healthz";
 pub const API_PROBE_ENDPOINT: &str = "/api/v1/workflows?limit=1";
 
+/// Path inside the Docker container where n8n stores its data.
+/// The official `n8nio/n8n` image runs as the `node` user with home `/home/node`.
+pub const CONTAINER_DATA_DIR: &str = "/home/node/.n8n";
+
+/// Minimum required Node.js major version for n8n (>= 18).
+pub const MIN_NODE_MAJOR: u32 = 18;
+
 /// Maximum time (seconds) to wait for n8n to become healthy after start.
 /// First-time `npx n8n@latest` download can take 3-5 minutes on slower
 /// connections, plus community package reinstall adds more time.

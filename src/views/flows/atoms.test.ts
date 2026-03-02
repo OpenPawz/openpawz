@@ -19,6 +19,12 @@ import {
   deserializeGraph,
   instantiateTemplate,
   filterTemplates,
+  createUndoStack,
+  pushUndo,
+  undo,
+  redo,
+  canUndo,
+  canRedo,
   type FlowGraph,
   type FlowTemplate,
   NODE_DEFAULTS,
@@ -440,5 +446,104 @@ describe('filterTemplates', () => {
 
   it('is case-insensitive', () => {
     expect(filterTemplates(templates, 'all', 'DAILY')).toHaveLength(1);
+  });
+});
+
+// ── Undo/Redo Stack ────────────────────────────────────────────────────────
+
+describe('createUndoStack', () => {
+  it('creates empty past and future', () => {
+    const stack = createUndoStack();
+    expect(stack.past).toEqual([]);
+    expect(stack.future).toEqual([]);
+  });
+});
+
+describe('pushUndo', () => {
+  it('saves graph snapshot to past', () => {
+    const stack = createUndoStack();
+    const g = makeLinearGraph();
+    pushUndo(stack, g);
+    expect(stack.past).toHaveLength(1);
+  });
+
+  it('clears future on push', () => {
+    const stack = createUndoStack();
+    const g = makeLinearGraph();
+    pushUndo(stack, g);
+    // Simulate a future entry
+    stack.future.push('snapshot');
+    pushUndo(stack, g);
+    expect(stack.future).toHaveLength(0);
+  });
+
+  it('limits undo stack size to 50', () => {
+    const stack = createUndoStack();
+    const g = makeLinearGraph();
+    for (let i = 0; i < 55; i++) {
+      pushUndo(stack, g);
+    }
+    expect(stack.past.length).toBeLessThanOrEqual(50);
+  });
+});
+
+describe('canUndo / canRedo', () => {
+  it('canUndo false on empty stack', () => {
+    expect(canUndo(createUndoStack())).toBe(false);
+  });
+
+  it('canRedo false on empty stack', () => {
+    expect(canRedo(createUndoStack())).toBe(false);
+  });
+
+  it('canUndo true after push', () => {
+    const stack = createUndoStack();
+    pushUndo(stack, makeLinearGraph());
+    expect(canUndo(stack)).toBe(true);
+  });
+});
+
+describe('undo / redo', () => {
+  it('returns null when nothing to undo', () => {
+    const stack = createUndoStack();
+    expect(undo(stack, makeLinearGraph())).toBeNull();
+  });
+
+  it('returns null when nothing to redo', () => {
+    const stack = createUndoStack();
+    expect(redo(stack, makeLinearGraph())).toBeNull();
+  });
+
+  it('undo restores previous graph', () => {
+    const stack = createUndoStack();
+    const g1 = makeLinearGraph();
+    const g2 = makeBranchGraph();
+    pushUndo(stack, g1);
+    const restored = undo(stack, g2);
+    expect(restored).not.toBeNull();
+    expect(restored!.nodes).toHaveLength(g1.nodes.length);
+  });
+
+  it('redo restores undone graph', () => {
+    const stack = createUndoStack();
+    const g1 = makeLinearGraph();
+    const g2 = makeBranchGraph();
+    pushUndo(stack, g1);
+    undo(stack, g2);
+    expect(canRedo(stack)).toBe(true);
+    const redone = redo(stack, g1);
+    expect(redone).not.toBeNull();
+    expect(redone!.nodes).toHaveLength(g2.nodes.length);
+  });
+
+  it('undo + redo round trip', () => {
+    const stack = createUndoStack();
+    const original = makeLinearGraph();
+    const modified = makeBranchGraph();
+    pushUndo(stack, original);
+    const afterUndo = undo(stack, modified)!;
+    expect(afterUndo.id).toBe(original.id);
+    const afterRedo = redo(stack, afterUndo)!;
+    expect(afterRedo.id).toBe(modified.id);
   });
 });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   isSensitivePath,
   isOutOfProjectScope,
@@ -7,8 +7,12 @@ import {
   shortenPath,
   shortenRemote,
   getDepth,
+  getProjectRoot,
+  loadSavedProjects,
+  savePersistProjects,
   BINARY_EXTENSIONS,
 } from './atoms';
+import type { ProjectFolder } from './atoms';
 
 // ── isSensitivePath ────────────────────────────────────────────────────
 
@@ -163,5 +167,66 @@ describe('BINARY_EXTENSIONS', () => {
   it('does not include text types', () => {
     expect(BINARY_EXTENSIONS).not.toContain('ts');
     expect(BINARY_EXTENSIONS).not.toContain('json');
+  });
+});
+
+// ── getProjectRoot ─────────────────────────────────────────────────────
+
+describe('getProjectRoot', () => {
+  const projects: ProjectFolder[] = [
+    { path: '/home/user/proj-a', name: 'Proj A' } as ProjectFolder,
+    { path: '/home/user/proj-b', name: 'Proj B' } as ProjectFolder,
+  ];
+
+  it('returns matching project path', () => {
+    expect(getProjectRoot('/home/user/proj-a/src/main.ts', projects)).toBe('/home/user/proj-a');
+  });
+
+  it('returns null for files outside all projects', () => {
+    expect(getProjectRoot('/etc/passwd', projects)).toBeNull();
+  });
+
+  it('returns null for empty projects list', () => {
+    expect(getProjectRoot('/home/user/proj-a/file.ts', [])).toBeNull();
+  });
+
+  it('matches first project when overlapping', () => {
+    const overlapping: ProjectFolder[] = [
+      { path: '/home/user', name: 'Home' } as ProjectFolder,
+      { path: '/home/user/proj-a', name: 'Proj A' } as ProjectFolder,
+    ];
+    expect(getProjectRoot('/home/user/proj-a/file.ts', overlapping)).toBe('/home/user');
+  });
+});
+
+// ── loadSavedProjects / savePersistProjects ────────────────────────────
+
+describe('loadSavedProjects / savePersistProjects', () => {
+  const store = new Map<string, string>();
+
+  beforeEach(() => {
+    store.clear();
+    vi.stubGlobal('localStorage', {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => store.set(k, v),
+      removeItem: (k: string) => store.delete(k),
+    });
+  });
+
+  it('returns empty array when nothing saved', () => {
+    expect(loadSavedProjects()).toEqual([]);
+  });
+
+  it('round-trips through save and load', () => {
+    const projects: ProjectFolder[] = [{ path: '/home/user/proj', name: 'Proj' } as ProjectFolder];
+    savePersistProjects(projects);
+    const loaded = loadSavedProjects();
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0].path).toBe('/home/user/proj');
+  });
+
+  it('returns empty array on corrupt JSON', () => {
+    store.set('paw-project-folders', '{broken');
+    expect(loadSavedProjects()).toEqual([]);
   });
 });

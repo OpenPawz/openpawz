@@ -6,6 +6,7 @@
 
 mod docker;
 pub mod health;
+pub mod node_provision;
 mod process;
 pub mod types;
 
@@ -201,6 +202,21 @@ pub async fn ensure_n8n_ready(app_handle: &tauri::AppHandle) -> EngineResult<N8n
             "Setting up integration engine...",
         );
         return process::start_n8n_process(app_handle).await;
+    }
+
+    // ── Auto-download Node.js ──────────────────────────────────────
+    //
+    // Neither Docker nor a system Node.js ≥ 18 was found.
+    // Download a standalone Node.js binary so .exe / .dmg users get
+    // a zero-setup experience.
+    match node_provision::ensure_node_available(app_handle).await {
+        Ok(_node_bin) => {
+            log::info!("[n8n] Node.js auto-provisioned — starting n8n via process mode");
+            return process::start_n8n_process(app_handle).await;
+        }
+        Err(e) => {
+            log::warn!("[n8n] Auto-download of Node.js failed: {}", e);
+        }
     }
 
     // ── Nothing available ──────────────────────────────────────────
