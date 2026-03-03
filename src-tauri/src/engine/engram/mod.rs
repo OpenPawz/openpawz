@@ -64,7 +64,9 @@ pub use emotional_memory::{
     modulated_half_life, score_affect,
 };
 pub use entity_tracking::{extract_entities, merge_entities, process_memory_entities};
-pub use gated_search::{gate_decision, gated_search, DeferReason, GateDecision, GatedSearchResult};
+pub use gated_search::{
+    gate_decision, gated_search, DeferReason, GateDecision, GatedSearchRequest, GatedSearchResult,
+};
 pub use graph::{
     apply_decay, garbage_collect, memory_stats, relate, search, store_episodic_dedup,
     store_procedural, store_semantic_dedup, EngramStats,

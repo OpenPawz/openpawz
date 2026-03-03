@@ -285,13 +285,15 @@ async fn run_swarm_turn(
         let emb_client = state.embedding_client();
         match crate::engine::engram::gated_search::gated_search(
             &state.store,
-            message_content,
-            &scope,
-            &search_config,
-            emb_client.as_ref(),
-            0,            // no token budget limit
-            None,         // no momentum embeddings
-            Some(&model), // per-model injection limits (§58.5)
+            &crate::engine::engram::gated_search::GatedSearchRequest {
+                query: message_content,
+                scope: &scope,
+                config: &search_config,
+                embedding_client: emb_client.as_ref(),
+                budget_tokens: 0,    // no token budget limit
+                momentum: None,      // no momentum embeddings
+                model: Some(&model), // per-model injection limits (§58.5)
+            },
         )
         .await
         {

@@ -428,31 +428,44 @@ pub struct GatedSearchResult {
     pub disambiguation_hint: Option<String>,
 }
 
-/// Unified retrieval entry point. ALL memory retrieval across the system
-/// should go through this function.
+/// All query-specific parameters for a [`gated_search`] call.
 ///
-/// # Parameters
-/// - `store`: The session store (SQLite backend)
-/// - `query`: The user's query or task description
-/// - `scope`: Memory scope (agent, project, global)
-/// - `config`: Search configuration (thresholds, weights)
-/// - `embedding_client`: Optional embedding client for vector search
-/// - `budget_tokens`: Maximum tokens for results (0 = no limit)
-/// - `momentum`: Optional momentum embeddings from working memory
-/// - `model`: Optional model name for per-model injection limits (§58.5).
-///   If None, conservative defaults are used.
-#[allow(clippy::too_many_arguments)]
+/// Grouping these in a struct keeps the function signature small (2 args)
+/// and gives every call site named fields instead of positional mystery args.
+pub struct GatedSearchRequest<'a> {
+    /// The user/agent query string to search for.
+    pub query: &'a str,
+    /// Memory scope (agent, squad, global).
+    pub scope: &'a MemoryScope,
+    /// Search tuning knobs (BM25/vector weights, decay, hybrid config).
+    pub config: &'a MemorySearchConfig,
+    /// Optional embedding client for vector search.
+    pub embedding_client: Option<&'a EmbeddingClient>,
+    /// Maximum token budget for results (0 = no limit).
+    pub budget_tokens: usize,
+    /// Optional momentum embeddings from working memory.
+    pub momentum: Option<&'a [Vec<f32>]>,
+    /// Optional model name for per-model injection limits (§58.5).
+    /// If `None`, conservative defaults are used.
+    pub model: Option<&'a str>,
+}
+
+/// Unified entry point for ALL memory retrieval across the system.
+///
+/// See module-level docs for the full pipeline description.
 pub async fn gated_search(
     store: &SessionStore,
-    query: &str,
-    scope: &MemoryScope,
-    config: &MemorySearchConfig,
-    embedding_client: Option<&EmbeddingClient>,
-    budget_tokens: usize,
-    momentum: Option<&[Vec<f32>]>,
-    model: Option<&str>,
+    req: &GatedSearchRequest<'_>,
 ) -> EngineResult<GatedSearchResult> {
     let start = std::time::Instant::now();
+
+    let query = req.query;
+    let scope = req.scope;
+    let config = req.config;
+    let embedding_client = req.embedding_client;
+    let budget_tokens = req.budget_tokens;
+    let momentum = req.momentum;
+    let model = req.model;
 
     // ── 1. Gate decision ─────────────────────────────────────────────────
     let gate = gate_decision(query);
@@ -1401,13 +1414,15 @@ mod tests {
         // the gate is NOT Skip (since it's a real question).
         let result = gated_search(
             &store,
-            "What is the default port for Redis?",
-            &scope,
-            &config,
-            None, // no embedding client
-            0,    // no token budget limit
-            None, // no momentum
-            Some("gpt-4o"),
+            &GatedSearchRequest {
+                query: "What is the default port for Redis?",
+                scope: &scope,
+                config: &config,
+                embedding_client: None,
+                budget_tokens: 0,
+                momentum: None,
+                model: Some("gpt-4o"),
+            },
         )
         .await
         .expect("gated_search should not fail");
@@ -1450,9 +1465,20 @@ mod tests {
         let config = MemorySearchConfig::default();
 
         // "hi" should Skip — no search, no results, even though memories exist
-        let result = gated_search(&store, "hi", &scope, &config, None, 0, None, Some("gpt-4o"))
-            .await
-            .expect("gated_search should not fail on Skip");
+        let result = gated_search(
+            &store,
+            &GatedSearchRequest {
+                query: "hi",
+                scope: &scope,
+                config: &config,
+                embedding_client: None,
+                budget_tokens: 0,
+                momentum: None,
+                model: Some("gpt-4o"),
+            },
+        )
+        .await
+        .expect("gated_search should not fail on Skip");
 
         assert_eq!(result.gate, GateDecision::Skip);
         assert!(
@@ -1470,9 +1496,20 @@ mod tests {
         let config = MemorySearchConfig::default();
 
         // "delete it" should Defer with a disambiguation hint
-        let result = gated_search(&store, "delete it", &scope, &config, None, 0, None, None)
-            .await
-            .expect("gated_search should not fail on Defer");
+        let result = gated_search(
+            &store,
+            &GatedSearchRequest {
+                query: "delete it",
+                scope: &scope,
+                config: &config,
+                embedding_client: None,
+                budget_tokens: 0,
+                momentum: None,
+                model: None,
+            },
+        )
+        .await
+        .expect("gated_search should not fail on Defer");
 
         assert!(
             matches!(result.gate, GateDecision::Defer(_)),
@@ -1500,13 +1537,15 @@ mod tests {
 
         let result = gated_search(
             &store,
-            "What is the meaning of life?",
-            &scope,
-            &config,
-            None,
-            0,
-            None,
-            Some("claude-opus-4-6"),
+            &GatedSearchRequest {
+                query: "What is the meaning of life?",
+                scope: &scope,
+                config: &config,
+                embedding_client: None,
+                budget_tokens: 0,
+                momentum: None,
+                model: Some("claude-opus-4-6"),
+            },
         )
         .await
         .expect("gated_search should not crash on empty DB");
@@ -1547,13 +1586,15 @@ mod tests {
         // Search for the injected content — it should be returned but sanitized
         let result = gated_search(
             &store,
-            "What do you know about instructions?",
-            &scope,
-            &config,
-            None,
-            0,
-            None,
-            Some("gpt-4o"),
+            &GatedSearchRequest {
+                query: "What do you know about instructions?",
+                scope: &scope,
+                config: &config,
+                embedding_client: None,
+                budget_tokens: 0,
+                momentum: None,
+                model: Some("gpt-4o"),
+            },
         )
         .await
         .expect("gated_search should not fail");
@@ -1590,13 +1631,15 @@ mod tests {
         // Small/unknown model → Paranoid, max_recalled_memories = 5
         let result_small = gated_search(
             &store,
-            "What do we know about deployment infrastructure?",
-            &scope,
-            &config,
-            None,
-            0,
-            None,
-            Some("phi-3-mini"), // unknown → Tier 4 (5 max)
+            &GatedSearchRequest {
+                query: "What do we know about deployment infrastructure?",
+                scope: &scope,
+                config: &config,
+                embedding_client: None,
+                budget_tokens: 0,
+                momentum: None,
+                model: Some("phi-3-mini"),
+            },
         )
         .await
         .expect("gated_search should work for small model");
@@ -1604,13 +1647,15 @@ mod tests {
         // Flagship model → Standard, max_recalled_memories = 20
         let result_large = gated_search(
             &store,
-            "What do we know about deployment infrastructure?",
-            &scope,
-            &config,
-            None,
-            0,
-            None,
-            Some("claude-opus-4-6"), // Tier 1 (20 max)
+            &GatedSearchRequest {
+                query: "What do we know about deployment infrastructure?",
+                scope: &scope,
+                config: &config,
+                embedding_client: None,
+                budget_tokens: 0,
+                momentum: None,
+                model: Some("claude-opus-4-6"),
+            },
         )
         .await
         .expect("gated_search should work for large model");
@@ -1653,9 +1698,20 @@ mod tests {
         let start = std::time::Instant::now();
         let iterations = 100;
         for _ in 0..iterations {
-            let result = gated_search(&store, "hi", &scope, &config, None, 0, None, None)
-                .await
-                .unwrap();
+            let result = gated_search(
+                &store,
+                &GatedSearchRequest {
+                    query: "hi",
+                    scope: &scope,
+                    config: &config,
+                    embedding_client: None,
+                    budget_tokens: 0,
+                    momentum: None,
+                    model: None,
+                },
+            )
+            .await
+            .unwrap();
             assert_eq!(result.gate, GateDecision::Skip);
         }
         let elapsed = start.elapsed();

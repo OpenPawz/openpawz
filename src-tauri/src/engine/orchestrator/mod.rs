@@ -172,13 +172,15 @@ pub async fn run_project(app_handle: &tauri::AppHandle, project_id: &str) -> Eng
         let search_config = crate::atoms::engram_types::MemorySearchConfig::default();
         match crate::engine::engram::gated_search::gated_search(
             &state.store,
-            &project.goal,
-            &scope,
-            &search_config,
-            emb_client.as_ref(),
-            0,            // no token budget limit for orchestrator
-            None,         // no momentum embeddings
-            Some(&model), // per-model injection limits (§58.5)
+            &crate::engine::engram::gated_search::GatedSearchRequest {
+                query: &project.goal,
+                scope: &scope,
+                config: &search_config,
+                embedding_client: emb_client.as_ref(),
+                budget_tokens: 0,    // no token budget limit for orchestrator
+                momentum: None,      // no momentum embeddings
+                model: Some(&model), // per-model injection limits (§58.5)
+            },
         )
         .await
         {

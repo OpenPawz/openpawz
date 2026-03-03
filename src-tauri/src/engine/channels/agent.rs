@@ -224,13 +224,15 @@ pub async fn run_channel_agent(
 
         match engram::gated_search::gated_search(
             &engine_state.store,
-            message,
-            &scope,
-            &config,
-            emb_client.as_ref(),
-            8_000, // lightweight budget for channels
-            mom_ref,
-            Some(&model), // per-model injection limits (§58.5)
+            &engram::gated_search::GatedSearchRequest {
+                query: message,
+                scope: &scope,
+                config: &config,
+                embedding_client: emb_client.as_ref(),
+                budget_tokens: 8_000, // lightweight budget for channels
+                momentum: mom_ref,
+                model: Some(&model), // per-model injection limits (§58.5)
+            },
         )
         .await
         {

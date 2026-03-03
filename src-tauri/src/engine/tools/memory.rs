@@ -284,13 +284,15 @@ async fn execute_memory_search(
     let search_config = crate::atoms::engram_types::MemorySearchConfig::default();
     let gated_result = engram::gated_search::gated_search(
         &state.store,
-        query,
-        &scope,
-        &search_config,
-        emb_client.as_ref(),
-        0,    // no token budget limit for tool search
-        None, // no momentum embeddings
-        None, // tool search — conservative injection limits
+        &engram::gated_search::GatedSearchRequest {
+            query,
+            scope: &scope,
+            config: &search_config,
+            embedding_client: emb_client.as_ref(),
+            budget_tokens: 0, // no token budget limit for tool search
+            momentum: None,   // no momentum embeddings
+            model: None,      // tool search — conservative injection limits
+        },
     )
     .await?;
 

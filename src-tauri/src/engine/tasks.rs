@@ -254,13 +254,15 @@ pub async fn execute_task(
             let search_config = crate::atoms::engram_types::MemorySearchConfig::default();
             match crate::engine::engram::gated_search::gated_search(
                 &state.store,
-                &task_prompt,
-                &scope,
-                &search_config,
-                emb_client.as_ref(),
-                0,            // no token budget limit for tasks
-                None,         // no momentum embeddings
-                Some(&model), // per-model injection limits (§58.5)
+                &crate::engine::engram::gated_search::GatedSearchRequest {
+                    query: &task_prompt,
+                    scope: &scope,
+                    config: &search_config,
+                    embedding_client: emb_client.as_ref(),
+                    budget_tokens: 0,    // no token budget limit for tasks
+                    momentum: None,      // no momentum embeddings
+                    model: Some(&model), // per-model injection limits (§58.5)
+                },
             )
             .await
             {
