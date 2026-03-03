@@ -40,7 +40,11 @@ export type ServiceCategory =
   | 'ai'
   | 'voice'
   | 'content'
-  | 'utility';
+  | 'utility'
+  | 'media'
+  | 'smarthome'
+  | 'trading'
+  | 'system';
 
 export interface ServiceDefinition {
   id: string;
@@ -93,6 +97,10 @@ export const CATEGORIES: CategoryMeta[] = [
   { id: 'voice', label: 'Voice & Video', icon: 'call' },
   { id: 'content', label: 'Content & CMS', icon: 'article' },
   { id: 'utility', label: 'Utilities', icon: 'build' },
+  { id: 'media', label: 'Media', icon: 'music_note' },
+  { id: 'smarthome', label: 'Smart Home', icon: 'home' },
+  { id: 'trading', label: 'Trading', icon: 'candlestick_chart' },
+  { id: 'system', label: 'System', icon: 'terminal' },
 ];
 
 // ── Sort options ───────────────────────────────────────────────────────

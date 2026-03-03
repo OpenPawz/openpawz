@@ -48,11 +48,8 @@ export async function loadIntegrations(): Promise<void> {
         pawEngine.mcpListServers(),
         pawEngine.mcpStatus(),
       ]);
-      // Native integrations = skills with credentials (tier=integration) that are enabled
-      nativeSkills = skills.filter(
-        (s) =>
-          s.tier === 'integration' || (s.required_credentials && s.required_credentials.length > 0),
-      );
+      // All native skills — integration-tier AND CLI/productivity/media/etc.
+      nativeSkills = skills;
       mcpServers = servers;
       mcpStatuses = statuses;
 

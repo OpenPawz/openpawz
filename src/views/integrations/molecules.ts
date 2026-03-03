@@ -25,7 +25,13 @@ import {
   displayName as communityDisplayName,
 } from './community';
 import { kineticStagger } from '../../components/kinetic-row';
-import type { EngineSkillStatus, McpServerConfig, McpServerStatus } from '../../engine';
+import {
+  pawEngine,
+  type EngineSkillStatus,
+  type McpServerConfig,
+  type McpServerStatus,
+} from '../../engine';
+import { showToast } from '../../components/toast';
 
 // ── Module state (set by index.ts) ─────────────────────────────────────
 
@@ -49,16 +55,18 @@ export function initMoleculesState(): { setMoleculesState: (s: MoleculesState) =
   };
 }
 
-// ── Active integrations (MCP servers) ──────────────────────────────
+// ── Active integrations (MCP servers + native skills) ──────────────
 
 let _mcpServers: McpServerConfig[] = [];
 let _mcpStatuses: McpServerStatus[] = [];
+let _nativeSkills: EngineSkillStatus[] = [];
 
 export function setNativeIntegrations(
-  _skills: EngineSkillStatus[],
+  skills: EngineSkillStatus[],
   mcpServers: McpServerConfig[],
   mcpStatuses: McpServerStatus[],
 ): void {
+  _nativeSkills = skills;
   _mcpServers = mcpServers;
   _mcpStatuses = mcpStatuses;
 }
@@ -180,6 +188,7 @@ function _renderServicesTab(tabBody: HTMLElement): void {
   `;
 
   _renderNativeSection(tabBody);
+  _renderBuiltInSection(tabBody);
   _renderCards();
   _wireEvents();
 }
@@ -238,7 +247,395 @@ function _renderNativeSection(tabBody: HTMLElement): void {
   kineticStagger(sectionEl, '.native-card');
 }
 
-// ── Card rendering ─────────────────────────────────────────────────────
+// ── Built-in tools section ─────────────────────────────────────────────
+
+/** Map engine skill category to readable label */
+function _skillCategoryLabel(cat: string): string {
+  const map: Record<string, string> = {
+    vault: 'Service Integrations',
+    api: 'API Integrations',
+    productivity: 'Productivity',
+    development: 'Development',
+    media: 'Media & Audio',
+    smart_home: 'Smart Home & IoT',
+    communication: 'Communication',
+    cli: 'CLI Tools',
+    system: 'System & Security',
+  };
+  return map[cat] ?? cat;
+}
+
+/** Pick a color for a skill based on category */
+function _skillCategoryColor(cat: string): string {
+  const map: Record<string, string> = {
+    vault: '#6366f1',
+    api: '#8b5cf6',
+    productivity: '#3b82f6',
+    development: '#10b981',
+    media: '#f59e0b',
+    smart_home: '#06b6d4',
+    communication: '#ec4899',
+    cli: '#64748b',
+    system: '#ef4444',
+  };
+  return map[cat] ?? '#6366f1';
+}
+
+/** Icon mapping for skill emojis → material symbols */
+function _skillMaterialIcon(emoji: string): string {
+  const map: Record<string, string> = {
+    '✈️': 'send',
+    '🔌': 'power',
+    '🪝': 'webhook',
+    '🎮': 'sports_esports',
+    '🪙': 'monetization_on',
+    '📝': 'edit_note',
+    '⏰': 'alarm',
+    '✅': 'check_circle',
+    '💎': 'diamond',
+    '🐻': 'pets',
+    '🧵': 'terminal',
+    '📜': 'description',
+    '🎙️': 'mic',
+    '☁️': 'cloud',
+    '🖼️': 'image',
+    '🎞️': 'movie',
+    '🗣️': 'record_voice_over',
+    '💡': 'lightbulb',
+    '🔊': 'volume_up',
+    '🎛️': 'tune',
+    '📱': 'phone_android',
+    '📨': 'forward_to_inbox',
+    '🌤️': 'wb_sunny',
+    '📰': 'feed',
+    '🔐': 'lock',
+    '🎵': 'music_note',
+    '📍': 'place',
+    '👀': 'visibility',
+    '🛡️': 'shield',
+    '🧾': 'summarize',
+    '🧲': 'gif_box',
+    '📸': 'photo_camera',
+    '🦄': 'swap_horiz',
+    '☀️': 'light_mode',
+  };
+  return map[emoji] ?? 'extension';
+}
+
+function _renderBuiltInSection(tabBody: HTMLElement): void {
+  if (_nativeSkills.length === 0) return;
+
+  // Group skills by category
+  const grouped: Record<string, EngineSkillStatus[]> = {};
+  for (const skill of _nativeSkills) {
+    const cat = skill.category;
+    if (!grouped[cat]) grouped[cat] = [];
+    grouped[cat].push(skill);
+  }
+
+  // Category order
+  const catOrder = [
+    'vault',
+    'api',
+    'productivity',
+    'communication',
+    'media',
+    'smart_home',
+    'development',
+    'cli',
+    'system',
+  ];
+  const sortedCats = catOrder.filter((c) => grouped[c]);
+
+  const readyCount = _nativeSkills.filter((s) => s.is_ready).length;
+  const enabledCount = _nativeSkills.filter((s) => s.enabled).length;
+
+  let categoriesHtml = '';
+  for (const cat of sortedCats) {
+    const skills = grouped[cat];
+    const catColor = _skillCategoryColor(cat);
+
+    const cardsHtml = skills
+      .map((skill) => {
+        const icon = _skillMaterialIcon(skill.icon);
+        const isReady = skill.is_ready;
+        const isEnabled = skill.enabled;
+        const hasMissingBins = skill.missing_binaries.length > 0;
+        const hasMissingCreds = skill.missing_credentials.length > 0;
+
+        let statusDot = 'native-status-offline';
+        let statusText = 'Disabled';
+        let statusIcon = 'radio_button_unchecked';
+        if (isReady) {
+          statusDot = 'native-status-active';
+          statusText = `Ready · ${skill.tool_names.length || '∞'} tools`;
+          statusIcon = 'check_circle';
+        } else if (isEnabled && hasMissingBins) {
+          statusDot = 'native-status-warning';
+          statusText = 'Missing CLI';
+          statusIcon = 'warning';
+        } else if (isEnabled && hasMissingCreds) {
+          statusDot = 'native-status-warning';
+          statusText = 'Needs Setup';
+          statusIcon = 'key';
+        } else if (isEnabled) {
+          statusDot = 'native-status-active';
+          statusText = 'Enabled';
+          statusIcon = 'toggle_on';
+        }
+
+        return `
+        <div class="builtin-card k-row k-spring${isReady ? ' k-breathe' : ''}" data-builtin-id="${escHtml(skill.id)}">
+          <div class="native-card-header">
+            <span class="ms native-card-icon" style="color:${catColor}">${icon}</span>
+            <div class="native-card-info">
+              <span class="native-card-name">${escHtml(skill.name)}</span>
+              <span class="native-card-desc">${escHtml(skill.description)}</span>
+            </div>
+            <div class="native-card-status ${statusDot}">
+              <span class="ms ms-sm">${statusIcon}</span>
+              <span>${statusText}</span>
+            </div>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    categoriesHtml += `
+      <div class="builtin-category">
+        <div class="builtin-category-header">
+          <span class="builtin-cat-dot" style="background:${catColor}"></span>
+          <span class="builtin-cat-label">${_skillCategoryLabel(cat)}</span>
+          <span class="builtin-cat-count">${skills.length}</span>
+        </div>
+        <div class="native-cards-grid">${cardsHtml}</div>
+      </div>`;
+  }
+
+  const sectionEl = document.createElement('div');
+  sectionEl.className = 'native-integrations-section builtin-tools-section';
+  sectionEl.innerHTML = `
+    <div class="native-section-header">
+      <span class="ms native-section-icon" style="color:var(--accent)">memory</span>
+      <span class="native-section-title">Built-In Tools</span>
+      <span class="native-section-badge">${readyCount} ready · ${enabledCount} enabled</span>
+      <span class="native-section-sub">Native tools compiled into the app — no plugins needed</span>
+      <button class="btn btn-ghost btn-sm builtin-toggle-btn" id="builtin-toggle-btn">
+        <span class="ms ms-sm">expand_more</span>
+      </button>
+    </div>
+    <div class="builtin-categories" id="builtin-categories">${categoriesHtml}</div>
+  `;
+
+  // Insert after MCP section (before toolbar), or before toolbar directly
+  const mcpSection = tabBody.querySelector(
+    '.native-integrations-section:not(.builtin-tools-section)',
+  );
+  const toolbar = tabBody.querySelector('.integrations-toolbar');
+  if (mcpSection?.nextSibling) {
+    tabBody.insertBefore(sectionEl, mcpSection.nextSibling);
+  } else if (toolbar) {
+    tabBody.insertBefore(sectionEl, toolbar);
+  } else {
+    tabBody.prepend(sectionEl);
+  }
+
+  // Stagger animate
+  kineticStagger(sectionEl, '.builtin-card');
+
+  // Toggle collapse
+  const toggleBtn = document.getElementById('builtin-toggle-btn');
+  const categoriesEl = document.getElementById('builtin-categories');
+  if (toggleBtn && categoriesEl) {
+    toggleBtn.addEventListener('click', () => {
+      const isCollapsed = categoriesEl.classList.toggle('builtin-collapsed');
+      toggleBtn.innerHTML = `<span class="ms ms-sm">${isCollapsed ? 'expand_more' : 'expand_less'}</span>`;
+    });
+  }
+
+  // Wire card clicks
+  sectionEl.querySelectorAll('.builtin-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const skillId = (card as HTMLElement).dataset.builtinId;
+      const skill = _nativeSkills.find((s) => s.id === skillId);
+      if (skill) _renderBuiltInDetail(skill);
+    });
+  });
+}
+
+// ── Built-in skill detail panel ────────────────────────────────────────
+
+function _renderBuiltInDetail(skill: EngineSkillStatus): void {
+  const panel = document.getElementById('integrations-detail');
+  if (!panel) return;
+
+  const catColor = _skillCategoryColor(skill.category);
+  const icon = _skillMaterialIcon(skill.icon);
+  const isEnabled = skill.enabled;
+  const isReady = skill.is_ready;
+  const hasMissingBins = skill.missing_binaries.length > 0;
+  const hasMissingCreds = skill.missing_credentials.length > 0;
+
+  // Build status HTML
+  let statusHtml = '';
+  if (isReady) {
+    statusHtml = `<span class="integrations-status connected"><span class="ms ms-sm">check_circle</span> Ready${skill.tool_names.length ? ` · ${skill.tool_names.length} tools` : ''}</span>`;
+  } else if (isEnabled && hasMissingBins) {
+    statusHtml = `<span class="integrations-status" style="color:var(--warning)"><span class="ms ms-sm">warning</span> Missing: ${skill.missing_binaries.map(escHtml).join(', ')}</span>`;
+  } else if (isEnabled && hasMissingCreds) {
+    statusHtml = `<span class="integrations-status" style="color:var(--warning)"><span class="ms ms-sm">key</span> Needs credentials</span>`;
+  }
+
+  // Build credentials form
+  let credsHtml = '';
+  if (skill.required_credentials && skill.required_credentials.length > 0) {
+    const fields = skill.required_credentials
+      .map((cred) => {
+        const isConfigured = skill.configured_credentials.includes(cred.key);
+        return `
+        <div class="builtin-cred-field">
+          <label class="form-label">
+            ${escHtml(cred.label)}
+            ${cred.required ? '<span style="color:var(--error)">*</span>' : ''}
+            ${isConfigured ? '<span class="ms ms-sm" style="color:var(--success);font-size:14px;vertical-align:middle">check_circle</span>' : ''}
+          </label>
+          <p class="form-hint" style="margin:0 0 4px;font-size:11px;color:var(--text-muted)">${escHtml(cred.description)}</p>
+          <div class="builtin-cred-input-row">
+            <input type="password" class="form-input builtin-cred-input"
+                   data-skill-id="${escHtml(skill.id)}" data-cred-key="${escHtml(cred.key)}"
+                   placeholder="${isConfigured ? '••••••••' : escHtml(cred.placeholder || '')}"
+                   value="" />
+            <button class="btn btn-sm btn-ghost builtin-cred-save" data-skill-id="${escHtml(skill.id)}" data-cred-key="${escHtml(cred.key)}">
+              <span class="ms ms-sm">save</span>
+            </button>
+          </div>
+        </div>`;
+      })
+      .join('');
+
+    credsHtml = `
+      <div class="integrations-detail-section">
+        <h3><span class="ms ms-sm">key</span> Credentials</h3>
+        <div class="builtin-creds-form">${fields}</div>
+      </div>`;
+  }
+
+  // Install hint
+  let installHtml = '';
+  if (skill.install_hint) {
+    installHtml = `
+      <div class="integrations-detail-section">
+        <h3><span class="ms ms-sm">download</span> Installation</h3>
+        <div class="builtin-install-hint">
+          <code>${escHtml(skill.install_hint)}</code>
+        </div>
+      </div>`;
+  }
+
+  // Missing binaries
+  let binsHtml = '';
+  if (hasMissingBins) {
+    binsHtml = `
+      <div class="integrations-detail-section">
+        <h3><span class="ms ms-sm">warning</span> Missing CLI Tools</h3>
+        <div class="builtin-missing-bins">
+          ${skill.missing_binaries.map((b) => `<span class="builtin-bin-tag missing">${escHtml(b)}</span>`).join(' ')}
+        </div>
+        ${skill.install_hint ? `<p style="margin:8px 0 0;font-size:12px;color:var(--text-muted)">Install: <code>${escHtml(skill.install_hint)}</code></p>` : ''}
+      </div>`;
+  }
+
+  // Tool names
+  let toolsHtml = '';
+  if (skill.tool_names.length > 0) {
+    toolsHtml = `
+      <div class="integrations-detail-section">
+        <h3><span class="ms ms-sm">construction</span> Available Tools (${skill.tool_names.length})</h3>
+        <div class="builtin-tools-list">
+          ${skill.tool_names.map((t) => `<span class="builtin-tool-tag">${escHtml(t)}</span>`).join(' ')}
+        </div>
+      </div>`;
+  }
+
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div class="integrations-detail-header">
+      <button class="btn btn-ghost btn-sm integrations-detail-close" id="detail-close">
+        <span class="ms">close</span>
+      </button>
+      <div class="integrations-detail-icon" style="background: ${catColor}15; color: ${catColor}">
+        <span class="ms ms-lg">${icon}</span>
+      </div>
+      <h2>${escHtml(skill.name)}</h2>
+      <span class="integrations-card-cat">${_skillCategoryLabel(skill.category)} · Built-In</span>
+      <p>${escHtml(skill.description)}</p>
+      ${statusHtml}
+      <div class="builtin-enable-row" style="margin-top:12px">
+        <label class="form-switch">
+          <input type="checkbox" id="builtin-enable-toggle" ${isEnabled ? 'checked' : ''} />
+          <span class="form-switch-slider"></span>
+        </label>
+        <span style="font-size:13px;color:var(--text-secondary)">${isEnabled ? 'Enabled' : 'Disabled'}</span>
+      </div>
+    </div>
+
+    ${credsHtml}
+    ${binsHtml}
+    ${installHtml}
+    ${toolsHtml}
+  `;
+
+  // Wire close
+  document.getElementById('detail-close')?.addEventListener('click', () => {
+    panel.style.display = 'none';
+  });
+
+  // Wire enable toggle
+  const enableToggle = document.getElementById('builtin-enable-toggle') as HTMLInputElement;
+  enableToggle?.addEventListener('change', async () => {
+    try {
+      await pawEngine.skillSetEnabled(skill.id, enableToggle.checked);
+      showToast(`${skill.name} ${enableToggle.checked ? 'enabled' : 'disabled'}`, 'success');
+      // Update local state and re-render
+      skill.enabled = enableToggle.checked;
+      _renderBuiltInDetail(skill);
+    } catch (e) {
+      showToast(`Failed: ${e}`, 'error');
+      enableToggle.checked = !enableToggle.checked;
+    }
+  });
+
+  // Wire credential save buttons
+  panel.querySelectorAll('.builtin-cred-save').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const el = btn as HTMLElement;
+      const skillId = el.dataset.skillId!;
+      const key = el.dataset.credKey!;
+      const input = panel.querySelector(
+        `.builtin-cred-input[data-skill-id="${skillId}"][data-cred-key="${key}"]`,
+      ) as HTMLInputElement;
+      if (!input || !input.value.trim()) {
+        showToast('Enter a value first', 'warning');
+        return;
+      }
+      try {
+        await pawEngine.skillSetCredential(skillId, key, input.value.trim());
+        showToast(`${key} saved`, 'success');
+        input.value = '';
+        input.placeholder = '••••••••';
+        // Mark as configured
+        if (!skill.configured_credentials.includes(key)) {
+          skill.configured_credentials.push(key);
+        }
+        skill.missing_credentials = skill.missing_credentials.filter((k) => k !== key);
+        // Re-render to update status
+        _renderBuiltInDetail(skill);
+      } catch (e) {
+        showToast(`Save failed: ${e}`, 'error');
+      }
+    });
+  });
+}
 
 function _renderCards(): void {
   const grid = document.getElementById('integrations-grid');

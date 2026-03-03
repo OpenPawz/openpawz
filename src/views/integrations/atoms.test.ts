@@ -213,8 +213,8 @@ describe('categoryIcon', () => {
 // ── CATEGORIES ─────────────────────────────────────────────────────────────
 
 describe('CATEGORIES', () => {
-  it('has 15 categories', () => {
-    expect(CATEGORIES).toHaveLength(15);
+  it('has 19 categories', () => {
+    expect(CATEGORIES).toHaveLength(19);
   });
 
   it('each entry has id, label, and icon', () => {

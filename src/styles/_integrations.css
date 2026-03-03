@@ -1619,3 +1619,142 @@
   font-size: 0.85rem;
   padding: 1rem 0;
 }
+
+/* ── Built-In Tools Section ── */
+
+.builtin-tools-section {
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+.builtin-tools-section .native-section-icon {
+  color: var(--accent);
+}
+.builtin-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: max-height 0.3s ease, opacity 0.2s ease;
+}
+.builtin-categories.builtin-collapsed {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  margin: 0;
+}
+.builtin-category {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.builtin-category-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+.builtin-cat-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.builtin-cat-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.builtin-cat-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+.builtin-toggle-btn {
+  margin-left: auto;
+}
+
+/* Built-in card (reuses native-card styles) */
+.builtin-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-xs);
+  padding: 10px 14px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+  cursor: pointer;
+}
+.builtin-card:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg-primary));
+}
+
+/* Built-in detail panel extras */
+.builtin-enable-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.builtin-creds-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.builtin-cred-field .form-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.builtin-cred-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.builtin-cred-input-row .form-input {
+  flex: 1;
+  font-size: 12px;
+}
+.builtin-install-hint {
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  border-radius: var(--radius-xs);
+  padding: 10px 14px;
+}
+.builtin-install-hint code {
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+.builtin-missing-bins {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.builtin-bin-tag {
+  font-size: 12px;
+  font-family: var(--font-mono, monospace);
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: var(--bg-tertiary, rgba(255,255,255,0.05));
+  color: var(--text-secondary);
+}
+.builtin-bin-tag.missing {
+  background: rgba(var(--warning-rgb, 245, 158, 11), 0.12);
+  color: var(--warning);
+}
+.builtin-tools-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.builtin-tool-tag {
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(var(--accent-rgb, 99, 102, 241), 0.1);
+  color: var(--accent);
+}
