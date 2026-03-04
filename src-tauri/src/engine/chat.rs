@@ -865,7 +865,7 @@ pub fn detect_user_override(messages: &mut Vec<Message>) -> bool {
     let redirect =
         if prior_override_count >= 2 {
             format!(
-            "🚨 USER COMMAND (override #{}) — The user has EXPLICITLY told you {times} to stop \
+            "** USER COMMAND (override #{}) — The user has EXPLICITLY told you {times} to stop \
             your current behavior. You MUST comply NOW.\n\n\
             The user said: >>> {} <<<\n\n\
             RULES:\n\
@@ -881,7 +881,7 @@ pub fn detect_user_override(messages: &mut Vec<Message>) -> bool {
         )
         } else if prior_override_count == 1 {
             format!(
-            "⚠️ USER OVERRIDE (2nd time): The user is EXPLICITLY redirecting you. They said:\n\n\
+            "** USER OVERRIDE (2nd time): The user is EXPLICITLY redirecting you. They said:\n\n\
             >>> {} <<<\n\n\
             You ignored them once already. STOP your current task. Address ONLY what the user \
             just said. Do NOT continue the previous topic. Acknowledge the user's control.",
@@ -889,7 +889,7 @@ pub fn detect_user_override(messages: &mut Vec<Message>) -> bool {
         )
         } else {
             format!(
-            "⚠️ USER OVERRIDE: The user is explicitly redirecting the conversation. They said:\n\n\
+            "** USER OVERRIDE: The user is explicitly redirecting the conversation. They said:\n\n\
             >>> {} <<<\n\n\
             STOP your current task and respond ONLY to this message. The user is in control — \
             follow their direction immediately. Do NOT continue the previous topic unless they \

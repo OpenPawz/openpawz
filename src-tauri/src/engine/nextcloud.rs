@@ -416,7 +416,7 @@ async fn run_poll_loop(app_handle: tauri::AppHandle, config: NextcloudConfig) ->
                             &config.username,
                             &config.password,
                             &token,
-                            &format!("⚠️ Error: {}", e),
+                            &format!("Error: {}", e),
                         )
                         .await;
                     }

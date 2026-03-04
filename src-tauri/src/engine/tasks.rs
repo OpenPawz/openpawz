@@ -687,21 +687,21 @@ async fn check_positions(app_handle: &tauri::AppHandle) {
                         )
                         .ok();
                     info!(
-                        "[positions] ✅ Stop-loss sell executed for {} — tx: {}",
+                        "[positions] [ok] Stop-loss sell executed for {} — tx: {}",
                         pos.symbol,
                         &tx[..std::cmp::min(16, tx.len())]
                     );
                 }
                 Err(e) => {
                     error!(
-                        "[positions] ❌ Stop-loss sell FAILED for {}: {}",
+                        "[positions] [FAILED] Stop-loss sell FAILED for {}: {}",
                         pos.symbol, e
                     );
                 }
             }
         } else if ratio >= pos.take_profit_pct {
             info!(
-                "[positions] 🎯 TAKE-PROFIT triggered for {} — entry ${:.8}, now ${:.8} ({:.1}x)",
+                "[positions] TAKE-PROFIT triggered for {} — entry ${:.8}, now ${:.8} ({:.1}x)",
                 pos.symbol, pos.entry_price_usd, current_price, ratio
             );
 
@@ -748,14 +748,14 @@ async fn check_positions(app_handle: &tauri::AppHandle) {
                         )
                         .ok();
                     info!(
-                        "[positions] ✅ Take-profit sell executed for {} — tx: {}",
+                        "[positions] [ok] Take-profit sell executed for {} — tx: {}",
                         pos.symbol,
                         &tx[..std::cmp::min(16, tx.len())]
                     );
                 }
                 Err(e) => {
                     error!(
-                        "[positions] ❌ Take-profit sell FAILED for {}: {}",
+                        "[positions] [FAILED] Take-profit sell FAILED for {}: {}",
                         pos.symbol, e
                     );
                 }

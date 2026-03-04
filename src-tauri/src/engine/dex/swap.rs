@@ -419,7 +419,7 @@ pub async fn execute_dex_swap(
 
     Ok(format!(
         "{} Swap {}\n\n{} {} → ~{} {}\nSlippage tolerance: {}%\nTransaction: {}{}\nStatus: {}\n\n{}",
-        if confirmed { "✅" } else { "⚠️" },
+        if confirmed { "[ok]" } else { "[pending]" },
         if confirmed { "Confirmed" } else { "Submitted" },
         amount, token_in_sym.to_uppercase(),
         expected_out_display, token_out_sym.to_uppercase(),

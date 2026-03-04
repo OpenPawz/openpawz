@@ -176,7 +176,7 @@ pub async fn execute_dex_transfer(
 
     Ok(format!(
         "{} Transfer {}\n\n{} {} → {}\nTx: {}{}\nStatus: {}",
-        if confirmed { "✅" } else { "⚠️" },
+        if confirmed { "[ok]" } else { "[pending]" },
         if confirmed { "Confirmed" } else { "Submitted" },
         amount_str,
         currency_upper,

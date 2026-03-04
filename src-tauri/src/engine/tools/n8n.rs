@@ -215,7 +215,7 @@ async fn execute_list_workflows(config: &N8nConnection) -> Result<String, String
                     .unwrap_or("?");
                 let name = wf["name"].as_str().unwrap_or("Untitled");
                 let active = wf["active"].as_bool().unwrap_or(false);
-                let status = if active { "✅ active" } else { "⏸ inactive" };
+                let status = if active { "active" } else { "inactive" };
                 output.push_str(&format!("• {} — {} ({})\n", id, name, status));
             }
             Ok(output)
@@ -816,7 +816,7 @@ async fn execute_install_n8n_node(
     };
 
     let mut output = format!(
-        "✅ Installed {} v{}\n   Nodes: {}\n",
+        "Installed {} v{}\n   Nodes: {}\n",
         pkg.package_name,
         pkg.installed_version,
         node_names.join(", ")

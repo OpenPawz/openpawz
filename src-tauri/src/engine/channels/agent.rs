@@ -48,7 +48,7 @@ pub async fn run_channel_agent(
                 "[{}] Blocked critical injection from user {}",
                 channel_prefix, user_id
             );
-            return Ok("⚠️ Your message was blocked by the security scanner. If this is a mistake, please rephrase.".into());
+            return Ok("Your message was blocked by the security scanner. If this is a mistake, please rephrase.".into());
         }
     }
 

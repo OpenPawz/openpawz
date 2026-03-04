@@ -141,7 +141,7 @@ async fn exec_list(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<
             .map(|n| format!(" ({})", n))
             .unwrap_or_default();
         let bot = if user["bot"].as_bool().unwrap_or(false) {
-            " 🤖"
+            " [bot]"
         } else {
             ""
         };

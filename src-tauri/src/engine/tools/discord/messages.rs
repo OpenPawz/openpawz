@@ -349,7 +349,7 @@ async fn exec_get(args: &Value, app_handle: &tauri::AppHandle) -> EngineResult<S
         let author = msg["author"]["username"].as_str().unwrap_or("?");
         let content = msg["author"]["bot"]
             .as_bool()
-            .map(|b| if b { "🤖" } else { "" })
+            .map(|b| if b { "[bot]" } else { "" })
             .unwrap_or("");
         let text = msg["content"].as_str().unwrap_or("");
         let id = msg["id"].as_str().unwrap_or("?");

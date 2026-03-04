@@ -34,7 +34,7 @@ pub fn check_access(
                         requested_at: chrono::Utc::now().to_rfc3339(),
                     });
                 }
-                return Err("🔒 Pairing request sent to Paw. Waiting for approval...".into());
+                return Err("Pairing request sent to Paw. Waiting for approval...".into());
             }
         }
         // "open" — allow everyone

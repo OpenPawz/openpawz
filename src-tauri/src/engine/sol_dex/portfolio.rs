@@ -237,7 +237,7 @@ pub async fn execute_sol_token_info(
                 output.push_str(&format!("- {}\n", w));
             }
         } else {
-            output.push_str("\n✅ No mint or freeze authority — supply is fixed and accounts cannot be frozen.\n");
+            output.push_str("\n[ok] No mint or freeze authority — supply is fixed and accounts cannot be frozen.\n");
         }
     } else {
         output.push_str("Could not parse token metadata. This may not be a standard SPL token.\n");

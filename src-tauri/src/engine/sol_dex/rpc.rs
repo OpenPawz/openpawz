@@ -185,14 +185,14 @@ pub(crate) async fn check_tx_confirmation(rpc_url: &str, tx_sig: &str) -> String
                     .and_then(|v| v.as_str())
                     .unwrap_or("pending");
                 if s.get("err").is_some() && !s["err"].is_null() {
-                    return format!("❌ FAILED: {:?}", s["err"]);
+                    return format!("[FAILED] FAILED: {:?}", s["err"]);
                 } else {
-                    return format!("✅ {}", conf);
+                    return format!("[ok] {}", conf);
                 }
             } else {
-                return "⏳ Pending (check explorer)".into();
+                return "Pending (check explorer)".into();
             }
         }
     }
-    "⏳ Submitted".into()
+    "Submitted".into()
 }

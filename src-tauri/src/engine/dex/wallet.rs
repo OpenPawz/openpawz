@@ -63,7 +63,7 @@ pub async fn execute_dex_wallet_create(
     };
 
     Ok(format!(
-        "✅ New wallet created!\n\nAddress: {}\nNetwork: {}\n\n⚠️ This wallet has zero balance. Send ETH to this address to fund it before trading.\n\n🔒 Private key is encrypted and stored in your OS keychain vault. The AI agent never sees it.",
+        "[ok] New wallet created!\n\nAddress: {}\nNetwork: {}\n\nNote: This wallet has zero balance. Send ETH to this address to fund it before trading.\n\nSecurity: Private key is encrypted and stored in your OS keychain vault. The AI agent never sees it.",
         address, network_name
     ))
 }
