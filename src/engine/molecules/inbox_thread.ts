@@ -251,13 +251,18 @@ export function createInboxThread(callbacks: InboxThreadCallbacks): InboxThreadC
     },
 
     updatePanelStates(convOpen, sideOpen) {
+      // When panel is open, its own close (X) button handles closing —
+      // hide the header toggle to avoid duplicate buttons.
+      // When panel is closed, show the header toggle so the user can reopen it.
+      convlistToggle.style.display = convOpen ? 'none' : '';
       const convIcon = convlistToggle.querySelector('.ms');
-      if (convIcon) convIcon.textContent = convOpen ? 'left_panel_close' : 'left_panel_open';
-      convlistToggle.title = convOpen ? 'Hide conversations' : 'Show conversations';
+      if (convIcon) convIcon.textContent = 'left_panel_open';
+      convlistToggle.title = 'Show conversations';
 
+      sidebarToggle.style.display = sideOpen ? 'none' : '';
       const sideIcon = sidebarToggle.querySelector('.ms');
-      if (sideIcon) sideIcon.textContent = sideOpen ? 'right_panel_close' : 'right_panel_open';
-      sidebarToggle.title = sideOpen ? 'Hide sidebar' : 'Show sidebar';
+      if (sideIcon) sideIcon.textContent = 'right_panel_open';
+      sidebarToggle.title = 'Show sidebar';
     },
 
     destroy() {

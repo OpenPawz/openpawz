@@ -248,15 +248,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const sidebar = document.getElementById('sidebar');
     const collapseBtn = document.getElementById('sidebar-collapse-btn');
     if (sidebar && collapseBtn) {
+      const collapseIcon = collapseBtn.querySelector('.ms') as HTMLElement | null;
+      const updateCollapseIcon = (isCollapsed: boolean): void => {
+        if (collapseIcon) {
+          collapseIcon.textContent = isCollapsed ? 'left_panel_open' : 'left_panel_close';
+        }
+        collapseBtn.title = isCollapsed ? 'Expand sidebar' : 'Collapse sidebar';
+      };
       if (localStorage.getItem('paw-sidebar-collapsed') === 'true') {
         sidebar.classList.add('collapsed');
+        updateCollapseIcon(true);
       }
       collapseBtn.addEventListener('click', () => {
         sidebar.classList.toggle('collapsed');
-        localStorage.setItem(
-          'paw-sidebar-collapsed',
-          String(sidebar.classList.contains('collapsed')),
-        );
+        const isCollapsed = sidebar.classList.contains('collapsed');
+        localStorage.setItem('paw-sidebar-collapsed', String(isCollapsed));
+        updateCollapseIcon(isCollapsed);
       });
     }
 

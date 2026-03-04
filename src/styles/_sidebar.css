@@ -55,10 +55,7 @@
   color: var(--text-primary);
   background: var(--bg-hover, rgba(255, 255, 255, 0.06));
 }
-/* Flip arrow when collapsed */
-.sidebar.collapsed .sidebar-collapse-btn {
-  transform: rotate(180deg);
-}
+/* Icon swapped via JS — no rotation needed */
 
 .sidebar-brand {
   display: flex;
@@ -69,11 +66,20 @@
 
 .sidebar.collapsed .sidebar-brand {
   gap: 0;
+  justify-content: center;
 }
 
 .sidebar.collapsed .sidebar-header {
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  padding: 8px 4px;
+  padding: 6px 0;
+  gap: 2px;
+}
+
+/* In collapsed rail, shrink the collapse button so it tucks neatly under the logo */
+.sidebar.collapsed .sidebar-header-actions {
+  justify-content: center;
 }
 
 .sidebar-logo {
@@ -87,6 +93,13 @@
   flex-shrink: 0;
   filter: drop-shadow(0 0 4px rgba(255, 77, 77, 0.4));
   animation: logoPulse 3s ease-in-out infinite;
+  transition: width 0.2s ease, height 0.2s ease;
+}
+
+/* Slightly smaller logo in collapsed rail so it has breathing room */
+.sidebar.collapsed .sidebar-logo {
+  width: 28px;
+  height: 28px;
 }
 
 @keyframes logoPulse {

@@ -548,32 +548,36 @@
 
 /* Chat input */
 .chat-input-container {
-  padding: 8px 16px 16px;
+  padding: 10px 16px 16px;
   background: var(--bg-primary);
+  position: relative;
+  z-index: 1;
 }
 
 .chat-input-wrapper {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: flex-end;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-left: 2px solid var(--accent);
-  border-radius: var(--radius-sm);
-  padding: 4px 6px 4px 12px;
-  transition: border-color var(--transition-fast);
+  border-radius: 16px;
+  padding: 6px 8px 6px 14px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
   position: relative;
 }
 
 .chat-input-wrapper:focus-within {
-  border-color: var(--border-focus);
+  border-color: var(--accent-muted, var(--border-focus));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 /* When attachment preview is visible, fuse it seamlessly with the input */
 .chat-attachment-preview:not([style*='display:none']):not([style*='display: none'])
   + .chat-input-wrapper {
   border-top: none;
-  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  border-radius: 0 0 16px 16px;
   box-shadow: none;
 }
 .chat-attachment-preview:not([style*='display:none']):not([style*='display: none'])
@@ -583,16 +587,12 @@
 }
 /* When preview is visible, wrap the entire combo in a focus ring via container */
 .chat-input-container:has(.chat-attachment-preview:not([style*='display:none'])) {
-  border-radius: var(--radius-md);
-}:focus-within {
-  box-shadow:
-    0 0 0 1px var(--border-focus),
-    var(--shadow-sm);
+  border-radius: 16px;
 }
 
 .chat-input {
   flex: 1;
-  padding: 8px 0;
+  padding: 6px 0;
   background: transparent;
   border: none;
   color: var(--text-primary);
@@ -609,6 +609,7 @@
 }
 .chat-input::placeholder {
   color: var(--text-muted);
+  font-size: 14px;
 }
 
 /* ── Slash command autocomplete popup ─────────────────────────────────── */
@@ -651,15 +652,17 @@
 }
 
 .chat-send {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   background: var(--accent);
   color: var(--text-on-accent);
   border: none;
-  border-radius: var(--radius-sm);
+  border-radius: 50%;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition:
+    background 0.15s ease,
+    transform 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -668,17 +671,18 @@
 
 .chat-send:hover {
   background: var(--accent-hover);
-  transform: scale(1.05);
+  transform: scale(1.08);
 }
 
 .chat-send:active {
-  transform: scale(0.95);
+  transform: scale(0.92);
 }
 
 .chat-send:disabled {
   background: var(--text-muted);
   cursor: not-allowed;
   transform: none;
+  opacity: 0.5;
 }
 
 .chat-send svg {

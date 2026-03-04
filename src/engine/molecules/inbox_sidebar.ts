@@ -21,6 +21,8 @@ export interface InboxSidebarCallbacks {
   onDelete: () => void;
   onClear: () => void;
   onCompact: () => void;
+  /** Close the sidebar (same as the header toggle) */
+  onClose: () => void;
   /** Optional: search inside conversation */
   onSearch?: (query: string) => void;
 }
@@ -33,6 +35,18 @@ export function createInboxSidebar(callbacks: InboxSidebarCallbacks): InboxSideb
   // Create the grid-column wrapper
   const root = document.createElement('div');
   root.className = 'inbox-sidebar';
+
+  // ── Close header — single-click close directly on the sidebar ────────
+  const closeHeader = document.createElement('div');
+  closeHeader.className = 'inbox-sidebar-header';
+  closeHeader.innerHTML = `
+    <button class="inbox-sidebar-close-btn" title="Close sidebar">
+      <span class="ms" style="font-size:16px">right_panel_close</span>
+    </button>
+  `;
+  const closeBtn = closeHeader.querySelector('.inbox-sidebar-close-btn') as HTMLElement;
+  closeBtn?.addEventListener('click', () => callbacks.onClose());
+  root.appendChild(closeHeader);
 
   // Grab the existing mission panel from the DOM and move it in
   const missionPanel = document.getElementById('chat-mission-panel');
