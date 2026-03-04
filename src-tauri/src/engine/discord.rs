@@ -676,7 +676,7 @@ async fn run_gateway_loop(app_handle: tauri::AppHandle, config: DiscordConfig) -
                                                 &http,
                                                 &tok,
                                                 &cid,
-                                                &format!("⚠️ Error: {}", e),
+                                                &format!("Error: {}", e),
                                             )
                                             .await;
                                         }

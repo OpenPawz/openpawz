@@ -452,7 +452,7 @@ async fn run_polling_loop(
                                         &client,
                                         &token,
                                         chat_id,
-                                        "🔒 Pairing request sent to Paw. Waiting for approval...",
+                                        "Pairing request sent to Paw. Waiting for approval...",
                                         Some(msg.message_id),
                                     )
                                     .await;
@@ -518,7 +518,7 @@ async fn run_polling_loop(
                                     &client,
                                     &token,
                                     chat_id,
-                                    &format!("⚠️ Error: {}", e),
+                                    &format!("Error: {}", e),
                                     Some(msg.message_id),
                                 )
                                 .await;
@@ -596,7 +596,7 @@ pub async fn approve_user(app_handle: &tauri::AppHandle, user_id: i64) -> Engine
             &client,
             &config.bot_token,
             user_id, // chat_id == user_id for DMs
-            "✅ You've been approved! You can now chat with me. Send any message to get started.",
+            "[ok] You've been approved! You can now chat with me. Send any message to get started.",
             None,
         )
         .await;
@@ -617,7 +617,7 @@ pub async fn deny_user(app_handle: &tauri::AppHandle, user_id: i64) -> EngineRes
             &client,
             &config.bot_token,
             user_id,
-            "❌ Your pairing request was denied.",
+            "[denied] Your pairing request was denied.",
             None,
         )
         .await;

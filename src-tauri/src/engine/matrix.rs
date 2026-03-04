@@ -451,7 +451,7 @@ async fn handle_room_message(
         }
         Err(e) => {
             error!("[matrix] Agent error for {}: {}", sender, e);
-            send_room_message(&room, &format!("⚠️ Error: {}", e)).await;
+            send_room_message(&room, &format!("Error: {}", e)).await;
         }
         _ => {}
     }

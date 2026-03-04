@@ -78,11 +78,11 @@ pub async fn execute_sol_wallet_create(
     };
 
     Ok(format!(
-        "✅ New Solana wallet created!\n\n\
+        "[ok] New Solana wallet created!\n\n\
         Address: {}\n\
         Network: {}\n\n\
-        ⚠️ This wallet has zero balance. Send SOL to this address to fund it before trading.\n\n\
-        🔒 Private key is encrypted and stored in your OS keychain vault. The AI agent never sees it.",
+        Note: This wallet has zero balance. Send SOL to this address to fund it before trading.\n\n\
+        Security: Private key is encrypted and stored in your OS keychain vault. The AI agent never sees it.",
         address, network_info
     ))
 }

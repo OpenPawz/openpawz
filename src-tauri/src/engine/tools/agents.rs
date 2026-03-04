@@ -697,15 +697,15 @@ async fn execute_manage_session(
                 let label = s.label.as_deref().unwrap_or("");
                 let agent = s.agent_id.as_deref().unwrap_or("?");
                 let prefix = if s.id.starts_with("eng-discord") {
-                    "🎮"
+                    "[discord]"
                 } else if s.id.starts_with("eng-telegram") {
-                    "📱"
+                    "[telegram]"
                 } else if s.id.starts_with("eng-slack") {
-                    "💬"
+                    "[slack]"
                 } else if s.id.starts_with("eng-task") {
-                    "📋"
+                    "[task]"
                 } else {
-                    "💭"
+                    "[chat]"
                 };
                 lines.push(format!(
                     "{} `{}` — {} msgs, agent={}{}",

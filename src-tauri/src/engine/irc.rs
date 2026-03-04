@@ -385,9 +385,7 @@ async fn run_irc_loop(app_handle: tauri::AppHandle, config: IrcConfig) -> Engine
                     error!("[irc] Agent error for {}: {}", sender_nick, e);
                     let mut w = write_handle.lock().await;
                     let _ = w
-                        .write_all(
-                            format!("PRIVMSG {} :⚠️ Error: {}\r\n", reply_target, e).as_bytes(),
-                        )
+                        .write_all(format!("PRIVMSG {} :Error: {}\r\n", reply_target, e).as_bytes())
                         .await;
                 }
                 _ => {}

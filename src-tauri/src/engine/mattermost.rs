@@ -417,7 +417,7 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &MattermostConfig) -
                         base,
                         &config.token,
                         &channel_id,
-                        &format!("⚠️ Error: {}", e),
+                        &format!("Error: {}", e),
                     )
                     .await;
                 }

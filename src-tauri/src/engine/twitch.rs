@@ -410,7 +410,7 @@ async fn run_ws_loop(app_handle: &tauri::AppHandle, config: &TwitchConfig) -> En
                 }
                 Err(e) => {
                     error!("[twitch] Agent error for {}: {}", sender, e);
-                    let err_msg = format!("PRIVMSG {} :⚠️ Error processing your message", channel);
+                    let err_msg = format!("PRIVMSG {} :Error processing your message", channel);
                     let _ = ws_tx.send(WsMessage::Text(err_msg)).await;
                 }
                 _ => {}

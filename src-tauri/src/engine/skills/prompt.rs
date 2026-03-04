@@ -193,7 +193,7 @@ fn parse_community_sections(raw: &str) -> Vec<String> {
 fn compress_skill_sections(sections: &[String], community: &str, budget: usize) -> String {
     // Header overhead
     let header = "\n\n# Enabled Skills\nYou have the following skills available. Use exec, fetch, read_file, write_file, and other built-in tools to leverage them.\n\n";
-    let footer = "\n\n⚠️ Some skill instructions were compressed to save context. Use `soul_read` on the skill's documentation or `request_tools` to discover full tool schemas.\n";
+    let footer = "\n\nNote: Some skill instructions were compressed to save context. Use `soul_read` on the skill's documentation or `request_tools` to discover full tool schemas.\n";
     let overhead = header.len() + footer.len();
     // If community text is passed, it must fit inside the budget too
     let community_reserve = if community.is_empty() {

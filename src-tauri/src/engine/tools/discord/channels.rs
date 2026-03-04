@@ -285,7 +285,7 @@ async fn execute_setup(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
             {
                 Ok(v) => {
                     let id = v["id"].as_str().unwrap_or("?").to_string();
-                    results.push(format!("✅ Category '{}' created ({})", cat_name, id));
+                    results.push(format!("Category '{}' created ({})", cat_name, id));
                     created += 1;
                     tokio::time::sleep(Duration::from_millis(300)).await;
                     id
@@ -330,7 +330,7 @@ async fn execute_setup(args: &Value, app_handle: &tauri::AppHandle) -> EngineRes
                     Ok(v) => {
                         let id = v["id"].as_str().unwrap_or("?");
                         let icon = if ch_type == 2 { "🔊" } else { "#" };
-                        results.push(format!("  ✅ {}{} created ({})", icon, ch_name, id));
+                        results.push(format!("  {} {} created ({})", icon, ch_name, id));
                         created += 1;
                     }
                     Err(e) => {
@@ -388,7 +388,7 @@ async fn execute_delete(args: &Value, app_handle: &tauri::AppHandle) -> EngineRe
         let url = format!("{}/channels/{}", DISCORD_API, cid);
         match discord_request(&client, reqwest::Method::DELETE, &url, &auth, None).await {
             Ok(_) => {
-                results.push(format!("✅ Deleted {}", cid));
+                results.push(format!("Deleted {}", cid));
                 deleted += 1;
             }
             Err(e) => {

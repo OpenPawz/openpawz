@@ -109,7 +109,7 @@ async fn execute_request_tools(
             .collect();
 
         return Ok(format!(
-            "✅ Loaded {} tools from the **{}** domain:\n\n{}\n\n\
+            "Loaded {} tools from the **{}** domain:\n\n{}\n\n\
             These tools are now available for your next action. Call them directly.",
             domain_tools.len(),
             dom,
@@ -177,7 +177,7 @@ async fn execute_request_tools(
         .collect();
 
     Ok(format!(
-        "✅ Loaded {} tools for your request:\n\n{}\n\n\
+        "Loaded {} tools for your request:\n\n{}\n\n\
         These tools are now available. Call them directly to proceed.",
         non_core.len(),
         tool_names.join("\n")

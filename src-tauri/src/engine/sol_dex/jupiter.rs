@@ -126,7 +126,7 @@ pub async fn execute_sol_quote(
                 | Output | {} |\n\
                 | Route | PumpPortal auto ({}) |\n\
                 | Slippage | {}% |\n\
-                | Status | ✅ Route available (tx: {} bytes) |\n\n\
+                | Status | [ok] Route available (tx: {} bytes) |\n\n\
                 _Jupiter had no route — PumpPortal can execute this via pump.fun/PumpSwap/Raydium._\n\
                 _Exact output amount determined at execution time. Use **sol_swap** to execute._",
                 amount_str, token_in_upper, token_out_upper,
