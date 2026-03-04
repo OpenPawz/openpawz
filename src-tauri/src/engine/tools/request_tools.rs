@@ -35,7 +35,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
                     },
                     "domain": {
                         "type": "string",
-                        "description": "Optional: request all tools from a specific domain directly. One of: system, filesystem, web, identity, memory, agents, communication, squads, tasks, skills, dashboard, storage, email, messaging, discord, trello, github, google, integrations, coinbase, dex, solana"
+                        "description": "Optional: request all tools from a specific domain directly. One of: system, filesystem, web, identity, memory, agents, communication, squads, tasks, skills, canvas, dashboard, storage, email, messaging, discord, trello, github, google, integrations, coinbase, dex, solana"
                     }
                 },
                 "required": ["query"]

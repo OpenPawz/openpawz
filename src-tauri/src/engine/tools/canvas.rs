@@ -137,7 +137,7 @@ fn exec_push(
     let title = args["title"]
         .as_str()
         .ok_or("Missing required parameter: title")?;
-    let data = &args["data"];
+    let data_raw = &args["data"];
 
     if !VALID_COMPONENT_TYPES.contains(&comp_type) {
         return Err(format!(
@@ -146,9 +146,22 @@ fn exec_push(
             VALID_COMPONENT_TYPES.join(", ")
         ));
     }
-    if !data.is_object() {
+
+    // Validate data is an object — tolerate string-encoded JSON from LLMs
+    let data_owned: serde_json::Value;
+    let data = if data_raw.is_object() {
+        data_raw
+    } else if let Some(s) = data_raw.as_str() {
+        data_owned = serde_json::from_str(s).map_err(|_| {
+            "Parameter 'data' must be a JSON object (got a non-JSON string)".to_string()
+        })?;
+        if !data_owned.is_object() {
+            return Err("Parameter 'data' must be a JSON object".to_string());
+        }
+        &data_owned
+    } else {
         return Err("Parameter 'data' must be a JSON object".to_string());
-    }
+    };
 
     let data_str =
         serde_json::to_string(data).map_err(|e| format!("Failed to serialize data: {e}"))?;
@@ -224,6 +237,12 @@ fn exec_update(
     let data_str = args.get("data").and_then(|d| {
         if d.is_object() {
             serde_json::to_string(d).ok()
+        } else if let Some(s) = d.as_str() {
+            // Tolerate string-encoded JSON from LLMs
+            serde_json::from_str::<serde_json::Value>(s)
+                .ok()
+                .filter(|v| v.is_object())
+                .and_then(|v| serde_json::to_string(&v).ok())
         } else {
             None
         }

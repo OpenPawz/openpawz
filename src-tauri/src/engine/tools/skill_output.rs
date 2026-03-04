@@ -93,7 +93,7 @@ fn execute_skill_output(
     let title = args["title"]
         .as_str()
         .ok_or("Missing required parameter: title")?;
-    let data = &args["data"];
+    let data_raw = &args["data"];
 
     // Validate widget type
     if !VALID_WIDGET_TYPES.contains(&widget_type) {
@@ -104,10 +104,21 @@ fn execute_skill_output(
         ));
     }
 
-    // Validate data is an object
-    if !data.is_object() {
+    // Validate data is an object — tolerate string-encoded JSON from LLMs
+    let data_owned: serde_json::Value;
+    let data = if data_raw.is_object() {
+        data_raw
+    } else if let Some(s) = data_raw.as_str() {
+        data_owned = serde_json::from_str(s).map_err(|_| {
+            "Parameter 'data' must be a JSON object (got a non-JSON string)".to_string()
+        })?;
+        if !data_owned.is_object() {
+            return Err("Parameter 'data' must be a JSON object".to_string());
+        }
+        &data_owned
+    } else {
         return Err("Parameter 'data' must be a JSON object".to_string());
-    }
+    };
 
     let data_str =
         serde_json::to_string(data).map_err(|e| format!("Failed to serialize data: {e}"))?;
