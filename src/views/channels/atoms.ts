@@ -116,6 +116,13 @@ export const CHANNEL_SETUPS: ChannelSetupDef[] = [
         defaultValue: 'pairing',
       },
       {
+        key: 'serverId',
+        label: 'Server (Guild) ID',
+        type: 'text',
+        placeholder: '1234567890',
+        hint: 'Right-click your server → Copy Server ID (enable Developer Mode in Discord settings first)',
+      },
+      {
         key: 'respondToMentions',
         label: 'Respond to @mentions in servers',
         type: 'toggle',
@@ -128,6 +135,7 @@ export const CHANNEL_SETUPS: ChannelSetupDef[] = [
       enabled: true,
       dm_policy: (v.dmPolicy as string) || 'pairing',
       respond_to_mentions: v.respondToMentions !== false,
+      server_id: (v.serverId as string) || undefined,
     }),
   },
   {

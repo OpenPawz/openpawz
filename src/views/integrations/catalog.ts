@@ -338,6 +338,13 @@ const CURATED: ServiceDefinition[] = [
         placeholder: 'Bot token from Developer Portal',
         required: true,
       },
+      {
+        key: 'server_id',
+        label: 'Server (Guild) ID',
+        type: 'text',
+        placeholder: '1234567890',
+        required: false,
+      },
     ],
     {
       title: 'Connect Discord',
@@ -358,6 +365,10 @@ const CURATED: ServiceDefinition[] = [
         {
           instruction:
             'Copy the generated URL, open it in your browser, and invite the bot to your server',
+        },
+        {
+          instruction:
+            'Copy your Server ID: enable Developer Mode in Discord Settings → App Settings → Advanced, then right-click the server and select Copy Server ID',
         },
       ],
       estimatedTime: '3 minutes',

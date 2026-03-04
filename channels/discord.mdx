@@ -14,16 +14,18 @@ Connect a Discord bot to your Pawz agents.
 3. Go to **Bot** → create a bot → copy the token
 4. Enable **Message Content Intent** under Privileged Gateway Intents
 5. Invite the bot to your server with the OAuth2 URL generator (scopes: `bot`, permissions: `Send Messages`, `Read Message History`)
-6. In Pawz, go to **Settings → Channels**
-7. Select **Discord**
-8. Paste your bot token
-9. Start the channel
+6. Copy your **Server (Guild) ID**: enable Developer Mode in Discord → Settings → App Settings → Advanced, then right-click the server name and select **Copy Server ID**
+7. In Pawz, go to **Settings → Channels**
+8. Select **Discord**
+9. Paste your **Bot Token** and **Server ID**
+10. Start the channel
 
 ## Configuration
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | Bot token | Yes | From Discord Developer Portal |
+| Server (Guild) ID | No | Right-click your server → Copy Server ID (enable Developer Mode first). Needed for server management features like listing channels, roles, and members. |
 | DM policy | Yes | Who can message the bot |
 | Allowed users | For allowlist | Discord usernames |
 
