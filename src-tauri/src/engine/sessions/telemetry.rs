@@ -233,7 +233,7 @@ mod tests {
     use super::*;
 
     fn test_store() -> SessionStore {
-        SessionStore::open(":memory:").expect("in-memory store")
+        SessionStore::open_in_memory().expect("in-memory store")
     }
 
     #[test]

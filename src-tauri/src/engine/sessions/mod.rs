@@ -90,6 +90,16 @@ impl SessionStore {
             conn: Mutex::new(conn),
         })
     }
+
+    /// Open an in-memory database for tests.
+    #[cfg(test)]
+    pub fn open_in_memory() -> EngineResult<Self> {
+        let conn = Connection::open_in_memory()?;
+        schema::run_migrations(&conn)?;
+        Ok(SessionStore {
+            conn: Mutex::new(conn),
+        })
+    }
 }
 
 /// Initialise an already-open connection with the full schema.

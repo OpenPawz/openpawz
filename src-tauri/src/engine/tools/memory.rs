@@ -442,12 +442,12 @@ fn execute_memory_delete(
     if deleted {
         Ok(format!(
             "Memory {} deleted successfully.",
-            safe_truncate(&memory_id, 8)
+            safe_truncate(memory_id, 8)
         ))
     } else {
         Ok(format!(
             "Memory {} not found or already deleted.",
-            safe_truncate(&memory_id, 8)
+            safe_truncate(memory_id, 8)
         ))
     }
 }
@@ -490,12 +490,12 @@ async fn execute_memory_update(
     if updated {
         Ok(format!(
             "Memory {} updated successfully.",
-            safe_truncate(&memory_id, 8)
+            safe_truncate(memory_id, 8)
         ))
     } else {
         Ok(format!(
             "Memory {} not found — cannot update.",
-            safe_truncate(&memory_id, 8)
+            safe_truncate(memory_id, 8)
         ))
     }
 }
@@ -559,9 +559,9 @@ fn execute_memory_feedback(
 
     info!(
         "[engine] memory_feedback: id={} helpful={} context={:?}",
-        safe_truncate(&memory_id, 8),
+        safe_truncate(memory_id, 8),
         helpful,
-        context.map(|c| safe_truncate(&c, 50))
+        context.map(|c| safe_truncate(c, 50))
     );
 
     let state = app_handle
@@ -582,7 +582,7 @@ fn execute_memory_feedback(
 
         Ok(format!(
             "Positive feedback recorded for memory {}. It will rank higher in future searches.",
-            safe_truncate(&memory_id, 8)
+            safe_truncate(memory_id, 8)
         ))
     } else {
         // Negative feedback: reduce importance
@@ -592,15 +592,15 @@ fn execute_memory_feedback(
             state.store.engram_add_negative_context(memory_id, ctx)?;
             Ok(format!(
                 "Negative feedback recorded for memory {} in context '{}'. It will be suppressed when similar context arises.",
-                safe_truncate(&memory_id, 8),
-                safe_truncate(&ctx, 50)
+                safe_truncate(memory_id, 8),
+                safe_truncate(ctx, 50)
             ))
         } else {
             // General negative feedback — reduce strength
             state.store.engram_record_access(memory_id, -0.15)?;
             Ok(format!(
                 "Negative feedback recorded for memory {}. It will rank lower in future searches.",
-                safe_truncate(&memory_id, 8)
+                safe_truncate(memory_id, 8)
             ))
         }
     }
@@ -628,9 +628,9 @@ fn execute_memory_relate(
 
     info!(
         "[engine] memory_relate: {}--[{}]--> {} (w={:.2})",
-        safe_truncate(&source_id, 8),
+        safe_truncate(source_id, 8),
         relation,
-        safe_truncate(&target_id, 8),
+        safe_truncate(target_id, 8),
         weight,
     );
 
@@ -655,9 +655,9 @@ fn execute_memory_relate(
 
     Ok(format!(
         "Relationship created: {} --[{}]--> {}. This strengthens multi-hop retrieval.",
-        safe_truncate(&source_id, 8),
+        safe_truncate(source_id, 8),
         relation,
-        safe_truncate(&target_id, 8)
+        safe_truncate(target_id, 8)
     ))
 }
 
