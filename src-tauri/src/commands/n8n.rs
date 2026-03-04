@@ -534,7 +534,7 @@ pub struct CommunityNode {
 }
 
 /// Get the n8n base URL and API key from the engine config.
-fn get_n8n_endpoint(app_handle: &tauri::AppHandle) -> Result<(String, String), String> {
+pub fn get_n8n_endpoint(app_handle: &tauri::AppHandle) -> Result<(String, String), String> {
     let config = n8n_engine::load_config(app_handle).map_err(|e| e.to_string())?;
     let url = match config.mode {
         n8n_engine::N8nMode::Remote | n8n_engine::N8nMode::Local => config.url.clone(),

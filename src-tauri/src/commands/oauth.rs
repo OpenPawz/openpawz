@@ -9,7 +9,7 @@
 //   Tier 3 — RFC 7591 dynamic registration (engine_oauth_rfc7591_start)
 //   Tier 5 — Manual API keys (existing flow)
 
-use crate::commands::n8n::map_integration_to_skill;
+use crate::commands::n8n::{get_n8n_endpoint, map_integration_to_skill};
 use crate::engine::oauth::{
     get_n8n_oauth_type, get_oauth_config, get_rfc7591_config, n8n_credential_url,
     n8n_oauth_service_ids, oauth_service_ids, refresh_access_token, resolve_tier,
@@ -141,6 +141,20 @@ pub async fn engine_oauth_start(
     // Build credential map from OAuth tokens and feed through the
     // integration→skill mapping so agent tools can use them immediately.
     provision_oauth_to_skill_vault(&service_id, &tokens.access_token, &app_handle);
+
+    // ── Auto-provision: bridge OAuth tokens → n8n engine ──
+    // Push the full tokens (including refresh_token) into the embedded
+    // n8n engine as a credential, then deploy an MCP workflow so the
+    // agent discovers the service's tools through the MCP bridge.
+    // Runs in background so it doesn't delay the OAuth response.
+    {
+        let sid = service_id.clone();
+        let tok = tokens.clone();
+        let app = app_handle.clone();
+        tauri::async_runtime::spawn(async move {
+            provision_oauth_to_n8n(&sid, &tok, &app).await;
+        });
+    }
 
     info!(
         "[oauth-cmd] OAuth flow completed successfully for '{}'",
@@ -619,6 +633,242 @@ fn provision_oauth_to_skill_vault(
     }
 }
 
+// ── OAuth → n8n Credential Provisioning ──────────────────────────
+//
+// After OAuth, push the tokens into the embedded n8n engine as a
+// credential so n8n's nodes (Gmail, Drive, Calendar, Sheets, etc.)
+// can use them. Then deploy an MCP workflow so the agent discovers
+// the tools through the MCP bridge — same path as any n8n node.
+//
+// The user never sees or touches n8n. They click "Connect" → OAuth
+// popup → done → agent has tools.
+
+/// Map an OAuth service ID to the n8n node type and display name
+/// for MCP workflow deployment.
+fn oauth_service_to_n8n_node(service_id: &str) -> Option<(&'static str, &'static str)> {
+    match service_id {
+        "gmail" | "google" => Some(("n8n-nodes-base.gmail", "Gmail")),
+        "google-drive" => Some(("n8n-nodes-base.googleDrive", "Google Drive")),
+        "google-calendar" => Some(("n8n-nodes-base.googleCalendar", "Google Calendar")),
+        "google-sheets" => Some(("n8n-nodes-base.googleSheets", "Google Sheets")),
+        "google-docs" => Some(("n8n-nodes-base.googleDocs", "Google Docs")),
+        "github" => Some(("n8n-nodes-base.github", "GitHub")),
+        "slack" => Some(("n8n-nodes-base.slack", "Slack")),
+        "discord" => Some(("n8n-nodes-base.discord", "Discord")),
+        "notion" => Some(("n8n-nodes-base.notion", "Notion")),
+        _ => None,
+    }
+}
+
+/// Push OAuth tokens into the embedded n8n engine as a credential,
+/// then deploy an MCP workflow so the agent can discover the tools.
+///
+/// Non-fatal: failures are logged but never block the OAuth flow.
+/// Runs as a background task so it doesn't slow down the OAuth response.
+async fn provision_oauth_to_n8n(
+    service_id: &str,
+    tokens: &OAuthTokens,
+    app_handle: &tauri::AppHandle,
+) {
+    // Resolve the n8n credential type (e.g. "googleOAuth2Api")
+    let n8n_cred_type = match get_n8n_oauth_type(service_id) {
+        Some(t) => t,
+        None => {
+            info!(
+                "[oauth→n8n] No n8n credential type for '{}' — skipping",
+                service_id
+            );
+            return;
+        }
+    };
+
+    // Get the OAuth config for client_id / client_secret
+    // Google services all share the same config; other services
+    // may not have shipped credentials but could still have n8n types.
+    let (client_id, client_secret) = match get_oauth_config(service_id) {
+        Some(config) => (
+            config.effective_client_id().to_string(),
+            config
+                .effective_client_secret()
+                .unwrap_or_default()
+                .to_string(),
+        ),
+        None => {
+            info!(
+                "[oauth→n8n] No OAuth config for '{}' — skipping n8n bridge",
+                service_id
+            );
+            return;
+        }
+    };
+
+    // Get n8n endpoint
+    let (base_url, api_key) = match get_n8n_endpoint(app_handle) {
+        Ok(ep) => ep,
+        Err(e) => {
+            info!(
+                "[oauth→n8n] n8n not available for '{}': {} — skipping",
+                service_id, e
+            );
+            return;
+        }
+    };
+    let base = base_url.trim_end_matches('/');
+
+    // Build the n8n credential data structure.
+    // n8n OAuth2 credentials expect: clientId, clientSecret, accessToken,
+    // refreshToken, and an oauthTokenData object.
+    let credential_data = serde_json::json!({
+        "clientId": client_id,
+        "clientSecret": client_secret,
+        "accessToken": tokens.access_token,
+        "refreshToken": tokens.refresh_token.as_deref().unwrap_or(""),
+        "oauthTokenData": {
+            "access_token": tokens.access_token,
+            "refresh_token": tokens.refresh_token.as_deref().unwrap_or(""),
+            "token_type": tokens.token_type,
+            "scope": tokens.scope.as_deref().unwrap_or(""),
+        }
+    });
+
+    let credential_name = format!("OpenPawz — {}", service_id);
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("[oauth→n8n] HTTP client error: {}", e);
+            return;
+        }
+    };
+
+    // Check if we already have a credential with this name (update vs create)
+    let existing_id = find_n8n_credential(&client, base, &api_key, &credential_name).await;
+
+    let cred_result = if let Some(cred_id) = existing_id {
+        // Update existing credential with fresh tokens
+        info!(
+            "[oauth→n8n] Updating existing n8n credential {} for '{}'",
+            cred_id, service_id
+        );
+        let payload = serde_json::json!({
+            "name": credential_name,
+            "type": n8n_cred_type,
+            "data": credential_data,
+        });
+        client
+            .patch(format!("{}/api/v1/credentials/{}", base, cred_id))
+            .header("X-N8N-API-KEY", &api_key)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+    } else {
+        // Create new credential
+        info!(
+            "[oauth→n8n] Creating n8n credential for '{}' (type: {})",
+            service_id, n8n_cred_type
+        );
+        let payload = serde_json::json!({
+            "name": credential_name,
+            "type": n8n_cred_type,
+            "data": credential_data,
+        });
+        client
+            .post(format!("{}/api/v1/credentials", base))
+            .header("X-N8N-API-KEY", &api_key)
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+    };
+
+    match cred_result {
+        Ok(resp) if resp.status().is_success() => {
+            info!(
+                "[oauth→n8n] Credential '{}' provisioned in n8n",
+                credential_name
+            );
+        }
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            warn!(
+                "[oauth→n8n] Credential creation returned HTTP {}: {}",
+                status, body
+            );
+            // Continue regardless — MCP workflow deploy might still work
+            // if credential already existed from a previous session.
+        }
+        Err(e) => {
+            warn!("[oauth→n8n] Credential request failed: {}", e);
+            return;
+        }
+    }
+
+    // Deploy MCP workflow for this service so the agent discovers the tools.
+    // Uses the same function the integrations hub uses.
+    if let Some((node_type, service_name)) = oauth_service_to_n8n_node(service_id) {
+        match super::n8n::engine_n8n_deploy_mcp_workflow(
+            app_handle.clone(),
+            service_id.to_string(),
+            service_name.to_string(),
+            node_type.to_string(),
+        )
+        .await
+        {
+            Ok(wf_id) => {
+                info!(
+                    "[oauth→n8n] MCP workflow deployed for '{}' (id={})",
+                    service_id, wf_id
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "[oauth→n8n] MCP workflow deploy failed for '{}': {}",
+                    service_id, e
+                );
+            }
+        }
+    }
+}
+
+/// Find an existing n8n credential by name.
+async fn find_n8n_credential(
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key: &str,
+    name: &str,
+) -> Option<String> {
+    let resp = client
+        .get(format!("{}/api/v1/credentials", base_url))
+        .header("X-N8N-API-KEY", api_key)
+        .send()
+        .await
+        .ok()?;
+
+    if !resp.status().is_success() {
+        return None;
+    }
+
+    let body: serde_json::Value = resp.json().await.ok()?;
+
+    // n8n returns either { data: [...] } or just [...]
+    let creds = body["data"].as_array().or_else(|| body.as_array())?;
+    for cred in creds {
+        if cred["name"].as_str() == Some(name) {
+            // Handle numeric or string id
+            if let Some(n) = cred["id"].as_u64() {
+                return Some(n.to_string());
+            }
+            return cred["id"].as_str().map(|s| s.to_string());
+        }
+    }
+    None
+}
+
 // ── Background Token Refresh ─────────────────────────────────────
 
 /// Background task that periodically checks all stored OAuth tokens
@@ -703,6 +953,17 @@ pub async fn oauth_token_refresh_loop(app_handle: tauri::AppHandle) {
                         &new_tokens.access_token,
                         &app_handle,
                     );
+
+                    // Update n8n credential with refreshed tokens
+                    // (no workflow deploy needed — already exists)
+                    {
+                        let sid = service_id.to_string();
+                        let tok = new_tokens.clone();
+                        let app = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            provision_oauth_to_n8n(&sid, &tok, &app).await;
+                        });
+                    }
 
                     refreshed += 1;
                     log::info!(

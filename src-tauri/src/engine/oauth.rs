@@ -432,6 +432,9 @@ pub async fn start_rfc7591_flow(
 /// OAuth through n8n's built-in credential system.
 pub fn get_n8n_oauth_type(service_id: &str) -> Option<&'static str> {
     match service_id {
+        // Google services — all share the same OAuth credential in n8n
+        "google" | "gmail" | "google-drive" | "google-calendar" | "google-sheets"
+        | "google-docs" => Some("googleOAuth2Api"),
         "hubspot" => Some("hubspotOAuth2Api"),
         "salesforce" => Some("salesforceOAuth2Api"),
         "jira" => Some("jiraOAuth2Api"),
