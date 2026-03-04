@@ -90,6 +90,7 @@ export function mountInbox(): void {
     onDelete: handleDelete,
     onClear: handleClear,
     onCompact: handleCompact,
+    onClose: handleToggleSidebar,
     onSearch: handleSearchInConversation,
   });
 
@@ -102,21 +103,6 @@ export function mountInbox(): void {
   layout.appendChild(_list.el);
   layout.appendChild(_thread.el);
   layout.appendChild(_sidebar.el);
-
-  // Edge-tab expand buttons (visible when respective panel is collapsed)
-  const expandConvlist = document.createElement('button');
-  expandConvlist.className = 'inbox-edge-tab inbox-edge-tab-left';
-  expandConvlist.title = 'Show conversations';
-  expandConvlist.innerHTML = `<span class="ms">left_panel_open</span>`;
-  expandConvlist.addEventListener('click', handleToggleConvlist);
-  layout.appendChild(expandConvlist);
-
-  const expandSidebar = document.createElement('button');
-  expandSidebar.className = 'inbox-edge-tab inbox-edge-tab-right';
-  expandSidebar.title = 'Show sidebar';
-  expandSidebar.innerHTML = `<span class="ms">right_panel_open</span>`;
-  expandSidebar.addEventListener('click', handleToggleSidebar);
-  layout.appendChild(expandSidebar);
 
   // Move existing chat DOM elements into the thread body
   const chatMessages = $('chat-messages');

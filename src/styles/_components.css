@@ -170,15 +170,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 50%;
-  transition: all var(--transition-fast);
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
   flex-shrink: 0;
 }
 .chat-attach-btn:hover {
@@ -198,15 +200,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   padding: 0;
   background: none;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
   border-radius: 50%;
-  transition: all var(--transition-fast);
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
   flex-shrink: 0;
 }
 .chat-talk-btn:hover {
@@ -241,9 +245,9 @@
   gap: 8px;
   padding: 10px 14px;
   background: var(--bg-secondary);
-  border: 1.5px solid var(--border);
+  border: 1px solid var(--border);
   border-bottom: none;
-  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  border-radius: 16px 16px 0 0;
   animation: attachSlideUp 200ms ease;
 }
 @keyframes attachSlideUp {

@@ -814,3 +814,8 @@
   border-color: var(--accent-muted);
   color: var(--accent);
 }
+
+/* ── Push dock above the chat input when chat view is visible ── */
+:root:has(#chat-view.active) .agent-dock {
+  bottom: 80px;
+}

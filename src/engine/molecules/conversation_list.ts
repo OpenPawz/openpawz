@@ -80,10 +80,10 @@ export function createConversationList(
   title.className = 'inbox-conv-title';
   title.textContent = 'Agents';
 
-  // Collapse toggle button (hides this panel)
+  // Close button (hides this panel — uses panel icon for consistency)
   const collapseBtn = document.createElement('button');
   collapseBtn.className = 'inbox-conv-collapse-btn';
-  collapseBtn.title = 'Collapse panel';
+  collapseBtn.title = 'Close panel';
   collapseBtn.innerHTML = `<span class="ms" style="font-size:16px">left_panel_close</span>`;
   collapseBtn.addEventListener('click', () => callbacks.onToggle?.());
 
