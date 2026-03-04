@@ -260,6 +260,24 @@ impl WorkingMemory {
         }
     }
 
+    /// Clear all momentum embeddings.
+    ///
+    /// Called when a topic switch or user override is detected to prevent
+    /// old-topic recall bias. The next gated_search will use the raw query
+    /// without trajectory blending, ensuring recalled context serves the
+    /// new topic instead of reinforcing the old one.
+    pub fn clear_momentum(&mut self) {
+        let had = self.momentum_embeddings.len();
+        self.momentum_embeddings.clear();
+        if had > 0 {
+            log::info!(
+                "[working_memory] Agent '{}': cleared {} momentum embeddings (topic switch)",
+                self.agent_id,
+                had
+            );
+        }
+    }
+
     /// Get the momentum embeddings (for trajectory-aware recall).
     pub fn momentum(&self) -> &[Vec<f32>] {
         &self.momentum_embeddings
@@ -529,5 +547,42 @@ mod tests {
         wm.clear();
         assert!(wm.is_empty());
         assert_eq!(wm.token_usage(), 0);
+    }
+
+    #[test]
+    fn test_clear_momentum() {
+        let mut wm = make_wm(10_000);
+        wm.push_momentum(vec![1.0, 2.0, 3.0]);
+        wm.push_momentum(vec![4.0, 5.0, 6.0]);
+        assert_eq!(wm.momentum().len(), 2);
+
+        wm.clear_momentum();
+        assert!(
+            wm.momentum().is_empty(),
+            "clear_momentum should remove all embeddings"
+        );
+
+        // Slots should be unaffected
+        wm.insert_recall("m1".into(), "data".into(), 0.5);
+        wm.clear_momentum();
+        assert_eq!(wm.slot_count(), 1, "clear_momentum should not affect slots");
+    }
+
+    #[test]
+    fn test_clear_momentum_on_empty() {
+        let mut wm = make_wm(10_000);
+        assert!(wm.momentum().is_empty());
+        wm.clear_momentum(); // should not panic
+        assert!(wm.momentum().is_empty());
+    }
+
+    #[test]
+    fn test_push_momentum_after_clear() {
+        let mut wm = make_wm(10_000);
+        wm.push_momentum(vec![1.0]);
+        wm.clear_momentum();
+        wm.push_momentum(vec![9.0]);
+        assert_eq!(wm.momentum().len(), 1);
+        assert_eq!(wm.momentum()[0], vec![9.0]);
     }
 }

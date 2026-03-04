@@ -12,7 +12,7 @@ use crate::atoms::engram_types::{
     MemoryScope, MemorySource, ProceduralMemory, ProceduralStep, SemanticMemory, TieredContent,
     TrustScore, WorkingMemorySnapshot,
 };
-use crate::atoms::error::EngineResult;
+use crate::atoms::error::{EngineError, EngineResult};
 use rusqlite::params;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1151,37 +1151,96 @@ impl SessionStore {
 
 impl SessionStore {
     /// Save a working memory snapshot for an agent.
+    ///
+    /// Computes HMAC-SHA256 over `agent_id || snapshot_json` and stores it
+    /// alongside the data. On load, the HMAC is verified to catch tampering
+    /// or agent-ID reassignment.
     pub fn engram_save_snapshot(&self, snapshot: &WorkingMemorySnapshot) -> EngineResult<()> {
+        use crate::engine::engram::encryption::compute_snapshot_hmac;
+
         let conn = self.conn.lock();
         let json = serde_json::to_string(snapshot).unwrap_or_else(|_| "{}".into());
         let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let slot_count = snapshot.slots.len() as i32;
         let total_tokens: i32 = snapshot.slots.iter().map(|s| s.token_cost as i32).sum();
 
+        // Compute integrity HMAC — covers agent_id + snapshot JSON.
+        // If keychain is unavailable (e.g. CI), we store NULL and log a warning.
+        let hmac = match compute_snapshot_hmac(&snapshot.agent_id, &json) {
+            Ok(h) => Some(h),
+            Err(e) => {
+                log::warn!(
+                    "[engram] Could not compute snapshot HMAC (keychain unavailable?): {}",
+                    e
+                );
+                None
+            }
+        };
+
         conn.execute(
             "INSERT OR REPLACE INTO working_memory_snapshots
-             (agent_id, snapshot_json, slot_count, total_tokens, saved_at)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![snapshot.agent_id, json, slot_count, total_tokens, now],
+             (agent_id, snapshot_json, snapshot_hmac, slot_count, total_tokens, saved_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![snapshot.agent_id, json, hmac, slot_count, total_tokens, now],
         )?;
         Ok(())
     }
 
     /// Load the latest working memory snapshot for an agent.
+    ///
+    /// Verifies the HMAC before returning. If the HMAC is missing (legacy
+    /// snapshot) a warning is logged but the snapshot is still returned.
+    /// If the HMAC is present and INVALID, the snapshot is rejected.
     pub fn engram_load_snapshot(
         &self,
         agent_id: &str,
     ) -> EngineResult<Option<WorkingMemorySnapshot>> {
+        use crate::engine::engram::encryption::verify_snapshot_hmac;
+
         let conn = self.conn.lock();
-        let mut stmt =
-            conn.prepare("SELECT snapshot_json FROM working_memory_snapshots WHERE agent_id = ?1")?;
+        let mut stmt = conn.prepare(
+            "SELECT snapshot_json, snapshot_hmac FROM working_memory_snapshots WHERE agent_id = ?1",
+        )?;
 
         let result = stmt
-            .query_row(params![agent_id], |row| row.get::<_, String>(0))
+            .query_row(params![agent_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+            })
             .optional()?;
 
         match result {
-            Some(json) => {
+            Some((json, hmac_opt)) => {
+                // Verify integrity if HMAC is present
+                if let Some(ref stored_hmac) = hmac_opt {
+                    match verify_snapshot_hmac(agent_id, &json, stored_hmac) {
+                        Ok(true) => { /* HMAC valid — proceed */ }
+                        Ok(false) => {
+                            log::error!(
+                                "[engram] Snapshot HMAC verification FAILED for agent '{}' — \
+                                 data may have been tampered with. Rejecting snapshot.",
+                                agent_id
+                            );
+                            return Err(EngineError::Other(format!(
+                                "Snapshot integrity check failed for agent '{}'",
+                                agent_id
+                            )));
+                        }
+                        Err(e) => {
+                            log::warn!(
+                                "[engram] Could not verify snapshot HMAC (keychain unavailable?): {}",
+                                e
+                            );
+                            // Fail open only if keychain is genuinely unavailable
+                        }
+                    }
+                } else {
+                    log::warn!(
+                        "[engram] Snapshot for agent '{}' has no HMAC (legacy). \
+                         Re-save to add integrity protection.",
+                        agent_id
+                    );
+                }
+
                 let snapshot: WorkingMemorySnapshot =
                     serde_json::from_str(&json).unwrap_or_default();
                 Ok(Some(snapshot))

@@ -282,6 +282,8 @@ async fn execute_memory_search(
     // Search via Engram gated search (§55) — intent-aware, quality-gated retrieval
     let scope = crate::atoms::engram_types::MemoryScope::agent(agent_id);
     let search_config = crate::atoms::engram_types::MemorySearchConfig::default();
+    // Issue a signed capability token for read-path scope verification (§43.4)
+    let read_cap = crate::engine::engram::memory_bus::issue_read_capability(agent_id).ok();
     let gated_result = engram::gated_search::gated_search(
         &state.store,
         &engram::gated_search::GatedSearchRequest {
@@ -292,6 +294,7 @@ async fn execute_memory_search(
             budget_tokens: 0, // no token budget limit for tool search
             momentum: None,   // no momentum embeddings
             model: None,      // tool search — conservative injection limits
+            capability: read_cap.as_ref(),
         },
     )
     .await?;
@@ -766,6 +769,7 @@ mod tests {
             token_cost: 10,
             category: "preference".to_string(),
             created_at: "2025-01-01T00:00:00Z".to_string(),
+            agent_id: String::new(),
         };
 
         // This is the exact format string from execute_memory_search

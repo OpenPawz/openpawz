@@ -102,6 +102,7 @@ bs58 = "0.5"
 # ── Mutex safety (no poisoning, faster, const-constructible) ─
 parking_lot = "0.12"
 rustls-pemfile = "2"
+hkdf = "0.12"
 
 # ── Tests: single binary to avoid OOM on codespace ──────────
 [[test]]

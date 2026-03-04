@@ -4345,6 +4345,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "headless_chrome",
+ "hkdf",
  "hmac",
  "jsonwebtoken",
  "k256",

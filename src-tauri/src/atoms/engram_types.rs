@@ -587,6 +587,8 @@ pub struct RetrievedMemory {
     pub category: String,
     /// When this memory was created.
     pub created_at: String,
+    /// Agent that owns this memory. Used for per-agent key derivation on decrypt.
+    pub agent_id: String,
 }
 
 /// Which type of memory store a retrieved result came from.

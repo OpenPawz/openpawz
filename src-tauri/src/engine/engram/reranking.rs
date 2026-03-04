@@ -274,6 +274,7 @@ mod tests {
             token_cost: content.len() / 4,
             category: "general".into(),
             created_at: String::new(),
+            agent_id: String::new(),
         }
     }
 

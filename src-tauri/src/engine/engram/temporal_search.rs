@@ -394,6 +394,7 @@ fn episodic_to_retrieved(mem: &EpisodicMemory, relevance: f32) -> RetrievedMemor
         },
         category: mem.category.clone(),
         created_at: mem.created_at.clone(),
+        agent_id: mem.agent_id.clone(),
     }
 }
 

@@ -244,6 +244,47 @@ impl EmbeddingClient {
         Ok(vec.len())
     }
 
+    /// Send a classification prompt to the LLM via Ollama generate endpoint.
+    /// Used for Layer 2 PII scanning during consolidation.
+    /// Returns the raw text response from the model.
+    pub async fn classify_text(&self, prompt: &str) -> EngineResult<String> {
+        // Try Ollama /api/generate endpoint
+        let url = format!("{}/api/generate", self.base_url.trim_end_matches('/'));
+        let body = json!({
+            "model": self.model,
+            "prompt": prompt,
+            "stream": false,
+            "options": {
+                "temperature": 0.0,
+                "num_predict": 256,
+            }
+        });
+
+        let resp = self
+            .client
+            .post(&url)
+            .json(&body)
+            .timeout(std::time::Duration::from_secs(30))
+            .send()
+            .await
+            .map_err(|e| format!("LLM classify request failed: {}", e))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!("LLM classify {} — {}", status, text).into());
+        }
+
+        let v: Value = resp.json().await?;
+        let response_text = v["response"].as_str().unwrap_or("").trim().to_string();
+
+        if response_text.is_empty() {
+            return Err("Empty response from LLM classify".into());
+        }
+
+        Ok(response_text)
+    }
+
     /// Check if Ollama is reachable.
     pub async fn check_ollama_running(&self) -> EngineResult<bool> {
         let url = format!("{}/api/tags", self.base_url.trim_end_matches('/'));

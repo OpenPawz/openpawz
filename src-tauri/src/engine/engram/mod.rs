@@ -30,6 +30,7 @@ pub mod abstraction_tree;
 pub mod bridge;
 pub mod cognitive_event;
 pub mod cognitive_state;
+pub mod community_detection;
 pub mod consolidation;
 pub mod context_builder;
 pub mod dream_replay;
@@ -56,6 +57,9 @@ pub mod working_memory;
 pub use abstraction_tree::{build_tree, pack_with_fallback, select_level};
 pub use cognitive_event::CognitiveEventBus;
 pub use cognitive_state::CognitiveState;
+pub use community_detection::{
+    communities_to_domains, detect_communities, Community, CommunityDetectionReport,
+};
 pub use consolidation::{run_consolidation, ConsolidationReport, GapKind, KnowledgeGap};
 pub use context_builder::{AssembledContext, BudgetReport, ContextBuilder};
 pub use dream_replay::run_replay;
@@ -63,17 +67,22 @@ pub use emotional_memory::{
     affect_congruent_boost, affect_to_emotional_context, modulated_encoding_strength,
     modulated_half_life, score_affect,
 };
+pub use encryption::get_platform_capability_key;
+pub use encryption::{apply_pii_upgrades, llm_pii_scan, LlmPiiScanReport};
+pub use encryption::{rekey_all_memories, should_rotate_keys, RekeyReport};
 pub use entity_tracking::{extract_entities, merge_entities, process_memory_entities};
 pub use gated_search::{
     gate_decision, gated_search, DeferReason, GateDecision, GatedSearchRequest, GatedSearchResult,
 };
 pub use graph::{
-    apply_decay, garbage_collect, memory_stats, relate, search, store_episodic_dedup,
-    store_procedural, store_semantic_dedup, EngramStats,
+    apply_decay, boost_fast_strength, boost_slow_strength, garbage_collect, memory_stats, relate,
+    search, store_episodic_dedup, store_procedural, store_semantic_dedup, EngramStats,
 };
 pub use hybrid_search::resolve_hybrid_weight;
 pub use intent_classifier::{classify_intent, intent_weights};
-pub use memory_bus::{AgentCapability, MemoryBus};
+pub use memory_bus::{
+    issue_read_capability, issue_scoped_capability, verify_read_scope, AgentCapability, MemoryBus,
+};
 pub use meta_cognition::{
     assess_query_confidence, build_reflection_prompt, rebuild_confidence_map,
 };

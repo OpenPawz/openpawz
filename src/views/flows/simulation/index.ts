@@ -91,3 +91,14 @@ export {
   allStressScenarios,
   stressTestSuite,
 } from './simulation-stress-scenarios';
+
+// Pre-flight safety report
+export {
+  generatePreflightReport,
+  renderPreflightReport,
+  type PreflightReport,
+  type PreflightOptions,
+  type SafetyFinding,
+  type RiskLevel,
+  type CostEstimate,
+} from './preflight';

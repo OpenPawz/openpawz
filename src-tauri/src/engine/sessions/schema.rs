@@ -437,6 +437,9 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
     // ── Engram: Three-tier memory system tables ─────────────────────
     crate::engine::engram::schema::run_engram_migrations(conn)?;
 
+    // ── Unified Signed Audit Log ────────────────────────────────────
+    conn.execute_batch(crate::engine::audit::UNIFIED_AUDIT_SCHEMA)?;
+
     Ok(())
 }
 

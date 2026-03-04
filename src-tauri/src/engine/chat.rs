@@ -645,6 +645,49 @@ pub fn detect_response_loop(messages: &mut Vec<Message>) {
                     similarity * 100.0
                 );
                 inject_loop_break(messages, prior_redirect_count);
+                return;
+            }
+
+            // ── Check 3c: unidirectional topic ignorance (§59.3) ──────────
+            // The model's response contains NONE of the user's key entities
+            // AND the model's response talks about a clearly different domain.
+            // This catches the case where the model gives UNIQUE responses
+            // (low inter-response similarity) but to the WRONG topic.
+            //
+            // Example: User says "set up my X developer account", model
+            // responds with a fresh (non-repeated) response about building
+            // a hit list of Twitter accounts to follow — unique content, wrong topic.
+            //
+            // Guard: Only fire when there's been at least one prior redirect
+            // (either from check 3a/3b or from detect_user_override). This avoids
+            // false positives on the FIRST response to a new topic, where the model
+            // simply hasn't had a chance to respond yet.
+            if prior_redirect_count >= 1 && topic_ratio == 0.0 && user_keywords.len() >= 3 {
+                // Extract key entities from the model's last response and the
+                // user's message. If the model's entities are completely disjoint
+                // from the user's, it's talking about a different topic.
+                let asst_words: Vec<&str> = a
+                    .split_whitespace()
+                    .filter(|w| w.len() > 3 && !stop_words.contains(*w))
+                    .collect();
+                let user_in_asst = user_keywords
+                    .iter()
+                    .filter(|uk| {
+                        asst_words
+                            .iter()
+                            .any(|aw| aw.contains(*uk) || uk.contains(aw))
+                    })
+                    .count();
+
+                if user_in_asst == 0 && asst_words.len() >= 5 {
+                    warn!(
+                        "[engine] Unidirectional topic ignorance: model response has 0 overlap \
+                        with user's {} keywords despite {} prior redirects",
+                        user_keywords.len(),
+                        prior_redirect_count
+                    );
+                    inject_topic_redirect(messages, prior_redirect_count);
+                }
             }
         }
     }
@@ -765,6 +808,238 @@ fn inject_topic_redirect(messages: &mut Vec<Message>, prior_redirect_count: usiz
         tool_call_id: None,
         name: None,
     });
+}
+
+// ── Attachment processor ───────────────────────────────────────────────────────
+
+// ── User-override detector (§59.2) ────────────────────────────────────────────
+
+/// Detect explicit user commands to stop the current behavior and refocus.
+///
+/// Catches phrases like:
+///   - "stop", "STOP", "PAWZ stop"
+///   - "focus on my question", "focus on what I said"
+///   - "I asked you to...", "I'm asking about..."
+///   - "that's not what I asked", "not what I said"
+///   - "new topic", "change the subject", "switch to..."
+///   - "ignore that", "forget about that", "drop it"
+///   - "listen to me", "pay attention", "I am in control"
+///
+/// When detected, injects a HARD system redirect that is stronger than the
+/// statistical loop-detection messages. Returns `true` if an override was
+/// detected (callers should clear working memory momentum).
+///
+/// **Design rule:** We only fire on EXPLICIT commands — not inferred intent.
+/// This avoids false positives on normal conversation. The user must clearly
+/// express that the agent is misbehaving.
+pub fn detect_user_override(messages: &mut Vec<Message>) -> bool {
+    let last_user_text = match messages
+        .iter()
+        .rev()
+        .find(|m| m.role == Role::User)
+        .map(|m| m.content.as_text_ref().to_string())
+    {
+        Some(t) => t,
+        None => return false,
+    };
+
+    let lower = last_user_text.to_lowercase();
+
+    // ── Phase 1: explicit stop / control assertions ────────────────────
+    let has_stop_command = is_user_override_phrase(&lower);
+
+    if !has_stop_command {
+        return false;
+    }
+
+    // Count prior override redirects for escalation
+    let prior_override_count = messages
+        .iter()
+        .filter(|m| {
+            m.role == Role::System
+                && (m.content.as_text_ref().contains("USER OVERRIDE")
+                    || m.content.as_text_ref().contains("USER COMMAND"))
+        })
+        .count();
+
+    let redirect =
+        if prior_override_count >= 2 {
+            format!(
+            "🚨 USER COMMAND (override #{}) — The user has EXPLICITLY told you {times} to stop \
+            your current behavior. You MUST comply NOW.\n\n\
+            The user said: >>> {} <<<\n\n\
+            RULES:\n\
+            1. STOP all current task execution immediately\n\
+            2. Do NOT continue any previous topic or task\n\
+            3. Read ONLY the user's message above\n\
+            4. Respond ONLY to what they are asking RIGHT NOW\n\
+            5. If they are giving you a new task, start it from scratch\n\
+            6. Acknowledge that you heard them before proceeding",
+            prior_override_count + 1,
+            &last_user_text[..last_user_text.len().min(500)],
+            times = if prior_override_count == 2 { "multiple times" } else { "repeatedly" },
+        )
+        } else if prior_override_count == 1 {
+            format!(
+            "⚠️ USER OVERRIDE (2nd time): The user is EXPLICITLY redirecting you. They said:\n\n\
+            >>> {} <<<\n\n\
+            You ignored them once already. STOP your current task. Address ONLY what the user \
+            just said. Do NOT continue the previous topic. Acknowledge the user's control.",
+            &last_user_text[..last_user_text.len().min(500)]
+        )
+        } else {
+            format!(
+            "⚠️ USER OVERRIDE: The user is explicitly redirecting the conversation. They said:\n\n\
+            >>> {} <<<\n\n\
+            STOP your current task and respond ONLY to this message. The user is in control — \
+            follow their direction immediately. Do NOT continue the previous topic unless they \
+            explicitly ask you to return to it.",
+            &last_user_text[..last_user_text.len().min(500)]
+        )
+        };
+
+    warn!(
+        "[engine] User override detected (escalation level {}): \"{}\"",
+        prior_override_count,
+        &last_user_text[..last_user_text.len().min(80)]
+    );
+
+    messages.push(Message {
+        role: Role::System,
+        content: MessageContent::Text(redirect),
+        tool_calls: None,
+        tool_call_id: None,
+        name: None,
+    });
+
+    true
+}
+
+/// Check if a lowercased user message contains an explicit override command.
+///
+/// Split out as a standalone function for unit testing.
+pub fn is_user_override_phrase(lower: &str) -> bool {
+    // ── Exact stop commands ────────────────────────────────────────────
+    let stop_patterns = [
+        "stop",
+        "pawz stop",
+        "paw stop",
+        "pawz, stop",
+        "stop it",
+        "stop that",
+        "cut it out",
+        "enough",
+        "quit it",
+    ];
+    // Check if message starts with or IS a stop command
+    for pat in &stop_patterns {
+        if lower.trim() == *pat
+            || lower.starts_with(&format!("{} ", pat))
+            || lower.starts_with(&format!("{}!", pat))
+        {
+            return true;
+        }
+    }
+
+    // ── Focus / attention commands ─────────────────────────────────────
+    let focus_phrases = [
+        "focus on my",
+        "focus on what i",
+        "answer my question",
+        "answer my actual",
+        "answer what i asked",
+        "respond to what i",
+        "respond to my",
+        "listen to me",
+        "pay attention",
+        "i am in control",
+        "i'm in control",
+        "im in control",
+    ];
+    for phrase in &focus_phrases {
+        if lower.contains(phrase) {
+            return true;
+        }
+    }
+
+    // ── Correction / redirection commands ──────────────────────────────
+    let correction_phrases = [
+        "not what i asked",
+        "that's not what i",
+        "thats not what i",
+        "didn't ask you to",
+        "i didn't ask",
+        "i did not ask",
+        "i asked you to",
+        "i'm asking about",
+        "i was asking about",
+        "i asked about",
+        "i'm talking about",
+        "i want to talk about",
+        "i wanted to talk about",
+    ];
+    for phrase in &correction_phrases {
+        if lower.contains(phrase) {
+            return true;
+        }
+    }
+
+    // ── Topic switch commands ──────────────────────────────────────────
+    let switch_phrases = [
+        "new topic",
+        "change the subject",
+        "change the topic",
+        "switch to",
+        "move on to",
+        "let's move on",
+        "lets move on",
+        "forget about that",
+        "forget that",
+        "drop it",
+        "drop that",
+        "never mind that",
+        "nevermind that",
+        "ignore that",
+        "skip that",
+    ];
+    for phrase in &switch_phrases {
+        if lower.contains(phrase) {
+            return true;
+        }
+    }
+
+    // ── Frustration signals with instruction context ───────────────────
+    // Only fire on frustration + instruction combo, not standalone frustration
+    let has_frustration = lower.contains("not listening")
+        || lower.contains("you're ignoring")
+        || lower.contains("youre ignoring")
+        || lower.contains("you keep")
+        || lower.contains("you're not")
+        || lower.contains("stop ignoring")
+        || lower.contains("why are you")
+        || lower.contains("why aren't you");
+    let has_instruction_ref = lower.contains("my instruction")
+        || lower.contains("my question")
+        || lower.contains("my request")
+        || lower.contains("what i said")
+        || lower.contains("what i asked")
+        || lower.contains("the task")
+        || lower.contains("focus on");
+    if has_frustration && has_instruction_ref {
+        return true;
+    }
+
+    // ── Explicit control assertion ─────────────────────────────────────
+    // "Focus on my instructions not the tasks" pattern from user's screenshot
+    if (lower.contains("focus on") || lower.contains("follow"))
+        && (lower.contains("instruction")
+            || lower.contains("direction")
+            || lower.contains("what i"))
+    {
+        return true;
+    }
+
+    false
 }
 
 // ── Attachment processor ───────────────────────────────────────────────────────

@@ -573,6 +573,13 @@ pub fn run() {
             commands::action_log::engine_action_log_list,
             commands::action_log::engine_action_log_stats,
             commands::action_log::engine_action_log_clear,
+            // ── Unified Audit Log ──
+            commands::audit::engine_audit_query,
+            commands::audit::engine_audit_stats,
+            commands::audit::engine_audit_verify_chain,
+            // ── Compliance Export ──
+            commands::export::engine_compliance_export,
+            commands::export::engine_compliance_export_to_file,
             // ── Tool Bridge & Remapping (Phase 5) ──
             commands::tool_bridge::engine_tools_remap,
             commands::tool_bridge::engine_tools_by_service,

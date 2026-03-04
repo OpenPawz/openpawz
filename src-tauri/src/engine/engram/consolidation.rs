@@ -80,6 +80,41 @@ pub async fn run_consolidation(
         enrich_embeddings(store, &mut enriched, client).await;
     }
 
+    // ── 2.5. LLM-assisted PII scan (Layer 2) ────────────────────────────
+    // Run LLM PII detection on cleartext memories to catch context-dependent
+    // PII that the regex patterns (Layer 1) missed.
+    let mut pii_upgrades_applied = 0usize;
+    if let Some(client) = embedding_client {
+        let cleartext_memories: Vec<(String, String)> = enriched
+            .iter()
+            .filter(|m| !super::encryption::is_encrypted(&m.content.full))
+            .map(|m| (m.id.clone(), m.content.full.clone()))
+            .collect();
+
+        if !cleartext_memories.is_empty() {
+            let (pii_report, upgrades) =
+                super::encryption::llm_pii_scan(&cleartext_memories, client).await;
+
+            if !upgrades.is_empty() {
+                match super::encryption::apply_pii_upgrades(store, &upgrades) {
+                    Ok(count) => pii_upgrades_applied = count,
+                    Err(e) => warn!(
+                        "[engram:consolidation] PII upgrade application failed: {}",
+                        e
+                    ),
+                }
+            }
+
+            if pii_report.scanned > 0 {
+                info!(
+                    "[engram:consolidation] LLM PII scan: {} scanned, {} upgraded, {} errors",
+                    pii_report.scanned, pii_report.upgraded, pii_report.errors
+                );
+            }
+        }
+    }
+    report.pii_upgrades = pii_upgrades_applied;
+
     // ── 3. Cluster similar memories ──────────────────────────────────────
     let clusters = build_clusters(&enriched, threshold);
     report.clusters_formed = clusters.len();
@@ -146,22 +181,24 @@ pub async fn run_consolidation(
         "system",
         "system",
         Some(&format!(
-            "candidates={} clusters={} triples={} contradictions={} gaps={} metadata={}",
+            "candidates={} clusters={} triples={} contradictions={} gaps={} metadata={} pii_upgrades={}",
             report.candidates_found,
             report.clusters_formed,
             report.triples_created,
             report.contradictions_resolved,
             report.gaps_detected,
             report.metadata_enriched,
+            report.pii_upgrades,
         )),
     )?;
 
     info!(
-        "[engram:consolidation] Done — {} triples, {} contradictions, {} gaps, {} metadata",
+        "[engram:consolidation] Done — {} triples, {} contradictions, {} gaps, {} metadata, {} pii",
         report.triples_created,
         report.contradictions_resolved,
         report.gaps_detected,
-        report.metadata_enriched
+        report.metadata_enriched,
+        report.pii_upgrades,
     );
 
     Ok(report)
@@ -182,6 +219,8 @@ pub struct ConsolidationReport {
     pub gaps_detected: usize,
     /// How many memories had metadata extracted (§35.3).
     pub metadata_enriched: usize,
+    /// How many memories were upgraded by LLM PII scan (Layer 2).
+    pub pii_upgrades: usize,
     /// Detected knowledge gaps for injection into working memory (§4.5).
     pub gaps: Vec<KnowledgeGap>,
 }
@@ -534,6 +573,7 @@ async fn extract_and_store_semantics(
 }
 
 /// Link all cluster members to a semantic memory and mark them as Archived.
+/// Also boosts slow_strength (FadeMem Layer 2) for each consolidated memory.
 fn link_cluster_to_semantic(
     store: &SessionStore,
     cluster: &[EpisodicMemory],
@@ -549,6 +589,8 @@ fn link_cluster_to_semantic(
             created_at: now.clone(),
         })?;
         store.engram_set_consolidation_state(&mem.id, ConsolidationState::Archived)?;
+        // FadeMem: consolidation boosts slow_strength — well-consolidated memories survive longer
+        super::graph::boost_slow_strength(store, &mem.id).ok();
     }
     Ok(())
 }

@@ -394,8 +394,8 @@ impl MemoryBus {
                 continue;
             }
 
-            // Check visibility scope
-            if !is_visible_to(agent_id, &pub_mem.visibility) {
+            // Check visibility scope (with actual membership verification)
+            if !is_visible_to(agent_id, &pub_mem.source_agent, &pub_mem.visibility, store) {
                 report.filtered += 1;
                 continue;
             }
@@ -561,15 +561,170 @@ impl Default for MemoryBus {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// Read-Path Scope Verification (§43.4 defense-in-depth)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Determine the minimum `PublicationScope` rank required to satisfy a read at
+/// the given `MemoryScope`.
+///
+/// Mapping:
+///   - `global == true`                → Global (rank 4)
+///   - `project_id.is_some()` only     → Project (rank 3)
+///   - `squad_id.is_some()`            → Squad (rank 2)
+///   - otherwise (agent/channel/empty) → Targeted (rank 1)
+fn required_read_scope(scope: &MemoryScope) -> PublicationScope {
+    if scope.global {
+        PublicationScope::Global
+    } else if scope.project_id.is_some() && scope.agent_id.is_none() && scope.squad_id.is_none() {
+        PublicationScope::Project
+    } else if scope.squad_id.is_some() {
+        PublicationScope::Squad
+    } else {
+        PublicationScope::Targeted(vec![])
+    }
+}
+
+/// Verify that an agent's capability token authorizes the requested read scope.
+///
+/// This implements **signed scope-token enforcement on the read path** —
+/// the defense-in-depth layer recommended for the confused-deputy mitigation.
+/// Complements the existing:
+///   - Publish-side capability verification (`MemoryBus::publish()`)
+///   - Per-agent HKDF encryption (crypto-level isolation)
+///   - SQL WHERE scope filtering (`MemoryScope::to_sql_where()`)
+///
+/// Checks (in order):
+///   1. **Signature integrity**: HMAC-SHA256 against the platform key.
+///   2. **Identity binding**: the token's `agent_id` must match the requesting
+///      agent (prevents token replay across agents).
+///   3. **Scope ceiling**: the requested read scope must not exceed the token's
+///      `max_scope` (prevents scope escalation).
+///   4. **Membership verification** (squad/project scopes): confirms the agent
+///      actually belongs to the squad or project being queried.
+pub fn verify_read_scope(
+    cap: &AgentCapability,
+    scope: &MemoryScope,
+    requesting_agent_id: &str,
+    store: &SessionStore,
+    platform_key: &[u8],
+) -> EngineResult<()> {
+    // 1. Signature integrity
+    if !cap.verify(platform_key) {
+        warn!(
+            "[engram::read-scope] Invalid capability signature for agent '{}'",
+            requesting_agent_id
+        );
+        return Err(EngineError::Security(
+            "Invalid capability token signature on read path".into(),
+        ));
+    }
+
+    // 2. Identity binding — token must belong to the requesting agent
+    if cap.agent_id != requesting_agent_id {
+        warn!(
+            "[engram::read-scope] Token agent_id '{}' ≠ requesting agent '{}'",
+            cap.agent_id, requesting_agent_id
+        );
+        return Err(EngineError::Security(format!(
+            "Capability token agent mismatch: token='{}', requester='{}'",
+            cap.agent_id, requesting_agent_id
+        )));
+    }
+
+    // 3. Scope ceiling — requested read scope must be within the token's max_scope
+    let required = required_read_scope(scope);
+    if !scope_within(&required, &cap.max_scope) {
+        warn!(
+            "[engram::read-scope] Agent '{}' scope ceiling violation: required {:?}, max {:?}",
+            requesting_agent_id, required, cap.max_scope,
+        );
+        return Err(EngineError::Security(format!(
+            "Agent '{}' read scope exceeds capability ceiling",
+            requesting_agent_id
+        )));
+    }
+
+    // 4. Membership verification for squad/project scopes
+    //    Even if the token's ceiling allows it, the agent must actually be in
+    //    the specific squad/project being queried.
+    if let Some(ref squad_id) = scope.squad_id {
+        if !store.agent_in_squad(requesting_agent_id, squad_id) {
+            warn!(
+                "[engram::read-scope] Agent '{}' not in squad '{}'",
+                requesting_agent_id, squad_id
+            );
+            return Err(EngineError::Security(format!(
+                "Agent '{}' is not a member of squad '{}'",
+                requesting_agent_id, squad_id
+            )));
+        }
+    }
+    if let Some(ref project_id) = scope.project_id {
+        // Squad scopes already imply project membership check via squad check above,
+        // but verify project membership explicitly for project-only scopes.
+        if scope.squad_id.is_none() && !store.agent_in_project(requesting_agent_id, project_id) {
+            warn!(
+                "[engram::read-scope] Agent '{}' not in project '{}'",
+                requesting_agent_id, project_id
+            );
+            return Err(EngineError::Security(format!(
+                "Agent '{}' is not a member of project '{}'",
+                requesting_agent_id, project_id
+            )));
+        }
+    }
+
+    Ok(())
+}
+
+/// Issue a signed read capability token for an agent.
+///
+/// Convenience function that derives the platform key from the OS keychain
+/// and creates a default-scope `AgentCapability`. Callers that need restricted
+/// scope should use `AgentCapability::new()` directly with the platform key
+/// from `encryption::get_platform_capability_key()`.
+pub fn issue_read_capability(agent_id: &str) -> EngineResult<AgentCapability> {
+    let platform_key = super::encryption::get_platform_capability_key()?;
+    Ok(AgentCapability::default_for(agent_id, &platform_key))
+}
+
+/// Issue a scope-restricted read capability token.
+///
+/// The returned token limits the agent to reads at or below `max_scope`.
+pub fn issue_scoped_capability(
+    agent_id: &str,
+    max_scope: PublicationScope,
+) -> EngineResult<AgentCapability> {
+    let platform_key = super::encryption::get_platform_capability_key()?;
+    Ok(AgentCapability::new(
+        agent_id,
+        max_scope,
+        1.0,
+        true,
+        50,
+        &platform_key,
+    ))
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Helpers
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Check if a publication is visible to a given agent.
-fn is_visible_to(agent_id: &str, scope: &PublicationScope) -> bool {
+///
+/// Previously returned `true` for Project/Squad scopes without verifying
+/// membership — the "confused deputy" gap. Now queries the actual
+/// `squad_members` / `project_agents` tables via SessionStore.
+fn is_visible_to(
+    agent_id: &str,
+    source_agent: &str,
+    scope: &PublicationScope,
+    store: &SessionStore,
+) -> bool {
     match scope {
         PublicationScope::Global => true,
-        PublicationScope::Project => true, // All agents in same project
-        PublicationScope::Squad => true,   // All agents in same squad
+        PublicationScope::Project => store.agents_share_project(source_agent, agent_id),
+        PublicationScope::Squad => store.agents_share_squad(source_agent, agent_id),
         PublicationScope::Targeted(agents) => agents.iter().any(|a| a == agent_id),
     }
 }
@@ -678,8 +833,19 @@ fn resolve_contradiction_with_trust(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::sessions::schema_for_testing;
+    use parking_lot::Mutex;
+    use rusqlite::Connection;
 
     const TEST_PLATFORM_KEY: &[u8] = b"test-platform-key-for-hmac-256!!";
+
+    fn test_store() -> SessionStore {
+        let conn = Connection::open_in_memory().unwrap();
+        schema_for_testing(&conn);
+        SessionStore {
+            conn: Mutex::new(conn),
+        }
+    }
 
     fn make_cap(agent_id: &str) -> AgentCapability {
         AgentCapability::default_for(agent_id, TEST_PLATFORM_KEY)
@@ -1037,15 +1203,85 @@ mod tests {
 
     #[test]
     fn visibility_checks() {
-        assert!(is_visible_to("any", &PublicationScope::Global));
-        assert!(is_visible_to("any", &PublicationScope::Project));
+        let store = test_store();
+
+        // Global is always visible
+        assert!(is_visible_to(
+            "any",
+            "source",
+            &PublicationScope::Global,
+            &store
+        ));
+
+        // Project scope: agents NOT in same project → not visible
+        assert!(!is_visible_to(
+            "any",
+            "source",
+            &PublicationScope::Project,
+            &store
+        ));
+
+        // Squad scope: agents NOT in same squad → not visible
+        assert!(!is_visible_to(
+            "any",
+            "source",
+            &PublicationScope::Squad,
+            &store
+        ));
+
+        // Targeted: agent in list → visible
         assert!(is_visible_to(
             "agent-a",
-            &PublicationScope::Targeted(vec!["agent-a".to_string()])
+            "source",
+            &PublicationScope::Targeted(vec!["agent-a".to_string()]),
+            &store
         ));
+
+        // Targeted: agent NOT in list → not visible
         assert!(!is_visible_to(
             "agent-b",
-            &PublicationScope::Targeted(vec!["agent-a".to_string()])
+            "source",
+            &PublicationScope::Targeted(vec!["agent-a".to_string()]),
+            &store
+        ));
+
+        // Now add both agents to a squad and verify Squad scope works
+        use crate::engine::types::{Squad, SquadMember};
+        store
+            .create_squad(&Squad {
+                id: "squad-1".into(),
+                name: "Test Squad".into(),
+                goal: "test".into(),
+                status: "active".into(),
+                members: vec![
+                    SquadMember {
+                        agent_id: "agent-a".into(),
+                        role: "member".into(),
+                    },
+                    SquadMember {
+                        agent_id: "agent-b".into(),
+                        role: "member".into(),
+                    },
+                ],
+                created_at: String::new(),
+                updated_at: String::new(),
+            })
+            .unwrap();
+
+        // Squad scope: co-members → visible
+        assert!(is_visible_to(
+            "agent-a",
+            "agent-b",
+            &PublicationScope::Squad,
+            &store
+        ));
+
+        // Squad scope: non-member → still not visible
+        assert!(!is_visible_to(
+            "agent-c",
+            "agent-b",
+            &PublicationScope::Squad,
+            &store
         ));
     }
 
@@ -1249,5 +1485,247 @@ mod tests {
         // If someone adds publish_unchecked back, they must also update this test.
         // The absence of a call here IS the test — it compiles only when
         // publish_unchecked does not exist as a public method.
+    }
+
+    // ── Read-Path Scope Verification Tests ──────────────────────────────
+
+    #[test]
+    fn verify_read_scope_valid_agent_scope() {
+        let store = test_store();
+        let cap = make_cap("agent-a");
+        let scope = MemoryScope::agent("agent-a");
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(
+            result.is_ok(),
+            "Valid agent-scoped read should pass: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_invalid_signature() {
+        let store = test_store();
+        let mut cap = make_cap("agent-a");
+        cap.signature = vec![0u8; 32]; // tampered signature
+        let scope = MemoryScope::agent("agent-a");
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(result.is_err(), "Tampered signature must be rejected");
+        assert!(
+            format!("{:?}", result.err().unwrap()).contains("signature"),
+            "Error should mention signature"
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_agent_mismatch() {
+        let store = test_store();
+        let cap = make_cap("agent-a"); // token for agent-a
+        let scope = MemoryScope::agent("agent-b"); // scope for agent-b
+
+        // Requesting as agent-b but presenting agent-a's token
+        let result = verify_read_scope(&cap, &scope, "agent-b", &store, TEST_PLATFORM_KEY);
+        assert!(result.is_err(), "Token/agent mismatch must be rejected");
+        assert!(
+            format!("{:?}", result.err().unwrap()).contains("mismatch"),
+            "Error should mention mismatch"
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_ceiling_violation() {
+        let store = test_store();
+        // Agent with Squad-level ceiling tries to read global scope
+        let cap = make_restricted_cap("agent-a", PublicationScope::Squad);
+        let scope = MemoryScope::global();
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(
+            result.is_err(),
+            "Global read with Squad ceiling must be rejected"
+        );
+        assert!(
+            format!("{:?}", result.err().unwrap()).contains("ceiling"),
+            "Error should mention ceiling"
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_global_with_global_cap() {
+        let store = test_store();
+        let cap = make_cap("agent-a"); // default = Global ceiling
+        let scope = MemoryScope::global();
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(
+            result.is_ok(),
+            "Global read with Global cap should pass: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_squad_membership_required() {
+        use crate::atoms::engram_types as eat;
+        let store = test_store();
+        // Create a squad but DON'T add agent-a to it
+        let squad = crate::atoms::types::Squad {
+            id: "squad-1".into(),
+            name: "Test Squad".into(),
+            goal: "Test".into(),
+            status: "active".into(),
+            members: vec![], // no members
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        store.create_squad(&squad).unwrap();
+
+        let cap = make_cap("agent-a"); // Global ceiling
+        let scope = eat::MemoryScope {
+            squad_id: Some("squad-1".into()),
+            ..Default::default()
+        };
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(
+            result.is_err(),
+            "Squad read without membership must be rejected"
+        );
+        assert!(
+            format!("{:?}", result.err().unwrap()).contains("not a member"),
+            "Error should mention membership"
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_squad_member_passes() {
+        use crate::atoms::engram_types as eat;
+        let store = test_store();
+        // Create a squad WITH agent-a as member
+        let squad = crate::atoms::types::Squad {
+            id: "squad-2".into(),
+            name: "Test Squad 2".into(),
+            goal: "Test".into(),
+            status: "active".into(),
+            members: vec![crate::atoms::types::SquadMember {
+                agent_id: "agent-a".into(),
+                role: "member".into(),
+            }],
+            created_at: String::new(),
+            updated_at: String::new(),
+        };
+        store.create_squad(&squad).unwrap();
+
+        let cap = make_cap("agent-a");
+        let scope = eat::MemoryScope {
+            squad_id: Some("squad-2".into()),
+            agent_id: Some("agent-a".into()),
+            ..Default::default()
+        };
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(
+            result.is_ok(),
+            "Squad member should pass: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_project_membership_required() {
+        use crate::atoms::engram_types as eat;
+        let store = test_store();
+
+        // Create a project but don't add agent-a
+        store
+            .create_project(&crate::atoms::types::Project {
+                id: "proj-1".into(),
+                title: "Test Project".into(),
+                goal: "Test".into(),
+                boss_agent: "other-boss".into(),
+                status: "active".into(),
+                agents: vec![],
+                created_at: String::new(),
+                updated_at: String::new(),
+            })
+            .unwrap();
+
+        let cap = make_cap("agent-a"); // Global ceiling
+        let scope = eat::MemoryScope {
+            project_id: Some("proj-1".into()),
+            ..Default::default()
+        };
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(
+            result.is_err(),
+            "Project read without membership must be rejected"
+        );
+    }
+
+    #[test]
+    fn verify_read_scope_wrong_platform_key() {
+        let store = test_store();
+        let cap = make_cap("agent-a"); // signed with TEST_PLATFORM_KEY
+        let scope = MemoryScope::agent("agent-a");
+
+        let wrong_key = b"wrong-platform-key-not-matching!!";
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, wrong_key);
+        assert!(result.is_err(), "Wrong platform key must be rejected");
+    }
+
+    #[test]
+    fn verify_read_scope_targeted_within_squad_ceiling() {
+        let store = test_store();
+        // Squad ceiling should allow agent-scoped (Targeted) reads
+        let cap = make_restricted_cap("agent-a", PublicationScope::Squad);
+        let scope = MemoryScope::agent("agent-a");
+
+        let result = verify_read_scope(&cap, &scope, "agent-a", &store, TEST_PLATFORM_KEY);
+        assert!(
+            result.is_ok(),
+            "Agent read within Squad ceiling should pass: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn required_read_scope_classification() {
+        // Agent scope → Targeted (rank 1)
+        let agent = MemoryScope::agent("a");
+        assert_eq!(scope_rank(&required_read_scope(&agent)), 1);
+
+        // Squad scope → Squad (rank 2)
+        let squad = MemoryScope {
+            squad_id: Some("s".into()),
+            ..Default::default()
+        };
+        assert_eq!(scope_rank(&required_read_scope(&squad)), 2);
+
+        // Project scope (no agent) → Project (rank 3)
+        let project = MemoryScope {
+            project_id: Some("p".into()),
+            ..Default::default()
+        };
+        assert_eq!(scope_rank(&required_read_scope(&project)), 3);
+
+        // Global → Global (rank 4)
+        let global = MemoryScope::global();
+        assert_eq!(scope_rank(&required_read_scope(&global)), 4);
+
+        // Agent + project → Targeted (agent is most specific)
+        let agent_in_proj = MemoryScope {
+            agent_id: Some("a".into()),
+            project_id: Some("p".into()),
+            ..Default::default()
+        };
+        // This has agent_id set, so it's not a pure project scope
+        let rank = scope_rank(&required_read_scope(&agent_in_proj));
+        assert!(
+            rank <= 3,
+            "Agent+project scope should be at most Project rank: {}",
+            rank
+        );
     }
 }

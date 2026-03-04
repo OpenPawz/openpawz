@@ -252,6 +252,8 @@ pub async fn execute_task(
             let emb_client = state.embedding_client();
             let scope = crate::atoms::engram_types::MemoryScope::agent(&agent_id);
             let search_config = crate::atoms::engram_types::MemorySearchConfig::default();
+            // Issue a signed capability token for read-path scope verification (§43.4)
+            let read_cap = crate::engine::engram::memory_bus::issue_read_capability(&agent_id).ok();
             match crate::engine::engram::gated_search::gated_search(
                 &state.store,
                 &crate::engine::engram::gated_search::GatedSearchRequest {
@@ -262,6 +264,7 @@ pub async fn execute_task(
                     budget_tokens: 0,    // no token budget limit for tasks
                     momentum: None,      // no momentum embeddings
                     model: Some(&model), // per-model injection limits (§58.5)
+                    capability: read_cap.as_ref(),
                 },
             )
             .await

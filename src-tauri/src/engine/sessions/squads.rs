@@ -107,6 +107,39 @@ impl SessionStore {
         conn.execute("DELETE FROM squads WHERE id = ?1", params![squad_id])?;
         Ok(())
     }
+
+    /// Check whether two agents share at least one squad.
+    ///
+    /// Used by the memory bus to enforce visibility scope: a publication with
+    /// `PublicationScope::Squad` should only be delivered to agents that are
+    /// co-members of a squad with the publishing agent.
+    pub fn agents_share_squad(&self, agent_a: &str, agent_b: &str) -> bool {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM squad_members a
+                INNER JOIN squad_members b ON a.squad_id = b.squad_id
+                WHERE a.agent_id = ?1 AND b.agent_id = ?2
+            )",
+            params![agent_a, agent_b],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false)
+    }
+
+    /// Check whether a specific agent is a member of a specific squad.
+    ///
+    /// Used by read-path scope verification to confirm the requesting agent
+    /// is authorized to read memories scoped to the given squad.
+    pub fn agent_in_squad(&self, agent_id: &str, squad_id: &str) -> bool {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM squad_members WHERE agent_id = ?1 AND squad_id = ?2)",
+            params![agent_id, squad_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false)
+    }
 }
 
 #[cfg(test)]

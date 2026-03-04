@@ -309,13 +309,13 @@ impl<'a> ContextBuilder<'a> {
                     // The context builder is a DIRECT path to the LLM prompt,
                     // so per-model injection resistance is critical here.
                     let resistance = resolve_injection_resistance(&self.model);
-                    let enc_key = encryption::get_memory_encryption_key().ok();
                     recalled_memories = recall_result
                         .memories
                         .into_iter()
                         .map(|mut m| {
-                            if let Some(ref key) = enc_key {
-                                m.content = encryption::decrypt_memory_content(&m.content, key)
+                            // Decrypt with per-agent derived key (HKDF isolation)
+                            if let Ok(key) = encryption::get_agent_encryption_key(&m.agent_id) {
+                                m.content = encryption::decrypt_memory_content(&m.content, &key)
                                     .unwrap_or(m.content);
                             }
                             // Level-aware sanitization (Standard/Strict/Paranoid per model tier)
@@ -760,6 +760,7 @@ mod tests {
             },
             token_cost: 10,
             created_at: "2025-01-01T00:00:00Z".to_string(),
+            agent_id: String::new(),
         }];
         let formatted = format_recalled_memories(&memories);
         assert!(formatted.contains("## Relevant Memories"));

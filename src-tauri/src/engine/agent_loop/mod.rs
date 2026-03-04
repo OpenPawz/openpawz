@@ -12,7 +12,7 @@ use crate::engine::tools;
 use crate::engine::types::*;
 use log::{info, warn};
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use trading::check_trading_auto_approve;
 
 /// Run a complete agent turn: send messages to the model, execute tool calls,
@@ -748,6 +748,17 @@ pub async fn run_agent_turn(
                     tc.function.name, tc.id
                 );
 
+                // Audit: log tool denial
+                if let Some(es) = app_handle.try_state::<crate::engine::state::EngineState>() {
+                    crate::engine::audit::log_tool_denied(
+                        &es.store,
+                        agent_id,
+                        session_id,
+                        &tc.function.name,
+                        &tc.id,
+                    );
+                }
+
                 // Emit denial as tool result
                 let _ = app_handle.emit(
                     "engine-event",
@@ -780,6 +791,20 @@ pub async fn run_agent_turn(
                 result.success,
                 result.output.len()
             );
+
+            // Audit: log tool execution result
+            if let Some(es) = app_handle.try_state::<crate::engine::state::EngineState>() {
+                crate::engine::audit::log_tool_call(
+                    &es.store,
+                    agent_id,
+                    session_id,
+                    &tc.function.name,
+                    &tc.id,
+                    &tc.function.arguments,
+                    result.success,
+                    &result.output,
+                );
+            }
 
             // Emit tool result event
             let _ = app_handle.emit(

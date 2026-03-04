@@ -46,6 +46,30 @@ pub fn run_engram_migrations(conn: &Connection) -> EngineResult<()> {
         [],
     );
 
+    // Security: HMAC integrity tag for working memory snapshots
+    let _ = conn.execute(
+        "ALTER TABLE working_memory_snapshots ADD COLUMN snapshot_hmac TEXT",
+        [],
+    );
+
+    // Community detection: community assignment for GraphRAG clustering
+    let _ = conn.execute(
+        "ALTER TABLE episodic_memories ADD COLUMN community_id TEXT",
+        [],
+    );
+
+    // FadeMem dual-layer: fast activation strength (hours half-life)
+    let _ = conn.execute(
+        "ALTER TABLE episodic_memories ADD COLUMN fast_strength REAL DEFAULT 1.0",
+        [],
+    );
+
+    // FadeMem dual-layer: slow consolidation strength (days/weeks half-life)
+    let _ = conn.execute(
+        "ALTER TABLE episodic_memories ADD COLUMN slow_strength REAL DEFAULT 0.0",
+        [],
+    );
+
     // §41: Entity lifecycle tracking — entity_profiles table
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS entity_profiles (
@@ -388,6 +412,11 @@ const ENGRAM_SCHEMA: &str = "
 
         -- Serialized WorkingMemorySnapshot as JSON
         snapshot_json TEXT NOT NULL,
+
+        -- HMAC-SHA256 for integrity + ownership verification.
+        -- Covers agent_id || snapshot_json; derived from master key.
+        -- NULL for legacy snapshots (pre-HMAC).
+        snapshot_hmac TEXT,
 
         -- Metadata
         slot_count INTEGER NOT NULL DEFAULT 0,

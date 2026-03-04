@@ -9,7 +9,7 @@
 //   - Reciprocal Rank Fusion (RRF) for result merging
 //   - Trust-score computation on retrieval
 //   - Relationship creation between memories
-//   - Strength decay (Ebbinghaus forgetting curve)
+//   - Strength decay (FadeMem dual-layer: fast activation + slow consolidation)
 //   - Audit trail
 
 use crate::atoms::engram_types::{
@@ -18,6 +18,9 @@ use crate::atoms::engram_types::{
     TrustScore,
 };
 use crate::atoms::error::EngineResult;
+use crate::engine::engram::encryption::{
+    get_agent_encryption_key, prepare_for_storage, MemorySecurityTier,
+};
 use crate::engine::engram::hybrid_search::resolve_hybrid_weight;
 use crate::engine::engram::reranking::{cross_type_dedup, rerank_results};
 use crate::engine::engram::retrieval_quality::build_recall_result;
@@ -42,9 +45,9 @@ const RRF_K: f64 = 60.0;
 /// Strength boost on each retrieval (spacing effect).
 const RETRIEVAL_STRENGTH_BOOST: f32 = 0.05;
 
-/// Temporal decay lambda for Ebbinghaus curve.
+/// Temporal decay lambda for Ebbinghaus curve (used in FadeMem slow layer).
 /// Memory half-life of 30 days: lambda = ln(2) / 30.
-#[allow(dead_code)] // used in §4.4 strength decay (upcoming)
+#[allow(dead_code)]
 const DECAY_LAMBDA: f64 = 0.0231;
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -93,6 +96,45 @@ pub async fn store_episodic_dedup(
     }
 
     let id = mem.id.clone();
+
+    // ── Encrypt memory content at rest ─────────────────────────────────
+    // Uses HKDF-derived per-agent key so each agent's memories are
+    // cryptographically isolated. A compromised derived key for agent A
+    // cannot decrypt agent B's memories.
+    match get_agent_encryption_key(&mem.agent_id) {
+        Ok(key) => match prepare_for_storage(&mem.content.full, &key) {
+            Ok(encrypted) => {
+                mem.content.full = encrypted.content;
+                // For Sensitive tier, preserve a safe summary for FTS search
+                if encrypted.tier == MemorySecurityTier::Sensitive {
+                    if let Some(summary) = encrypted.cleartext_summary {
+                        if mem.content.summary.is_none() {
+                            mem.content.summary = Some(summary);
+                        }
+                    }
+                }
+                if !encrypted.pii_types.is_empty() {
+                    info!(
+                        "[engram] Encrypted episodic memory {} (tier={:?}, pii={:?})",
+                        id, encrypted.tier, encrypted.pii_types
+                    );
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "[engram] Failed to encrypt memory {}: {} — storing cleartext",
+                    id, e
+                );
+            }
+        },
+        Err(e) => {
+            warn!(
+                "[engram] No encryption key available: {} — storing cleartext",
+                e
+            );
+        }
+    }
+
     store.engram_store_episodic(&mem)?;
 
     // Audit
@@ -165,6 +207,34 @@ pub async fn store_semantic_dedup(
     }
 
     let id = mem.id.clone();
+
+    // ── Encrypt semantic memory content at rest ────────────────────────
+    // Derive per-agent key for the owning agent.
+    let agent_id_for_key = mem.scope.agent_id.as_deref().unwrap_or("");
+    match get_agent_encryption_key(agent_id_for_key) {
+        Ok(key) => match prepare_for_storage(&mem.full_text, &key) {
+            Ok(encrypted) => {
+                if !encrypted.pii_types.is_empty() {
+                    mem.full_text = encrypted.content;
+                    // Also encrypt the object field which may contain PII
+                    if let Ok(obj_enc) = prepare_for_storage(&mem.object, &key) {
+                        mem.object = obj_enc.content;
+                    }
+                    info!(
+                        "[engram] Encrypted semantic memory {} (tier={:?}, pii={:?})",
+                        id, encrypted.tier, encrypted.pii_types
+                    );
+                }
+            }
+            Err(e) => {
+                warn!("[engram] Failed to encrypt semantic memory {}: {}", id, e);
+            }
+        },
+        Err(e) => {
+            warn!("[engram] No encryption key for semantic memory: {}", e);
+        }
+    }
+
     store.engram_store_semantic(&mem)?;
     info!("[engram] ✓ Stored semantic triple {}", id);
     Ok(id)
@@ -285,6 +355,7 @@ pub async fn search(
             token_cost,
             category: mem.category.clone(),
             created_at: mem.created_at.clone(),
+            agent_id: mem.agent_id.clone(),
         });
 
         // Record access for spacing effect
@@ -311,6 +382,7 @@ pub async fn search(
             token_cost: Tokenizer::heuristic().count_tokens(&mem.full_text),
             category: mem.category.clone(),
             created_at: mem.created_at.clone(),
+            agent_id: mem.scope.agent_id.clone().unwrap_or_default(),
         });
     }
 
@@ -343,6 +415,7 @@ pub async fn search(
             token_cost: Tokenizer::heuristic().count_tokens(&content),
             category: "procedure".into(),
             created_at: mem.created_at.clone(),
+            agent_id: String::new(), // Procedural memories are agent-agnostic
         });
     }
 
@@ -381,6 +454,7 @@ pub async fn search(
                             trust_score: trust,
                             category: mem.category.clone(),
                             created_at: mem.created_at.clone(),
+                            agent_id: mem.agent_id.clone(),
                         });
                         store
                             .engram_record_access(&mem.id, RETRIEVAL_STRENGTH_BOOST * 0.5)
@@ -473,58 +547,130 @@ pub fn relate(
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// Strength Decay (Ebbinghaus Forgetting Curve)
+// FadeMem Dual-Layer Decay (§54)
 // ═════════════════════════════════════════════════════════════════════════════
+//
+// Two-layer decay model inspired by FadeMem:
+//
+//   fast_strength — activation layer (hours half-life).
+//     Represents how "active" a memory is in the current context.
+//     Decays rapidly (half-life = 4 hours). Boosted on every retrieval.
+//     Used for working memory promotion and recency scoring.
+//
+//   slow_strength — consolidation layer (days/weeks half-life).
+//     Represents how well-established a memory is through repetition.
+//     Decays slowly (half-life = configurable, default 7 days).
+//     Boosted when a memory is successfully consolidated (consolidation pipeline).
+//     GC uses slow_strength — well-consolidated memories survive even if
+//     temporarily inactive (no fast_strength).
+//
+//   importance — derived composite: max(fast, slow) * base_importance / 10.
+//     This preserves backward compatibility with GC thresholds and search scoring.
 
-/// Apply Ebbinghaus decay to episodic memories.
-/// Reduces importance for memories not accessed recently.
-/// importance_new = importance * e^(-λ * days_since_last_access)
+/// Fast-layer half-life in hours.
+const FAST_HALF_LIFE_HOURS: f64 = 4.0;
+
+/// Slow-layer consolidation boost on each consolidation cycle.
+const CONSOLIDATION_SLOW_BOOST: f64 = 0.15;
+
+/// Fast-layer retrieval boost on each access.
+const RETRIEVAL_FAST_BOOST: f64 = 0.3;
+
+/// Apply FadeMem dual-layer decay to episodic memories.
+///
+/// Updates both fast_strength and slow_strength, then derives a composite
+/// importance value. Returns the number of memories updated.
+///
+/// - fast_strength decays with `FAST_HALF_LIFE_HOURS` (rapid activation loss)
+/// - slow_strength decays with `half_life_days` (gradual consolidation loss)
+/// - importance = round(max(fast, slow) * base_importance_scale)
 pub fn apply_decay(store: &SessionStore, half_life_days: f32) -> EngineResult<usize> {
-    let lambda = (2.0_f64.ln()) / half_life_days as f64;
+    let lambda_fast = (2.0_f64.ln()) / FAST_HALF_LIFE_HOURS;
+    let lambda_slow = (2.0_f64.ln()) / (half_life_days as f64 * 24.0); // convert to hours
     let now = chrono::Utc::now();
 
-    let updates: Vec<(String, i32)> = {
+    let updates: Vec<(String, f64, f64, i32)> = {
         let conn = store.conn.lock();
         let mut stmt = conn.prepare(
-            "SELECT id, importance, last_accessed_at, created_at FROM episodic_memories
+            "SELECT id, importance, last_accessed_at, created_at,
+                    COALESCE(fast_strength, 1.0), COALESCE(slow_strength, 0.0)
+             FROM episodic_memories
              WHERE consolidation_state != 'archived'",
         )?;
         let rows = stmt.query_map([], |row| {
             let id: String = row.get(0)?;
-            let current_importance: i32 = row.get(1)?;
+            let base_importance: i32 = row.get(1)?;
             let last_access: Option<String> = row.get(2)?;
             let created: String = row.get(3)?;
+            let fast: f64 = row.get(4)?;
+            let slow: f64 = row.get(5)?;
 
             let reference_time = last_access.as_deref().unwrap_or(&created);
-            let days_elapsed = parse_days_since(reference_time, &now);
+            let hours_elapsed = parse_days_since(reference_time, &now) * 24.0;
 
-            let decay_factor = (-lambda * days_elapsed).exp();
-            let new_importance = ((current_importance as f64 * decay_factor).round() as i32).max(0);
-            Ok((id, new_importance))
+            // Dual-layer decay
+            let new_fast = (fast * (-lambda_fast * hours_elapsed).exp()).max(0.0);
+            let new_slow = (slow * (-lambda_slow * hours_elapsed).exp()).max(0.0);
+
+            // Composite importance: the effective strength is the max of both layers
+            // scaled by the original base importance (0-10).
+            let effective = new_fast.max(new_slow);
+            let new_importance = ((base_importance as f64 * effective).round() as i32).max(0);
+
+            Ok((id, new_fast, new_slow, new_importance))
         })?;
-        let collected: Vec<(String, i32)> = rows
-            .filter_map(|r| r.ok())
-            .filter(|(_, new_i)| *new_i < 10)
-            .collect();
-        collected
+        rows.filter_map(|r| r.ok())
+            .filter(|(_, fast, slow, imp)| *fast < 1.0 || *slow < 1.0 || *imp < 10)
+            .collect()
     };
 
     let count = updates.len();
     {
         let conn = store.conn.lock();
-        for (id, importance) in &updates {
+        for (id, fast, slow, importance) in &updates {
             conn.execute(
-                "UPDATE episodic_memories SET importance = ?2 WHERE id = ?1",
-                rusqlite::params![id, importance],
+                "UPDATE episodic_memories
+                 SET fast_strength = ?2, slow_strength = ?3, importance = ?4
+                 WHERE id = ?1",
+                rusqlite::params![id, fast, slow, importance],
             )?;
         }
     }
 
     if count > 0 {
-        info!("[engram] Applied decay to {} episodic memories", count);
+        info!(
+            "[engram] FadeMem dual-layer decay applied to {} episodic memories",
+            count
+        );
     }
 
     Ok(count)
+}
+
+/// Boost fast_strength on retrieval (spacing effect).
+/// Called when a memory is accessed/retrieved during search.
+pub fn boost_fast_strength(store: &SessionStore, memory_id: &str) -> EngineResult<()> {
+    let conn = store.conn.lock();
+    conn.execute(
+        "UPDATE episodic_memories
+         SET fast_strength = MIN(COALESCE(fast_strength, 0.0) + ?2, 1.0)
+         WHERE id = ?1",
+        rusqlite::params![memory_id, RETRIEVAL_FAST_BOOST],
+    )?;
+    Ok(())
+}
+
+/// Boost slow_strength during consolidation.
+/// Called when a memory is successfully consolidated into a semantic triple.
+pub fn boost_slow_strength(store: &SessionStore, memory_id: &str) -> EngineResult<()> {
+    let conn = store.conn.lock();
+    conn.execute(
+        "UPDATE episodic_memories
+         SET slow_strength = MIN(COALESCE(slow_strength, 0.0) + ?2, 1.0)
+         WHERE id = ?1",
+        rusqlite::params![memory_id, CONSOLIDATION_SLOW_BOOST],
+    )?;
+    Ok(())
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -533,6 +679,8 @@ pub fn apply_decay(store: &SessionStore, half_life_days: f32) -> EngineResult<us
 
 /// Garbage collect memories with strength below threshold.
 /// Archived/consolidated memories are preserved. Only low-strength Fresh memories are GC'd.
+/// FadeMem: uses slow_strength as additional protection — well-consolidated memories
+/// (slow_strength >= 0.3) are shielded from GC even if importance is low.
 /// Uses secure erasure (zero-before-delete) and re-pads the DB to the next
 /// bucket boundary to prevent file-size side-channel leakage.
 pub fn garbage_collect(
@@ -541,9 +689,29 @@ pub fn garbage_collect(
     batch_size: usize,
 ) -> EngineResult<usize> {
     let candidates = store.engram_list_gc_candidates(importance_threshold, batch_size)?;
-    let count = candidates.len();
 
-    for id in &candidates {
+    // FadeMem filter: protect well-consolidated memories even if importance dropped
+    let filtered: Vec<String> = {
+        let conn = store.conn.lock();
+        candidates
+            .into_iter()
+            .filter(|id| {
+                let slow: f64 = conn
+                    .query_row(
+                        "SELECT COALESCE(slow_strength, 0.0) FROM episodic_memories WHERE id = ?1",
+                        rusqlite::params![id],
+                        |row| row.get(0),
+                    )
+                    .unwrap_or(0.0);
+                // Only GC if slow_strength is also below protection threshold
+                slow < 0.3
+            })
+            .collect()
+    };
+
+    let count = filtered.len();
+
+    for id in &filtered {
         // Secure erase: zero content fields then delete (anti-forensic)
         store.engram_secure_erase_episodic(id)?;
         store.engram_audit_log("secure_erase", id, "system", "gc", Some("strength_gc"))?;
@@ -786,6 +954,7 @@ mod tests {
                 token_cost: 100,
                 category: "general".into(),
                 created_at: String::new(),
+                agent_id: String::new(),
             },
             RetrievedMemory {
                 content: "also short".into(),
@@ -796,6 +965,7 @@ mod tests {
                 token_cost: 200,
                 category: "general".into(),
                 created_at: String::new(),
+                agent_id: String::new(),
             },
         ];
 

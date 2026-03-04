@@ -3,6 +3,7 @@
 // for zero-network-hop communication.
 
 pub mod agent_loop;
+pub mod audit;
 pub mod http;
 pub mod paths;
 pub mod pricing;

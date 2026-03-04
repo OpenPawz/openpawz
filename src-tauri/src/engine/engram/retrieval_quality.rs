@@ -198,6 +198,7 @@ mod tests {
             token_cost,
             category: "general".into(),
             created_at: String::new(),
+            agent_id: String::new(),
         }
     }
 

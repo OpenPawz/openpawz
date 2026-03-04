@@ -285,6 +285,7 @@ pub async fn rebuild_tree(
                 },
                 category: mem.category.clone(),
                 created_at: mem.created_at.clone(),
+                agent_id: mem.agent_id.clone(),
             }
         })
         .collect();
@@ -411,6 +412,7 @@ mod tests {
                 .map(|s| s.to_string())
                 .unwrap_or_else(|| "general".to_string()),
             created_at: "2025-01-01T00:00:00Z".to_string(),
+            agent_id: String::new(),
         }
     }
 

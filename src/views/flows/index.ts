@@ -58,6 +58,11 @@ import {
   unmountFlowAgent,
   isFlowAgentOpen,
 } from './flow-agent-molecules';
+import {
+  generatePreflightReport,
+  renderPreflightReport,
+  type PreflightReport,
+} from './simulation/preflight';
 
 // ── Module State ───────────────────────────────────────────────────────────
 
@@ -754,14 +759,63 @@ async function runActiveFlow() {
   if (!_executor) return;
   if (_executor.isRunning()) return;
 
+  // ── Pre-flight Safety Report ──────────────────────────────────────────
+  // Generate a safety analysis BEFORE execution. If the flow is high/critical
+  // risk, require explicit user confirmation before proceeding.
+  let preflightReport: PreflightReport | null = null;
+  try {
+    preflightReport = await generatePreflightReport(graph, {
+      runSimulation: true,
+      simulationTimeoutMs: 15_000,
+    });
+
+    const chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) {
+      const reportEl = renderPreflightReport(preflightReport);
+      chatMessages.appendChild(reportEl);
+      reportEl.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // If the report recommends blocking, ask for confirmation
+    if (preflightReport.recommendation === 'block') {
+      const proceed = confirm(
+        `⚠ Pre-flight Safety Report: ${preflightReport.overallRisk.toUpperCase()} risk.\n\n` +
+          `${preflightReport.findings
+            .filter((f) => f.risk === 'high' || f.risk === 'critical')
+            .map((f) => `• ${f.title}`)
+            .join('\n')}\n\n` +
+          `Blast radius: ${preflightReport.blastRadius}/100\n\n` +
+          `Do you want to proceed anyway?`,
+      );
+      if (!proceed) {
+        const { showToast } = await import('../../components/toast');
+        showToast('Flow execution cancelled after safety review', 'info');
+        return;
+      }
+    } else if (preflightReport.recommendation === 'review') {
+      const proceed = confirm(
+        `Pre-flight Safety Report: ${preflightReport.overallRisk.toUpperCase()} risk.\n\n` +
+          `${preflightReport.findings.map((f) => `• ${f.title}`).join('\n')}\n\n` +
+          `Continue execution?`,
+      );
+      if (!proceed) {
+        const { showToast } = await import('../../components/toast');
+        showToast('Flow execution cancelled after safety review', 'info');
+        return;
+      }
+    }
+  } catch (err) {
+    console.warn('[flows] Pre-flight report generation failed, continuing:', err);
+  }
+
   // Create a fresh chat reporter
   _reporter?.destroy();
   _reporter = createFlowChatReporter();
 
   // Append reporter element into the chat messages area
-  const chatMessages = document.getElementById('chat-messages');
-  if (chatMessages) {
-    chatMessages.appendChild(_reporter.getElement());
+  const chatMsgs = document.getElementById('chat-messages');
+  if (chatMsgs) {
+    chatMsgs.appendChild(_reporter.getElement());
     // Scroll to show the report
     _reporter.getElement().scrollIntoView({ behavior: 'smooth' });
   }

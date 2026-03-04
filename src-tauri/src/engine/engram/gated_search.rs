@@ -448,6 +448,16 @@ pub struct GatedSearchRequest<'a> {
     /// Optional model name for per-model injection limits (§58.5).
     /// If `None`, conservative defaults are used.
     pub model: Option<&'a str>,
+    /// Signed capability token for read-path scope verification (§43.4).
+    ///
+    /// When provided, the token's HMAC-SHA256 signature is verified against
+    /// the platform key, identity binding and scope ceiling are checked, and
+    /// squad/project membership is confirmed. This is the defense-in-depth
+    /// layer on top of per-agent HKDF encryption and SQL scope filtering.
+    ///
+    /// If `None`, read-path scope verification is skipped — backward-
+    /// compatible but not recommended for production code paths.
+    pub capability: Option<&'a super::memory_bus::AgentCapability>,
 }
 
 /// Unified entry point for ALL memory retrieval across the system.
@@ -466,6 +476,24 @@ pub async fn gated_search(
     let budget_tokens = req.budget_tokens;
     let momentum = req.momentum;
     let model = req.model;
+
+    // ── 0. Read-path scope verification (§43.4 defense-in-depth) ─────────
+    //
+    // If a signed capability token is provided, verify:
+    //   1. Token signature (HMAC-SHA256 against platform key)
+    //   2. Identity binding (token.agent_id == scope.agent_id)
+    //   3. Scope ceiling (requested scope ≤ token.max_scope)
+    //   4. Membership (squad/project) via SessionStore
+    //
+    // This is the third layer of defense (after per-agent HKDF encryption
+    // and SQL WHERE scope filtering). A missing token logs a warning but
+    // does NOT block — existing callers that haven't been updated yet
+    // continue to work via the other two layers.
+    if let Some(cap) = req.capability {
+        let platform_key = encryption::get_platform_capability_key()?;
+        let requesting_agent = scope.agent_id.as_deref().unwrap_or(&cap.agent_id);
+        super::memory_bus::verify_read_scope(cap, scope, requesting_agent, store, &platform_key)?;
+    }
 
     // ── 1. Gate decision ─────────────────────────────────────────────────
     let gate = gate_decision(query);
@@ -741,13 +769,13 @@ pub async fn gated_search(
     let resistance = model
         .map(super::model_caps::resolve_injection_resistance)
         .unwrap_or_default();
-    let enc_key = encryption::get_memory_encryption_key().ok();
     let decrypted_memories: Vec<RetrievedMemory> = memories
         .into_iter()
         .map(|mut m| {
-            if let Some(ref key) = enc_key {
+            // Decrypt with per-agent derived key (HKDF isolation)
+            if let Ok(key) = encryption::get_agent_encryption_key(&m.agent_id) {
                 m.content =
-                    encryption::decrypt_memory_content(&m.content, key).unwrap_or(m.content);
+                    encryption::decrypt_memory_content(&m.content, &key).unwrap_or(m.content);
             }
             // Apply model-appropriate sanitization level (§58.5)
             m.content = encryption::sanitize_recalled_memory_at_level(
@@ -1422,6 +1450,7 @@ mod tests {
                 budget_tokens: 0,
                 momentum: None,
                 model: Some("gpt-4o"),
+                capability: None,
             },
         )
         .await
@@ -1475,6 +1504,7 @@ mod tests {
                 budget_tokens: 0,
                 momentum: None,
                 model: Some("gpt-4o"),
+                capability: None,
             },
         )
         .await
@@ -1506,6 +1536,7 @@ mod tests {
                 budget_tokens: 0,
                 momentum: None,
                 model: None,
+                capability: None,
             },
         )
         .await
@@ -1545,6 +1576,7 @@ mod tests {
                 budget_tokens: 0,
                 momentum: None,
                 model: Some("claude-opus-4-6"),
+                capability: None,
             },
         )
         .await
@@ -1594,6 +1626,7 @@ mod tests {
                 budget_tokens: 0,
                 momentum: None,
                 model: Some("gpt-4o"),
+                capability: None,
             },
         )
         .await
@@ -1639,6 +1672,7 @@ mod tests {
                 budget_tokens: 0,
                 momentum: None,
                 model: Some("phi-3-mini"),
+                capability: None,
             },
         )
         .await
@@ -1655,6 +1689,7 @@ mod tests {
                 budget_tokens: 0,
                 momentum: None,
                 model: Some("claude-opus-4-6"),
+                capability: None,
             },
         )
         .await
@@ -1708,6 +1743,7 @@ mod tests {
                     budget_tokens: 0,
                     momentum: None,
                     model: None,
+                    capability: None,
                 },
             )
             .await

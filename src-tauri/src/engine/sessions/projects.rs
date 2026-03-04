@@ -166,6 +166,39 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Check whether two agents share at least one project.
+    ///
+    /// Used by the memory bus to enforce visibility scope: a publication with
+    /// `PublicationScope::Project` should only be delivered to agents that are
+    /// co-members of a project with the publishing agent.
+    pub fn agents_share_project(&self, agent_a: &str, agent_b: &str) -> bool {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT EXISTS(
+                SELECT 1 FROM project_agents a
+                INNER JOIN project_agents b ON a.project_id = b.project_id
+                WHERE a.agent_id = ?1 AND b.agent_id = ?2
+            )",
+            params![agent_a, agent_b],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false)
+    }
+
+    /// Check whether a specific agent is a member of a specific project.
+    ///
+    /// Used by read-path scope verification to confirm the requesting agent
+    /// is authorized to read memories scoped to the given project.
+    pub fn agent_in_project(&self, agent_id: &str, project_id: &str) -> bool {
+        let conn = self.conn.lock();
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM project_agents WHERE agent_id = ?1 AND project_id = ?2)",
+            params![agent_id, project_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .unwrap_or(false)
+    }
+
     /// List all unique agents across all projects (deduped by agent_id).
     /// Filters out rows with empty/NULL agent_id (bad data from manual SQL inserts).
     pub fn list_all_agents(&self) -> EngineResult<Vec<(String, ProjectAgent)>> {

@@ -201,17 +201,15 @@ pub async fn search(
     )
     .await?;
 
-    // §10.5 Decrypt encrypted content on retrieval
-    let enc_key = encryption::get_memory_encryption_key().ok();
-
+    // §10.5 Decrypt encrypted content on retrieval (per-agent HKDF key)
     let mapped: Vec<SearchResult> = recall_result
         .memories
         .into_iter()
         .take(limit)
         .map(|r| {
-            // Decrypt if encrypted
-            let content = if let Some(ref key) = enc_key {
-                encryption::decrypt_memory_content(&r.content, key)
+            // Decrypt with per-agent derived key (HKDF isolation)
+            let content = if let Ok(key) = encryption::get_agent_encryption_key(&r.agent_id) {
+                encryption::decrypt_memory_content(&r.content, &key)
                     .unwrap_or_else(|_| r.content.clone())
             } else {
                 r.content
@@ -260,9 +258,51 @@ pub async fn run_maintenance(
     half_life_days: f32,
     gc_importance_threshold: i32,
 ) -> EngineResult<MaintenanceReport> {
+    // 0. Key rotation check — rekey legacy-encrypted memories if overdue
+    let mut rekey_count = 0usize;
+    if super::encryption::should_rotate_keys(store) {
+        match super::encryption::rekey_all_memories(store) {
+            Ok(report) => {
+                rekey_count = report.rekeyed;
+                if rekey_count > 0 {
+                    info!(
+                        "[engram:maintenance] Key rotation: {} memories rekeyed",
+                        rekey_count
+                    );
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "[engram:maintenance] Key rotation failed (non-fatal): {}",
+                    e
+                );
+            }
+        }
+    }
+
     // 1. Consolidation
     let consolidation =
         super::consolidation::run_consolidation(store, embedding_client, None).await?;
+
+    // 1.5. Community detection (GraphRAG Louvain clustering)
+    let mut communities_found = 0usize;
+    match super::community_detection::detect_communities(store) {
+        Ok((_communities, cd_report)) => {
+            communities_found = cd_report.communities_found;
+            if communities_found > 0 {
+                info!(
+                    "[engram:maintenance] Community detection: {} communities (Q={:.3})",
+                    communities_found, cd_report.modularity
+                );
+            }
+        }
+        Err(e) => {
+            warn!(
+                "[engram:maintenance] Community detection failed (non-fatal): {}",
+                e
+            );
+        }
+    }
 
     // 2. Decay
     let decayed = super::graph::apply_decay(store, half_life_days)?;
@@ -296,12 +336,15 @@ pub async fn run_maintenance(
         consolidation,
         memories_decayed: decayed,
         memories_gc: gc_count,
+        memories_rekeyed: rekey_count,
+        communities_detected: communities_found,
         gap_prompts,
     };
 
     info!(
-        "[engram:maintenance] consolidation: {} triples, decay: {}, gc: {}",
+        "[engram:maintenance] consolidation: {} triples, decay: {}, gc: {}, rekey: {}, communities: {}",
         report.consolidation.triples_created, report.memories_decayed, report.memories_gc,
+        report.memories_rekeyed, report.communities_detected,
     );
 
     Ok(report)
@@ -313,6 +356,10 @@ pub struct MaintenanceReport {
     pub consolidation: super::consolidation::ConsolidationReport,
     pub memories_decayed: usize,
     pub memories_gc: usize,
+    /// Number of memories re-encrypted during key rotation (0 if no rotation needed).
+    pub memories_rekeyed: usize,
+    /// Number of communities discovered by Louvain detection.
+    pub communities_detected: usize,
     /// Knowledge gaps detected during consolidation, formatted for working memory injection.
     pub gap_prompts: Vec<String>,
 }

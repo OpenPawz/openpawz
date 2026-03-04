@@ -504,6 +504,19 @@ pub async fn engine_chat_send(
     // ── Detect response loops (organism) ──────────────────────────────────
     chat_org::detect_response_loop(&mut messages);
 
+    // ── Detect explicit user overrides (§59.2) ────────────────────────────
+    // If the user explicitly tells the agent to stop, refocus, etc., inject
+    // a strong system redirect and clear working memory momentum.
+    if chat_org::detect_user_override(&mut messages) {
+        let cognitive_lock = state.get_cognitive_state(&agent_id_owned);
+        let mut cog = cognitive_lock.lock().await;
+        cog.working_memory.clear_momentum();
+        log::info!(
+            "[engine] User override detected in chat — momentum cleared for '{}'",
+            agent_id_owned
+        );
+    }
+
     // Note: Topic detection and retry-override injection have been removed.
     // VS Code pattern: failed messages are deleted from history entirely
     // (in load_conversation → delete_failed_exchanges), so the model never

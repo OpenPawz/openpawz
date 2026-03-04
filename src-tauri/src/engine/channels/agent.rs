@@ -212,9 +212,18 @@ pub async fn run_channel_agent(
             ..Default::default()
         };
         let config = crate::atoms::engram_types::MemorySearchConfig::default();
-        // Get momentum from cognitive state for trajectory recall
+        // Issue a signed capability token for read-path scope verification (§43.4)
+        let read_cap = engram::memory_bus::issue_read_capability(agent_id).ok();
+        // Get momentum from cognitive state for trajectory recall.
+        // §59.4: If a user override was detected (explicit redirect command),
+        // suppress momentum so recall serves the NEW topic, not the old trajectory.
+        let override_detected = chat_org::is_user_override_phrase(&message.to_lowercase());
         let cognitive = cognitive_lock.lock().await;
-        let mom_vecs: Vec<Vec<f32>> = cognitive.working_memory.momentum().to_vec();
+        let mom_vecs: Vec<Vec<f32>> = if override_detected {
+            Vec::new() // suppress old-topic momentum
+        } else {
+            cognitive.working_memory.momentum().to_vec()
+        };
         let mom_ref: Option<&[Vec<f32>]> = if mom_vecs.is_empty() {
             None
         } else {
@@ -232,6 +241,7 @@ pub async fn run_channel_agent(
                 budget_tokens: 8_000, // lightweight budget for channels
                 momentum: mom_ref,
                 model: Some(&model), // per-model injection limits (§58.5)
+                capability: read_cap.as_ref(),
             },
         )
         .await
@@ -454,6 +464,28 @@ pub async fn run_channel_agent(
             }
         }
     });
+
+    // ── Topic-shift & loop detection (§59.1) ────────────────────────────
+    // Channel bridges previously had NO detect_response_loop protection.
+    // The chat UI calls this before run_agent_turn — channels must too.
+    // This catches: repetition, question loops, topic fixation, and short-
+    // directive loops — injecting system redirects before the model runs.
+    chat_org::detect_response_loop(&mut messages);
+
+    // ── Explicit user-override detection (§59.2) ──────────────────────
+    // Detects explicit commands like "stop", "focus on my question", "I asked
+    // you to...", etc.  These get a STRONGER redirect than the statistical
+    // loop detection and also clear working memory momentum so recalled
+    // context serves the new topic.
+    if chat_org::detect_user_override(&mut messages) {
+        // Clear momentum to prevent old-topic recall bias
+        let mut cognitive = cognitive_lock.lock().await;
+        cognitive.working_memory.clear_momentum();
+        info!(
+            "[{}] User override detected — momentum cleared for agent '{}'",
+            channel_prefix, agent_id
+        );
+    }
 
     let pre_loop_msg_count = messages.len();
 

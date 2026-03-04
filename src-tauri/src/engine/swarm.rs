@@ -283,6 +283,12 @@ async fn run_swarm_turn(
         let scope = crate::atoms::engram_types::MemoryScope::squad(squad_id, recipient_id);
         let search_config = crate::atoms::engram_types::MemorySearchConfig::default();
         let emb_client = state.embedding_client();
+        // Issue a squad-scoped capability token for read-path verification (§43.4)
+        let read_cap = crate::engine::engram::memory_bus::issue_scoped_capability(
+            recipient_id,
+            crate::atoms::engram_types::PublicationScope::Squad,
+        )
+        .ok();
         match crate::engine::engram::gated_search::gated_search(
             &state.store,
             &crate::engine::engram::gated_search::GatedSearchRequest {
@@ -293,6 +299,7 @@ async fn run_swarm_turn(
                 budget_tokens: 0,    // no token budget limit
                 momentum: None,      // no momentum embeddings
                 model: Some(&model), // per-model injection limits (§58.5)
+                capability: read_cap.as_ref(),
             },
         )
         .await

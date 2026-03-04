@@ -12,14 +12,18 @@
 // Two-layer PII detection:
 //   Layer 1 — 17 static regex patterns run on every memory before storage
 //             to automatically classify sensitivity tier.
-//   Layer 2 — (planned) LLM-assisted secondary scan during consolidation
+//   Layer 2 — LLM-assisted secondary scan during consolidation (stage 2.5)
 //             for context-dependent PII that regex cannot catch.
 
 use aes_gcm::aead::Aead;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce};
+use hkdf::Hkdf;
 use log::{error, info, warn};
+use rand::rngs::OsRng;
+use rand::RngCore;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 use std::sync::LazyLock;
 
 use crate::atoms::error::{EngineError, EngineResult};
@@ -291,12 +295,19 @@ pub fn detect_pii(content: &str) -> PiiDetection {
 const MEMORY_KEYRING_SERVICE: &str = "paw-memory-vault";
 const MEMORY_KEYRING_USER: &str = "field-encryption-key";
 
-/// Encrypted content prefix — distinguishes encrypted from cleartext.
-const ENC_PREFIX: &str = "enc:";
+/// Current key version. Bump when rotating keys.
+const CURRENT_KEY_VERSION: u8 = 1;
 
-/// Get or create the memory field encryption key from the OS keychain.
+/// Versioned encrypted content prefix — enc:v<version>:<base64 payload>
+/// Legacy prefix "enc:" (no version) is treated as v0 for backward compatibility.
+const ENC_PREFIX_VERSIONED: &str = "enc:v1:";
+const ENC_PREFIX_LEGACY: &str = "enc:";
+
+/// Get or create the master memory encryption key from the OS keychain.
 /// This is a SEPARATE key from the skill vault key — compromising one
 /// does not compromise the other.
+///
+/// Uses OsRng (kernel CSPRNG) for key generation — never thread_rng.
 pub fn get_memory_encryption_key() -> EngineResult<Vec<u8>> {
     let entry = keyring::Entry::new(MEMORY_KEYRING_SERVICE, MEMORY_KEYRING_USER).map_err(|e| {
         error!("[engram-encryption] Keyring init failed: {}", e);
@@ -313,10 +324,9 @@ pub fn get_memory_encryption_key() -> EngineResult<Vec<u8>> {
                 EngineError::Other(format!("Failed to decode memory encryption key: {}", e))
             }),
         Err(keyring::Error::NoEntry) => {
-            // Generate a new random 256-bit key
-            use rand::Rng;
+            // Generate a new random 256-bit key using OS CSPRNG
             let mut key = vec![0u8; 32];
-            rand::thread_rng().fill(&mut key[..]);
+            OsRng.fill_bytes(&mut key);
             let key_b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &key);
             entry.set_password(&key_b64).map_err(|e| {
                 error!(
@@ -336,18 +346,70 @@ pub fn get_memory_encryption_key() -> EngineResult<Vec<u8>> {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
+// Per-Agent Key Derivation (HKDF-SHA256)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Derive a per-agent encryption key from the master key using HKDF-SHA256.
+///
+/// Each agent gets a unique 256-bit key derived as:
+///   HKDF-Expand(HKDF-Extract(salt="engram-agent-key-v1", ikm=master_key), info=agent_id, L=32)
+///
+/// This means:
+///   - Compromising one agent's derived key does NOT reveal the master key
+///   - Compromising one agent's derived key does NOT reveal other agents' keys
+///   - An agent can only decrypt memories encrypted with its own derived key
+pub fn derive_agent_key(master_key: &[u8], agent_id: &str) -> EngineResult<[u8; 32]> {
+    let salt = b"engram-agent-key-v1";
+    let hk = Hkdf::<Sha256>::new(Some(salt), master_key);
+    let mut okm = [0u8; 32];
+    hk.expand(agent_id.as_bytes(), &mut okm)
+        .map_err(|e| EngineError::Other(format!("HKDF expand failed: {}", e)))?;
+    Ok(okm)
+}
+
+/// Convenience: get the master key and derive an agent-specific key in one call.
+pub fn get_agent_encryption_key(agent_id: &str) -> EngineResult<[u8; 32]> {
+    let master = get_memory_encryption_key()?;
+    derive_agent_key(&master, agent_id)
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Platform Capability Signing Key
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Derive the platform capability signing key from the master keychain key.
+///
+/// Used to sign and verify `AgentCapability` tokens for both publish and read
+/// paths. Separated from encryption keys via HKDF domain separation:
+///   salt  = "engram-platform-cap-v1"
+///   info  = "capability-signing"
+///
+/// The key is deterministic for a given master key — all platform components
+/// derive the same signing key without needing an extra keychain entry.
+pub fn get_platform_capability_key() -> EngineResult<[u8; 32]> {
+    let master = get_memory_encryption_key()?;
+    let salt = b"engram-platform-cap-v1";
+    let hk = Hkdf::<Sha256>::new(Some(salt), &master);
+    let mut okm = [0u8; 32];
+    hk.expand(b"capability-signing", &mut okm)
+        .map_err(|e| EngineError::Other(format!("HKDF expand (platform cap key) failed: {}", e)))?;
+    Ok(okm)
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
 // Encrypt / Decrypt
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Encrypt memory content using AES-256-GCM.
-/// Returns "enc:" + base64(nonce || ciphertext+tag).
+/// Returns "enc:v1:" + base64(nonce || ciphertext+tag).
+///
+/// Uses OsRng (kernel CSPRNG) for nonce generation — never thread_rng.
 pub fn encrypt_memory_content(content: &str, key: &[u8]) -> EngineResult<String> {
     let cipher = Aes256Gcm::new_from_slice(key)
         .map_err(|_| EngineError::Other("AES key must be 32 bytes".into()))?;
 
     let mut nonce_bytes = [0u8; 12];
-    use rand::Rng;
-    rand::thread_rng().fill(&mut nonce_bytes);
+    OsRng.fill_bytes(&mut nonce_bytes);
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
@@ -360,13 +422,21 @@ pub fn encrypt_memory_content(content: &str, key: &[u8]) -> EngineResult<String>
     packed.extend_from_slice(&ciphertext);
 
     let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &packed);
-    Ok(format!("{}{}", ENC_PREFIX, encoded))
+    Ok(format!("{}{}", ENC_PREFIX_VERSIONED, encoded))
 }
 
 /// Decrypt memory content. Returns plaintext.
-/// If the content doesn't have the "enc:" prefix, returns it as-is (cleartext).
+///
+/// Supports both versioned ("enc:v1:") and legacy ("enc:") prefixes.
+/// Legacy content is decrypted with the raw key (pre-HKDF migration).
+/// Versioned content is decrypted with the provided (derived) key.
 pub fn decrypt_memory_content(content: &str, key: &[u8]) -> EngineResult<String> {
-    let Some(encoded) = content.strip_prefix(ENC_PREFIX) else {
+    let encoded = if let Some(e) = content.strip_prefix(ENC_PREFIX_VERSIONED) {
+        e
+    } else if let Some(e) = content.strip_prefix(ENC_PREFIX_LEGACY) {
+        // Legacy v0 content — caller should pass the master key, not a derived key
+        e
+    } else {
         // Not encrypted — return as-is
         return Ok(content.to_string());
     };
@@ -391,9 +461,322 @@ pub fn decrypt_memory_content(content: &str, key: &[u8]) -> EngineResult<String>
     String::from_utf8(plaintext).map_err(|e| EngineError::Other(e.to_string()))
 }
 
-/// Check if content is encrypted (has the "enc:" prefix).
+/// Check if content is encrypted (versioned or legacy prefix).
 pub fn is_encrypted(content: &str) -> bool {
-    content.starts_with(ENC_PREFIX)
+    content.starts_with(ENC_PREFIX_VERSIONED) || content.starts_with(ENC_PREFIX_LEGACY)
+}
+
+/// Check if content uses legacy (v0) encryption format.
+pub fn is_legacy_encrypted(content: &str) -> bool {
+    content.starts_with(ENC_PREFIX_LEGACY) && !content.starts_with(ENC_PREFIX_VERSIONED)
+}
+
+/// Get the key version from encrypted content.
+pub fn encryption_version(content: &str) -> Option<u8> {
+    if content.starts_with(ENC_PREFIX_VERSIONED) {
+        Some(CURRENT_KEY_VERSION)
+    } else if content.starts_with(ENC_PREFIX_LEGACY) {
+        Some(0)
+    } else {
+        None
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Key Rotation
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Re-encrypt a piece of content from a legacy (master) key to a per-agent derived key.
+/// Returns the re-encrypted content with the versioned prefix, or None if
+/// the content wasn't encrypted or was already at the current version.
+pub fn rekey_content(
+    content: &str,
+    old_key: &[u8],
+    new_key: &[u8],
+) -> EngineResult<Option<String>> {
+    if !is_encrypted(content) {
+        return Ok(None); // Not encrypted, nothing to do
+    }
+    if content.starts_with(ENC_PREFIX_VERSIONED) {
+        return Ok(None); // Already at current version
+    }
+    // Decrypt with old key, re-encrypt with new key
+    let plaintext = decrypt_memory_content(content, old_key)?;
+    let re_encrypted = encrypt_memory_content(&plaintext, new_key)?;
+    Ok(Some(re_encrypted))
+}
+
+/// Summary of a batch key rotation operation.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct RekeyReport {
+    /// Number of memories successfully re-encrypted.
+    pub rekeyed: usize,
+    /// Number of memories already at current key version (skipped).
+    pub already_current: usize,
+    /// Number of memories that are cleartext (no encryption, skipped).
+    pub cleartext_skipped: usize,
+    /// Number of errors encountered (logged, not fatal).
+    pub errors: usize,
+}
+
+/// Re-encrypt ALL legacy-encrypted memories from master key to per-agent HKDF keys.
+///
+/// Iterates episodic and semantic memories, finds any with "enc:" (legacy) prefix,
+/// decrypts with the master key, and re-encrypts with the agent-specific derived key.
+/// This is idempotent — memories already at "enc:v1:" are skipped.
+///
+/// Called by the automated rotation scheduler or manually from settings.
+pub fn rekey_all_memories(
+    store: &crate::engine::sessions::SessionStore,
+) -> EngineResult<RekeyReport> {
+    let master_key = get_memory_encryption_key()?;
+    let mut report = RekeyReport::default();
+
+    // ── Episodic memories ────────────────────────────────────────────────
+    {
+        let rows: Vec<(String, String, String)> = {
+            let conn = store.conn.lock();
+            let mut stmt = conn.prepare(
+                "SELECT id, content_full, agent_id FROM episodic_memories
+                 WHERE content_full LIKE 'enc:%'",
+            )?;
+            let mapped = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })?;
+            let collected: Vec<_> = mapped.filter_map(|r| r.ok()).collect();
+            collected
+        };
+
+        for (id, content, agent_id) in &rows {
+            if content.starts_with(ENC_PREFIX_VERSIONED) {
+                report.already_current += 1;
+                continue;
+            }
+            if !is_encrypted(content) {
+                report.cleartext_skipped += 1;
+                continue;
+            }
+            let agent_key = derive_agent_key(&master_key, agent_id)?;
+            match rekey_content(content, &master_key, &agent_key) {
+                Ok(Some(new_content)) => {
+                    let conn = store.conn.lock();
+                    if conn
+                        .execute(
+                            "UPDATE episodic_memories SET content_full = ?2 WHERE id = ?1",
+                            rusqlite::params![id, new_content],
+                        )
+                        .is_ok()
+                    {
+                        report.rekeyed += 1;
+                    } else {
+                        report.errors += 1;
+                    }
+                }
+                Ok(None) => report.already_current += 1,
+                Err(e) => {
+                    warn!("[engram:rekey] Failed to rekey episodic {}: {}", id, e);
+                    report.errors += 1;
+                }
+            }
+        }
+    }
+
+    // ── Semantic memories (subject/object may be encrypted) ──────────────
+    {
+        let rows: Vec<(String, String, String, String)> = {
+            let conn = store.conn.lock();
+            let mut stmt = conn.prepare(
+                "SELECT id, subject, object, scope_agent_id FROM semantic_memories
+                 WHERE subject LIKE 'enc:%' OR object LIKE 'enc:%'",
+            )?;
+            let mapped = stmt.query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })?;
+            let collected: Vec<_> = mapped.filter_map(|r| r.ok()).collect();
+            collected
+        };
+
+        for (id, subject, object, agent_id) in &rows {
+            let agent_key = derive_agent_key(&master_key, agent_id)?;
+            let mut updated_subject = None;
+            let mut updated_object = None;
+
+            if is_legacy_encrypted(subject) {
+                match rekey_content(subject, &master_key, &agent_key) {
+                    Ok(Some(new_val)) => updated_subject = Some(new_val),
+                    Ok(None) => {}
+                    Err(e) => {
+                        warn!(
+                            "[engram:rekey] Failed to rekey semantic subject {}: {}",
+                            id, e
+                        );
+                        report.errors += 1;
+                        continue;
+                    }
+                }
+            }
+            if is_legacy_encrypted(object) {
+                match rekey_content(object, &master_key, &agent_key) {
+                    Ok(Some(new_val)) => updated_object = Some(new_val),
+                    Ok(None) => {}
+                    Err(e) => {
+                        warn!(
+                            "[engram:rekey] Failed to rekey semantic object {}: {}",
+                            id, e
+                        );
+                        report.errors += 1;
+                        continue;
+                    }
+                }
+            }
+
+            if updated_subject.is_some() || updated_object.is_some() {
+                let conn = store.conn.lock();
+                let new_subj = updated_subject.as_deref().unwrap_or(subject);
+                let new_obj = updated_object.as_deref().unwrap_or(object);
+                if conn
+                    .execute(
+                        "UPDATE semantic_memories SET subject = ?2, object = ?3 WHERE id = ?1",
+                        rusqlite::params![id, new_subj, new_obj],
+                    )
+                    .is_ok()
+                {
+                    report.rekeyed += 1;
+                } else {
+                    report.errors += 1;
+                }
+            }
+        }
+    }
+
+    if report.rekeyed > 0 || report.errors > 0 {
+        info!(
+            "[engram:rekey] Batch rekey complete: {} rekeyed, {} current, {} cleartext, {} errors",
+            report.rekeyed, report.already_current, report.cleartext_skipped, report.errors
+        );
+    }
+
+    // Record rotation timestamp in audit log
+    store.engram_audit_log(
+        "key_rotation",
+        "system",
+        "system",
+        "system",
+        Some(&format!(
+            "rekeyed={} already_current={} cleartext={} errors={}",
+            report.rekeyed, report.already_current, report.cleartext_skipped, report.errors
+        )),
+    )?;
+
+    Ok(report)
+}
+
+/// Check if key rotation is needed (>90 days since last rotation).
+/// Returns `true` if rotation should be triggered.
+pub fn should_rotate_keys(store: &crate::engine::sessions::SessionStore) -> bool {
+    let conn = store.conn.lock();
+    let last_rotation: Option<String> = conn
+        .query_row(
+            "SELECT created_at FROM memory_audit_log
+             WHERE operation = 'key_rotation'
+             ORDER BY created_at DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    match last_rotation {
+        Some(ts) => {
+            if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(&ts, "%Y-%m-%d %H:%M:%S") {
+                let last =
+                    chrono::DateTime::<chrono::Utc>::from_naive_utc_and_offset(dt, chrono::Utc);
+                let days_since = (chrono::Utc::now() - last).num_days();
+                days_since >= KEY_ROTATION_INTERVAL_DAYS
+            } else {
+                // Can't parse timestamp — trigger rotation to be safe
+                true
+            }
+        }
+        None => {
+            // No rotation has ever been recorded. Check if there are any
+            // legacy-encrypted memories that need migration.
+            let legacy_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM episodic_memories
+                     WHERE content_full LIKE 'enc:%' AND content_full NOT LIKE 'enc:v1:%'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap_or(0);
+            legacy_count > 0
+        }
+    }
+}
+
+/// Key rotation interval in days (90 days = quarterly rotation).
+const KEY_ROTATION_INTERVAL_DAYS: i64 = 90;
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Snapshot HMAC — Integrity + Ownership Verification
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Derive a snapshot-specific HMAC key from the master encryption key.
+///
+/// Uses a separate HKDF domain ("engram-snapshot-hmac-v1") so the snapshot
+/// signing key is cryptographically independent from the encryption keys.
+fn derive_snapshot_hmac_key() -> EngineResult<[u8; 32]> {
+    let master = get_memory_encryption_key()?;
+    let salt = b"engram-snapshot-hmac-v1";
+    let hk = Hkdf::<Sha256>::new(Some(salt), &master);
+    let mut okm = [0u8; 32];
+    hk.expand(b"snapshot-integrity", &mut okm)
+        .map_err(|e| EngineError::Other(format!("HKDF expand failed: {}", e)))?;
+    Ok(okm)
+}
+
+/// Compute HMAC-SHA256 over a snapshot for integrity and ownership verification.
+///
+/// The HMAC covers `agent_id || snapshot_json`, so:
+///   - Tampering with the JSON is detected (integrity)
+///   - Reassigning a snapshot to a different agent_id is detected (ownership)
+///   - The key is derived from the OS keychain master key (non-forgeable)
+pub fn compute_snapshot_hmac(agent_id: &str, snapshot_json: &str) -> EngineResult<String> {
+    use hmac::Mac;
+    let key = derive_snapshot_hmac_key()?;
+    type HmacSha256 = hmac::Hmac<Sha256>;
+    let mut mac =
+        <HmacSha256 as Mac>::new_from_slice(&key).expect("HMAC-SHA256 accepts any key length");
+    mac.update(agent_id.as_bytes());
+    mac.update(b"|"); // domain separator
+    mac.update(snapshot_json.as_bytes());
+    let result = mac.finalize().into_bytes();
+    Ok(base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        result,
+    ))
+}
+
+/// Verify HMAC-SHA256 over a snapshot (constant-time comparison).
+///
+/// Returns `true` if the HMAC matches (integrity + ownership intact).
+/// Returns `false` if the snapshot was tampered with or reassigned.
+pub fn verify_snapshot_hmac(
+    agent_id: &str,
+    snapshot_json: &str,
+    expected_hmac: &str,
+) -> EngineResult<bool> {
+    use subtle::ConstantTimeEq;
+    let computed = compute_snapshot_hmac(agent_id, snapshot_json)?;
+    Ok(computed.as_bytes().ct_eq(expected_hmac.as_bytes()).into())
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -467,6 +850,199 @@ fn generate_safe_summary(content: &str, pii_types: &[PiiType]) -> String {
     let context = words.join(" ");
 
     format!("[contains {}] {}", types_str, context)
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Layer 2: LLM-Assisted PII Scan (§consolidation stage 2.5)
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Result of an LLM-assisted PII scan on a batch of memories.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct LlmPiiScanReport {
+    /// Number of memories scanned by the LLM.
+    pub scanned: usize,
+    /// Number of memories where LLM detected PII that regex missed.
+    pub upgraded: usize,
+    /// Number of LLM call failures (network, rate limit, etc.).
+    pub errors: usize,
+    /// Whether the scan was skipped entirely (no embedding client).
+    pub skipped: bool,
+}
+
+/// System prompt for LLM-assisted PII detection.
+/// The LLM acts as a secondary scanner for context-dependent PII
+/// that regex cannot catch (e.g., "I live at the blue house on Oak Street"
+/// contains an address but no regex pattern matches).
+const LLM_PII_SYSTEM_PROMPT: &str = r#"You are a PII detection assistant. Analyze the given text and determine if it contains personally identifiable information (PII) that may not be caught by simple pattern matching.
+
+Look for:
+- Informal addresses ("I live on Oak Street", "my apartment at 42B")
+- Names in context ("my doctor, Dr. Martinez", "tell Sarah")
+- Workplace/employer references ("I work at Acme Corp")
+- Relative descriptions that identify someone ("my neighbor in unit 5")
+- Health/medical information ("I have diabetes", "my prescription")
+- Financial details in natural language ("I make $80k", "my mortgage is")
+- Biometric or genetic descriptions
+- Political/religious affiliations stated personally
+- Sexual orientation or gender identity stated personally
+- Union membership
+
+Respond with ONLY a JSON object:
+{"has_pii": true/false, "pii_types": ["address", "name", "health", ...], "confidence": 0.0-1.0}
+
+If no PII is found, respond: {"has_pii": false, "pii_types": [], "confidence": 1.0}"#;
+
+/// LLM PII scan result for a single memory.
+#[derive(Debug, Clone, Deserialize)]
+struct LlmPiiResult {
+    has_pii: bool,
+    #[serde(default)]
+    pii_types: Vec<String>,
+    #[serde(default = "default_confidence")]
+    confidence: f64,
+}
+
+fn default_confidence() -> f64 {
+    0.5
+}
+
+/// Run LLM-assisted PII scan on a batch of memory contents.
+///
+/// This is Layer 2 of the two-layer PII detection system:
+///   - Layer 1 (regex) runs on every memory at storage time (instant, zero-cost)
+///   - Layer 2 (LLM) runs during consolidation on cleartext memories only
+///     to catch context-dependent PII that regex cannot detect.
+///
+/// Returns a report and a list of (memory_id, recommended_tier) upgrades.
+pub async fn llm_pii_scan(
+    memories: &[(String, String)], // (id, content) pairs — only cleartext memories
+    embedding_client: &crate::engine::memory::EmbeddingClient,
+) -> (LlmPiiScanReport, Vec<(String, MemorySecurityTier)>) {
+    let mut report = LlmPiiScanReport::default();
+    let mut upgrades: Vec<(String, MemorySecurityTier)> = Vec::new();
+
+    for (id, content) in memories {
+        // Skip if regex already classified this as non-cleartext
+        if is_encrypted(content) {
+            continue;
+        }
+
+        // Build a classification prompt
+        let prompt = format!(
+            "{}\n\nAnalyze this text:\n\"{}\"",
+            LLM_PII_SYSTEM_PROMPT,
+            // Truncate to avoid token waste — PII is usually in the first ~500 chars
+            if content.len() > 1000 {
+                &content[..1000]
+            } else {
+                content
+            }
+        );
+
+        match embedding_client.classify_text(&prompt).await {
+            Ok(response) => {
+                report.scanned += 1;
+                // Parse the LLM JSON response
+                if let Ok(result) = serde_json::from_str::<LlmPiiResult>(&response) {
+                    if result.has_pii && result.confidence >= 0.7 {
+                        // Determine tier based on PII severity
+                        let tier = if result.pii_types.iter().any(|t| {
+                            matches!(t.as_str(), "health" | "biometric" | "genetic" | "financial")
+                        }) {
+                            MemorySecurityTier::Confidential
+                        } else {
+                            MemorySecurityTier::Sensitive
+                        };
+
+                        upgrades.push((id.clone(), tier));
+                        report.upgraded += 1;
+                        info!(
+                            "[engram:pii-l2] LLM detected PII in {}: {:?} (conf={:.2}) → {:?}",
+                            id, result.pii_types, result.confidence, tier
+                        );
+                    }
+                } else {
+                    warn!(
+                        "[engram:pii-l2] Failed to parse LLM PII response for {}",
+                        id
+                    );
+                    report.errors += 1;
+                }
+            }
+            Err(e) => {
+                // Non-fatal: LLM unavailable, skip gracefully.
+                // Layer 1 regex is still the baseline.
+                warn!("[engram:pii-l2] LLM PII scan failed for {}: {}", id, e);
+                report.errors += 1;
+
+                // After 3 consecutive errors, abort scan to avoid rate-limit spam
+                if report.errors >= 3 {
+                    info!("[engram:pii-l2] Too many errors, aborting LLM PII scan");
+                    break;
+                }
+            }
+        }
+    }
+
+    (report, upgrades)
+}
+
+/// Apply PII tier upgrades discovered by LLM scan.
+/// Re-encrypts cleartext memories that the LLM identified as containing PII.
+pub fn apply_pii_upgrades(
+    store: &crate::engine::sessions::SessionStore,
+    upgrades: &[(String, MemorySecurityTier)],
+) -> EngineResult<usize> {
+    let mut upgraded = 0usize;
+
+    for (id, new_tier) in upgrades {
+        // Fetch the memory
+        if let Some(mem) = store.engram_get_episodic(id)? {
+            let key = get_agent_encryption_key(&mem.agent_id)?;
+            let content = &mem.content.full;
+
+            // Only upgrade if currently cleartext
+            if is_encrypted(content) {
+                continue;
+            }
+
+            let prepared = prepare_for_storage(content, &key)?;
+
+            // The tier from prepare_for_storage may already be correct,
+            // but we force upgrade to at least the LLM-recommended tier
+            let final_content = match new_tier {
+                MemorySecurityTier::Cleartext => continue,
+                MemorySecurityTier::Sensitive | MemorySecurityTier::Confidential => {
+                    if prepared.tier == MemorySecurityTier::Cleartext {
+                        // Regex didn't catch it → encrypt now
+                        encrypt_memory_content(content, &key)?
+                    } else {
+                        prepared.content
+                    }
+                }
+            };
+
+            // Update the stored content (no embedding change)
+            store.engram_update_episodic_content(id, &final_content, None)?;
+
+            // Audit the upgrade
+            store.engram_audit_log(
+                "pii_tier_upgrade",
+                id,
+                &mem.agent_id,
+                "system",
+                Some(&format!("llm_scan: cleartext → {}", new_tier)),
+            )?;
+
+            upgraded += 1;
+        }
+    }
+
+    if upgraded > 0 {
+        info!("[engram:pii-l2] Applied {} PII tier upgrades", upgraded);
+    }
+
+    Ok(upgraded)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
