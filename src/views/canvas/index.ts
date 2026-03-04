@@ -87,6 +87,13 @@ initTabBar('main', {
       console.error('[canvas] Failed to open new tab:', e);
     }
   },
+  onPopOut: async (_tabId, dashboardId, name) => {
+    try {
+      await pawEngine.popOutDashboard(dashboardId, name);
+    } catch (e) {
+      console.error('[canvas] Failed to pop out dashboard:', e);
+    }
+  },
 });
 
 // ── Public API ────────────────────────────────────────────────────────

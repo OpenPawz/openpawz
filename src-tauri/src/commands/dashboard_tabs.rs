@@ -1,9 +1,9 @@
 // Dashboard Tab & Window Commands — Tauri IPC wrappers.
-// Tab operations + pop-out window geometry persistence.
+// Tab operations + pop-out window geometry persistence + pop-out window creation.
 
 use crate::atoms::types::{DashboardTabRow, DashboardWindowRow};
 use crate::engine::state::EngineState;
-use tauri::State;
+use tauri::{AppHandle, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
 // ── Tab Operations ──────────────────────────────────────────────────────
 
@@ -125,4 +125,59 @@ pub fn engine_mark_window_closed(
         .store
         .mark_window_closed(&dashboard_id)
         .map_err(|e| e.to_string())
+}
+
+// ── Pop-Out Window ──────────────────────────────────────────────────────
+
+/// Create a new OS window to show a specific dashboard.
+/// The frontend will load index.html with a `?popout=<dashboard_id>` query param
+/// and auto-navigate to the canvas view for that dashboard.
+#[tauri::command]
+pub fn engine_pop_out_dashboard(
+    app: AppHandle,
+    state: State<'_, EngineState>,
+    dashboard_id: String,
+    dashboard_name: String,
+) -> Result<String, String> {
+    let label = format!(
+        "canvas-{}",
+        dashboard_id.replace(|c: char| !c.is_alphanumeric(), "-")
+    );
+
+    // Check if window already exists — focus it instead of creating a new one
+    if let Some(existing) = app.get_webview_window(&label) {
+        let _ = existing.set_focus();
+        return Ok(label);
+    }
+
+    // Restore saved geometry or use sensible defaults
+    let (x, y, w, h) = match state.store.get_window_geometry(&dashboard_id) {
+        Ok(Some(geo)) => (geo.x, geo.y, geo.width as f64, geo.height as f64),
+        _ => (None, None, 900.0, 700.0),
+    };
+
+    let url = format!("index.html?popout={}", dashboard_id);
+    let title = format!("{} -- Open Pawz", dashboard_name);
+
+    let mut builder = WebviewWindowBuilder::new(&app, &label, WebviewUrl::App(url.into()))
+        .title(&title)
+        .inner_size(w, h)
+        .resizable(true)
+        .decorations(true)
+        .visible(true);
+
+    if let (Some(x_val), Some(y_val)) = (x, y) {
+        builder = builder.position(x_val as f64, y_val as f64);
+    }
+
+    builder
+        .build()
+        .map_err(|e| format!("Failed to create window: {}", e))?;
+
+    // Mark as popped out in DB
+    let _ = state
+        .store
+        .upsert_window_geometry(&dashboard_id, x, y, w as i32, h as i32, None, true);
+
+    Ok(label)
 }

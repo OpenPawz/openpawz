@@ -521,7 +521,50 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // ── Onboarding wizard gate ──────────────────────────────────────
     const needsWizard = await shouldShowWizard();
-    if (needsWizard) {
+
+    // ── Pop-out window detection ────────────────────────────────────
+    // If loaded with ?popout=<dashboardId>, skip onboarding and go
+    // straight to canvas view for that dashboard.
+    const urlParams = new URLSearchParams(window.location.search);
+    const popoutDashId = urlParams.get('popout');
+    if (popoutDashId) {
+      console.debug('[main] Pop-out window for dashboard:', popoutDashId);
+      // Hide sidebar for pop-out windows
+      const sidebar = document.getElementById('sidebar');
+      if (sidebar) sidebar.style.display = 'none';
+      const mainContent = document.querySelector('.main-content') as HTMLElement | null;
+      if (mainContent) mainContent.style.marginLeft = '0';
+
+      const { loadDashboard } = await import('./views/canvas/index');
+      switchView('canvas');
+      await loadDashboard(popoutDashId);
+
+      // Save geometry on window resize/move (debounced)
+      let geoTimer: ReturnType<typeof setTimeout> | null = null;
+      const saveGeo = () => {
+        if (geoTimer) clearTimeout(geoTimer);
+        geoTimer = setTimeout(async () => {
+          try {
+            await pawEngine.saveWindowGeometry(
+              popoutDashId,
+              window.screenX,
+              window.screenY,
+              window.innerWidth,
+              window.innerHeight,
+              null,
+              true,
+            );
+          } catch {
+            /* best effort */
+          }
+        }, 500);
+      };
+      window.addEventListener('resize', saveGeo);
+      // Mark window closed on unload
+      window.addEventListener('beforeunload', () => {
+        pawEngine.markWindowClosed(popoutDashId).catch(() => {});
+      });
+    } else if (needsWizard) {
       console.debug('[main] First run — showing onboarding wizard');
       initWizard();
       showView('setup-view');

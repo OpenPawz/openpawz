@@ -363,6 +363,7 @@ pub fn run() {
             commands::dashboard_tabs::engine_get_window_geometry,
             commands::dashboard_tabs::engine_list_popped_out_windows,
             commands::dashboard_tabs::engine_mark_window_closed,
+            commands::dashboard_tabs::engine_pop_out_dashboard,
             // ── Telemetry (Canvas Phase 5) ──
             commands::telemetry::engine_get_daily_metrics,
             commands::telemetry::engine_get_metrics_range,

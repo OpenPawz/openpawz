@@ -558,6 +558,10 @@ export class PawEngineClient {
     return invoke<boolean>('engine_mark_window_closed', { dashboardId });
   }
 
+  async popOutDashboard(dashboardId: string, dashboardName: string): Promise<string> {
+    return invoke<string>('engine_pop_out_dashboard', { dashboardId, dashboardName });
+  }
+
   // ── Telemetry (Canvas Phase 5) ───────────────────────────────────────
 
   async getDailyMetrics(date: string): Promise<TelemetryDailySummary> {

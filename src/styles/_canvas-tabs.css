@@ -161,3 +161,41 @@
 .canvas-tab-overflow-item:hover {
   background: var(--bg-hover);
 }
+
+/* ── Context Menu ────────────────────────────────────────── */
+.canvas-tab-ctx {
+  position: fixed;
+  z-index: 50;
+  min-width: 200px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  padding: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  font-family: var(--font-mono);
+}
+
+.canvas-tab-ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  transition: background 0.1s;
+}
+
+.canvas-tab-ctx-item:hover {
+  background: var(--bg-hover);
+}
+
+.canvas-tab-ctx-item.disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}

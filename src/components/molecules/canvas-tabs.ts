@@ -23,6 +23,7 @@ export interface TabBarCallbacks {
   onActivate: (tabId: string, dashboardId: string) => void;
   onClose: (tabId: string) => void;
   onNew: () => void;
+  onPopOut?: (tabId: string, dashboardId: string, name: string) => void;
 }
 
 // ── State ─────────────────────────────────────────────────────────────
@@ -193,6 +194,17 @@ export function wireTabEvents(): void {
       menu?.classList.toggle('canvas-tab-overflow-open');
     });
   }
+
+  // Right-click context menu on tabs
+  document.querySelectorAll<HTMLElement>('.canvas-tab').forEach((el) => {
+    el.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const tabId = el.dataset.tabId ?? '';
+      const tab = _tabs.find((t) => t.tabId === tabId);
+      if (!tab) return;
+      showTabContextMenu(e.clientX, e.clientY, tab, cbs);
+    });
+  });
 }
 
 // ── Tab Operations ────────────────────────────────────────────────────
@@ -258,4 +270,72 @@ export function getActiveTab(): TabInfo | undefined {
 /** Get all current tabs. */
 export function getTabs(): TabInfo[] {
   return _tabs;
+}
+
+// ── Context Menu ──────────────────────────────────────────────────────
+
+function showTabContextMenu(x: number, y: number, tab: TabInfo, cbs: TabBarCallbacks): void {
+  // Remove any existing context menu
+  document.querySelector('.canvas-tab-ctx')?.remove();
+
+  const menu = document.createElement('div');
+  menu.className = 'canvas-tab-ctx';
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+
+  const items: { label: string; icon: string; action: () => void; disabled?: boolean }[] = [
+    {
+      label: 'Pop Out to Window',
+      icon: 'open_in_new',
+      action: () => cbs.onPopOut?.(tab.tabId, tab.dashboardId, tab.name),
+    },
+    {
+      label: 'Close Tab',
+      icon: 'close',
+      action: () => cbs.onClose(tab.tabId),
+      disabled: tab.pinned,
+    },
+    {
+      label: 'Close Other Tabs',
+      icon: 'tab_close_right',
+      action: () => {
+        _tabs
+          .filter((t) => t.tabId !== tab.tabId && !t.pinned)
+          .forEach((t) => cbs.onClose(t.tabId));
+      },
+      disabled: _tabs.filter((t) => t.tabId !== tab.tabId && !t.pinned).length === 0,
+    },
+  ];
+
+  menu.innerHTML = items
+    .map(
+      (it, i) => `
+      <button class="canvas-tab-ctx-item${it.disabled ? ' disabled' : ''}" data-idx="${i}">
+        <span class="ms ms-sm">${escHtml(it.icon)}</span>
+        ${escHtml(it.label)}
+      </button>
+    `,
+    )
+    .join('');
+
+  document.body.appendChild(menu);
+
+  // Wire clicks
+  menu.querySelectorAll<HTMLElement>('.canvas-tab-ctx-item').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx ?? '0', 10);
+      const item = items[idx];
+      if (item && !item.disabled) item.action();
+      menu.remove();
+    });
+  });
+
+  // Close on outside click
+  const dismiss = (e: MouseEvent) => {
+    if (!menu.contains(e.target as Node)) {
+      menu.remove();
+      document.removeEventListener('click', dismiss);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', dismiss), 0);
 }
