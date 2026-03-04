@@ -277,7 +277,7 @@ fn compress_skill_sections(sections: &[String], community: &str, budget: usize) 
     if !community.is_empty() {
         let remaining = budget.saturating_sub(result.len());
         if remaining > 100 {
-            let truncated = safe_truncate(&community, remaining);
+            let truncated = safe_truncate(community, remaining);
             result.push_str(truncated);
         }
     }

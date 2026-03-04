@@ -319,7 +319,7 @@ When told to install a package:
                     from_agent: agent_id.to_string(),
                     to_agent: Some("boss".into()),
                     kind: "result".into(),
-                    content: format!("Task completed: {}", safe_truncate(&text, 500)),
+                    content: format!("Task completed: {}", safe_truncate(text, 500)),
                     metadata: None,
                     created_at: chrono::Utc::now().to_rfc3339(),
                 };
