@@ -27,8 +27,6 @@ export interface InjectionDecision {
 
 // ── Default policy ─────────────────────────────────────────────────────
 
-const LEGACY_KEY = 'paw_injection_policy';
-
 export const DEFAULT_POLICY: InjectionPolicy = {
   enabled: true,
   blockCritical: true,
@@ -45,20 +43,10 @@ let _cache: InjectionPolicy | null = null;
 
 /**
  * Initialise the injection policy cache from the encrypted database.
- * Migrates legacy localStorage data on first run.
  * Call once at app startup after initDb().
  */
 export async function initInjectionPolicy(): Promise<void> {
   try {
-    const legacyRaw = localStorage.getItem(LEGACY_KEY);
-    if (legacyRaw) {
-      const fromDb = await loadInjectionPolicyFromDb();
-      if (!fromDb) {
-        await saveInjectionPolicyToDb(legacyRaw);
-      }
-      localStorage.removeItem(LEGACY_KEY);
-    }
-
     const fromDb = await loadInjectionPolicyFromDb();
     _cache = fromDb
       ? { ...DEFAULT_POLICY, ...(fromDb as unknown as Partial<InjectionPolicy>) }

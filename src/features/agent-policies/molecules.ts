@@ -17,28 +17,15 @@ import { loadAgentPoliciesFromDb, saveAgentPoliciesToDb } from '../../db';
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-const LEGACY_KEY = 'paw_agent_tool_policies';
-
 /** In-memory cache — populated at init. */
 let _cache: Record<string, ToolPolicy> | null = null;
 
 /**
  * Initialise the agent policies cache from the encrypted database.
- * Migrates legacy localStorage data on first run.
  * Call once at app startup after initDb().
  */
 export async function initAgentPolicies(): Promise<void> {
   try {
-    // Migrate from localStorage → DB on first run
-    const legacyRaw = localStorage.getItem(LEGACY_KEY);
-    if (legacyRaw) {
-      const fromDb = await loadAgentPoliciesFromDb();
-      if (!fromDb) {
-        await saveAgentPoliciesToDb(legacyRaw);
-      }
-      localStorage.removeItem(LEGACY_KEY);
-    }
-
     const fromDb = await loadAgentPoliciesFromDb();
     _cache = (fromDb as Record<string, ToolPolicy>) ?? {};
   } catch (e) {
