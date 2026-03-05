@@ -9,6 +9,7 @@ import {
   type AgentInfo,
   type SkillInfo,
 } from './atoms';
+import { escHtml } from '../helpers';
 
 let _overlay: HTMLElement | null = null;
 let _input: HTMLInputElement | null = null;
@@ -95,8 +96,8 @@ function renderList() {
         ? `<span class="command-palette-item-shortcut"><kbd>${item.shortcut}</kbd></span>`
         : '';
       return `<div class="command-palette-item${active}" data-index="${i}">
-        <span class="command-palette-item-icon">${item.icon ?? ''}</span>
-        <span class="command-palette-item-label">${item.label}</span>
+        <span class="command-palette-item-icon">${escHtml(item.icon ?? '')}</span>
+        <span class="command-palette-item-label">${escHtml(item.label)}</span>
         ${shortcutHtml}
         <span class="command-palette-item-badge">${kindBadge}</span>
       </div>`;

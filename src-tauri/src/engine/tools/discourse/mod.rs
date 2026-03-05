@@ -146,14 +146,19 @@ pub(crate) fn get_credentials(
 /// Build an HTTP client with Discourse API authentication headers.
 pub(crate) fn authorized_client(api_key: &str, username: &str) -> reqwest::Client {
     let mut headers = reqwest::header::HeaderMap::new();
-    headers.insert(
-        "Api-Key",
-        reqwest::header::HeaderValue::from_str(api_key).expect("invalid API key header"),
-    );
-    headers.insert(
-        "Api-Username",
-        reqwest::header::HeaderValue::from_str(username).expect("invalid username header"),
-    );
+    // Use from_str safely — invalid header values return a default client without auth
+    if let Ok(key_val) = reqwest::header::HeaderValue::from_str(api_key) {
+        headers.insert("Api-Key", key_val);
+    } else {
+        log::warn!("[discourse] API key contains invalid header characters — auth headers omitted");
+    }
+    if let Ok(user_val) = reqwest::header::HeaderValue::from_str(username) {
+        headers.insert("Api-Username", user_val);
+    } else {
+        log::warn!(
+            "[discourse] Username contains invalid header characters — auth headers omitted"
+        );
+    }
     headers.insert(
         reqwest::header::CONTENT_TYPE,
         reqwest::header::HeaderValue::from_static("application/json"),

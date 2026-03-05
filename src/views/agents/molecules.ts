@@ -112,12 +112,12 @@ export function renderAgents(agents: Agent[], cbs: RenderAgentsCallbacks) {
     grid.innerHTML = `${agents
       .map(
         (agent) => `
-      <div class="agent-card k-row k-spring k-materialise${agent.source === 'backend' ? ' agent-card-backend' : ''}" data-id="${agent.id}">
+      <div class="agent-card k-row k-spring k-materialise${agent.source === 'backend' ? ' agent-card-backend' : ''}" data-id="${escHtml(agent.id)}">
         <div class="agent-card-header">
-          <div class="agent-avatar" style="background:${agent.color}">${spriteAvatar(agent.avatar, 48)}</div>
+          <div class="agent-avatar" style="background:${escHtml(agent.color)}">${spriteAvatar(agent.avatar, 48)}</div>
           <div class="agent-info">
             <div class="agent-name">${escHtml(agent.name)}</div>
-            <div class="agent-template">${agent.model || (agent.source === 'backend' ? 'AI-Created' : agent.template.charAt(0).toUpperCase() + agent.template.slice(1))}</div>
+            <div class="agent-template">${escHtml(agent.model || (agent.source === 'backend' ? 'AI-Created' : agent.template.charAt(0).toUpperCase() + agent.template.slice(1)))}</div>
           </div>
           <button class="btn-icon agent-menu-btn" title="Options">⋮</button>
         </div>

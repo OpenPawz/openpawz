@@ -96,8 +96,9 @@ fn load_vault_key_from_keychain() -> EngineResult<Zeroizing<Vec<u8>>> {
 
 /// Encrypt a plaintext credential value using AES-256-GCM.
 /// Returns "aes:" + base64(nonce || ciphertext_with_tag).
-pub fn encrypt_credential(plaintext: &str, key: &[u8]) -> String {
-    let cipher = Aes256Gcm::new_from_slice(key).expect("AES-256-GCM key must be 32 bytes");
+pub fn encrypt_credential(plaintext: &str, key: &[u8]) -> EngineResult<String> {
+    let cipher = Aes256Gcm::new_from_slice(key)
+        .map_err(|_| EngineError::Other("AES-256-GCM key must be exactly 32 bytes".into()))?;
 
     // Generate a random 12-byte nonce using OS CSPRNG
     let mut nonce_bytes = [0u8; 12];
@@ -108,7 +109,7 @@ pub fn encrypt_credential(plaintext: &str, key: &[u8]) -> String {
 
     let ciphertext = cipher
         .encrypt(nonce, plaintext.as_bytes())
-        .expect("AES-256-GCM encryption should not fail");
+        .map_err(|e| EngineError::Other(format!("AES-256-GCM encryption failed: {}", e)))?;
 
     // Pack: nonce (12) || ciphertext+tag
     let mut packed = Vec::with_capacity(12 + ciphertext.len());
@@ -116,7 +117,7 @@ pub fn encrypt_credential(plaintext: &str, key: &[u8]) -> String {
     packed.extend_from_slice(&ciphertext);
 
     let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &packed);
-    format!("{}{}", AES_PREFIX, encoded)
+    Ok(format!("{}{}", AES_PREFIX, encoded))
 }
 
 /// Decrypt a credential value (AES-256-GCM only).
@@ -165,7 +166,7 @@ mod tests {
     fn encrypt_decrypt_roundtrip() {
         let key = test_key();
         let plaintext = "sk-live-abc123_secret_token";
-        let encrypted = encrypt_credential(plaintext, &key);
+        let encrypted = encrypt_credential(plaintext, &key).unwrap();
         assert!(encrypted.starts_with(AES_PREFIX));
         let decrypted = decrypt_credential(&encrypted, &key).unwrap();
         assert_eq!(decrypted, plaintext);
@@ -174,7 +175,7 @@ mod tests {
     #[test]
     fn encrypt_decrypt_empty_string() {
         let key = test_key();
-        let encrypted = encrypt_credential("", &key);
+        let encrypted = encrypt_credential("", &key).unwrap();
         assert!(encrypted.starts_with(AES_PREFIX));
         let decrypted = decrypt_credential(&encrypted, &key).unwrap();
         assert_eq!(decrypted, "");
@@ -185,7 +186,7 @@ mod tests {
         let key1 = vec![0xAB; 32];
         let key2 = vec![0xCD; 32];
         let plaintext = "my-secret-api-key";
-        let encrypted = encrypt_credential(plaintext, &key1);
+        let encrypted = encrypt_credential(plaintext, &key1).unwrap();
         // AES-GCM detects wrong key via authentication tag — returns Err, not garbage
         let result = decrypt_credential(&encrypted, &key2);
         assert!(result.is_err());
@@ -195,7 +196,7 @@ mod tests {
     fn encrypt_long_text_beyond_key_length() {
         let key = vec![0x42; 32];
         let plaintext = "x".repeat(1000); // much longer than 32-byte key
-        let encrypted = encrypt_credential(&plaintext, &key);
+        let encrypted = encrypt_credential(&plaintext, &key).unwrap();
         let decrypted = decrypt_credential(&encrypted, &key).unwrap();
         assert_eq!(decrypted, plaintext);
     }
@@ -211,8 +212,8 @@ mod tests {
     fn each_encryption_produces_different_ciphertext() {
         let key = test_key();
         let plaintext = "same-input-every-time";
-        let enc1 = encrypt_credential(plaintext, &key);
-        let enc2 = encrypt_credential(plaintext, &key);
+        let enc1 = encrypt_credential(plaintext, &key).unwrap();
+        let enc2 = encrypt_credential(plaintext, &key).unwrap();
         // Random nonce means different ciphertext each time
         assert_ne!(enc1, enc2);
         // Both decrypt to the same plaintext
@@ -223,7 +224,7 @@ mod tests {
     #[test]
     fn tampered_ciphertext_returns_error() {
         let key = test_key();
-        let encrypted = encrypt_credential("sensitive-data", &key);
+        let encrypted = encrypt_credential("sensitive-data", &key).unwrap();
         // Flip a byte in the base64-encoded ciphertext
         let payload = &encrypted[AES_PREFIX.len()..];
         let mut raw =
@@ -259,7 +260,7 @@ mod tests {
     fn unicode_plaintext_roundtrip() {
         let key = test_key();
         let plaintext = "p@$$w0rd-with-emojis-🔑🛡️-and-日本語";
-        let encrypted = encrypt_credential(plaintext, &key);
+        let encrypted = encrypt_credential(plaintext, &key).unwrap();
         let decrypted = decrypt_credential(&encrypted, &key).unwrap();
         assert_eq!(decrypted, plaintext);
     }

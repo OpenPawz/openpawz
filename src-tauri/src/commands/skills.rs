@@ -37,7 +37,7 @@ pub fn engine_skill_set_credential(
     value: String,
 ) -> Result<(), String> {
     let vault_key = skills::get_vault_key()?;
-    let encrypted = skills::encrypt_credential(&value, &vault_key);
+    let encrypted = skills::encrypt_credential(&value, &vault_key).map_err(|e| e.to_string())?;
     info!(
         "[engine] Setting credential {}:{} ({} chars)",
         skill_id,

@@ -24,6 +24,16 @@ export function initMoleculesState() {
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
+/** Escape a string for safe interpolation into HTML attribute values. */
+function escAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function buildFormConfig(): TtsConfig {
   return {
     provider: ($('tts-provider') as HTMLSelectElement)?.value || 'google',
@@ -66,7 +76,7 @@ export function renderVoiceForm(container: HTMLElement) {
       <div id="tts-elevenlabs-group" style="${isEL ? '' : 'display:none'}">
         <div class="form-group">
           <label class="form-label">ElevenLabs API Key</label>
-          <input type="password" class="form-input" id="tts-elevenlabs-key" placeholder="xi-..." value="${config.elevenlabs_api_key || ''}">
+          <input type="password" class="form-input" id="tts-elevenlabs-key" placeholder="xi-..." value="${escAttr(config.elevenlabs_api_key || '')}">
           <div class="form-hint">Get your API key from elevenlabs.io</div>
         </div>
         <div class="form-group">

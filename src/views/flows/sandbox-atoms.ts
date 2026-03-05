@@ -126,7 +126,19 @@ export function executeCodeSandboxed(
     /\bglobalThis\b/,
     /\bprocess\b/,
     /\b__proto__\b/,
-    /\bconstructor\s*\[/,
+    /\bconstructor\b/,
+    /\bprototype\b/,
+    /\b__lookupGetter__\b/,
+    /\b__lookupSetter__\b/,
+    /\b__defineGetter__\b/,
+    /\b__defineSetter__\b/,
+    /\bReflect\b/,
+    /\bProxy\b/,
+    /\bObject\s*\.\s*getPrototypeOf\b/,
+    /\bObject\s*\.\s*setPrototypeOf\b/,
+    /\bObject\s*\.\s*defineProperty\b/,
+    /\bObject\s*\.\s*getOwnPropertyDescriptor\b/,
+    /\bFunction\b/,
   ];
   for (const pattern of forbidden) {
     if (pattern.test(code)) {

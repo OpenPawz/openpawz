@@ -33,6 +33,7 @@ import { engineChatSend } from '../molecules/bridge';
 import { pawEngine } from '../molecules/ipc_client';
 import { extractContent, fileToBase64 } from '../atoms/chat';
 import { showToast } from '../../components/toast';
+import { escHtml } from '../../components/helpers';
 
 // ── Module state ─────────────────────────────────────────────────────────
 
@@ -259,9 +260,9 @@ async function openGroupCreationFromDock(): Promise<void> {
     const row = document.createElement('label');
     row.className = 'inbox-group-agent-row';
     row.innerHTML = `
-      <input type="checkbox" value="${agent.id}" />
-      <span class="inbox-group-agent-avatar" style="border-color:${agent.color}"></span>
-      <span class="inbox-group-agent-name">${agent.name}</span>
+      <input type="checkbox" value="${escHtml(agent.id)}" />
+      <span class="inbox-group-agent-avatar" style="border-color:${escHtml(agent.color)}"></span>
+      <span class="inbox-group-agent-name">${escHtml(agent.name)}</span>
     `;
     const checkbox = row.querySelector('input')!;
     checkbox.addEventListener('change', () => {

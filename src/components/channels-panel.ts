@@ -1,6 +1,6 @@
 // channels-panel.ts — Channels side panel: hero stats, connection health, kinetic init
 
-import { $ } from './helpers';
+import { $, escHtml } from './helpers';
 
 // ── Hero stat counters ─────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ export function renderHealthList(entries: ChannelHealthEntry[]): void {
       (e) => `
     <div class="channels-health-row">
       <div class="channels-health-dot ${e.connected ? 'online' : 'offline'}"></div>
-      <span class="channels-health-name">${e.name}</span>
+      <span class="channels-health-name">${escHtml(e.name)}</span>
       <span class="channels-health-status">${e.connected ? `${e.messageCount ?? 0} msgs` : 'offline'}</span>
     </div>`,
     )

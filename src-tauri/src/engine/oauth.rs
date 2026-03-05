@@ -278,7 +278,7 @@ pub async fn dynamic_register_client(
     registration_url: &str,
     redirect_uri: &str,
 ) -> EngineResult<Rfc7591RegistrationResponse> {
-    let client = reqwest::Client::new();
+    let client = super::http::pinned_client();
 
     let body = serde_json::json!({
         "client_name": "OpenPawz",
@@ -621,18 +621,13 @@ static GOOGLE_OAUTH: OAuthConfig = OAuthConfig {
     env_prefix: "GOOGLE",
     auth_url: "https://accounts.google.com/o/oauth2/v2/auth",
     token_url: "https://oauth2.googleapis.com/token",
-    // Google Desktop app — client_secret is NOT confidential per Google's docs:
-    // https://developers.google.com/identity/protocols/oauth2#installed
-    // "the client_secret is not treated as a secret" for installed apps.
-    // Safe to ship in the binary (same pattern as VS Code, Slack desktop, etc.)
+    // Set OPENPAWZ_GOOGLE_CLIENT_ID and OPENPAWZ_GOOGLE_CLIENT_SECRET at
+    // build time (via .env.local or env vars) to enable Google OAuth.
     client_id: match option_env!("OPENPAWZ_GOOGLE_CLIENT_ID") {
         Some(v) => v,
-        None => "***REDACTED_GOOGLE_CLIENT_ID***",
+        None => "REPLACE_WITH_GOOGLE_CLIENT_ID",
     },
-    client_secret: match option_env!("OPENPAWZ_GOOGLE_CLIENT_SECRET") {
-        Some(v) => Some(v),
-        None => Some("***REDACTED_GOOGLE_CLIENT_SECRET***"),
-    },
+    client_secret: option_env!("OPENPAWZ_GOOGLE_CLIENT_SECRET"),
     default_scopes: &[
         "https://www.googleapis.com/auth/gmail.readonly",
         "https://www.googleapis.com/auth/gmail.send",
@@ -1009,7 +1004,7 @@ async fn exchange_code(
     code_verifier: &str,
     redirect_uri: &str,
 ) -> EngineResult<OAuthTokens> {
-    let client = reqwest::Client::new();
+    let client = super::http::pinned_client();
 
     // Resolve effective credentials (compile-time or runtime env var)
     let client_id = config.effective_client_id();
@@ -1086,7 +1081,7 @@ pub async fn refresh_access_token(
         ))
     })?;
 
-    let client = reqwest::Client::new();
+    let client = super::http::pinned_client();
 
     // Resolve effective credentials (compile-time or runtime env var)
     let client_id = config.effective_client_id();

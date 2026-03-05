@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Full capability for the main window — Pawz agent has complete access",
+  "description": "Scoped capability for the main window — least-privilege access",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -24,15 +24,15 @@
     {
       "identifier": "fs:scope",
       "allow": [
+        "$APPDATA/**",
+        "$APPDATA",
         "$HOME/**",
         "$HOME",
         "/tmp/**",
-        "/tmp",
-        "/**"
+        "/tmp"
       ]
     },
     "shell:allow-open",
-    "shell:allow-execute",
     "updater:default",
     "updater:allow-check",
     "updater:allow-download-and-install"

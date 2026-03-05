@@ -49,12 +49,12 @@ pub async fn execute_sol_wallet_create(
         .ok_or(EngineError::Other("Engine state not available".into()))?;
     let vault_key = crate::engine::skills::get_vault_key()?;
 
-    let encrypted_key = crate::engine::skills::encrypt_credential(&private_key_b58, &vault_key);
+    let encrypted_key = crate::engine::skills::encrypt_credential(&private_key_b58, &vault_key)?;
     state
         .store
         .set_skill_credential("solana_dex", "SOLANA_PRIVATE_KEY", &encrypted_key)?;
 
-    let encrypted_addr = crate::engine::skills::encrypt_credential(&address, &vault_key);
+    let encrypted_addr = crate::engine::skills::encrypt_credential(&address, &vault_key)?;
     state
         .store
         .set_skill_credential("solana_dex", "SOLANA_WALLET_ADDRESS", &encrypted_addr)?;

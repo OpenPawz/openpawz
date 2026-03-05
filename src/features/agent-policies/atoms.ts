@@ -198,13 +198,16 @@ export const HIGH_RISK_TOOLS: readonly string[] = [
   'agent_skill_assign',
 ];
 
-/** Default policy: unrestricted (backward-compatible). */
+/** Default policy: standard — high-risk tools require human approval.
+ *
+ * Security: "deny-by-default" aligns with zero-trust. Unrestricted is
+ * available as an explicit opt-in via POLICY_PRESETS. */
 export const DEFAULT_POLICY: ToolPolicy = {
-  mode: 'unrestricted',
+  mode: 'denylist',
   allowed: [],
   denied: [],
   requireApprovalForUnlisted: false,
-  alwaysRequireApproval: [],
+  alwaysRequireApproval: [...HIGH_RISK_TOOLS],
 };
 
 /** Restrictive preset: only safe read tools allowed. */
@@ -233,13 +236,19 @@ export const POLICY_PRESETS: Record<
 > = {
   unrestricted: {
     label: 'Unrestricted',
-    description: 'Full access to all tools (default)',
-    policy: DEFAULT_POLICY,
+    description: 'Full access to all tools — no approval required',
+    policy: {
+      mode: 'unrestricted' as const,
+      allowed: [],
+      denied: [],
+      requireApprovalForUnlisted: false,
+      alwaysRequireApproval: [],
+    },
   },
   standard: {
     label: 'Standard',
-    description: 'All tools available, high-risk tools require approval',
-    policy: STANDARD_POLICY,
+    description: 'All tools available, high-risk tools require approval (default)',
+    policy: DEFAULT_POLICY,
   },
   readonly: {
     label: 'Read-Only',
@@ -315,9 +324,9 @@ export function checkToolPolicy(toolName: string, policy: ToolPolicy): PolicyDec
 
     default:
       return {
-        allowed: true,
-        requiresApproval: false,
-        reason: 'Unknown policy mode — defaulting to allow.',
+        allowed: false,
+        requiresApproval: true,
+        reason: 'Unknown policy mode — defaulting to deny (fail-closed).',
       };
   }
 }

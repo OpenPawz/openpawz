@@ -581,8 +581,8 @@ export async function generateReport() {
 
     reportContent.innerHTML = formatMarkdown(reportText);
     showToast('Report generated and saved!', 'success');
-  } catch (e) {
-    reportContent.innerHTML = `<p class="error">Failed to generate report: ${e instanceof Error ? e.message : e}</p>`;
+  } catch {
+    reportContent.innerHTML = `<p class="error">Failed to generate report. Check logs for details.</p>`;
   } finally {
     _state.setIsResearching(false);
     _state.setStreamResolve(null);

@@ -132,10 +132,10 @@ pub async fn start_n8n_process(app_handle: &tauri::AppHandle) -> EngineResult<N8
         .env("N8N_USER_FOLDER", data_dir.to_string_lossy().as_ref())
         .env("N8N_DIAGNOSTICS_ENABLED", "false")
         .env("N8N_PERSONALIZATION_ENABLED", "false")
-        // Enable community node installation (required for 25K+ packages)
+        // Enable community node installation (verified registry only)
         .env("N8N_COMMUNITY_PACKAGES_ENABLED", "true")
-        // Allow installation of packages not in n8n's verified registry
-        .env("N8N_COMMUNITY_PACKAGES_ALLOW_UNVERIFIED", "true")
+        // Only allow verified packages — unverified can execute arbitrary code
+        .env("N8N_COMMUNITY_PACKAGES_ALLOW_UNVERIFIED", "false")
         .env("N8N_REINSTALL_MISSING_PACKAGES", "true")
         .env("N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE", "true")
         .stdout(stdout_sink)
@@ -248,7 +248,7 @@ pub async fn start_n8n_process(app_handle: &tauri::AppHandle) -> EngineResult<N8
                 .env("N8N_DIAGNOSTICS_ENABLED", "false")
                 .env("N8N_PERSONALIZATION_ENABLED", "false")
                 .env("N8N_COMMUNITY_PACKAGES_ENABLED", "true")
-                .env("N8N_COMMUNITY_PACKAGES_ALLOW_UNVERIFIED", "true")
+                .env("N8N_COMMUNITY_PACKAGES_ALLOW_UNVERIFIED", "false")
                 .env("N8N_REINSTALL_MISSING_PACKAGES", "true")
                 .env("N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE", "true")
                 .stdout(stdout2)
@@ -436,6 +436,9 @@ fn store_n8n_encryption_key_in_keychain(key: &str) {
 ///
 /// n8n checks `<N8N_USER_FOLDER>/.n8n/config` against `N8N_ENCRYPTION_KEY`
 /// on startup. We write the keychain value here to prevent mismatch errors.
+///
+/// SECURITY NOTE: This file contains the encryption key in plaintext.
+/// File permissions are restricted to owner-only (0o600).
 fn sync_encryption_key_to_n8n_config(data_dir: &std::path::Path, key: &str) {
     let n8n_dir = data_dir.join(".n8n");
     let _ = std::fs::create_dir_all(&n8n_dir);
@@ -446,7 +449,16 @@ fn sync_encryption_key_to_n8n_config(data_dir: &std::path::Path, key: &str) {
         &config_path,
         serde_json::to_string_pretty(&json).unwrap_or_default(),
     ) {
-        Ok(_) => log::debug!("[n8n] Synced encryption key to {}", config_path.display()),
+        Ok(_) => {
+            // Restrict file permissions to owner-only
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ =
+                    std::fs::set_permissions(&config_path, std::fs::Permissions::from_mode(0o600));
+            }
+            log::debug!("[n8n] Synced encryption key to {}", config_path.display());
+        }
         Err(e) => log::warn!(
             "[n8n] Failed to sync encryption key to {}: {}",
             config_path.display(),

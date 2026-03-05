@@ -188,8 +188,8 @@ export async function loadStorageSettings() {
       </div>
     `;
     container.appendChild(syncSection);
-  } catch (e) {
-    container.innerHTML = `<p style="color:var(--error)">Failed to load storage settings: ${e}</p>`;
+  } catch {
+    container.innerHTML = `<p style="color:var(--error)">Failed to load storage settings.</p>`;
   }
 }
 

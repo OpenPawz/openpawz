@@ -3,6 +3,8 @@ import { isEngineMode, setEngineMode, startEngineBridge } from './engine-bridge'
 import { pawEngine } from './engine';
 import { initDb, initDbEncryption, listModelPricing } from './db';
 import { initSecuritySettings } from './security';
+import { initAgentPolicies } from './features/agent-policies/molecules';
+import { initInjectionPolicy } from './features/prompt-injection/molecules';
 import { installErrorBoundary, setErrorHandler } from './error-boundary';
 import { appState, applyModelPricingOverrides } from './state/index';
 import { escHtml, populateModelSelect, promptModal, icon } from './components/helpers';
@@ -316,6 +318,8 @@ document.addEventListener('DOMContentLoaded', async () => {
               console.error('[main] OS keychain unavailable after DB retry:', e);
             });
             await initSecuritySettings().catch(() => {});
+            await initAgentPolicies().catch(() => {});
+            await initInjectionPolicy().catch(() => {});
           } catch (retryErr) {
             const msg = $('db-error-message');
             if (msg)
@@ -337,6 +341,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (dbReady) {
       await initSecuritySettings().catch((e) =>
         console.warn('[main] Security settings init failed:', e),
+      );
+      await initAgentPolicies().catch((e) => console.warn('[main] Agent policies init failed:', e));
+      await initInjectionPolicy().catch((e) =>
+        console.warn('[main] Injection policy init failed:', e),
       );
       // Load model pricing overrides from DB
       try {

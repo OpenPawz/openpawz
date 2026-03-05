@@ -154,6 +154,24 @@ const DANGER_PATTERNS: DangerPattern[] = [
     label: 'Firewall Stop',
     reason: 'Stops the firewall daemon',
   },
+  {
+    pattern: /\bnft\s+flush/i,
+    level: 'high',
+    label: 'Firewall Flush (nftables)',
+    reason: 'Flushes all nftables rules',
+  },
+  {
+    pattern: /\bpfctl\s+-d/i,
+    level: 'high',
+    label: 'Firewall Disable (pf)',
+    reason: 'Disables the macOS/BSD packet filter',
+  },
+  {
+    pattern: /\bsetenforce\s+0/i,
+    level: 'high',
+    label: 'SELinux Disable',
+    reason: 'Sets SELinux to permissive mode',
+  },
 
   // ── HIGH: User/account modification ──
   {
@@ -426,7 +444,6 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '^pwd$',
     '^cd\\b',
     '^which\\b',
-    '^find\\b',
     '^head\\b',
     '^tail\\b',
     '^wc\\b',
@@ -434,21 +451,15 @@ const DEFAULT_SETTINGS: SecuritySettings = {
     '^tree\\b',
     '^mkdir\\b',
     '^touch\\b',
-    '^cp\\b',
-    '^ln\\b',
     '^tar\\b',
     '^zip\\b',
     '^unzip\\b',
     '^gzip\\b',
-    '^sed\\b',
-    '^awk\\b',
     '^sort\\b',
     '^uniq\\b',
     '^cut\\b',
-    '^xargs\\b',
     '^tee\\b',
     '^diff\\b',
-    '^patch\\b',
     '^env\\b',
     '^export\\b',
     '^source\\b',
@@ -547,11 +558,15 @@ export function loadSecuritySettings(): SecuritySettings {
  * Save security settings — updates in-memory cache immediately and flushes
  * to the encrypted database asynchronously.
  */
-export function saveSecuritySettings(settings: SecuritySettings): void {
+export async function saveSecuritySettings(settings: SecuritySettings): Promise<boolean> {
   _cachedSettings = { ...settings };
-  saveSecuritySettingsToDb(JSON.stringify(settings)).catch((e) =>
-    console.warn('[security] Failed to persist settings to DB:', e),
-  );
+  try {
+    await saveSecuritySettingsToDb(JSON.stringify(settings));
+    return true;
+  } catch (e) {
+    console.error('[security] Failed to persist settings to DB:', e);
+    return false;
+  }
 }
 
 /**
@@ -650,8 +665,14 @@ function safeRegexTest(pattern: string, input: string): boolean {
 /**
  * Check if a command string matches any pattern in an allowlist.
  * Used for auto-approve of known safe commands.
+ *
+ * Security: rejects any command containing shell metacharacters that could
+ * chain multiple commands (`;`, `&&`, `||`, `|`, backticks, `$(...)`, newlines).
+ * This prevents attacks like `ls; rm -rf /` from being auto-approved.
  */
+const SHELL_CHAIN_RE = /[;|`\n]|\$\(|&&|\|\|/;
 export function matchesAllowlist(command: string, patterns: string[]): boolean {
+  if (SHELL_CHAIN_RE.test(command)) return false;
   return patterns.some((p) => safeRegexTest(p, command));
 }
 
@@ -749,10 +770,11 @@ export function auditNetworkRequest(
 
 // ── Session override helpers ───────────────────────────────────────────────
 
-/** Activate "allow all" override for a given duration in minutes. */
+/** Activate "allow all" override for a given duration in minutes (max 60). */
 export function activateSessionOverride(durationMinutes: number): void {
+  const capped = Math.max(1, Math.min(durationMinutes, 60));
   const settings = loadSecuritySettings();
-  settings.sessionOverrideUntil = Date.now() + durationMinutes * 60 * 1000;
+  settings.sessionOverrideUntil = Date.now() + capped * 60 * 1000;
   saveSecuritySettings(settings);
 }
 

@@ -17,8 +17,27 @@ import type { ToolPolicy } from './atoms';
 // ── checkToolPolicy ────────────────────────────────────────────────────
 
 describe('checkToolPolicy', () => {
-  it('unrestricted mode allows everything', () => {
+  it('default policy allows safe tools without approval', () => {
+    const d = checkToolPolicy('read_file', DEFAULT_POLICY);
+    expect(d.allowed).toBe(true);
+    expect(d.requiresApproval).toBe(false);
+  });
+
+  it('default policy requires approval for high-risk tools', () => {
     const d = checkToolPolicy('exec', DEFAULT_POLICY);
+    expect(d.allowed).toBe(true);
+    expect(d.requiresApproval).toBe(true);
+  });
+
+  it('unrestricted mode allows everything', () => {
+    const unrestricted: ToolPolicy = {
+      mode: 'unrestricted',
+      allowed: [],
+      denied: [],
+      requireApprovalForUnlisted: false,
+      alwaysRequireApproval: [],
+    };
+    const d = checkToolPolicy('exec', unrestricted);
     expect(d.allowed).toBe(true);
     expect(d.requiresApproval).toBe(false);
   });
@@ -115,8 +134,8 @@ describe('isOverToolCallLimit', () => {
 // ── describePolicySummary ──────────────────────────────────────────────
 
 describe('describePolicySummary', () => {
-  it('describes unrestricted', () => {
-    expect(describePolicySummary(DEFAULT_POLICY)).toContain('Unrestricted');
+  it('describes default policy as denylist', () => {
+    expect(describePolicySummary(DEFAULT_POLICY)).toContain('Denylist');
   });
 
   it('describes allowlist with count', () => {
@@ -152,7 +171,7 @@ describe('Tool constants', () => {
 // ── Additional edge cases ──────────────────────────────────────────────
 
 describe('checkToolPolicy — unknown mode', () => {
-  it('defaults to allowed for unknown mode', () => {
+  it('defaults to denied for unknown mode (fail-closed)', () => {
     const policy = {
       mode: 'something-new' as any,
       allowed: [],
@@ -161,7 +180,8 @@ describe('checkToolPolicy — unknown mode', () => {
       alwaysRequireApproval: [],
     };
     const decision = checkToolPolicy('exec', policy);
-    expect(decision.allowed).toBe(true);
+    expect(decision.allowed).toBe(false);
+    expect(decision.requiresApproval).toBe(true);
   });
 });
 

@@ -54,8 +54,28 @@ export function getLogTransport(): LogTransport | null {
 
 /** Format a log entry into a single line suitable for file output. */
 export function formatLogEntry(entry: LogEntry): string {
-  const dataStr = entry.data ? ` ${JSON.stringify(entry.data)}` : '';
+  const dataStr = entry.data ? ` ${JSON.stringify(redactSensitiveKeys(entry.data))}` : '';
   return `[${entry.timestamp}] [${entry.level.toUpperCase().padEnd(5)}] [${entry.module}] ${entry.message}${dataStr}`;
+}
+
+// ── Sensitive key redaction ──────────────────────────────────────────────
+
+const SENSITIVE_KEY_PATTERN =
+  /key|secret|token|password|credential|auth|cookie|session|bearer|api.?key/i;
+
+/** Redact values of keys matching sensitive patterns. */
+function redactSensitiveKeys(data: Record<string, unknown>): Record<string, unknown> {
+  const redacted: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (SENSITIVE_KEY_PATTERN.test(k)) {
+      redacted[k] = '[REDACTED]';
+    } else if (v && typeof v === 'object' && !Array.isArray(v)) {
+      redacted[k] = redactSensitiveKeys(v as Record<string, unknown>);
+    } else {
+      redacted[k] = v;
+    }
+  }
+  return redacted;
 }
 
 /**
@@ -96,20 +116,21 @@ export function createLogger(module: string) {
     };
 
     const prefix = `[${entry.timestamp}] [${level.toUpperCase().padEnd(5)}] [${module}]`;
+    const safeData = data ? redactSensitiveKeys(data) : '';
 
     switch (level) {
       case 'debug':
-        console.debug(prefix, message, data ?? '');
+        console.debug(prefix, message, safeData);
         break;
       case 'info':
         // eslint-disable-next-line no-console
-        console.log(prefix, message, data ?? '');
+        console.log(prefix, message, safeData);
         break;
       case 'warn':
-        console.warn(prefix, message, data ?? '');
+        console.warn(prefix, message, safeData);
         break;
       case 'error':
-        console.error(prefix, message, data ?? '');
+        console.error(prefix, message, safeData);
         break;
     }
 

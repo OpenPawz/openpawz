@@ -3300,7 +3300,8 @@ pub fn engine_integrations_provision(
 
     // 5. Write each credential to the skill vault (encrypted)
     for (key, value) in &mapped_creds {
-        let encrypted = skills::encrypt_credential(value, &vault_key);
+        let encrypted = skills::encrypt_credential(value, &vault_key)
+            .map_err(|e| format!("Encryption failed for {}: {}", key, e))?;
         state
             .store
             .set_skill_credential(&skill_id, key, &encrypted)

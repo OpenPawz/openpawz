@@ -18,8 +18,28 @@ use std::collections::HashMap;
 // ── Docker connection ──────────────────────────────────────────────────
 
 /// Try to connect to Docker daemon, including Colima socket discovery on macOS.
+///
+/// Uses explicit socket paths instead of mutating `DOCKER_HOST` env var, which
+/// is undefined behaviour in multi-threaded programs (Rust 2024 edition).
 pub async fn connect_docker() -> EngineResult<Docker> {
-    discover_colima_socket();
+    // 1. Honour an explicit DOCKER_HOST env var (read-only).
+    if let Ok(host) = std::env::var("DOCKER_HOST") {
+        if let Some(path) = host.strip_prefix("unix://") {
+            if std::path::Path::new(path).exists() {
+                return Docker::connect_with_socket(path, 120, bollard::API_DEFAULT_VERSION)
+                    .map_err(|e| EngineError::Other(format!("Docker connection failed: {}", e)));
+            }
+        }
+    }
+
+    // 2. Try Colima socket on macOS.
+    #[cfg(target_os = "macos")]
+    if let Some(socket) = discover_colima_socket_path() {
+        return Docker::connect_with_socket(&socket, 120, bollard::API_DEFAULT_VERSION)
+            .map_err(|e| EngineError::Other(format!("Docker connection failed: {}", e)));
+    }
+
+    // 3. Fall back to default socket (/var/run/docker.sock).
     Docker::connect_with_local_defaults()
         .map_err(|e| EngineError::Other(format!("Docker connection failed: {}", e)))
 }
@@ -32,18 +52,9 @@ pub async fn is_docker_available() -> bool {
     }
 }
 
-/// Discover Colima Docker socket on macOS and set DOCKER_HOST if needed.
+/// Discover Colima Docker socket on macOS (pure read — no env mutation).
 #[cfg(target_os = "macos")]
-fn discover_colima_socket() {
-    if std::env::var("DOCKER_HOST").is_ok() {
-        if let Ok(host) = std::env::var("DOCKER_HOST") {
-            if let Some(path) = host.strip_prefix("unix://") {
-                if std::path::Path::new(path).exists() {
-                    return;
-                }
-            }
-        }
-    }
+fn discover_colima_socket_path() -> Option<String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let candidates = [
         format!("{}/.colima/default/docker.sock", home),
@@ -51,15 +62,10 @@ fn discover_colima_socket() {
     ];
     for path in &candidates {
         if std::path::Path::new(path).exists() {
-            std::env::set_var("DOCKER_HOST", format!("unix://{}", path));
-            return;
+            return Some(path.clone());
         }
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn discover_colima_socket() {
-    // No-op on non-macOS platforms.
+    None
 }
 
 // ── Container provisioning ─────────────────────────────────────────────
@@ -131,13 +137,14 @@ pub async fn provision_docker_container(
         // Disable telemetry for self-hosted
         "N8N_DIAGNOSTICS_ENABLED=false".to_string(),
         "N8N_PERSONALIZATION_ENABLED=false".to_string(),
-        // Enable community node installation (required for 25K+ packages)
+        // Enable community node installation (verified registry only)
         "N8N_COMMUNITY_PACKAGES_ENABLED=true".to_string(),
-        // Allow installation of packages not in n8n's verified registry
-        "N8N_COMMUNITY_PACKAGES_ALLOW_UNVERIFIED=true".to_string(),
+        // Only allow packages from n8n's verified registry — unverified packages
+        // can execute arbitrary code during npm install or at runtime.
+        "N8N_COMMUNITY_PACKAGES_ALLOW_UNVERIFIED=false".to_string(),
         // Reinstall previously installed packages on startup
         "N8N_REINSTALL_MISSING_PACKAGES=true".to_string(),
-        // Allow community packages to be used as tools in workflows
+        // Allow verified community packages to be used as tools in workflows
         "N8N_COMMUNITY_PACKAGES_ALLOW_TOOL_USAGE=true".to_string(),
         // ── Prevent accidental binary downloads during npm install ──
         // Community packages like n8n-nodes-puppeteer or playwright try

@@ -1,6 +1,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Agent Tool Policies — Molecules
 // Composed behaviours: load/save policies, enforce during agent execution.
+//
+// Security: policies are stored in the encrypted SQLite database, not
+// localStorage, so XSS in the webview cannot tamper with them.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import {
@@ -10,23 +13,46 @@ import {
   checkToolPolicy,
   filterToolsByPolicy,
 } from './atoms';
+import { loadAgentPoliciesFromDb, saveAgentPoliciesToDb } from '../../db';
 
 // ── Storage ────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'paw_agent_tool_policies';
+const LEGACY_KEY = 'paw_agent_tool_policies';
+
+/** In-memory cache — populated at init. */
+let _cache: Record<string, ToolPolicy> | null = null;
 
 /**
- * Load all agent tool policies from localStorage.
- * Returns a map of agentId → ToolPolicy.
+ * Initialise the agent policies cache from the encrypted database.
+ * Migrates legacy localStorage data on first run.
+ * Call once at app startup after initDb().
+ */
+export async function initAgentPolicies(): Promise<void> {
+  try {
+    // Migrate from localStorage → DB on first run
+    const legacyRaw = localStorage.getItem(LEGACY_KEY);
+    if (legacyRaw) {
+      const fromDb = await loadAgentPoliciesFromDb();
+      if (!fromDb) {
+        await saveAgentPoliciesToDb(legacyRaw);
+      }
+      localStorage.removeItem(LEGACY_KEY);
+    }
+
+    const fromDb = await loadAgentPoliciesFromDb();
+    _cache = (fromDb as Record<string, ToolPolicy>) ?? {};
+  } catch (e) {
+    console.warn('[agent-policies] Failed to init from DB, using empty:', e);
+    _cache = {};
+  }
+}
+
+/**
+ * Load all agent tool policies (synchronous — reads from in-memory cache).
  */
 export function loadAllPolicies(): Record<string, ToolPolicy> {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw);
-  } catch {
-    return {};
-  }
+  if (_cache) return { ..._cache };
+  return {};
 }
 
 /**
@@ -40,20 +66,21 @@ export function getAgentPolicy(agentId: string): ToolPolicy {
 
 /**
  * Save a tool policy for a specific agent.
+ * Updates in-memory cache immediately; flushes to DB async.
  */
 export function setAgentPolicy(agentId: string, policy: ToolPolicy): void {
-  const all = loadAllPolicies();
-  all[agentId] = policy;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  if (!_cache) _cache = {};
+  _cache[agentId] = policy;
+  void saveAgentPoliciesToDb(JSON.stringify(_cache));
 }
 
 /**
  * Remove a tool policy for an agent (reverts to default).
  */
 export function removeAgentPolicy(agentId: string): void {
-  const all = loadAllPolicies();
-  delete all[agentId];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  if (!_cache) _cache = {};
+  delete _cache[agentId];
+  void saveAgentPoliciesToDb(JSON.stringify(_cache));
 }
 
 // ── Enforcement ────────────────────────────────────────────────────────────

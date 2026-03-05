@@ -95,7 +95,7 @@ export function renderNodePanel(
               <span class="ms" style="color: var(--accent)">arrow_forward</span>
               <div>
                 <div class="flow-panel-kind">EDGE</div>
-                <div class="flow-panel-label">${fromNode?.label ?? edge.from} → ${toNode?.label ?? edge.to}</div>
+                <div class="flow-panel-label">${escAttr(fromNode?.label ?? edge.from)} → ${escAttr(toNode?.label ?? edge.to)}</div>
               </div>
             </div>
             <label class="flow-panel-field">

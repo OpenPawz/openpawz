@@ -264,7 +264,10 @@ async fn handle_auth(
     let token = parsed["token"].as_str().unwrap_or("");
     let name = parsed["name"].as_str().unwrap_or("").trim();
 
-    if token != config.access_token || name.is_empty() {
+    // Constant-time comparison to prevent timing attacks on access token
+    use subtle::ConstantTimeEq;
+    let token_match = token.as_bytes().ct_eq(config.access_token.as_bytes());
+    if !bool::from(token_match) || name.is_empty() {
         let resp = "HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: close\r\n\r\n{\"error\":\"access denied\"}";
         stream
             .write_all(resp.as_bytes())
