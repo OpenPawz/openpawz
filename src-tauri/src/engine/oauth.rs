@@ -621,18 +621,13 @@ static GOOGLE_OAUTH: OAuthConfig = OAuthConfig {
     env_prefix: "GOOGLE",
     auth_url: "https://accounts.google.com/o/oauth2/v2/auth",
     token_url: "https://oauth2.googleapis.com/token",
-    // Google Desktop app — client_secret is NOT confidential per Google's docs:
-    // https://developers.google.com/identity/protocols/oauth2#installed
-    // "the client_secret is not treated as a secret" for installed apps.
-    // Safe to ship in the binary (same pattern as VS Code, Slack desktop, etc.)
+    // Set OPENPAWZ_GOOGLE_CLIENT_ID and OPENPAWZ_GOOGLE_CLIENT_SECRET at
+    // build time (via .env.local or env vars) to enable Google OAuth.
     client_id: match option_env!("OPENPAWZ_GOOGLE_CLIENT_ID") {
         Some(v) => v,
-        None => "797133120028-qpdvbm5jihdqlj53mnps9k5gkvtbfgm5.apps.googleusercontent.com",
+        None => "REPLACE_WITH_GOOGLE_CLIENT_ID",
     },
-    client_secret: match option_env!("OPENPAWZ_GOOGLE_CLIENT_SECRET") {
-        Some(v) => Some(v),
-        None => Some("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"),
-    },
+    client_secret: option_env!("OPENPAWZ_GOOGLE_CLIENT_SECRET"),
     default_scopes: &[
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.send",
