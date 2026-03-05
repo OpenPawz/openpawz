@@ -32,7 +32,7 @@ export function setLoadMailRef(fn: () => void): void {
 // ── Module state refs (set by index.ts configure) ──────────────────────────
 
 let _mailFolder = 'inbox';
-const _mailHimalayaReady = false;
+let _mailHimalayaReady = false;
 let _mailMessages: MailMessage[] = [];
 let _mailSelectedId: string | null = null;
 let _mailAccounts: MailAccount[] = [];
@@ -112,6 +112,9 @@ export async function renderMailAccounts(
       /* ignore */
     }
   }
+
+  // Himalaya is "ready" if we found at least one configured account
+  _mailHimalayaReady = _mailAccounts.length > 0;
 
   for (const acct of _mailAccounts) {
     const perms = loadMailPermissions(acct.name);

@@ -366,16 +366,76 @@ export async function fetchUnreadEmails() {
 
 // ── Calendar ──────────────────────────────────────────────────────────
 
+interface CalendarEvent {
+  id: string;
+  summary: string;
+  start: string;
+  end: string;
+  location: string | null;
+  allDay: boolean;
+}
+
 export async function fetchCalendarEvents() {
   const calEl = $('today-calendar');
   if (!calEl) return;
 
+  if (!invoke) {
+    calEl.innerHTML = `<div class="today-section-empty">Calendar requires the desktop app</div>`;
+    return;
+  }
+
   try {
-    calEl.innerHTML = `<div class="today-section-empty">Connect a calendar integration via <a href="#" class="today-link-integrations">Integrations</a> to see events here</div>`;
-    calEl.querySelector('.today-link-integrations')?.addEventListener('click', (e) => {
-      e.preventDefault();
-      switchView('integrations');
-    });
+    const events = await invoke<CalendarEvent[]>('engine_calendar_events_today');
+
+    if (events.length === 0) {
+      // Check if Google Calendar is connected at all
+      let connected: string[] = [];
+      try {
+        connected = await invoke<string[]>('engine_integrations_list_connected');
+      } catch {
+        /* ignore */
+      }
+
+      if (!connected.includes('google-calendar')) {
+        calEl.innerHTML = `<div class="today-section-empty">Connect a calendar integration via <a href="#" class="today-link-integrations">Integrations</a> to see events here</div>`;
+        calEl.querySelector('.today-link-integrations')?.addEventListener('click', (e) => {
+          e.preventDefault();
+          switchView('integrations');
+        });
+      } else {
+        calEl.innerHTML = `<div class="today-section-empty"><span class="ms ms-sm">event_available</span> No events today</div>`;
+      }
+      return;
+    }
+
+    calEl.innerHTML = events
+      .map((ev) => {
+        let timeStr = '';
+        if (ev.allDay) {
+          timeStr = 'All day';
+        } else if (ev.start) {
+          try {
+            const d = new Date(ev.start);
+            timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+            if (ev.end) {
+              const end = new Date(ev.end);
+              timeStr += ` – ${end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+            }
+          } catch {
+            timeStr = '';
+          }
+        }
+        const locationHtml = ev.location
+          ? `<div class="today-cal-location" style="font-size:11px;color:var(--text-muted);margin-top:1px">${escHtml(ev.location)}</div>`
+          : '';
+        return `
+        <div class="today-email-item" style="cursor:default">
+          <div class="today-email-from">${timeStr || 'TBD'}</div>
+          <div class="today-email-subject">${escHtml(ev.summary)}</div>
+          ${locationHtml}
+        </div>`;
+      })
+      .join('');
   } catch (e) {
     console.warn('[today] Calendar fetch failed:', e);
     calEl.innerHTML = `<div class="today-section-empty">Could not load calendar</div>`;
