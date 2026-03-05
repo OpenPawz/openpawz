@@ -117,6 +117,8 @@ Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into
                 CredentialField { key: "DISCOURSE_API_USERNAME".into(), label: "API Username".into(), description: "Username the API key acts as (usually 'system')".into(), required: true, placeholder: "system".into() },
             ],
             tool_names: vec![
+                // diagnostic
+                "discourse_test_connection".into(),
                 // topics
                 "discourse_list_topics".into(), "discourse_get_topic".into(),
                 "discourse_create_topic".into(), "discourse_update_topic".into(),
@@ -154,8 +156,11 @@ Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into
                 "discourse_create_group".into(), "discourse_update_group".into(),
             ],
             required_binaries: vec![], required_env_vars: vec![], install_hint: "Go to your Discourse Admin Panel → API → Keys → New API Key (Global, All Users). Use 'system' as the API username.".into(),
-            agent_instructions: r#"You have full Discourse forum management with 51 built-in tools:
+            agent_instructions: r#"You have full Discourse forum management with 52 built-in tools:
 
+**IMPORTANT — Always run discourse_test_connection FIRST** to verify credentials before using other tools.
+
+**Diagnostic (1)**: discourse_test_connection — verifies forum URL, API key, and username are valid
 **Topics (12)**: discourse_list_topics, discourse_get_topic, discourse_create_topic, discourse_update_topic, discourse_close_topic, discourse_open_topic, discourse_pin_topic, discourse_unpin_topic, discourse_archive_topic, discourse_delete_topic, discourse_invite_to_topic, discourse_set_topic_timer
 **Posts (8)**: discourse_reply, discourse_edit_post, discourse_delete_post, discourse_like_post, discourse_unlike_post, discourse_get_post, discourse_post_revisions, discourse_wiki_post
 **Categories (5)**: discourse_list_categories, discourse_get_category, discourse_create_category, discourse_edit_category, discourse_delete_category
@@ -164,6 +169,7 @@ Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into
 **Admin (14)**: discourse_site_settings, discourse_update_setting, discourse_site_stats, discourse_list_badges, discourse_grant_badge, discourse_revoke_badge, discourse_create_badge, discourse_list_plugins, discourse_list_backups, discourse_create_backup, discourse_list_reports, discourse_set_site_text, discourse_create_group, discourse_update_group
 
 TOOL SELECTION RULES:
+- FIRST TIME → discourse_test_connection (diagnoses auth issues, shows exact problem)
 - CREATE topics → discourse_create_topic (specify category_id + title + raw body)
 - REPLY to topics → discourse_reply (specify topic_id + raw content)
 - SEARCH the forum → discourse_search (supports Discourse advanced search syntax)
@@ -171,6 +177,12 @@ TOOL SELECTION RULES:
 - SITE SETTINGS → discourse_site_settings to find setting names, discourse_update_setting to change
 - BACKUPS → discourse_create_backup to start, discourse_list_backups to check status
 NEVER use exec/curl to call the Discourse API — use your built-in tools.
+
+CREDENTIAL TROUBLESHOOTING:
+- If 403 errors occur, the API Username is likely wrong
+- The API Username must be an actual Discourse user (e.g. 'system'), NOT the API key description
+- For Global scope keys with 'All Users', use 'system' as the username
+- Credentials are configured in Integrations → Built-In Tools → Discourse
 
 Authentication uses Api-Key and Api-Username headers (not Bearer token).
 Forum URL resolves automatically from credentials."#.into(),
