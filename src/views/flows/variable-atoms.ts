@@ -92,27 +92,27 @@ export function parseLoopArray(input: string, loopOver?: string): unknown[] {
   if (!input) return [];
 
   // Try parsing input as JSON first
-  let data: unknown;
+  let parsed: unknown;
   try {
-    data = JSON.parse(input);
+    parsed = JSON.parse(input);
   } catch {
     // Not JSON — treat as newline-separated text
     if (!loopOver) {
       return input.split('\n').filter((line) => line.trim());
     }
-    data = input;
+    parsed = input;
   }
 
-  // If no loopOver expression, use data directly
+  // If no loopOver expression, use parsed directly
   if (!loopOver || loopOver.trim() === '') {
-    return Array.isArray(data) ? data : [data];
+    return Array.isArray(parsed) ? parsed : [parsed];
   }
 
   // Dot-path access: "items", "data.results", "response.data.list"
   const parts = loopOver.trim().split('.');
-  let current: unknown = data;
+  let current: unknown = parsed;
   for (const part of parts) {
-    if (current == null || typeof current !== 'object') return [data];
+    if (current == null || typeof current !== 'object') return [parsed];
     current = (current as Record<string, unknown>)[part];
   }
 

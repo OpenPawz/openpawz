@@ -189,9 +189,9 @@ export function createChatInput(config: ChatInputConfig = {}): ChatInputControll
     textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
 
     // Slash autocomplete
-    const val = textarea.value;
-    if (val.startsWith('/') && !val.includes(' ')) {
-      const suggestions = getAutocompleteSuggestions(val);
+    const inputText = textarea.value;
+    if (inputText.startsWith('/') && !inputText.includes(' ')) {
+      const suggestions = getAutocompleteSuggestions(inputText);
       if (suggestions.length > 0) {
         if (!acPopup) {
           acPopup = document.createElement('div');

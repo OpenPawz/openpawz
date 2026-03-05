@@ -652,8 +652,8 @@ export function serializeGraph(graph: FlowGraph): string {
 
 export function deserializeGraph(json: string): FlowGraph | null {
   try {
-    const obj = JSON.parse(json);
-    if (obj && obj.nodes && obj.edges && obj.id) return obj as FlowGraph;
+    const parsed = JSON.parse(json);
+    if (parsed && parsed.nodes && parsed.edges && parsed.id) return parsed as FlowGraph;
     return null;
   } catch {
     return null;

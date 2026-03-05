@@ -52,33 +52,40 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  margin: 8px auto 0;
+  margin: 6px auto 0;
 }
-.chat-abort-btn {
+
+/* ─── Inline stop button (inside input wrapper) ─── */
+.chat-stop-inline {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 7px 18px;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  background: none;
   border: 1.5px solid var(--error);
-  border-radius: var(--radius-pill);
-  background: var(--error-subtle);
   color: var(--error);
-  font-size: 13px;
-  font-weight: 500;
   cursor: pointer;
-  transition: all var(--transition-fast);
-  font-family: inherit;
+  border-radius: 50%;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  animation: stop-appear 0.2s ease;
 }
-.chat-abort-btn:hover {
+.chat-stop-inline:hover {
   background: var(--error);
   color: white;
   box-shadow: 0 0 0 3px var(--error-subtle);
 }
-.chat-abort-btn:active {
-  transform: scale(0.97);
+.chat-stop-inline:active {
+  transform: scale(0.92);
 }
-.chat-abort-btn .ms {
-  font-size: 14px;
+.chat-stop-inline .ms {
+  font-size: 20px;
+}
+@keyframes stop-appear {
+  from { opacity: 0; transform: scale(0.8); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 /* ─── More-actions chevron trigger ─── */
@@ -487,6 +494,37 @@
   padding: 0;
   color: inherit;
   font-size: inherit;
+}
+
+.message-content .code-block.streaming {
+  border-left: 2px solid var(--accent);
+  opacity: 0.85;
+}
+
+.message-content .md-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 13px;
+}
+.message-content .md-table th,
+.message-content .md-table td {
+  border: 1px solid var(--border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.message-content .md-table th {
+  background: var(--bg-hover);
+  font-weight: 600;
+}
+.message-content .md-table tr:nth-child(even) {
+  background: var(--bg-hover);
+}
+
+.message-content hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12px 0;
 }
 
 .message-content a {

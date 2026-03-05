@@ -94,10 +94,10 @@ export function initChatListeners(deps: ChatListenerDeps): void {
     if (!chatInput) return;
     chatInput.style.height = 'auto';
     chatInput.style.height = `${Math.min(chatInput.scrollHeight, 120)}px`;
-    const val = chatInput.value;
+    const inputText = chatInput.value;
     let popup = document.getElementById('slash-autocomplete') as HTMLElement | null;
-    if (val.startsWith('/') && !val.includes(' ')) {
-      const suggestions = getAutocompleteSuggestions(val);
+    if (inputText.startsWith('/') && !inputText.includes(' ')) {
+      const suggestions = getAutocompleteSuggestions(inputText);
       if (suggestions.length > 0) {
         if (!popup) {
           popup = document.createElement('div');
@@ -172,13 +172,20 @@ export function initChatListeners(deps: ChatListenerDeps): void {
     appState.currentSessionKey = null;
     deps.resetTokenMeter();
     deps.renderMessages();
-    const chatSessionSelect2 = document.getElementById(
+    const sessionDropdown = document.getElementById(
       'chat-session-select',
     ) as HTMLSelectElement | null;
-    if (chatSessionSelect2) chatSessionSelect2.value = '';
+    if (sessionDropdown) sessionDropdown.value = '';
   });
 
   $('chat-abort-btn')?.addEventListener('click', async () => {
+    const key = appState.currentSessionKey ?? '';
+    deps.teardownStream(key, 'Stopped');
+    showToast('Agent stopped', 'info');
+  });
+
+  // Inline stop button (inside input wrapper, same action)
+  $('chat-stop-inline')?.addEventListener('click', async () => {
     const key = appState.currentSessionKey ?? '';
     deps.teardownStream(key, 'Stopped');
     showToast('Agent stopped', 'info');

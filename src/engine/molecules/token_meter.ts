@@ -151,7 +151,7 @@ export function createTokenMeter(selectors: {
     const panel = $(selectors.breakdownPanelId);
     if (!panel || panel.style.display === 'none') return;
 
-    const b = estimateContextBreakdown({
+    const breakdown = estimateContextBreakdown({
       sessionTokensUsed: state.sessionTokensUsed,
       modelContextLimit: state.modelContextLimit,
       sessionInputTokens: state.sessionInputTokens,
@@ -166,32 +166,32 @@ export function createTokenMeter(selectors: {
     const warn = panel.querySelector('.ctx-breakdown-warn') as HTMLElement | null;
 
     if (fill) {
-      fill.style.width = `${b.pct}%`;
+      fill.style.width = `${breakdown.pct}%`;
       fill.className =
-        b.pct >= 80
+        breakdown.pct >= 80
           ? 'ctx-breakdown-fill danger'
-          : b.pct >= 60
+          : breakdown.pct >= 60
             ? 'ctx-breakdown-fill warning'
             : 'ctx-breakdown-fill';
     }
     if (summary) {
-      summary.textContent = `${fmtK(b.total)} / ${fmtK(b.limit)} tokens \u2022 ${b.pct.toFixed(0)}%`;
+      summary.textContent = `${fmtK(breakdown.total)} / ${fmtK(breakdown.limit)} tokens \u2022 ${breakdown.pct.toFixed(0)}%`;
     }
     if (rows) {
       rows.innerHTML =
         `<div class="ctx-row"><span class="ctx-row-header">System</span></div>` +
-        `<div class="ctx-row"><span class="ctx-row-label">System Prompt</span><span class="ctx-row-value">${b.systemPct.toFixed(1)}%</span></div>` +
+        `<div class="ctx-row"><span class="ctx-row-label">System Prompt</span><span class="ctx-row-value">${breakdown.systemPct.toFixed(1)}%</span></div>` +
         `<div class="ctx-row"><span class="ctx-row-header">Conversation</span></div>` +
-        `<div class="ctx-row"><span class="ctx-row-label">Messages</span><span class="ctx-row-value">${b.messagesPct.toFixed(1)}%</span></div>` +
-        `<div class="ctx-row"><span class="ctx-row-label">Tool Results</span><span class="ctx-row-value">${b.toolResultsPct.toFixed(1)}%</span></div>` +
-        `<div class="ctx-row"><span class="ctx-row-label">Output</span><span class="ctx-row-value">${b.outputPct.toFixed(1)}%</span></div>`;
+        `<div class="ctx-row"><span class="ctx-row-label">Messages</span><span class="ctx-row-value">${breakdown.messagesPct.toFixed(1)}%</span></div>` +
+        `<div class="ctx-row"><span class="ctx-row-label">Tool Results</span><span class="ctx-row-value">${breakdown.toolResultsPct.toFixed(1)}%</span></div>` +
+        `<div class="ctx-row"><span class="ctx-row-label">Output</span><span class="ctx-row-value">${breakdown.outputPct.toFixed(1)}%</span></div>`;
     }
     if (warn) {
-      warn.style.display = b.pct >= 60 ? '' : 'none';
+      warn.style.display = breakdown.pct >= 60 ? '' : 'none';
       warn.textContent =
-        b.pct >= 90
+        breakdown.pct >= 90
           ? 'Context nearly full — quality will degrade.'
-          : b.pct >= 60
+          : breakdown.pct >= 60
             ? 'Quality may decline as limit nears.'
             : '';
     }

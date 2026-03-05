@@ -133,6 +133,24 @@ function syncMeterToAppState(state: TokenMeterState): void {
   appState.sessionToolCallCount = state.sessionToolCallCount;
 }
 
+// ── Inline stop/send button swap ─────────────────────────────────────────
+
+/** Show the inline stop button and hide send (streaming active). */
+function showInlineStop(): void {
+  const send = $('chat-send');
+  const stop = $('chat-stop-inline');
+  if (send) send.style.display = 'none';
+  if (stop) stop.style.display = '';
+}
+
+/** Hide the inline stop button and restore send (streaming ended). */
+function hideInlineStop(): void {
+  const send = $('chat-send');
+  const stop = $('chat-stop-inline');
+  if (send) send.style.display = '';
+  if (stop) stop.style.display = 'none';
+}
+
 // ── Stream teardown ──────────────────────────────────────────────────────
 
 function teardownStream(sessionKey: string, reason: string): void {
@@ -156,6 +174,7 @@ function teardownStream(sessionKey: string, reason: string): void {
   clearActiveJobs();
   const actionsBar = document.getElementById('chat-stream-actions');
   if (actionsBar) actionsBar.style.display = 'none';
+  hideInlineStop();
 }
 
 // ── Render opts builder ──────────────────────────────────────────────────
@@ -253,6 +272,7 @@ export function showStreamingMessage(): void {
 
   const actionsBar = $('chat-stream-actions');
   if (actionsBar) actionsBar.style.display = '';
+  showInlineStop();
   scrollToBottom();
 
   const modelName =
@@ -302,6 +322,7 @@ export function finalizeStreaming(
   const actionsBar = $('chat-stream-actions');
   if (actionsBar) actionsBar.style.display = 'none';
   $('chat-actions-dropdown')?.classList.remove('open');
+  hideInlineStop();
 
   const currentAgent = AgentsModule.getCurrentAgent();
   if (streamingAgent && currentAgent && streamingAgent !== currentAgent.id) {
@@ -677,13 +698,15 @@ function handleSendResult(
 
     // Apply pending group metadata if this is a new group chat session
     if (isNewSession && appState._pendingGroupMeta) {
-      const gm = appState._pendingGroupMeta;
-      const s = appState.sessions.find((s2) => s2.key === result.sessionKey);
-      if (s) {
-        s.kind = gm.kind;
-        s.members = gm.members;
-        s.label = gm.name;
-        s.displayName = gm.name;
+      const groupMeta = appState._pendingGroupMeta;
+      const groupSession = appState.sessions.find(
+        (candidate) => candidate.key === result.sessionKey,
+      );
+      if (groupSession) {
+        groupSession.kind = groupMeta.kind;
+        groupSession.members = groupMeta.members;
+        groupSession.label = groupMeta.name;
+        groupSession.displayName = groupMeta.name;
       }
 
       // Remove any pending-group placeholder session
@@ -695,11 +718,15 @@ function handleSendResult(
       }
 
       // Persist group metadata under the real session key
-      groupSessionMap.set(result.sessionKey, { name: gm.name, members: gm.members, kind: 'group' });
+      groupSessionMap.set(result.sessionKey, {
+        name: groupMeta.name,
+        members: groupMeta.members,
+        kind: 'group',
+      });
       persistGroupSessionMap();
 
       // Auto-label with group name
-      pawEngine.sessionRename(result.sessionKey, gm.name).catch(() => {});
+      pawEngine.sessionRename(result.sessionKey, groupMeta.name).catch(() => {});
       appState._pendingGroupMeta = null;
       renderSessionSelect();
     } else if (isNewSession || !existingSession?.label) {

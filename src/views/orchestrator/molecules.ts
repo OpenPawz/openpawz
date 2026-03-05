@@ -253,10 +253,10 @@ async function refreshAgents() {
   try {
     const projects = await pawEngine.projectsList();
     _state.setProjects(projects);
-    const p = projects.find((p) => p.id === currentProject.id);
-    if (p) {
-      _state.setCurrentProject(p);
-      renderAgentRoster(p.agents);
+    const refreshedProject = projects.find((proj) => proj.id === currentProject.id);
+    if (refreshedProject) {
+      _state.setCurrentProject(refreshedProject);
+      renderAgentRoster(refreshedProject.agents);
     }
   } catch {
     // Ignore refresh errors
