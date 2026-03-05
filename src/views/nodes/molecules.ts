@@ -4,6 +4,7 @@ import { pawEngine } from '../../engine';
 import { showToast } from '../../components/toast';
 import { $ } from '../../components/helpers';
 import { esc } from './atoms';
+import { tesseractPlaceholder, activateTesseracts } from '../../components/tesseract';
 
 // ── Main loader ────────────────────────────────────────────────────────────
 export async function loadNodes() {
@@ -44,15 +45,14 @@ export async function loadNodes() {
           <h3>Engine Status</h3>
         </div>
         <div class="engine-status-row">
-          <span class="engine-status-dot" style="color:${engineRunning ? 'var(--success)' : 'var(--danger)'}">
-            <span class="ms">circle</span>
-          </span>
+          ${engineRunning ? tesseractPlaceholder(16, 'idle') : '<span class="engine-status-dot" style="color:var(--danger)"><span class="ms">circle</span></span>'}
           <div>
             <div class="engine-status-label">Paw Engine</div>
             <div class="engine-status-sub">${engineRunning ? 'Running — Tauri IPC connected' : 'Not responding'}</div>
           </div>
         </div>
       </div>`;
+    activateTesseracts(target);
 
     // ── Providers Card ─────────────────────────────────────────────────
     let provRows = '';

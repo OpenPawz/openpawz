@@ -1,0 +1,105 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   OpenPawz — Tesseract Indicator
+   4D hypercube activity indicator, used throughout the app.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Mount wrapper ── */
+.tesseract-mount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  line-height: 0;
+  flex-shrink: 0;
+}
+
+/* ── Canvas element ── */
+.tesseract-indicator {
+  display: block;
+  border-radius: 50%;
+  /* Clip to circle for small dot-style usage */
+}
+
+/* ── Size variants (applied via parent context) ── */
+
+/* Tiny — status dots (7–10px) */
+.tesseract-mount[data-tesseract-size="7"],
+.tesseract-mount[data-tesseract-size="8"],
+.tesseract-mount[data-tesseract-size="10"] {
+  width: auto;
+  height: auto;
+}
+
+/* Small — inline indicators (16–20px) */
+.tesseract-mount[data-tesseract-size="16"],
+.tesseract-mount[data-tesseract-size="18"],
+.tesseract-mount[data-tesseract-size="20"] {
+  margin: 0 2px;
+}
+
+/* Medium — loading/typing indicators (24–32px) */
+.tesseract-mount[data-tesseract-size="24"],
+.tesseract-mount[data-tesseract-size="28"],
+.tesseract-mount[data-tesseract-size="32"] {
+  margin: 0 4px;
+}
+
+/* ── Context-specific overrides ── */
+
+/* Replace loading-dots in chat streaming */
+.message .tesseract-mount {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+/* Conversation list — streaming dot replacement */
+.inbox-conv-avatar .tesseract-mount {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+}
+
+/* Agent dock — streaming indicator */
+.agent-dock-streaming .tesseract-mount {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+}
+
+/* Mini-hub titlebar dot */
+.mini-hub-titlebar .tesseract-mount {
+  margin: 0;
+}
+
+/* Engine status dot replacement */
+.engine-status-row .tesseract-mount {
+  margin-right: 4px;
+}
+
+/* Flow node — breathing dot replacement (SVG overlay) */
+.flow-node-tesseract {
+  overflow: visible;
+}
+
+/* ── Reduced motion ── */
+@media (prefers-reduced-motion: reduce) {
+  .tesseract-indicator {
+    /* Fallback: render as a static coloured dot */
+    animation: none !important;
+  }
+  .tesseract-mount {
+    /* Show a simple breathing dot instead */
+    background: var(--accent);
+    border-radius: 50%;
+    animation: tesseract-reduced 2s ease-in-out infinite;
+  }
+  .tesseract-mount canvas {
+    display: none;
+  }
+}
+
+@keyframes tesseract-reduced {
+  0%, 100% { opacity: 0.5; transform: scale(0.85); }
+  50% { opacity: 1; transform: scale(1.1); }
+}

@@ -6,6 +6,7 @@
 import { formatMarkdown } from '../../components/molecules/markdown';
 import { icon } from '../../components/helpers';
 import { findLastIndex } from '../atoms/chat';
+import { tesseractPlaceholder, activateTesseracts } from '../../components/tesseract';
 import type { Message } from '../../types';
 import type { MessageWithAttachments } from '../../state/index';
 
@@ -295,8 +296,9 @@ export function showStreamingMessage(container: HTMLElement, agentName: string):
   contentEl.appendChild(prefix);
 
   const streamSpan = document.createElement('span');
-  streamSpan.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+  streamSpan.innerHTML = tesseractPlaceholder(20, 'streaming');
   contentEl.appendChild(streamSpan);
+  activateTesseracts(streamSpan);
 
   const time = document.createElement('div');
   time.className = 'message-time';

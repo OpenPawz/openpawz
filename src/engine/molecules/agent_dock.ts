@@ -6,6 +6,7 @@
 import type { AgentDockController, AgentDockEntry } from '../atoms/mini-hub';
 import { spriteAvatar } from '../../views/agents/atoms';
 import { escAttr } from '../../components/helpers';
+import { createTesseract, cleanupTesseracts } from '../../components/tesseract';
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -169,9 +170,21 @@ export function createAgentDock(
     },
 
     setStreaming(agentId: string, active: boolean) {
-      const item = dockEl.querySelector(`[data-agent-id="${agentId}"]`);
-      if (item) {
-        item.classList.toggle('agent-dock-streaming', active);
+      const item = dockEl.querySelector(`[data-agent-id="${agentId}"]`) as HTMLElement | null;
+      if (!item) return;
+      item.classList.toggle('agent-dock-streaming', active);
+      // Add/remove tesseract indicator on the avatar
+      const existing = item.querySelector('.tesseract-mount');
+      if (active && !existing) {
+        const mount = document.createElement('span');
+        mount.className = 'tesseract-mount';
+        mount.dataset.tesseractSize = '12';
+        mount.dataset.tesseractState = 'streaming';
+        createTesseract(mount, { size: 12, state: 'streaming' });
+        item.appendChild(mount);
+      } else if (!active && existing) {
+        cleanupTesseracts(item);
+        existing.remove();
       }
     },
 

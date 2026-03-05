@@ -7,6 +7,7 @@ import { $, escHtml, formatMarkdown, confirmModal } from '../../components/helpe
 import { showToast } from '../../components/toast';
 import { isConnected } from '../../state/connection';
 import { extractDomain, buildResearchPrompt, modeTimeout, type ResearchMode } from './atoms';
+import { tesseractPlaceholder, activateTesseracts } from '../../components/tesseract';
 
 // ── State accessors (set by index.ts) ──────────────────────────────────────
 
@@ -536,8 +537,8 @@ export async function generateReport() {
   if (!reportModal || !reportContent) return;
 
   reportModal.style.display = 'flex';
-  reportContent.innerHTML =
-    '<div class="loading-dots"><span></span><span></span><span></span></div><p>Generating report...</p>';
+  reportContent.innerHTML = `${tesseractPlaceholder(28, 'thinking')}<p>Generating report...</p>`;
+  activateTesseracts(reportContent);
 
   const findingsText = findings
     .map(

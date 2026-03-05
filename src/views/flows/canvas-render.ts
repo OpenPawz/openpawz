@@ -19,6 +19,7 @@ import {
   getSelectedEdgeIdLocal,
 } from './molecule-state';
 import { cs, svgEl, truncate } from './canvas-state';
+import { createTesseract } from '../../components/tesseract';
 
 // ── Node Rendering ─────────────────────────────────────────────────────────
 
@@ -84,18 +85,25 @@ export function renderNode(node: FlowNode, selected: boolean): SVGGElement {
     g.appendChild(statusBar);
   }
 
-  // Breathing indicator dot
+  // Tesseract indicator for running/paused nodes
   if (node.status === 'running' || node.status === 'paused') {
-    const breathDot = svgEl('circle');
-    breathDot.setAttribute('class', 'flow-node-breathe');
-    breathDot.setAttribute('cx', String(node.width - 12));
-    breathDot.setAttribute('cy', '12');
-    breathDot.setAttribute('r', '4');
-    breathDot.setAttribute(
-      'fill',
-      node.status === 'running' ? 'var(--kinetic-red, #FF4D4D)' : 'var(--kinetic-gold, #D4A853)',
-    );
-    g.appendChild(breathDot);
+    const foSize = 20;
+    const fo = svgEl('foreignObject');
+    fo.setAttribute('x', String(node.width - foSize - 4));
+    fo.setAttribute('y', '4');
+    fo.setAttribute('width', String(foSize));
+    fo.setAttribute('height', String(foSize));
+    fo.setAttribute('class', 'flow-node-tesseract');
+    const mount = document.createElement('span');
+    mount.className = 'tesseract-mount';
+    mount.dataset.tesseractSize = '16';
+    mount.dataset.tesseractState = node.status === 'running' ? 'streaming' : 'thinking';
+    fo.appendChild(mount);
+    g.appendChild(fo);
+    createTesseract(mount, {
+      size: 16,
+      state: node.status === 'running' ? 'streaming' : 'thinking',
+    });
   }
 
   // Halftone overlay

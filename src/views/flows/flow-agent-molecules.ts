@@ -20,6 +20,7 @@ import { formatMarkdown } from '../../components/molecules/markdown';
 import { engineChatSend } from '../../engine/molecules/bridge';
 import { subscribeSession, type StreamHandlers } from '../../engine/molecules/event_bus';
 import { refreshAvailableModels } from '../agents/helpers';
+import { tesseractPlaceholder, activateTesseracts } from '../../components/tesseract';
 
 // ── Module State ───────────────────────────────────────────────────────────
 
@@ -481,8 +482,9 @@ function showStreamingPlaceholder(): void {
 
   const streamSpan = document.createElement('span');
   streamSpan.className = 'stream-text';
-  streamSpan.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+  streamSpan.innerHTML = tesseractPlaceholder(20, 'streaming');
   contentEl.appendChild(streamSpan);
+  activateTesseracts(streamSpan);
 
   div.appendChild(contentEl);
   container.appendChild(div);

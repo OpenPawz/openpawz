@@ -15,6 +15,7 @@ import {
   type InboxState,
 } from '../atoms/inbox';
 import * as AgentsModule from '../../views/agents';
+import { createTesseract } from '../../components/tesseract';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -230,9 +231,12 @@ export function createConversationList(
     // Streaming dot — show if any conversation for this agent is streaming
     const isStreaming = group.conversations.some((c) => c.isStreaming);
     if (isStreaming) {
-      const dot = document.createElement('span');
-      dot.className = 'streaming-dot';
-      avatar.appendChild(dot);
+      const mount = document.createElement('span');
+      mount.className = 'tesseract-mount';
+      mount.dataset.tesseractSize = '10';
+      mount.dataset.tesseractState = 'streaming';
+      createTesseract(mount, { size: 10, state: 'streaming' });
+      avatar.appendChild(mount);
     }
     row.appendChild(avatar);
 
@@ -376,11 +380,14 @@ export function createConversationList(
       if (!row) return;
       const avatar = row.querySelector('.inbox-conv-avatar');
       if (!avatar) return;
-      const existing = avatar.querySelector('.streaming-dot');
+      const existing = avatar.querySelector('.tesseract-mount');
       if (active && !existing) {
-        const dot = document.createElement('span');
-        dot.className = 'streaming-dot';
-        avatar.appendChild(dot);
+        const mount = document.createElement('span');
+        mount.className = 'tesseract-mount';
+        mount.dataset.tesseractSize = '10';
+        mount.dataset.tesseractState = 'streaming';
+        createTesseract(mount, { size: 10, state: 'streaming' });
+        avatar.appendChild(mount);
       } else if (!active && existing) {
         existing.remove();
       }

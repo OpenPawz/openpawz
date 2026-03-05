@@ -19,6 +19,7 @@ import {
 import { createChatInput, type ChatInputController } from './chat_input';
 import { createTalkMode, type TalkModeController } from './tts';
 import { findLastIndex } from '../atoms/chat';
+import { createTesseract, type TesseractInstance } from '../../components/tesseract';
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -136,11 +137,15 @@ export function createMiniHub(
   titleSpan.textContent = config.agentName;
   titlebar.appendChild(titleSpan);
 
-  // Streaming indicator dot (hidden initially)
-  const streamingDot = document.createElement('span');
-  streamingDot.className = 'mini-hub-streaming-dot';
-  streamingDot.title = 'Agent is working…';
-  titlebar.appendChild(streamingDot);
+  // Streaming indicator tesseract (hidden initially)
+  const streamingMount = document.createElement('span');
+  streamingMount.className = 'mini-hub-streaming-dot tesseract-mount';
+  streamingMount.dataset.tesseractSize = '8';
+  streamingMount.dataset.tesseractState = 'streaming';
+  streamingMount.title = 'Agent is working…';
+  streamingMount.style.display = 'none';
+  let streamingTesseract: TesseractInstance | null = null;
+  titlebar.appendChild(streamingMount);
 
   // Unread badge (hidden initially)
   const unreadBadge = document.createElement('span');
@@ -458,7 +463,20 @@ export function createMiniHub(
     setStreamingActive(active: boolean) {
       streamingActive = active;
       root.classList.toggle('mini-hub-streaming', active);
-      streamingDot.classList.toggle('active', active);
+      if (active) {
+        streamingMount.style.display = 'inline-flex';
+        if (!streamingTesseract) {
+          streamingTesseract = createTesseract(streamingMount, { size: 8, state: 'streaming' });
+        } else {
+          streamingTesseract.setState('streaming');
+        }
+      } else {
+        streamingMount.style.display = 'none';
+        if (streamingTesseract) {
+          streamingTesseract.destroy();
+          streamingTesseract = null;
+        }
+      }
     },
 
     isStreamingActive: () => streamingActive,

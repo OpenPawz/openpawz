@@ -260,12 +260,12 @@ describe('renderAttachmentStrip', () => {
 // ── showStreamingMessage ─────────────────────────────────────────────────
 
 describe('showStreamingMessage', () => {
-  it('inserts a streaming message with loading dots', () => {
+  it('inserts a streaming message with tesseract indicator', () => {
     const container = document.createElement('div');
     const contentEl = showStreamingMessage(container, 'Aria');
     const streamMsg = container.querySelector('#streaming-message');
     expect(streamMsg).not.toBeNull();
-    expect(contentEl.querySelector('.loading-dots')).not.toBeNull();
+    expect(contentEl.querySelector('.tesseract-mount')).not.toBeNull();
   });
 
   it('uses the agent name in the prefix', () => {
