@@ -367,6 +367,36 @@ const REMAP_RULES: RemapRule[] = [
     description: () => 'Send a message to a Discord channel.',
   },
 
+  // Discourse
+  {
+    pattern: /^(?:n8n_?)?discourse_?create_?topic$/i,
+    service: 'discourse',
+    serviceName: 'Discourse',
+    action: () => 'create_topic',
+    description: () => 'Create a new topic on a Discourse forum.',
+  },
+  {
+    pattern: /^(?:n8n_?)?discourse_?(?:reply|post)$/i,
+    service: 'discourse',
+    serviceName: 'Discourse',
+    action: () => 'reply',
+    description: () => 'Reply to a Discourse topic.',
+  },
+  {
+    pattern: /^(?:n8n_?)?discourse_?search$/i,
+    service: 'discourse',
+    serviceName: 'Discourse',
+    action: () => 'search',
+    description: () => 'Search the Discourse forum.',
+  },
+  {
+    pattern: /^(?:n8n_?)?discourse_?(?:list|get)_?(?:topics|posts)$/i,
+    service: 'discourse',
+    serviceName: 'Discourse',
+    action: () => 'list_topics',
+    description: () => 'List or get topics/posts from a Discourse forum.',
+  },
+
   // Linear
   {
     pattern: /^(?:n8n_?)?linear_?create_?issue$/i,

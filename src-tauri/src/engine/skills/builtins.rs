@@ -105,6 +105,78 @@ Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into
             default_enabled: false,
         },
         SkillDefinition {
+            id: "discourse".into(),
+            name: "Discourse".into(),
+            description: "Full Discourse forum management — topics, posts, categories, users, search, tags, badges, groups, site settings, backups, and more".into(),
+            icon: "forum".into(),
+            category: SkillCategory::Vault,
+            tier: SkillTier::Integration,
+            required_credentials: vec![
+                CredentialField { key: "DISCOURSE_URL".into(), label: "Forum URL".into(), description: "Your Discourse forum URL (e.g. https://forum.example.com)".into(), required: true, placeholder: "https://forum.example.com".into() },
+                CredentialField { key: "DISCOURSE_API_KEY".into(), label: "API Key".into(), description: "Admin API key from Discourse Admin → API → Keys".into(), required: true, placeholder: "abc123...".into() },
+                CredentialField { key: "DISCOURSE_API_USERNAME".into(), label: "API Username".into(), description: "Username the API key acts as (usually 'system')".into(), required: true, placeholder: "system".into() },
+            ],
+            tool_names: vec![
+                // topics
+                "discourse_list_topics".into(), "discourse_get_topic".into(),
+                "discourse_create_topic".into(), "discourse_update_topic".into(),
+                "discourse_close_topic".into(), "discourse_open_topic".into(),
+                "discourse_pin_topic".into(), "discourse_unpin_topic".into(),
+                "discourse_archive_topic".into(), "discourse_delete_topic".into(),
+                "discourse_invite_to_topic".into(), "discourse_set_topic_timer".into(),
+                // posts
+                "discourse_reply".into(), "discourse_edit_post".into(),
+                "discourse_delete_post".into(), "discourse_like_post".into(),
+                "discourse_unlike_post".into(), "discourse_get_post".into(),
+                "discourse_post_revisions".into(), "discourse_wiki_post".into(),
+                // categories
+                "discourse_list_categories".into(), "discourse_get_category".into(),
+                "discourse_create_category".into(), "discourse_edit_category".into(),
+                "discourse_delete_category".into(),
+                // users
+                "discourse_list_users".into(), "discourse_get_user".into(),
+                "discourse_create_user".into(), "discourse_suspend_user".into(),
+                "discourse_unsuspend_user".into(), "discourse_silence_user".into(),
+                "discourse_unsilence_user".into(), "discourse_set_trust_level".into(),
+                "discourse_add_to_group".into(), "discourse_remove_from_group".into(),
+                "discourse_list_groups".into(), "discourse_send_pm".into(),
+                // search & tags
+                "discourse_search".into(), "discourse_list_tags".into(),
+                "discourse_tag_topic".into(), "discourse_create_tag".into(),
+                "discourse_list_tag_groups".into(),
+                // admin
+                "discourse_site_settings".into(), "discourse_update_setting".into(),
+                "discourse_site_stats".into(), "discourse_list_badges".into(),
+                "discourse_grant_badge".into(), "discourse_revoke_badge".into(),
+                "discourse_create_badge".into(), "discourse_list_plugins".into(),
+                "discourse_list_backups".into(), "discourse_create_backup".into(),
+                "discourse_list_reports".into(), "discourse_set_site_text".into(),
+                "discourse_create_group".into(), "discourse_update_group".into(),
+            ],
+            required_binaries: vec![], required_env_vars: vec![], install_hint: "Go to your Discourse Admin Panel → API → Keys → New API Key (Global, All Users). Use 'system' as the API username.".into(),
+            agent_instructions: r#"You have full Discourse forum management with 51 built-in tools:
+
+**Topics (12)**: discourse_list_topics, discourse_get_topic, discourse_create_topic, discourse_update_topic, discourse_close_topic, discourse_open_topic, discourse_pin_topic, discourse_unpin_topic, discourse_archive_topic, discourse_delete_topic, discourse_invite_to_topic, discourse_set_topic_timer
+**Posts (8)**: discourse_reply, discourse_edit_post, discourse_delete_post, discourse_like_post, discourse_unlike_post, discourse_get_post, discourse_post_revisions, discourse_wiki_post
+**Categories (5)**: discourse_list_categories, discourse_get_category, discourse_create_category, discourse_edit_category, discourse_delete_category
+**Users (12)**: discourse_list_users, discourse_get_user, discourse_create_user, discourse_suspend_user, discourse_unsuspend_user, discourse_silence_user, discourse_unsilence_user, discourse_set_trust_level, discourse_add_to_group, discourse_remove_from_group, discourse_list_groups, discourse_send_pm
+**Search & Tags (5)**: discourse_search, discourse_list_tags, discourse_tag_topic, discourse_create_tag, discourse_list_tag_groups
+**Admin (14)**: discourse_site_settings, discourse_update_setting, discourse_site_stats, discourse_list_badges, discourse_grant_badge, discourse_revoke_badge, discourse_create_badge, discourse_list_plugins, discourse_list_backups, discourse_create_backup, discourse_list_reports, discourse_set_site_text, discourse_create_group, discourse_update_group
+
+TOOL SELECTION RULES:
+- CREATE topics → discourse_create_topic (specify category_id + title + raw body)
+- REPLY to topics → discourse_reply (specify topic_id + raw content)
+- SEARCH the forum → discourse_search (supports Discourse advanced search syntax)
+- MANAGE users → discourse_list_users, discourse_get_user, discourse_suspend_user, etc.
+- SITE SETTINGS → discourse_site_settings to find setting names, discourse_update_setting to change
+- BACKUPS → discourse_create_backup to start, discourse_list_backups to check status
+NEVER use exec/curl to call the Discourse API — use your built-in tools.
+
+Authentication uses Api-Key and Api-Username headers (not Bearer token).
+Forum URL resolves automatically from credentials."#.into(),
+            default_enabled: false,
+        },
+        SkillDefinition {
             id: "coinbase".into(),
             name: "Coinbase (CDP Agentic Wallet)".into(),
             description: "Trade crypto, manage wallets, and check prices via Coinbase Developer Platform".into(),

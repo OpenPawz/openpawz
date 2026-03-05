@@ -1,0 +1,89 @@
+[skill]
+id = "discourse"
+name = "Discourse"
+version = "1.0.0"
+author = "openpawz"
+category = "vault"
+icon = "forum"
+description = "Full Discourse forum management — 51 tools for topics, posts, categories, users, search, tags, badges, groups, site settings, backups, and more"
+install_hint = "Go to your Discourse Admin Panel → API → Keys → New API Key. Select 'Global Key' scope and 'All Users' user level. Copy the key. Use 'system' as the API username."
+
+[[credentials]]
+key = "DISCOURSE_URL"
+label = "Forum URL"
+description = "Your Discourse forum URL (e.g. https://forum.example.com)"
+required = true
+placeholder = "https://forum.example.com"
+
+[[credentials]]
+key = "DISCOURSE_API_KEY"
+label = "API Key"
+description = "Admin API key from Discourse Admin → API → Keys"
+required = true
+placeholder = "abc123def456..."
+
+[[credentials]]
+key = "DISCOURSE_API_USERNAME"
+label = "API Username"
+description = "Username the API key acts as (usually 'system')"
+required = true
+placeholder = "system"
+
+[instructions]
+text = """
+You have full Discourse forum management capabilities with 51 tools.
+
+## Authentication
+All Discourse API calls use headers: `Api-Key: {DISCOURSE_API_KEY}` and `Api-Username: {DISCOURSE_API_USERNAME}`
+Base URL: `{DISCOURSE_URL}`
+
+## Topics (12 tools)
+- List, get, create, update, close, open, pin, unpin, archive, delete topics
+- Invite users to topics, set topic timers (auto-close, auto-delete)
+- Create topics in specific categories with tags
+
+## Posts (8 tools)
+- Reply to topics (including whisper/staff-only replies)
+- Edit, delete, like, unlike posts
+- View post revision history
+- Toggle wiki mode on posts
+
+## Categories (5 tools)
+- List, get, create, edit, delete categories
+- Set permissions per group, topic templates, colors, subcategories
+
+## Users (12 tools)
+- List (active/new/staff/suspended), get user profiles
+- Create accounts, suspend/unsuspend, silence/unsilence
+- Set trust levels (0-4), manage group membership
+- Send private messages
+
+## Search & Tags (5 tools)
+- Full-text search with Discourse advanced syntax (#category, @user, tags:, status:, order:)
+- List tags, tag topics, create tags, list tag groups
+
+## Admin (14 tools)
+- Browse/search site settings, update individual settings
+- Forum statistics (topics, posts, users, active users)
+- Badge management (list, create, grant, revoke)
+- List installed plugins
+- Backup management (list, create)
+- Dashboard reports (signups, topics, posts, visits, likes, flags)
+- Override site text/translations
+- Group management (create, update)
+
+## Error handling
+- 401: Invalid API key — regenerate in Admin → API → Keys
+- 403: Insufficient permissions — ensure key has admin scope
+- 404: Resource not found — verify IDs
+- 422: Validation error — check required fields
+- 429: Rate limited — the tools auto-retry with backoff
+
+## Best practices
+- Use category IDs (not names) for reliability
+- Use discourse_search to find topics/posts before acting
+- Use discourse_list_categories to discover category IDs
+- Use discourse_site_settings with filter to find settings before updating
+- Create topics with appropriate category and tags for organization
+- Use whisper replies (discourse_reply with whisper=true) for staff-only notes
+"""

@@ -21,6 +21,7 @@ pub mod canvas_templates;
 pub mod coinbase;
 pub mod dex;
 pub mod discord;
+pub mod discourse;
 pub mod exec;
 pub mod fetch;
 pub mod filesystem;
@@ -91,6 +92,7 @@ impl ToolDefinition {
                 "webhook" => tools.extend(integrations::definitions_for("webhook")),
                 "image_gen" => tools.extend(integrations::definitions_for("image_gen")),
                 "discord" => tools.extend(discord::definitions()),
+                "discourse" => tools.extend(discourse::definitions()),
                 "coinbase" => tools.extend(coinbase::definitions()),
                 "solana_dex" => tools.extend(solana::definitions()),
                 "dex" => tools.extend(dex::definitions()),
@@ -194,7 +196,8 @@ pub async fn execute_tool(
         .or(coinbase::execute(name, &args, app_handle).await)
         .or(solana::execute(name, &args, app_handle).await)
         .or(dex::execute(name, &args, app_handle).await)
-        .or(discord::execute(name, &args, app_handle).await);
+        .or(discord::execute(name, &args, app_handle).await)
+        .or(discourse::execute(name, &args, app_handle).await);
 
     // Try MCP tools (prefixed with `mcp_`) if no built-in handled it.
     // When a worker_model is configured, delegate MCP calls to the local

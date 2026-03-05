@@ -112,6 +112,9 @@ fn tool_domain(name: &str) -> &'static str {
         // Discord (channels, messages, roles, members, server)
         n if n.starts_with("discord_") => "discord",
 
+        // Discourse (topics, posts, categories, users, search, admin)
+        n if n.starts_with("discourse_") => "discourse",
+
         // Trello (boards, lists, cards, labels, checklists, members)
         n if n.starts_with("trello_") => "trello",
 
@@ -220,6 +223,11 @@ pub fn domain_summaries() -> Vec<(&'static str, &'static str, &'static str)> {
             "discord",
             "forum",
             "Discord server management — list, create, and organize channels; send messages",
+        ),
+        (
+            "discourse",
+            "forum",
+            "Discourse forum management — topics, posts, categories, users, search, tags, badges, groups, site settings, backups",
         ),
         (
             "trello",
