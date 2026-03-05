@@ -6,7 +6,7 @@
 
 use crate::engine::channels;
 use crate::engine::state::EngineState;
-use log::warn;
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
@@ -200,4 +200,159 @@ pub fn engine_integrations_overview(
         total_actions_today: total_today,
         services_needing_attention: needing_attention,
     })
+}
+
+// ── Calendar Events (Today widget) ─────────────────────────────────────
+
+/// A single calendar event returned to the frontend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarEvent {
+    pub id: String,
+    pub summary: String,
+    pub start: String,
+    pub end: String,
+    pub location: Option<String>,
+    pub all_day: bool,
+}
+
+/// Fetch today's Google Calendar events using the stored OAuth access token.
+/// Returns an empty list if Google Calendar is not connected or the token is
+/// expired (does NOT error — the frontend just shows the fallback).
+#[tauri::command]
+pub async fn engine_calendar_events_today(
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<CalendarEvent>, String> {
+    use crate::engine::key_vault;
+    use crate::engine::skills::crypto::{decrypt_credential, get_vault_key};
+
+    // ── 1. Check if google-calendar is in the connected list ─────────
+    let connected = load_connected_ids(&app_handle);
+    let is_google_cal = connected.iter().any(|id| id == "google-calendar");
+    if !is_google_cal {
+        return Ok(vec![]);
+    }
+
+    // ── 2. Load the OAuth access token ───────────────────────────────
+    let vault_key = get_vault_key().map_err(|e| format!("Vault key error: {e}"))?;
+    let encrypted = match key_vault::get("oauth:google") {
+        Some(v) => v,
+        None => {
+            info!("[calendar] No Google OAuth tokens found — skipping");
+            return Ok(vec![]);
+        }
+    };
+    let json =
+        decrypt_credential(&encrypted, &vault_key).map_err(|e| format!("Decrypt error: {e}"))?;
+
+    #[derive(Deserialize)]
+    struct Tokens {
+        access_token: String,
+    }
+    let tokens: Tokens =
+        serde_json::from_str(&json).map_err(|e| format!("Deserialize error: {e}"))?;
+
+    // ── 3. Build time range: today (local midnight → midnight) ───────
+    let now = chrono::Utc::now();
+    let today_start = now
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .to_rfc3339();
+    let today_end = now
+        .date_naive()
+        .and_hms_opt(23, 59, 59)
+        .unwrap()
+        .and_utc()
+        .to_rfc3339();
+
+    // ── 4. Call Google Calendar API ───────────────────────────────────
+    let url = format!(
+        "https://www.googleapis.com/calendar/v3/calendars/primary/events\
+         ?timeMin={}&timeMax={}&singleEvents=true&orderBy=startTime&maxResults=20",
+        urlencoding::encode(&today_start),
+        urlencoding::encode(&today_end),
+    );
+
+    let client = reqwest::Client::new();
+    let resp = client
+        .get(&url)
+        .bearer_auth(&tokens.access_token)
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| format!("Calendar API request failed: {e}"))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        warn!(
+            "[calendar] Google Calendar API returned {}: {}",
+            status,
+            &body[..body.len().min(200)]
+        );
+        // Return empty instead of erroring — the token might be expired
+        // and the background refresh will fix it on the next cycle.
+        return Ok(vec![]);
+    }
+
+    // ── 5. Parse the response ────────────────────────────────────────
+    #[derive(Deserialize)]
+    struct GCalResponse {
+        items: Option<Vec<GCalEvent>>,
+    }
+    #[derive(Deserialize)]
+    struct GCalEvent {
+        id: Option<String>,
+        summary: Option<String>,
+        start: Option<GCalTime>,
+        end: Option<GCalTime>,
+        location: Option<String>,
+    }
+    #[derive(Deserialize)]
+    struct GCalTime {
+        #[serde(rename = "dateTime")]
+        date_time: Option<String>,
+        date: Option<String>,
+    }
+
+    let gcal: GCalResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse Calendar response: {e}"))?;
+
+    let events: Vec<CalendarEvent> = gcal
+        .items
+        .unwrap_or_default()
+        .into_iter()
+        .map(|ev| {
+            let all_day = ev
+                .start
+                .as_ref()
+                .map(|s| s.date.is_some() && s.date_time.is_none())
+                .unwrap_or(false);
+            let start = ev
+                .start
+                .as_ref()
+                .and_then(|s| s.date_time.clone().or(s.date.clone()))
+                .unwrap_or_default();
+            let end = ev
+                .end
+                .as_ref()
+                .and_then(|s| s.date_time.clone().or(s.date.clone()))
+                .unwrap_or_default();
+            CalendarEvent {
+                id: ev.id.unwrap_or_default(),
+                summary: ev.summary.unwrap_or_else(|| "(No title)".to_string()),
+                start,
+                end,
+                location: ev.location,
+                all_day,
+            }
+        })
+        .collect();
+
+    info!("[calendar] Fetched {} event(s) for today", events.len());
+    Ok(events)
 }
