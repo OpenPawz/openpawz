@@ -42,6 +42,8 @@ export async function getChannelConfig(ch: string): Promise<Record<string, unkno
         return (await pawEngine.twitchGetConfig()) as unknown as Record<string, unknown>;
       case 'whatsapp':
         return (await pawEngine.whatsappGetConfig()) as unknown as Record<string, unknown>;
+      case 'discourse':
+        return (await pawEngine.discourseGetConfig()) as unknown as Record<string, unknown>;
       default:
         return null;
     }
@@ -70,6 +72,8 @@ export async function setChannelConfig(ch: string, config: Record<string, unknow
       return pawEngine.twitchSetConfig(config as never);
     case 'whatsapp':
       return pawEngine.whatsappSetConfig(config as never);
+    case 'discourse':
+      return pawEngine.discourseSetConfig(config as never);
   }
 }
 
@@ -93,6 +97,8 @@ export async function startChannel(ch: string): Promise<void> {
       return pawEngine.twitchStart();
     case 'whatsapp':
       return pawEngine.whatsappStart();
+    case 'discourse':
+      return pawEngine.discourseStart();
   }
 }
 
@@ -116,6 +122,8 @@ export async function stopChannel(ch: string): Promise<void> {
       return pawEngine.twitchStop();
     case 'whatsapp':
       return pawEngine.whatsappStop();
+    case 'discourse':
+      return pawEngine.discourseStop();
   }
 }
 
@@ -140,6 +148,8 @@ export async function getChannelStatus(ch: string): Promise<ChannelStatus | null
         return await pawEngine.twitchStatus();
       case 'whatsapp':
         return await pawEngine.whatsappStatus();
+      case 'discourse':
+        return await pawEngine.discourseStatus();
       default:
         return null;
     }
@@ -168,6 +178,8 @@ async function approveChannelUser(ch: string, userId: string): Promise<void> {
       return pawEngine.twitchApproveUser(userId);
     case 'whatsapp':
       return pawEngine.whatsappApproveUser(userId);
+    case 'discourse':
+      return pawEngine.discourseApproveUser(userId);
   }
 }
 
@@ -191,6 +203,8 @@ async function denyChannelUser(ch: string, userId: string): Promise<void> {
       return pawEngine.twitchDenyUser(userId);
     case 'whatsapp':
       return pawEngine.whatsappDenyUser(userId);
+    case 'discourse':
+      return pawEngine.discourseDenyUser(userId);
   }
 }
 
@@ -598,6 +612,7 @@ export async function loadChannels() {
       'nostr',
       'twitch',
       'whatsapp',
+      'discourse',
     ];
 
     for (const ch of genericChannels) {

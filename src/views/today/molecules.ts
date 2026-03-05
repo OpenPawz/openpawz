@@ -866,35 +866,47 @@ function showNameEditor(anchor: HTMLElement) {
 /** Resize an image file to a small avatar data URL (max 128×128, JPEG 85%). */
 function resizeAvatarImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const MAX = 128;
-      let w = img.width;
-      let h = img.height;
-      if (w > h) {
-        if (w > MAX) {
-          h = Math.round(h * (MAX / w));
-          w = MAX;
+    // Use FileReader to get a data URL first (more reliable in Tauri WebView
+    // than URL.createObjectURL which can have CORS/blob restrictions)
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 128;
+        let w = img.width;
+        let h = img.height;
+        if (w > h) {
+          if (w > MAX) {
+            h = Math.round(h * (MAX / w));
+            w = MAX;
+          }
+        } else {
+          if (h > MAX) {
+            w = Math.round(w * (MAX / h));
+            h = MAX;
+          }
         }
-      } else {
-        if (h > MAX) {
-          w = Math.round(w * (MAX / h));
-          h = MAX;
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject(new Error('Canvas not supported'));
+          return;
         }
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        reject(new Error('Canvas not supported'));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.85));
+        ctx.drawImage(img, 0, 0, w, h);
+        // Use image/png as fallback — some WebViews don't support image/jpeg
+        let dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        if (!dataUrl || dataUrl === 'data:,') {
+          dataUrl = canvas.toDataURL('image/png');
+        }
+        resolve(dataUrl);
+      };
+      img.onerror = () => reject(new Error('Failed to decode image'));
+      img.src = reader.result as string;
     };
-    img.onerror = () => reject(new Error('Failed to load image'));
-    img.src = URL.createObjectURL(file);
+    reader.readAsDataURL(file);
   });
 }
 

@@ -48,6 +48,7 @@ import type {
   NostrConfig,
   TwitchConfig,
   WhatsAppConfig,
+  DiscourseConfig,
   BrowserConfig,
   BrowserProfile,
   ScreenshotEntry,
@@ -1055,6 +1056,33 @@ export class PawEngineClient {
   }
   async whatsappRemoveUser(userId: string): Promise<void> {
     return invoke('engine_whatsapp_remove_user', { userId });
+  }
+
+  // ── Discourse ────────────────────────────────────────────────────────
+
+  async discourseStart(): Promise<void> {
+    return invoke('engine_discourse_start');
+  }
+  async discourseStop(): Promise<void> {
+    return invoke('engine_discourse_stop');
+  }
+  async discourseStatus(): Promise<ChannelStatus> {
+    return invoke<ChannelStatus>('engine_discourse_status');
+  }
+  async discourseGetConfig(): Promise<DiscourseConfig> {
+    return invoke<DiscourseConfig>('engine_discourse_get_config');
+  }
+  async discourseSetConfig(config: DiscourseConfig): Promise<void> {
+    return invoke('engine_discourse_set_config', { config });
+  }
+  async discourseApproveUser(userId: string): Promise<void> {
+    return invoke('engine_discourse_approve_user', { userId });
+  }
+  async discourseDenyUser(userId: string): Promise<void> {
+    return invoke('engine_discourse_deny_user', { userId });
+  }
+  async discourseRemoveUser(userId: string): Promise<void> {
+    return invoke('engine_discourse_remove_user', { userId });
   }
 
   // ── Orchestrator: Projects ───────────────────────────────────────────
