@@ -426,7 +426,7 @@ export async function fetchCalendarEvents() {
         /* ignore */
       }
 
-      if (!connected.includes('google-calendar')) {
+      if (!connected.includes('google-calendar') && !connected.includes('google-workspace')) {
         calEl.innerHTML = `<div class="today-section-empty">Connect a calendar integration via <a href="#" class="today-link-integrations">Integrations</a> to see events here</div>`;
         calEl.querySelector('.today-link-integrations')?.addEventListener('click', (e) => {
           e.preventDefault();

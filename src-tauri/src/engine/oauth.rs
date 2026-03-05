@@ -433,8 +433,8 @@ pub async fn start_rfc7591_flow(
 pub fn get_n8n_oauth_type(service_id: &str) -> Option<&'static str> {
     match service_id {
         // Google services — all share the same OAuth credential in n8n
-        "google" | "gmail" | "google-drive" | "google-calendar" | "google-sheets"
-        | "google-docs" => Some("googleOAuth2Api"),
+        "google" | "google-workspace" | "gmail" | "google-drive" | "google-calendar"
+        | "google-sheets" | "google-docs" => Some("googleOAuth2Api"),
         "hubspot" => Some("hubspotOAuth2Api"),
         "salesforce" => Some("salesforceOAuth2Api"),
         "jira" => Some("jiraOAuth2Api"),
@@ -558,9 +558,8 @@ pub fn n8n_credential_url(n8n_base_url: &str, credential_type: &str) -> String {
 pub fn get_oauth_config(service_id: &str) -> Option<&'static OAuthConfig> {
     match service_id {
         "github" => Some(&GITHUB_OAUTH),
-        "google" | "gmail" | "google-drive" | "google-calendar" | "google-sheets" => {
-            Some(&GOOGLE_OAUTH)
-        }
+        "google" | "google-workspace" | "gmail" | "google-drive" | "google-calendar"
+        | "google-sheets" | "google-docs" => Some(&GOOGLE_OAUTH),
         "discord" => Some(&DISCORD_OAUTH),
         "slack" => Some(&SLACK_OAUTH),
         "notion" => Some(&NOTION_OAUTH),
@@ -578,6 +577,7 @@ pub fn oauth_service_ids() -> Vec<&'static str> {
     vec![
         "github",
         "google",
+        "google-workspace",
         "gmail",
         "google-drive",
         "google-calendar",

@@ -228,7 +228,9 @@ pub async fn engine_calendar_events_today(
 
     // ── 1. Check if google-calendar is in the connected list ─────────
     let connected = load_connected_ids(&app_handle);
-    let is_google_cal = connected.iter().any(|id| id == "google-calendar");
+    let is_google_cal = connected
+        .iter()
+        .any(|id| id == "google-calendar" || id == "google-workspace");
     if !is_google_cal {
         return Ok(vec![]);
     }

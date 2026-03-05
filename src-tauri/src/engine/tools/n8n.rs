@@ -374,7 +374,7 @@ fn map_service_to_node_type(service: &str) -> &'static str {
         "twilio" => "n8n-nodes-base.twilio",
         "matrix" => "n8n-nodes-base.matrix",
         // Email
-        "gmail" | "email" => "n8n-nodes-base.gmail",
+        "gmail" | "email" | "google-workspace" => "n8n-nodes-base.gmail",
         "sendgrid" => "n8n-nodes-base.sendGrid",
         "mailchimp" => "n8n-nodes-base.mailchimp",
         "microsoft-outlook" => "n8n-nodes-base.microsoftOutlook",

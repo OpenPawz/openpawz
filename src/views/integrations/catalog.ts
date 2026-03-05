@@ -157,24 +157,47 @@ const CURATED: ServiceDefinition[] = [
   ),
 
   svc(
-    'gmail',
-    'Gmail',
-    'mail',
-    '#EA4335',
-    'communication',
-    'Read, send, and organize emails',
-    ['Send emails', 'Read inbox', 'Search messages', 'Manage labels', 'Download attachments'],
+    'google-workspace',
+    'Google Workspace',
+    'assured_workload',
+    '#4285F4',
+    'productivity',
+    'Gmail, Calendar, Drive, Sheets, and Docs — full G Suite access with one OAuth login',
+    [
+      'Send & read emails (Gmail)',
+      'List & create events (Calendar)',
+      'Browse, upload & share files (Drive)',
+      'Read & append spreadsheet data (Sheets)',
+      'Create documents (Docs)',
+    ],
     'n8n-nodes-base.gmail',
-    'https://developers.google.com/gmail/api',
+    'https://developers.google.com/workspace',
     true,
     undefined,
-    undefined,
+    {
+      title: 'Connect Google Workspace',
+      steps: [
+        { instruction: 'Click "Connect" below to sign in with your Google account.' },
+        {
+          instruction: 'Authorize access to Gmail, Calendar, Drive, Sheets, and Docs.',
+          tip: 'One login covers all five services. You can revoke access anytime at myaccount.google.com/permissions.',
+        },
+        { instruction: 'Done — all Google tools are now available to your agents.' },
+      ],
+      estimatedTime: '< 1 minute',
+    },
     [
       'Any emails from investors today?',
-      'Show unread emails',
-      'Search emails about "quarterly report"',
+      'What meetings do I have this afternoon?',
+      'Find the Q4 report in Drive',
+      'Read the Sales spreadsheet',
+      'Create a doc summarizing my week',
     ],
-    ['When I receive an email from @boss, notify me on Slack', 'Auto-label invoices'],
+    [
+      'When I get an email from @boss, create a calendar event',
+      'Daily agenda briefing at 8am',
+      'Auto-save email attachments to Drive',
+    ],
   ),
 
   svc(
@@ -217,22 +240,7 @@ const CURATED: ServiceDefinition[] = [
     ['When a new issue is opened, assign it to me', 'Notify Slack when a PR is merged'],
   ),
 
-  svc(
-    'google-sheets',
-    'Google Sheets',
-    'table_chart',
-    '#0F9D58',
-    'productivity',
-    'Read, write, and manage spreadsheets',
-    ['Read rows', 'Append data', 'Update cells', 'Create sheets', 'Delete rows'],
-    'n8n-nodes-base.googleSheets',
-    'https://developers.google.com/sheets/api',
-    true,
-    undefined,
-    undefined,
-    ['Read the Sales sheet', 'How many rows in my tracker?', 'What are the column headers?'],
-    ['When a new row is added, send a Slack message', 'Sync CRM deals to a spreadsheet daily'],
-  ),
+  // Google Sheets is part of the unified Google Workspace card
 
   svc(
     'notion',
@@ -1125,34 +1133,7 @@ const AUTO: ServiceDefinition[] = [
     ['What tasks are due today?', 'Show overdue tasks', 'List all projects'],
     ['When I complete a task, log it in Google Sheets', 'Morning task digest to Slack'],
   ),
-  svc(
-    'google-calendar',
-    'Google Calendar',
-    'event',
-    '#4285F4',
-    'productivity',
-    'Manage events and schedules',
-    ['Create events', 'List calendars', 'Get availability'],
-    'n8n-nodes-base.googleCalendar',
-    'https://developers.google.com/calendar/api',
-    true,
-    undefined,
-    undefined,
-    ['What meetings do I have today?', 'Am I free tomorrow at 2pm?', "Show this week's events"],
-    ['When a meeting is created, post in Slack', 'Daily agenda briefing at 8am'],
-  ),
-  svc(
-    'google-docs',
-    'Google Docs',
-    'description',
-    '#4285F4',
-    'productivity',
-    'Create and edit documents',
-    ['Create docs', 'Update content', 'Share documents'],
-    'n8n-nodes-base.googleDocs',
-    '',
-    false,
-  ),
+  // Google Calendar + Docs are part of the unified Google Workspace card
   svc(
     'airtable',
     'Airtable',
@@ -1609,18 +1590,7 @@ const AUTO: ServiceDefinition[] = [
   ),
 
   // Storage & Files
-  svc(
-    'google-drive',
-    'Google Drive',
-    'folder',
-    '#4285F4',
-    'storage',
-    'File storage and sharing',
-    ['Upload files', 'List folders', 'Share files', 'Search'],
-    'n8n-nodes-base.googleDrive',
-    '',
-    false,
-  ),
+  // Google Drive is part of the unified Google Workspace card
   svc(
     'dropbox',
     'Dropbox',
@@ -2884,18 +2854,7 @@ const AUTO: ServiceDefinition[] = [
     '',
     false,
   ),
-  svc(
-    'google-sheets',
-    'Google Sheets',
-    'table_chart',
-    '#0F9D58',
-    'productivity',
-    'Spreadsheets and data',
-    ['Read rows', 'Write cells', 'Create sheets', 'Format data'],
-    'n8n-nodes-base.googleSheets',
-    '',
-    false,
-  ),
+  // google-sheets is part of the unified Google Workspace card
   svc(
     'typeform',
     'Typeform',
@@ -5809,11 +5768,7 @@ const AUTO: ServiceDefinition[] = [
 
 const OAUTH_SERVICE_IDS = new Set([
   'github',
-  'gmail',
-  'google-sheets',
-  'google-calendar',
-  'google-docs',
-  'google-drive',
+  'google-workspace',
   'discord',
   'slack',
   'notion',

@@ -634,7 +634,7 @@ fn provision_oauth_to_skill_vault(
 /// for MCP workflow deployment.
 fn oauth_service_to_n8n_node(service_id: &str) -> Option<(&'static str, &'static str)> {
     match service_id {
-        "gmail" | "google" => Some(("n8n-nodes-base.gmail", "Gmail")),
+        "gmail" | "google" | "google-workspace" => Some(("n8n-nodes-base.gmail", "Gmail")),
         "google-drive" => Some(("n8n-nodes-base.googleDrive", "Google Drive")),
         "google-calendar" => Some(("n8n-nodes-base.googleCalendar", "Google Calendar")),
         "google-sheets" => Some(("n8n-nodes-base.googleSheets", "Google Sheets")),

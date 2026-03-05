@@ -3543,8 +3543,8 @@ pub(crate) fn map_integration_to_skill(
         }
         // ── Google Workspace: tools read from vault directly, but we
         // map here so the skill auto-enables on OAuth connect ──
-        "google" | "gmail" | "google-drive" | "google-calendar" | "google-sheets"
-        | "google-docs" => {
+        "google" | "google-workspace" | "gmail" | "google-drive" | "google-calendar"
+        | "google-sheets" | "google-docs" => {
             // No credential mapping needed — tools use key_vault::get("oauth:google")
             // But we store a sentinel so provision_oauth_to_skill_vault enables the skill.
             mapped.insert("GOOGLE_OAUTH_CONNECTED".into(), "true".into());
@@ -3577,6 +3577,10 @@ pub fn service_to_skill_id(service_id: &str) -> String {
         "notion" | "linear" | "stripe" | "todoist" | "clickup" | "airtable" | "sendgrid"
         | "jira" | "zendesk" | "hubspot" | "shopify" | "pagerduty" | "twilio"
         | "microsoft-teams" => "rest_api".into(),
+        "google" | "google-workspace" => "google-workspace".into(),
+        "gmail" | "google-drive" | "google-calendar" | "google-sheets" | "google-docs" => {
+            "google-workspace".into()
+        }
         // Fallback: skill_id == service_id
         other => other.into(),
     }
