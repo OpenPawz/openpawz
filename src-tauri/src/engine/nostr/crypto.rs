@@ -78,7 +78,11 @@ pub(crate) fn build_reply_event(
 // clients (Damus, Amethyst, Primal, etc.).
 
 /// Compute ECDH shared secret (x-coordinate) between our secret key and a pubkey.
-fn compute_shared_secret(secret_key: &[u8], pubkey_hex: &str) -> EngineResult<[u8; 32]> {
+/// Returns a Zeroizing wrapper to ensure the secret is wiped from memory.
+fn compute_shared_secret(
+    secret_key: &[u8],
+    pubkey_hex: &str,
+) -> EngineResult<zeroize::Zeroizing<[u8; 32]>> {
     let sk =
         k256::SecretKey::from_slice(secret_key).map_err(|e| EngineError::Other(e.to_string()))?;
 
@@ -95,7 +99,7 @@ fn compute_shared_secret(secret_key: &[u8], pubkey_hex: &str) -> EngineResult<[u
 
     use k256::elliptic_curve::ecdh::diffie_hellman;
     let shared = diffie_hellman(sk.to_nonzero_scalar(), pk.as_affine());
-    let mut out = [0u8; 32];
+    let mut out = zeroize::Zeroizing::new([0u8; 32]);
     out.copy_from_slice(shared.raw_secret_bytes().as_slice());
     Ok(out)
 }
@@ -117,7 +121,7 @@ pub(crate) fn nip04_encrypt(
     let mut buf = vec![0u8; pt.len() + 16];
     buf[..pt.len()].copy_from_slice(pt);
 
-    let ciphertext = cbc::Encryptor::<aes::Aes256>::new_from_slices(&shared, &iv)
+    let ciphertext = cbc::Encryptor::<aes::Aes256>::new_from_slices(shared.as_ref(), &iv)
         .map_err(|e| EngineError::Other(e.to_string()))?
         .encrypt_padded_mut::<Pkcs7>(&mut buf, pt.len())
         .map_err(|e| EngineError::Other(e.to_string()))?;
@@ -154,7 +158,7 @@ pub(crate) fn nip04_decrypt(
     let shared = compute_shared_secret(secret_key, sender_pk_hex)?;
 
     let mut buf = ciphertext;
-    let plaintext = cbc::Decryptor::<aes::Aes256>::new_from_slices(&shared, &iv)
+    let plaintext = cbc::Decryptor::<aes::Aes256>::new_from_slices(shared.as_ref(), &iv)
         .map_err(|e| EngineError::Other(e.to_string()))?
         .decrypt_padded_mut::<Pkcs7>(&mut buf)
         .map_err(|e| EngineError::Other(e.to_string()))?;

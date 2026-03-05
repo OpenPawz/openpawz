@@ -2,6 +2,9 @@ fn main() {
     // Load .env files so option_env!() picks up secrets at compile time.
     // This lets `cargo tauri dev` work without manually exporting env vars.
     // Priority: env vars > .env.local > .env (most specific wins)
+    //
+    // Security: only OPENPAWZ_* prefixed vars are emitted to prevent
+    // accidentally leaking unrelated secrets into build logs / artifacts.
     for env_file in &[
         "../.env",       // project root .env
         ".env",          // src-tauri/.env
@@ -16,7 +19,8 @@ fn main() {
                 }
                 if let Some((key, value)) = line.split_once('=') {
                     let key = key.trim();
-                    let value = value.trim();
+                    // Strip surrounding quotes from the value
+                    let value = value.trim().trim_matches('"').trim_matches('\'');
                     // Only set if not already in environment (env var takes precedence)
                     if std::env::var(key).is_err() {
                         println!("cargo:rustc-env={}={}", key, value);

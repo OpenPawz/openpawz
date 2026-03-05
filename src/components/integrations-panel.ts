@@ -3,6 +3,7 @@
 // Molecule-level: renders hero stats, health list, category breakdown.
 
 import { SERVICE_CATALOG } from '../views/integrations/catalog';
+import { escHtml } from './helpers';
 import {
   CATEGORIES,
   type ConnectedService,
@@ -56,7 +57,7 @@ export function renderHealthList(connected: ConnectedService[]): void {
       const statusLabel = c.status === 'error' ? 'ERR' : c.status === 'expired' ? 'EXP' : 'OK';
       return `<div class="integrations-health-item">
         <span class="integrations-health-dot ${dotClass}"></span>
-        <span class="integrations-health-name">${name}</span>
+        <span class="integrations-health-name">${escHtml(name)}</span>
         <span class="integrations-health-status">${statusLabel}</span>
       </div>`;
     })

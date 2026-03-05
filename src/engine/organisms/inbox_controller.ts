@@ -13,7 +13,7 @@ import {
   persistGroupSessionMap,
 } from '../../state/index';
 import { showToast } from '../../components/toast';
-import { confirmModal, promptModal } from '../../components/helpers';
+import { confirmModal, promptModal, escHtml } from '../../components/helpers';
 import * as AgentsModule from '../../views/agents';
 import {
   type ConversationEntry,
@@ -407,9 +407,9 @@ async function handleNewGroup(): Promise<void> {
     row.className = 'inbox-group-agent-row';
     const avatarHtml = AgentsModule.spriteAvatar(agent.avatar, 20);
     row.innerHTML = `
-      <input type="checkbox" value="${agent.id}" />
-      <span class="inbox-group-agent-avatar" style="border-color:${agent.color}">${avatarHtml}</span>
-      <span class="inbox-group-agent-name">${agent.name}</span>
+      <input type="checkbox" value="${escHtml(agent.id)}" />
+      <span class="inbox-group-agent-avatar" style="border-color:${escHtml(agent.color)}">${avatarHtml}</span>
+      <span class="inbox-group-agent-name">${escHtml(agent.name)}</span>
     `;
     const checkbox = row.querySelector('input')!;
     checkbox.addEventListener('change', () => {

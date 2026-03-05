@@ -125,7 +125,7 @@ export async function loadCron() {
     if (loading) loading.style.display = 'none';
     if (empty) {
       empty.style.display = 'flex';
-      empty.innerHTML = `<div class="empty-title">Automations</div><div class="empty-subtitle">Failed to load: ${e}</div>`;
+      empty.innerHTML = `<div class="empty-title">Automations</div><div class="empty-subtitle">Failed to load. Check logs for details.</div>`;
     }
     if (board) board.style.display = 'none';
   }

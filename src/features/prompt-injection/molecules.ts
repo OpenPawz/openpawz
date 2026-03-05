@@ -1,7 +1,11 @@
 // Pawz — Prompt Injection Scanner — Molecules
 // Composed atoms: scan + log + UI feedback for injection detection.
+//
+// Security: policy is stored in the encrypted SQLite database, not
+// localStorage, so XSS in the webview cannot tamper with it.
 
 import { scanForInjection, type InjectionScanResult, type InjectionSeverity } from './atoms';
+import { loadInjectionPolicyFromDb, saveInjectionPolicyToDb } from '../../db';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -23,7 +27,7 @@ export interface InjectionDecision {
 
 // ── Default policy ─────────────────────────────────────────────────────
 
-const POLICY_KEY = 'paw_injection_policy';
+const LEGACY_KEY = 'paw_injection_policy';
 
 export const DEFAULT_POLICY: InjectionPolicy = {
   enabled: true,
@@ -35,20 +39,46 @@ export const DEFAULT_POLICY: InjectionPolicy = {
   channelScanEnabled: true,
 };
 
-// ── Policy persistence (atom helpers) ──────────────────────────────────
+// ── In-memory cache ────────────────────────────────────────────────────
+
+let _cache: InjectionPolicy | null = null;
+
+/**
+ * Initialise the injection policy cache from the encrypted database.
+ * Migrates legacy localStorage data on first run.
+ * Call once at app startup after initDb().
+ */
+export async function initInjectionPolicy(): Promise<void> {
+  try {
+    const legacyRaw = localStorage.getItem(LEGACY_KEY);
+    if (legacyRaw) {
+      const fromDb = await loadInjectionPolicyFromDb();
+      if (!fromDb) {
+        await saveInjectionPolicyToDb(legacyRaw);
+      }
+      localStorage.removeItem(LEGACY_KEY);
+    }
+
+    const fromDb = await loadInjectionPolicyFromDb();
+    _cache = fromDb
+      ? { ...DEFAULT_POLICY, ...(fromDb as unknown as Partial<InjectionPolicy>) }
+      : { ...DEFAULT_POLICY };
+  } catch (e) {
+    console.warn('[injection-policy] Failed to init from DB, using defaults:', e);
+    _cache = { ...DEFAULT_POLICY };
+  }
+}
+
+// ── Policy persistence (reads from cache, writes to DB) ────────────────
 
 export function loadInjectionPolicy(): InjectionPolicy {
-  try {
-    const raw = localStorage.getItem(POLICY_KEY);
-    if (raw) return { ...DEFAULT_POLICY, ...JSON.parse(raw) };
-  } catch {
-    /* ignore */
-  }
+  if (_cache) return { ..._cache };
   return { ...DEFAULT_POLICY };
 }
 
 export function saveInjectionPolicy(policy: InjectionPolicy): void {
-  localStorage.setItem(POLICY_KEY, JSON.stringify(policy));
+  _cache = { ...policy };
+  void saveInjectionPolicyToDb(JSON.stringify(_cache));
 }
 
 // ── Decision engine (molecule) ─────────────────────────────────────────

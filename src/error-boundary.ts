@@ -80,20 +80,38 @@ function toErrorReport(
 ): ErrorReport {
   if (error instanceof Error) {
     return {
-      message: error.message,
-      stack: error.stack,
+      message: error.message.slice(0, 500),
+      stack: error.stack?.split('\n').slice(0, 5).join('\n'),
       source,
       timestamp: new Date().toISOString(),
-      context,
+      context: sanitizeContext(context),
     };
   }
 
   return {
-    message: String(error),
+    message: String(error).slice(0, 500),
     source,
     timestamp: new Date().toISOString(),
-    context,
+    context: sanitizeContext(context),
   };
+}
+
+/** Strip sensitive keys and limit context size to prevent memory bloat. */
+function sanitizeContext(context?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!context) return undefined;
+  const SENSITIVE = /key|secret|token|password|credential|auth|cookie/i;
+  const safe: Record<string, unknown> = {};
+  let count = 0;
+  for (const [k, v] of Object.entries(context)) {
+    if (count >= 10) break; // cap at 10 context keys
+    if (SENSITIVE.test(k)) {
+      safe[k] = '[REDACTED]';
+    } else {
+      safe[k] = typeof v === 'string' ? v.slice(0, 200) : v;
+    }
+    count++;
+  }
+  return safe;
 }
 
 function logAndStore(report: ErrorReport): void {

@@ -480,7 +480,8 @@ pub async fn get_oauth_access_token(service_id: &str) -> Result<String, String> 
 fn store_oauth_tokens(service_id: &str, tokens: &OAuthTokens) -> Result<(), String> {
     let vault_key = get_vault_key().map_err(|e| format!("Vault key error: {}", e))?;
     let json = serde_json::to_string(tokens).map_err(|e| format!("Serialize error: {}", e))?;
-    let encrypted = encrypt_credential(&json, &vault_key);
+    let encrypted =
+        encrypt_credential(&json, &vault_key).map_err(|e| format!("Encryption error: {}", e))?;
 
     let vault_purpose = format!("oauth:{}", service_id);
     key_vault::set(&vault_purpose, &encrypted);
@@ -585,7 +586,13 @@ fn provision_oauth_to_skill_vault(
     // Write each mapped credential to the skill vault (encrypted)
     let mut stored = 0;
     for (key, value) in &mapped_creds {
-        let encrypted = skills::crypto::encrypt_credential(value, &vault_key);
+        let encrypted = match skills::crypto::encrypt_credential(value, &vault_key) {
+            Ok(enc) => enc,
+            Err(e) => {
+                warn!("[oauth-provision] Encryption failed for {}: {}", key, e);
+                continue;
+            }
+        };
         match state.store.set_skill_credential(&skill_id, key, &encrypted) {
             Ok(_) => stored += 1,
             Err(e) => {

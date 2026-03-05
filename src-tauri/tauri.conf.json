@@ -30,7 +30,7 @@
       "endpoints": [
         "https://github.com/OpenPawz/openpawz/releases/latest/download/latest.json"
       ],
-      "pubkey": ""
+      "pubkey": "GENERATE_WITH_tauri_signer_generate_AND_REPLACE_THIS"
     }
   },
   "bundle": {

@@ -47,10 +47,15 @@ export async function initDbEncryption(): Promise<boolean> {
     const hexPairs = hexKey.match(/.{1,2}/g);
     if (!hexPairs) return false;
     const keyBytes = new Uint8Array(hexPairs.map((b) => parseInt(b, 16)));
-    _cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, [
-      'encrypt',
-      'decrypt',
-    ]);
+    try {
+      _cryptoKey = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-GCM' }, false, [
+        'encrypt',
+        'decrypt',
+      ]);
+    } finally {
+      // Zero raw key material immediately after import
+      keyBytes.fill(0);
+    }
     console.debug('[db] Encryption key loaded from OS keychain');
     return true;
   } catch (e) {
@@ -104,8 +109,10 @@ export async function decryptField(stored: string): Promise<string> {
     const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, _cryptoKey, ciphertext);
     return new TextDecoder().decode(decrypted);
   } catch (e) {
-    console.warn('[db] Decryption failed:', e);
-    return stored; // return raw value if decryption fails
+    console.error('[db] Decryption failed — refusing to return ciphertext:', e);
+    throw new Error(
+      'Decryption failed — encrypted data cannot be read. The encryption key may have changed.',
+    );
   }
 }
 
@@ -291,6 +298,20 @@ const MIGRATIONS: Migration[] = [
     version: 3,
     description: 'Add auto_approve_all to agent_modes for Phase A autonomy',
     statements: [`ALTER TABLE agent_modes ADD COLUMN auto_approve_all INTEGER DEFAULT 0`],
+  },
+  {
+    version: 4,
+    description: 'Move agent tool policies and injection policy out of localStorage into DB',
+    statements: [
+      `CREATE TABLE IF NOT EXISTS agent_tool_policies (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        policies_json TEXT NOT NULL DEFAULT '{}'
+      )`,
+      `CREATE TABLE IF NOT EXISTS injection_policy (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        policy_json TEXT NOT NULL DEFAULT '{}'
+      )`,
+    ],
   },
 ];
 
@@ -807,4 +828,66 @@ export async function saveSecuritySettingsToDb(settingsJson: string): Promise<vo
 export async function resetSecuritySettingsInDb(): Promise<void> {
   if (!db) return;
   await db.execute('DELETE FROM security_settings WHERE id = 1');
+}
+
+// ── Agent Tool Policies (DB storage) ──────────────────────────────────────
+
+/**
+ * Load all agent tool policies from the database.
+ * Returns the parsed JSON or null if empty.
+ */
+export async function loadAgentPoliciesFromDb(): Promise<Record<string, unknown> | null> {
+  if (!db) return null;
+  const rows = await db.select<{ policies_json: string }[]>(
+    'SELECT policies_json FROM agent_tool_policies WHERE id = 1',
+  );
+  if (rows.length === 0) return null;
+  try {
+    return JSON.parse(rows[0].policies_json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save agent tool policies JSON to the database (upsert).
+ */
+export async function saveAgentPoliciesToDb(policiesJson: string): Promise<void> {
+  if (!db) return;
+  await db.execute(
+    `INSERT INTO agent_tool_policies (id, policies_json) VALUES (1, ?)
+     ON CONFLICT(id) DO UPDATE SET policies_json = excluded.policies_json`,
+    [policiesJson],
+  );
+}
+
+// ── Injection Policy (DB storage) ─────────────────────────────────────────
+
+/**
+ * Load injection policy from the database.
+ * Returns the parsed JSON or null if empty.
+ */
+export async function loadInjectionPolicyFromDb(): Promise<Record<string, unknown> | null> {
+  if (!db) return null;
+  const rows = await db.select<{ policy_json: string }[]>(
+    'SELECT policy_json FROM injection_policy WHERE id = 1',
+  );
+  if (rows.length === 0) return null;
+  try {
+    return JSON.parse(rows[0].policy_json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save injection policy JSON to the database (upsert).
+ */
+export async function saveInjectionPolicyToDb(policyJson: string): Promise<void> {
+  if (!db) return;
+  await db.execute(
+    `INSERT INTO injection_policy (id, policy_json) VALUES (1, ?)
+     ON CONFLICT(id) DO UPDATE SET policy_json = excluded.policy_json`,
+    [policyJson],
+  );
 }

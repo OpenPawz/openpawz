@@ -6,6 +6,7 @@
 //   - Worker intercepts `report_progress` and stops on status=done
 //   - Boss emits EngineEvent::Complete on final text; worker does not
 
+use crate::atoms::error::EngineError;
 use crate::engine::providers::AnyProvider;
 use crate::engine::state::PendingApprovals;
 use crate::engine::types::*;
@@ -233,7 +234,9 @@ pub(crate) async fn run_orchestrator_loop(
         let mut sorted_indices: Vec<usize> = tool_call_map.keys().cloned().collect();
         sorted_indices.sort();
         for idx in sorted_indices {
-            let (id, name, arguments, thought_sig, thoughts) = tool_call_map.get(&idx).unwrap();
+            let (id, name, arguments, thought_sig, thoughts) = tool_call_map
+                .get(&idx)
+                .ok_or_else(|| EngineError::Other(format!("Missing tool call at index {}", idx)))?;
             let call_id = if id.is_empty() {
                 format!("call_{}", uuid::Uuid::new_v4())
             } else {

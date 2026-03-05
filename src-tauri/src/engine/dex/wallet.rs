@@ -23,9 +23,9 @@ pub async fn execute_dex_wallet_create(
         ));
     }
 
-    // Generate a new secp256k1 keypair
+    // Generate a new secp256k1 keypair using OS CSPRNG (never thread_rng for crypto keys)
     use k256::ecdsa::SigningKey;
-    let signing_key = SigningKey::random(&mut rand::thread_rng());
+    let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
     let verifying_key = signing_key.verifying_key();
 
     // Get uncompressed public key bytes
@@ -41,12 +41,12 @@ pub async fn execute_dex_wallet_create(
         .ok_or(EngineError::Other("Engine state not available".into()))?;
     let vault_key = crate::engine::skills::get_vault_key()?;
 
-    let encrypted_key = crate::engine::skills::encrypt_credential(&private_key_hex, &vault_key);
+    let encrypted_key = crate::engine::skills::encrypt_credential(&private_key_hex, &vault_key)?;
     state
         .store
         .set_skill_credential("dex", "DEX_PRIVATE_KEY", &encrypted_key)?;
 
-    let encrypted_addr = crate::engine::skills::encrypt_credential(&address, &vault_key);
+    let encrypted_addr = crate::engine::skills::encrypt_credential(&address, &vault_key)?;
     state
         .store
         .set_skill_credential("dex", "DEX_WALLET_ADDRESS", &encrypted_addr)?;

@@ -4,6 +4,7 @@
 // Delegates rendering to chat_renderer + existing DOM elements.
 
 import * as AgentsModule from '../../views/agents';
+import { escHtml } from '../../components/helpers';
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -240,7 +241,7 @@ export function createInboxThread(callbacks: InboxThreadCallbacks): InboxThreadC
         const item = document.createElement('button');
         item.className = 'inbox-swap-item';
         const av = AgentsModule.spriteAvatar(agent.avatar, 16);
-        item.innerHTML = `<span class="inbox-swap-avatar" style="border-color:${agent.color}">${av}</span><span>${agent.name}</span>`;
+        item.innerHTML = `<span class="inbox-swap-avatar" style="border-color:${escHtml(agent.color)}">${av}</span><span>${escHtml(agent.name)}</span>`;
         item.addEventListener('click', (e) => {
           e.stopPropagation();
           swapDropdown.style.display = 'none';

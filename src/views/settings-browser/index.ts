@@ -40,7 +40,7 @@ export async function loadBrowserSettings() {
     renderScreenshots(container, screenshots);
     renderWorkspaces(container, workspaces);
     renderNetworkPolicy(container, networkPolicy);
-  } catch (e) {
-    container.innerHTML = `<p style="color:var(--error)">Failed to load browser &amp; sandbox settings: ${e}</p>`;
+  } catch {
+    container.innerHTML = `<p style="color:var(--error)">Failed to load browser &amp; sandbox settings.</p>`;
   }
 }

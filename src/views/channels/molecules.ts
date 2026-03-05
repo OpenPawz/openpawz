@@ -355,10 +355,24 @@ async function handleWhatsAppStart(card: HTMLElement, cardId: string): Promise<v
           gotMeaningfulEvent = true;
           banner.innerHTML = `<span class="wa-spinner"></span> Connecting to WhatsApp...`;
           break;
-        case 'qr_code':
-          banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 4px;font-weight:600">Scan with the agent's phone — not your personal one</p><p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">The number you scan becomes the agent. Use a separate number.</p>${qr ? `<img src="${qr.startsWith('data:') ? qr : `data:image/png;base64,${qr}`}" alt="WhatsApp QR code" class="wa-qr-image" />` : ''}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
+        case 'qr_code': {
+          // Sanitize QR data: only allow data:image/* URIs or pure base64 (wrapped as data:image/png)
+          let safeQrSrc = '';
+          if (qr) {
+            if (/^data:image\/[a-z+]+;base64,[A-Za-z0-9+/=\s]+$/.test(qr)) {
+              safeQrSrc = qr;
+            } else if (/^[A-Za-z0-9+/=\s]+$/.test(qr)) {
+              safeQrSrc = `data:image/png;base64,${qr}`;
+            }
+            // else: invalid content — ignore
+          }
+          const qrImg = safeQrSrc
+            ? `<img src="${escAttr(safeQrSrc)}" alt="WhatsApp QR code" class="wa-qr-image" />`
+            : '';
+          banner.innerHTML = `<div class="wa-qr-section"><p style="margin:0 0 4px;font-weight:600">Scan with the agent's phone — not your personal one</p><p style="font-size:12px;color:var(--text-muted);margin:0 0 10px">The number you scan becomes the agent. Use a separate number.</p>${qrImg}<p style="font-size:12px;color:var(--text-muted);margin:8px 0 0">Open WhatsApp → Settings → Linked Devices → Link a Device</p></div>`;
           banner.className = 'wa-status-banner wa-status-qr';
           break;
+        }
         case 'connected':
           banner.innerHTML = `<span class="wa-status-icon">✅</span> ${escHtml(message ?? 'WhatsApp connected!')}`;
           banner.className = 'wa-status-banner wa-status-success';

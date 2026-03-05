@@ -149,8 +149,12 @@ pub async fn run_in_sandbox(command: &str, config: &SandboxConfig) -> EngineResu
         },
         // Security: drop all capabilities, no privileged mode
         cap_drop: Some(vec!["ALL".to_string()]),
-        // Read-only root filesystem (write to /tmp only)
-        readonly_rootfs: Some(false), // alpine needs some writes, /tmp is writable
+        // Read-only root filesystem — writes only via tmpfs mounts
+        readonly_rootfs: Some(true),
+        tmpfs: Some(std::collections::HashMap::from([
+            ("/tmp".to_string(), "size=64M,noexec,nosuid".to_string()),
+            ("/var/tmp".to_string(), "size=32M,noexec,nosuid".to_string()),
+        ])),
         ..Default::default()
     };
 

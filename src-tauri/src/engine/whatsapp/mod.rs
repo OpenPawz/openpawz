@@ -2,7 +2,7 @@
 //
 // Module layout:
 //   config        — WhatsAppConfig, CONFIG_KEY, load/save/approve/deny/remove
-//   docker        — EVOLUTION_IMAGE, CONTAINER_NAME, discover_colima_socket,
+//   docker        — EVOLUTION_IMAGE, CONTAINER_NAME, discover_colima_socket_path,
 //                   ensure_docker_ready, ensure_evolution_container
 //   evolution_api — create/delete/connect instance, extract_qr, send_whatsapp_message
 //   webhook       — run_webhook_listener (raw TCP HTTP server)
