@@ -179,10 +179,16 @@ pub enum CanvasComponentType {
     Progress,   // label + percentage + ETA
     Form,       // input fields → triggers tool call on submit
     Markdown,   // freeform rendered markdown
+    Timeline,   // visual phase/milestone timeline with status
+    Checklist,  // task list with progress bar
+    Gauge,      // animated radial meter (SVG)
+    Countdown,  // live countdown timer to a target date
+    Image,      // image display with caption
+    Embed,      // sandboxed HTML/CSS/JS (enables three.js, anime.js, D3, etc.)
 }
 ```
 
-This extends the existing 5 `skill_output` widget types with 5 new types (`chart`, `card`, `progress`, `form`, `markdown`). The original types are kept for backward compatibility.
+This extends the existing 5 `skill_output` widget types with 11 new types. The original types are kept for backward compatibility.
 
 #### Agent Tools
 
@@ -235,6 +241,49 @@ For `chart` components, the Canvas renders lightweight SVG charts directly — n
 - **Sparklines**: Minimal SVG inline in metric cards
 
 The chart renderer is a pure function: `(data: ChartData) → string` (SVG markup). This keeps the bundle tiny and avoids the security surface of a charting library in a desktop app.
+
+#### Rich Visual Widgets
+
+Beyond static content, the Canvas includes widgets that bring dashboards to life with animation, interactivity, and embedded content:
+
+| Widget | Data Shape | Rendering |
+|--------|-----------|-----------|
+| `timeline` | `{ events: [{ label, time?, detail?, status: "done"\|"active"\|"pending" }] }` | Vertical timeline with colored dots (done=green, active=pulsing accent, pending=hollow) |
+| `checklist` | `{ items: [{ label, checked: bool }] }` | Task list with progress bar and animated fill |
+| `gauge` | `{ value, min?, max?, unit?, label?, level?: "ok"\|"warning"\|"error" }` | SVG half-circle radial meter with animated entrance |
+| `countdown` | `{ target: "ISO-date", label?, format?: "dhms" }` | Live-ticking countdown timer (days:hrs:min:sec) |
+| `image` | `{ src: "url", alt?, caption? }` | Image display with optional caption |
+| `embed` | `{ html?, css?, js?, height?, libraries?: ["url", ...] }` | **Sandboxed iframe** — full HTML/CSS/JS with external library support |
+
+#### The `embed` Widget — Unlimited Visual Power
+
+The `embed` type is the canvas escape hatch. It renders a **sandboxed iframe** (`sandbox="allow-scripts"` without `allow-same-origin`) containing arbitrary HTML, CSS, and JavaScript. The agent can include external libraries via CDN:
+
+```
+Agent calls: canvas_push({
+  type: "embed",
+  title: "3D Portfolio Visualization",
+  data: {
+    libraries: [
+      "https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"
+    ],
+    html: "<div id='scene'></div>",
+    css: "#scene { width: 100%; height: 100%; }",
+    js: "const scene = new THREE.Scene(); ...",
+    height: 400
+  }
+})
+```
+
+Supported libraries include (but are not limited to):
+- **three.js** — 3D scenes, data visualizations, particle effects
+- **anime.js** — Choreographed animations, morphing, timelines
+- **D3.js** — Advanced data-driven visualizations
+- **Chart.js** — Quick charts beyond the built-in SVG renderer
+- **p5.js** — Creative coding, generative art
+- Any library loadable via CDN `<script>` tag
+
+Security: the iframe sandbox prevents access to the parent page's DOM, cookies, storage, and navigation. The embedded content runs in complete isolation.
 
 ### Relationship to Skill Outputs
 

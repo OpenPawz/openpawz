@@ -253,6 +253,12 @@ pub enum CanvasComponentType {
     Progress,
     Form,
     Markdown,
+    Timeline,
+    Checklist,
+    Gauge,
+    Countdown,
+    Image,
+    Embed,
 }
 
 /// A single canvas component created by an agent tool call.

@@ -8,6 +8,7 @@ import {
   renderCanvas,
   pushComponent,
   updateComponent,
+  cleanupLiveWidgets,
 } from './molecules';
 import { pawEngine } from '../../engine';
 import type { CanvasComponent, CanvasComponentPatch, EngineEvent } from '../../engine/atoms/types';
@@ -166,6 +167,7 @@ initTabBar('main', {
 
 /** Set the active session and load its canvas. */
 export async function loadCanvas(sessionId?: string): Promise<void> {
+  cleanupLiveWidgets();
   if (sessionId) {
     _sessionId = sessionId;
     _dashboardId = null;
@@ -196,6 +198,7 @@ export async function loadCanvas(sessionId?: string): Promise<void> {
 
 /** Load a specific dashboard (called from sidebar or agent event). */
 export async function loadDashboard(dashboardId: string): Promise<void> {
+  cleanupLiveWidgets();
   _dashboardId = dashboardId;
   _sessionId = null;
 

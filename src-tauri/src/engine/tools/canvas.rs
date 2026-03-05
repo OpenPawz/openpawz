@@ -9,7 +9,22 @@ use tauri::{Emitter, Manager};
 
 /// Valid canvas component types.
 const VALID_COMPONENT_TYPES: &[&str] = &[
-    "metric", "table", "chart", "log", "kv", "card", "status", "progress", "form", "markdown",
+    "metric",
+    "table",
+    "chart",
+    "log",
+    "kv",
+    "card",
+    "status",
+    "progress",
+    "form",
+    "markdown",
+    "timeline",
+    "checklist",
+    "gauge",
+    "countdown",
+    "image",
+    "embed",
 ];
 
 pub fn definitions() -> Vec<ToolDefinition> {
@@ -25,7 +40,7 @@ pub fn definitions() -> Vec<ToolDefinition> {
                         "type": {
                             "type": "string",
                             "enum": VALID_COMPONENT_TYPES,
-                            "description": "Component type: metric (big number + trend), table (columns + rows), chart (line/bar/area/pie), log (timestamped entries), kv (key-value pairs), card (markdown body + actions), status (icon + text), progress (label + pct), form (inputs → tool call), markdown (freeform)"
+                            "description": "Component type: metric (big number + trend), table (columns + rows), chart (line/bar/area/pie), log (timestamped entries), kv (key-value pairs), card (markdown body + actions), status (icon + text), progress (label + pct), form (inputs → tool call), markdown (freeform), timeline (visual phases/milestones), checklist (task list with progress), gauge (radial meter), countdown (animated timer), image (image + caption), embed (sandboxed HTML/CSS/JS — supports external libraries like three.js, anime.js, D3)"
                         },
                         "title": {
                             "type": "string",
@@ -362,6 +377,12 @@ fn parse_component_type(s: &str) -> CanvasComponentType {
         "progress" => CanvasComponentType::Progress,
         "form" => CanvasComponentType::Form,
         "markdown" => CanvasComponentType::Markdown,
+        "timeline" => CanvasComponentType::Timeline,
+        "checklist" => CanvasComponentType::Checklist,
+        "gauge" => CanvasComponentType::Gauge,
+        "countdown" => CanvasComponentType::Countdown,
+        "image" => CanvasComponentType::Image,
+        "embed" => CanvasComponentType::Embed,
         _ => CanvasComponentType::Card,
     }
 }

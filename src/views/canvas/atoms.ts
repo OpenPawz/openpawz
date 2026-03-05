@@ -85,6 +85,12 @@ export function componentIcon(type: CanvasComponentType): string {
     progress: 'hourglass_top',
     form: 'edit_note',
     markdown: 'description',
+    timeline: 'timeline',
+    checklist: 'checklist',
+    gauge: 'speed',
+    countdown: 'timer',
+    image: 'image',
+    embed: 'code',
   };
   return icons[type] ?? 'widgets';
 }
@@ -102,6 +108,12 @@ export function componentLabel(type: CanvasComponentType): string {
     progress: 'Progress',
     form: 'Form',
     markdown: 'Markdown',
+    timeline: 'Timeline',
+    checklist: 'Checklist',
+    gauge: 'Gauge',
+    countdown: 'Countdown',
+    image: 'Image',
+    embed: 'Embed',
   };
   return labels[type] ?? 'Widget';
 }
