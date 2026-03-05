@@ -142,6 +142,7 @@ export function renderCanvas(): void {
 
   _state.wireTabBar();
   wireEvents();
+  activateLiveWidgets();
 }
 
 // ── Empty State ───────────────────────────────────────────────────────
@@ -207,6 +208,18 @@ function renderComponentBody(c: ParsedCanvasComponent): string {
       return renderMarkdown(c.data);
     case 'form':
       return renderForm(c.data);
+    case 'timeline':
+      return renderTimeline(c.data);
+    case 'checklist':
+      return renderChecklist(c.data, c.id);
+    case 'gauge':
+      return renderGauge(c.data, c.id);
+    case 'countdown':
+      return renderCountdown(c.data, c.id);
+    case 'image':
+      return renderImage(c.data);
+    case 'embed':
+      return renderEmbed(c.data);
     default:
       return `<pre class="canvas-raw">${escHtml(JSON.stringify(c.data, null, 2))}</pre>`;
   }
@@ -386,6 +399,205 @@ function renderForm(data: Record<string, unknown>): string {
   return `<div class="canvas-form">${inputs}<button class="btn btn-sm btn-primary canvas-form-submit">Submit</button></div>`;
 }
 
+// ── Timeline ──────────────────────────────────────────────────────────
+
+function renderTimeline(data: Record<string, unknown>): string {
+  const events = dataArr(data, 'events') as Record<string, unknown>[];
+  if (!events.length) return '<p class="canvas-muted">No timeline events</p>';
+
+  const items = events
+    .map((ev, i) => {
+      const label = dataStr(ev, 'label', `Step ${i + 1}`);
+      const time = dataStr(ev, 'time');
+      const detail = dataStr(ev, 'detail');
+      const status = dataStr(ev, 'status', 'pending'); // done | active | pending
+      const dotClass =
+        status === 'done'
+          ? 'canvas-tl-done'
+          : status === 'active'
+            ? 'canvas-tl-active'
+            : 'canvas-tl-pending';
+      return `<div class="canvas-tl-item ${dotClass}">
+        <div class="canvas-tl-dot"></div>
+        <div class="canvas-tl-content">
+          <div class="canvas-tl-label">${escHtml(label)}</div>
+          ${time ? `<div class="canvas-tl-time">${escHtml(time)}</div>` : ''}
+          ${detail ? `<div class="canvas-tl-detail">${escHtml(detail)}</div>` : ''}
+        </div>
+      </div>`;
+    })
+    .join('');
+
+  return `<div class="canvas-timeline">${items}</div>`;
+}
+
+// ── Checklist ─────────────────────────────────────────────────────────
+
+function renderChecklist(data: Record<string, unknown>, componentId: string): string {
+  const items = dataArr(data, 'items') as Record<string, unknown>[];
+  if (!items.length) return '<p class="canvas-muted">No checklist items</p>';
+
+  const total = items.length;
+  const done = items.filter((it) => it.checked === true || it.done === true).length;
+  const pct = Math.round((done / total) * 100);
+
+  const rows = items
+    .map((it, i) => {
+      const label = dataStr(it, 'label', `Item ${i + 1}`);
+      const checked = it.checked === true || it.done === true;
+      return `<div class="canvas-cl-item${checked ? ' canvas-cl-done' : ''}">
+        <span class="canvas-cl-check">${checked ? '&#10003;' : ''}</span>
+        <span class="canvas-cl-label">${escHtml(label)}</span>
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <div class="canvas-checklist" data-checklist-id="${escHtml(componentId)}">
+      <div class="canvas-cl-progress">
+        <div class="canvas-cl-progress-bar">
+          <div class="canvas-cl-progress-fill" style="width: ${pct}%"></div>
+        </div>
+        <span class="canvas-cl-progress-text">${done}/${total}</span>
+      </div>
+      ${rows}
+    </div>
+  `;
+}
+
+// ── Gauge ─────────────────────────────────────────────────────────────
+
+function renderGauge(data: Record<string, unknown>, componentId: string): string {
+  const value = dataNum(data, 'value', 0);
+  const max = dataNum(data, 'max', 100);
+  const min = dataNum(data, 'min', 0);
+  const label = dataStr(data, 'label');
+  const unit = dataStr(data, 'unit');
+  const level = dataStr(data, 'level'); // ok | warning | error
+
+  const pct = Math.min(1, Math.max(0, (value - min) / (max - min || 1)));
+  const radius = 60;
+  const circumference = Math.PI * radius; // half-circle
+  const offset = circumference * (1 - pct);
+
+  const strokeColor =
+    level === 'error'
+      ? 'var(--kinetic-red, #D4654A)'
+      : level === 'warning'
+        ? 'var(--kinetic-gold, #C4A962)'
+        : 'var(--accent, var(--kinetic-sage, #8FB0A0))';
+
+  return `
+    <div class="canvas-gauge" data-gauge-id="${escHtml(componentId)}">
+      <svg viewBox="0 0 160 100" class="canvas-gauge-svg">
+        <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="var(--border)" stroke-width="8" stroke-linecap="round"/>
+        <path d="M 20 80 A 60 60 0 0 1 140 80" fill="none" stroke="${strokeColor}" stroke-width="8" stroke-linecap="round"
+              stroke-dasharray="${circumference}" stroke-dashoffset="${offset}"
+              class="canvas-gauge-arc"/>
+      </svg>
+      <div class="canvas-gauge-value">${escHtml(String(value))}${unit ? `<span class="canvas-gauge-unit">${escHtml(unit)}</span>` : ''}</div>
+      ${label ? `<div class="canvas-gauge-label">${escHtml(label)}</div>` : ''}
+    </div>
+  `;
+}
+
+// ── Countdown ─────────────────────────────────────────────────────────
+
+function renderCountdown(data: Record<string, unknown>, componentId: string): string {
+  const target = dataStr(data, 'target'); // ISO date string
+  const label = dataStr(data, 'label');
+  const format = dataStr(data, 'format', 'dhms'); // d | hms | dhms
+
+  if (!target) return '<p class="canvas-muted">No target date set</p>';
+
+  // Render static placeholder — the animate-on-mount wiring will start the ticker
+  return `
+    <div class="canvas-countdown" data-countdown-id="${escHtml(componentId)}" data-target="${escHtml(target)}" data-format="${escHtml(format)}">
+      ${label ? `<div class="canvas-countdown-label">${escHtml(label)}</div>` : ''}
+      <div class="canvas-countdown-digits">
+        <div class="canvas-cd-unit"><span class="canvas-cd-num" data-cd="d">--</span><span class="canvas-cd-lbl">DAYS</span></div>
+        <div class="canvas-cd-sep">:</div>
+        <div class="canvas-cd-unit"><span class="canvas-cd-num" data-cd="h">--</span><span class="canvas-cd-lbl">HRS</span></div>
+        <div class="canvas-cd-sep">:</div>
+        <div class="canvas-cd-unit"><span class="canvas-cd-num" data-cd="m">--</span><span class="canvas-cd-lbl">MIN</span></div>
+        <div class="canvas-cd-sep">:</div>
+        <div class="canvas-cd-unit"><span class="canvas-cd-num" data-cd="s">--</span><span class="canvas-cd-lbl">SEC</span></div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Image ─────────────────────────────────────────────────────────────
+
+function renderImage(data: Record<string, unknown>): string {
+  const src = dataStr(data, 'src') || dataStr(data, 'url');
+  const alt = dataStr(data, 'alt', 'Image');
+  const caption = dataStr(data, 'caption');
+
+  if (!src) return '<p class="canvas-muted">No image source</p>';
+
+  return `
+    <div class="canvas-image">
+      <img src="${escHtml(src)}" alt="${escHtml(alt)}" class="canvas-image-img" loading="lazy" />
+      ${caption ? `<div class="canvas-image-caption">${escHtml(caption)}</div>` : ''}
+    </div>
+  `;
+}
+
+// ── Embed (Sandboxed HTML/CSS/JS — enables three.js, anime.js, D3, etc.) ──
+
+function renderEmbed(data: Record<string, unknown>): string {
+  const html = dataStr(data, 'html');
+  const css = dataStr(data, 'css');
+  const js = dataStr(data, 'js');
+  const height = dataNum(data, 'height', 300);
+  const libraries = dataArr(data, 'libraries') as string[];
+
+  if (!html && !js) return '<p class="canvas-muted">No embed content</p>';
+
+  // Build a self-contained HTML document for the sandboxed iframe
+  const libTags = libraries.map((lib) => `<script src="${lib}"><\/script>`).join('\n');
+
+  const doc = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+${libTags}
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: transparent;
+  color: #e0ddd8;
+  font-family: 'JetBrains Mono', 'SF Mono', monospace;
+  overflow: hidden;
+}
+${css || ''}
+</style>
+</head>
+<body>
+${html || ''}
+${js ? `<script>${js}<\/script>` : ''}
+</body>
+</html>`;
+
+  // Use srcdoc with a strict sandbox — allow-scripts but NOT allow-same-origin
+  // This prevents the iframe from accessing the parent's DOM, cookies, or storage
+  const encoded = doc.replace(/"/g, '&quot;');
+
+  return `
+    <div class="canvas-embed">
+      <iframe
+        srcdoc="${encoded}"
+        sandbox="allow-scripts"
+        class="canvas-embed-frame"
+        style="height: ${Math.min(Math.max(height, 100), 800)}px"
+        loading="lazy"
+      ></iframe>
+    </div>
+  `;
+}
+
 // ── Live Update (incremental DOM patch) ───────────────────────────────
 
 /** Add a new component to the live canvas without full re-render. */
@@ -427,6 +639,7 @@ export function pushComponent(id: string, comp: CanvasComponent): void {
     `;
     grid.insertAdjacentHTML('beforeend', cardHtml);
     wireCardRemove(parsed.id);
+    activateLiveWidgets();
   } else {
     renderCanvas();
   }
@@ -452,8 +665,84 @@ export function updateComponent(id: string, patch: CanvasComponentPatch): void {
       if (titleEl) titleEl.textContent = patch.title;
     }
     const body = card.querySelector('.canvas-card-body');
-    if (body) body.innerHTML = renderComponentBody(all[idx]);
+    if (body) {
+      body.innerHTML = renderComponentBody(all[idx]);
+      activateLiveWidgets(card as HTMLElement);
+    }
   }
+}
+
+// ── Live Widget Activation (countdowns, gauge animations) ─────────────
+
+/** Active countdown intervals — tracked for cleanup. */
+const _countdownIntervals: Map<string, ReturnType<typeof setInterval>> = new Map();
+
+/**
+ * Activate dynamic canvas widgets (countdown tickers, gauge entrance animations).
+ * Called after full render and after individual push/update.
+ */
+function activateLiveWidgets(scope?: HTMLElement): void {
+  const root = scope ?? document;
+
+  // ── Countdown tickers ───────────────────────────────────────────────
+  root.querySelectorAll<HTMLElement>('.canvas-countdown[data-target]').forEach((el) => {
+    const id = el.dataset.countdownId ?? '';
+    if (_countdownIntervals.has(id)) return; // already ticking
+
+    const target = new Date(el.dataset.target ?? '').getTime();
+    if (isNaN(target)) return;
+
+    const tick = () => {
+      const now = Date.now();
+      const diff = Math.max(0, target - now);
+      const d = Math.floor(diff / 86400000);
+      const h = Math.floor((diff % 86400000) / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      const s = Math.floor((diff % 60000) / 1000);
+
+      const dEl = el.querySelector<HTMLElement>('[data-cd="d"]');
+      const hEl = el.querySelector<HTMLElement>('[data-cd="h"]');
+      const mEl = el.querySelector<HTMLElement>('[data-cd="m"]');
+      const sEl = el.querySelector<HTMLElement>('[data-cd="s"]');
+      if (dEl) dEl.textContent = String(d).padStart(2, '0');
+      if (hEl) hEl.textContent = String(h).padStart(2, '0');
+      if (mEl) mEl.textContent = String(m).padStart(2, '0');
+      if (sEl) sEl.textContent = String(s).padStart(2, '0');
+
+      if (diff === 0) {
+        clearInterval(_countdownIntervals.get(id)!);
+        _countdownIntervals.delete(id);
+        el.classList.add('canvas-countdown-done');
+      }
+    };
+
+    tick(); // immediate first tick
+    _countdownIntervals.set(id, setInterval(tick, 1000));
+  });
+
+  // ── Gauge entrance animation ────────────────────────────────────────
+  root.querySelectorAll<SVGElement>('.canvas-gauge-arc').forEach((arc) => {
+    const parent = arc.closest('.canvas-gauge');
+    if (!parent || parent.classList.contains('canvas-gauge-animated')) return;
+    parent.classList.add('canvas-gauge-animated');
+
+    const finalOffset = arc.style.strokeDashoffset || arc.getAttribute('stroke-dashoffset') || '0';
+    const dashArray = arc.getAttribute('stroke-dasharray') || '188';
+    // Start from fully hidden and animate to the target
+    arc.setAttribute('stroke-dashoffset', dashArray);
+    requestAnimationFrame(() => {
+      arc.style.transition = 'stroke-dashoffset 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)';
+      arc.style.strokeDashoffset = finalOffset;
+    });
+  });
+}
+
+/** Clean up countdown intervals (call when leaving canvas view). */
+export function cleanupLiveWidgets(): void {
+  for (const [, interval] of _countdownIntervals) {
+    clearInterval(interval);
+  }
+  _countdownIntervals.clear();
 }
 
 // ── Event Wiring ──────────────────────────────────────────────────────

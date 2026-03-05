@@ -316,7 +316,13 @@ export type CanvasComponentType =
   | 'status'
   | 'progress'
   | 'form'
-  | 'markdown';
+  | 'markdown'
+  | 'timeline'
+  | 'checklist'
+  | 'gauge'
+  | 'countdown'
+  | 'image'
+  | 'embed';
 
 /** A persisted canvas component row from the backend. */
 export interface CanvasComponentRow {

@@ -413,6 +413,237 @@
   margin-top: 4px;
 }
 
+/* ── Timeline ────────────────────────────────────────────── */
+.canvas-timeline {
+  position: relative;
+  padding-left: 20px;
+}
+.canvas-tl-item {
+  position: relative;
+  padding: 0 0 16px 16px;
+  border-left: 2px solid var(--border);
+}
+.canvas-tl-item:last-child {
+  border-left-color: transparent;
+  padding-bottom: 0;
+}
+.canvas-tl-dot {
+  position: absolute;
+  left: -7px;
+  top: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: var(--bg-secondary);
+}
+.canvas-tl-done .canvas-tl-dot {
+  background: var(--kinetic-sage, #8FB0A0);
+  border-color: var(--kinetic-sage, #8FB0A0);
+}
+.canvas-tl-done {
+  border-left-color: var(--kinetic-sage, #8FB0A0);
+}
+.canvas-tl-active .canvas-tl-dot {
+  background: var(--accent, var(--kinetic-red, #D4654A));
+  border-color: var(--accent, var(--kinetic-red, #D4654A));
+  animation: k-breathe-dot 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.canvas-tl-label {
+  font-size: var(--type-sm);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.canvas-tl-time {
+  font-size: var(--type-micro);
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.canvas-tl-detail {
+  font-size: var(--type-micro);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* ── Checklist ───────────────────────────────────────────── */
+.canvas-checklist {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+.canvas-cl-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.canvas-cl-progress-bar {
+  flex: 1;
+  height: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+.canvas-cl-progress-fill {
+  height: 100%;
+  background: var(--kinetic-sage, #8FB0A0);
+  transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.canvas-cl-progress-text {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.canvas-cl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+}
+.canvas-cl-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  font-size: 10px;
+  color: transparent;
+  flex-shrink: 0;
+}
+.canvas-cl-done .canvas-cl-check {
+  background: var(--kinetic-sage, #8FB0A0);
+  border-color: var(--kinetic-sage, #8FB0A0);
+  color: var(--bg-primary);
+}
+.canvas-cl-done .canvas-cl-label {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+.canvas-cl-label {
+  color: var(--text-primary);
+}
+
+/* ── Gauge ───────────────────────────────────────────────── */
+.canvas-gauge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+.canvas-gauge-svg {
+  width: 160px;
+  height: 100px;
+}
+.canvas-gauge-arc {
+  transition: stroke-dashoffset 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.canvas-gauge-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  margin-top: -24px;
+  text-align: center;
+  line-height: 1;
+}
+.canvas-gauge-unit {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+.canvas-gauge-label {
+  font-size: var(--type-micro);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* ── Countdown ───────────────────────────────────────────── */
+.canvas-countdown {
+  text-align: center;
+  padding: 8px 0;
+}
+.canvas-countdown-label {
+  font-size: var(--type-micro);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+.canvas-countdown-digits {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.canvas-cd-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.canvas-cd-num {
+  font-size: 28px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+  line-height: 1;
+  min-width: 40px;
+  letter-spacing: -0.02em;
+}
+.canvas-cd-lbl {
+  font-size: 8px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+  letter-spacing: 0.1em;
+}
+.canvas-cd-sep {
+  font-size: 24px;
+  font-weight: 300;
+  color: var(--text-dim);
+  margin-top: -12px;
+}
+.canvas-countdown-done .canvas-cd-num {
+  color: var(--kinetic-sage, #8FB0A0);
+}
+
+/* ── Image ───────────────────────────────────────────────── */
+.canvas-image {
+  text-align: center;
+}
+.canvas-image-img {
+  max-width: 100%;
+  max-height: 400px;
+  object-fit: contain;
+  border: 1px solid var(--border);
+}
+.canvas-image-caption {
+  font-size: var(--type-micro);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+/* ── Embed (sandboxed iframe) ────────────────────────────── */
+.canvas-embed {
+  width: 100%;
+  overflow: hidden;
+}
+.canvas-embed-frame {
+  width: 100%;
+  border: none;
+  background: transparent;
+  display: block;
+}
+
 /* ── Utilities ───────────────────────────────────────────── */
 .canvas-muted {
   font-size: var(--type-sm);
