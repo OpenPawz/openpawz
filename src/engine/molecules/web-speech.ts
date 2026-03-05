@@ -56,14 +56,14 @@ interface SpeechRecognitionConstructor {
  */
 export function isWebSpeechAvailable(): boolean {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const w = window as any;
-  return !!(w.SpeechRecognition || w.webkitSpeechRecognition);
+  const anyWindow = window as any;
+  return !!(anyWindow.SpeechRecognition || anyWindow.webkitSpeechRecognition);
 }
 
 function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const w = window as any;
-  return w.SpeechRecognition || w.webkitSpeechRecognition || null;
+  const anyWindow = window as any;
+  return anyWindow.SpeechRecognition || anyWindow.webkitSpeechRecognition || null;
 }
 
 // ── Controller ───────────────────────────────────────────────────────────

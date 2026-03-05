@@ -5,6 +5,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>OpenPawz</title>
     <link rel="stylesheet" href="/src/styles/index.css" />
+    <script>
+      // Detect pop-out window BEFORE any rendering to prevent full-app flash.
+      // index.html?popout=<dashboardId> → hide everything except canvas view.
+      if (new URLSearchParams(window.location.search).has('popout')) {
+        document.documentElement.classList.add('popout-window');
+      }
+    </script>
+    <style>
+      /* Pop-out windows: hide everything except the canvas view immediately */
+      .popout-window #sidebar,
+      .popout-window #lock-screen,
+      .popout-window .agent-dock { display: none !important; }
+      .popout-window .main-content { margin-left: 0 !important; }
+    </style>
   </head>
   <body>
     <!-- ═══ Lock Screen ═══ -->
@@ -688,8 +702,8 @@
                     placeholder="Message your agent..."
                     rows="1"
                   ></textarea>
-                  <button class="chat-talk-btn" id="chat-talk-btn" title="Talk Mode — hold to speak">
-                    <span class="ms">mic</span>
+                  <button class="chat-stop-inline" id="chat-stop-inline" title="Stop response" style="display:none">
+                    <span class="ms">stop_circle</span>
                   </button>
                   <button
                     class="chat-send"
@@ -697,12 +711,11 @@
                     title="Send message"
                     data-icon="arrow-up"
                   ></button>
+                  <button class="chat-talk-btn" id="chat-talk-btn" title="Talk Mode — hold to speak">
+                    <span class="ms">mic</span>
+                  </button>
                 </div>
                 <div class="chat-stream-actions" id="chat-stream-actions" style="display: none">
-                  <button class="chat-abort-btn" id="chat-abort-btn">
-                    <span data-icon="square"></span>
-                    Stop
-                  </button>
                   <div class="chat-actions-more-wrap">
                     <button class="chat-actions-more-btn" id="chat-actions-more-btn" title="More actions">
                       <span data-icon="chevron-up"></span>

@@ -186,11 +186,13 @@ export async function engineChatSend(
     if (profile.name) parts.push(`You are ${profile.name}.`);
     if (profile.bio) parts.push(profile.bio);
     if (profile.personality) {
-      const p = profile.personality;
+      const personality = profile.personality;
       const personalityDesc: string[] = [];
-      if (p.tone) personalityDesc.push(`your tone is ${p.tone}`);
-      if (p.initiative) personalityDesc.push(`you are ${p.initiative} in your initiative`);
-      if (p.detail) personalityDesc.push(`you are ${p.detail} in your responses`);
+      if (personality.tone) personalityDesc.push(`your tone is ${personality.tone}`);
+      if (personality.initiative)
+        personalityDesc.push(`you are ${personality.initiative} in your initiative`);
+      if (personality.detail)
+        personalityDesc.push(`you are ${personality.detail} in your responses`);
       if (personalityDesc.length > 0) {
         parts.push(`Your personality is defined as follows: ${personalityDesc.join(', ')}.`);
       }

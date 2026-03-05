@@ -397,10 +397,10 @@ export function createConversationList(
         } else {
           const bottom = row.querySelector('.inbox-conv-bottom');
           if (bottom) {
-            const b = document.createElement('span');
-            b.className = 'inbox-conv-badge';
-            b.textContent = String(count);
-            bottom.appendChild(b);
+            const newBadge = document.createElement('span');
+            newBadge.className = 'inbox-conv-badge';
+            newBadge.textContent = String(count);
+            bottom.appendChild(newBadge);
           }
         }
       } else if (badge) {

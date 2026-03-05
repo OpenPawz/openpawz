@@ -669,14 +669,14 @@ function handleSearchInConversation(query: string): void {
   const chatMessages = $('chat-messages');
   if (!chatMessages) return;
   const msgEls = chatMessages.querySelectorAll('.chat-message-content');
-  const q = query.toLowerCase();
+  const lowerQuery = query.toLowerCase();
   msgEls.forEach((el) => {
     const textEl = el as HTMLElement;
-    if (!q) {
+    if (!lowerQuery) {
       textEl.style.opacity = '';
       return;
     }
-    const match = textEl.textContent?.toLowerCase().includes(q);
+    const match = textEl.textContent?.toLowerCase().includes(lowerQuery);
     textEl.style.opacity = match ? '' : '0.3';
   });
 }

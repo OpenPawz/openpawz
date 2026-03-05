@@ -521,30 +521,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     console.debug('[main] Pawz engine mode — starting...');
     await connectEngine();
-    // Ensure agents are loaded before rendering Today page
-    await AgentsModule.loadAgents();
-    // Mount inbox AFTER engine is connected so sessions can load
-    mountInbox();
 
-    // ── Onboarding wizard gate ──────────────────────────────────────
-    const needsWizard = await shouldShowWizard();
-
-    // ── Pop-out window detection ────────────────────────────────────
-    // If loaded with ?popout=<dashboardId>, skip onboarding and go
-    // straight to canvas view for that dashboard.
-    const urlParams = new URLSearchParams(window.location.search);
-    const popoutDashId = urlParams.get('popout');
-    if (popoutDashId) {
-      console.debug('[main] Pop-out window for dashboard:', popoutDashId);
-      // Hide sidebar for pop-out windows
-      const sidebar = document.getElementById('sidebar');
-      if (sidebar) sidebar.style.display = 'none';
-      const mainContent = document.querySelector('.main-content') as HTMLElement | null;
-      if (mainContent) mainContent.style.marginLeft = '0';
+    // ── Pop-out window fast path ──────────────────────────────────────
+    // Detect ?popout=<dashboardId> immediately after engine connect.
+    // Skip all non-essential init (inbox, settings, channels, etc.)
+    // to load the canvas as fast as possible without flashing the full UI.
+    const _popoutParams = new URLSearchParams(window.location.search);
+    const _popoutDashId = _popoutParams.get('popout');
+    if (_popoutDashId) {
+      console.debug('[main] Pop-out window for dashboard:', _popoutDashId);
 
       const { loadDashboard } = await import('./views/canvas/index');
       switchView('canvas');
-      await loadDashboard(popoutDashId);
+      await loadDashboard(_popoutDashId);
 
       // Save geometry on window resize/move (debounced)
       let geoTimer: ReturnType<typeof setTimeout> | null = null;
@@ -553,7 +542,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         geoTimer = setTimeout(async () => {
           try {
             await pawEngine.saveWindowGeometry(
-              popoutDashId,
+              _popoutDashId,
               window.screenX,
               window.screenY,
               window.innerWidth,
@@ -567,11 +556,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         }, 500);
       };
       window.addEventListener('resize', saveGeo);
-      // Mark window closed on unload
       window.addEventListener('beforeunload', () => {
-        pawEngine.markWindowClosed(popoutDashId).catch(() => {});
+        pawEngine.markWindowClosed(_popoutDashId).catch(() => {});
       });
-    } else if (needsWizard) {
+
+      console.debug('[main] Pop-out canvas ready');
+      return; // ← Skip all remaining init
+    }
+
+    // ── Normal app init continues ─────────────────────────────────────
+    // Ensure agents are loaded before rendering Today page
+    await AgentsModule.loadAgents();
+    // Mount inbox AFTER engine is connected so sessions can load
+    mountInbox();
+
+    // ── Onboarding wizard gate ──────────────────────────────────────
+    const needsWizard = await shouldShowWizard();
+
+    if (needsWizard) {
       console.debug('[main] First run — showing onboarding wizard');
       initWizard();
       showView('setup-view');

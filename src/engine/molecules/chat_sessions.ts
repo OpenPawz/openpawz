@@ -167,10 +167,10 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
     ];
 
     for (const s of limited) {
-      const t = s.updatedAt ?? 0;
-      if (t >= todayStart.getTime()) groups[0].sessions.push(s);
-      else if (t >= yesterdayStart.getTime()) groups[1].sessions.push(s);
-      else if (t >= weekStart.getTime()) groups[2].sessions.push(s);
+      const updatedTime = s.updatedAt ?? 0;
+      if (updatedTime >= todayStart.getTime()) groups[0].sessions.push(s);
+      else if (updatedTime >= yesterdayStart.getTime()) groups[1].sessions.push(s);
+      else if (updatedTime >= weekStart.getTime()) groups[2].sessions.push(s);
       else groups[3].sessions.push(s);
     }
 

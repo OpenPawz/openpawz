@@ -835,14 +835,14 @@ function _desktopNotify(title: string, body: string) {
   }
 
   try {
-    const n = new Notification(title, {
+    const notification = new Notification(title, {
       body: body.slice(0, 200),
       icon: '/favicon.ico',
       tag: `paw-minihub-${Date.now()}`,
       silent: false,
     });
     // Auto-close after 8 seconds
-    setTimeout(() => n.close(), 8000);
+    setTimeout(() => notification.close(), 8000);
   } catch {
     // Desktop notifications may not be supported in all environments
   }
