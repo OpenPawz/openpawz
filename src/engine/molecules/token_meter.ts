@@ -256,6 +256,14 @@ export function createTokenMeter(selectors: {
         inner.output_tokens ??
         inner.completion_token_count ??
         0) as number;
+      const cacheReadTokens = (inner.cache_read_tokens ??
+        inner.cacheReadTokens ??
+        inner.cache_read_input_tokens ??
+        0) as number;
+      const cacheCreateTokens = (inner.cache_creation_tokens ??
+        inner.cacheCreationTokens ??
+        inner.cache_creation_input_tokens ??
+        0) as number;
 
       if (totalTokens > 0 || inputTokens > 0 || outputTokens > 0) {
         state.sessionInputTokens = inputTokens;
@@ -264,8 +272,15 @@ export function createTokenMeter(selectors: {
         state.lastRecordedTotal = state.sessionTokensUsed;
       }
 
+      // Cache-aware costing: regular input at full price, cache reads at 10%,
+      // cache writes at 125% of base price, matching Anthropic pricing.
       const rate = MODEL_COST_PER_TOKEN[state.activeModelKey] ?? MODEL_COST_PER_TOKEN['default'];
-      state.sessionCost += inputTokens * rate.input + outputTokens * rate.output;
+      const regularInput = Math.max(0, inputTokens - cacheReadTokens - cacheCreateTokens);
+      const inputCost =
+        regularInput * rate.input +
+        cacheReadTokens * rate.input * 0.1 + // 90% discount on reads
+        cacheCreateTokens * rate.input * 1.25; // 25% surcharge on writes
+      state.sessionCost += inputCost + outputTokens * rate.output;
 
       const budgetLimit = getBudgetLimit();
       if (budgetLimit != null && state.sessionCost >= budgetLimit * 0.8) {

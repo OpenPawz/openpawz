@@ -45,6 +45,8 @@ pub async fn run_agent_turn(
     let mut final_text = String::new();
     let mut last_input_tokens: u64 = 0; // Only the LAST round's input (= actual context size)
     let mut total_output_tokens: u64 = 0; // Sum of all rounds' output tokens
+    let mut total_cache_read: u64 = 0; // Sum of all rounds' cache read tokens
+    let mut total_cache_create: u64 = 0; // Sum of all rounds' cache creation tokens
 
     // ── Telemetry: per-turn collector (Canvas Phase 5) ────────────────
     let mut telem_collector = RunCollector::new(session_id, run_id, model);
@@ -277,6 +279,10 @@ pub async fn run_agent_turn(
             .map(|u| u.cache_creation_tokens)
             .sum();
 
+        // Accumulate cache totals across rounds
+        total_cache_read += round_cache_read;
+        total_cache_create += round_cache_create;
+
         // ── Record this round's token usage against the daily budget tracker
         if let Some(tracker) = daily_tokens {
             let round_input = last_input_tokens;
@@ -389,6 +395,13 @@ pub async fn run_agent_turn(
                 summary.total_duration_ms = total_ms;
                 summary.llm_duration_ms = llm_ms;
                 summary.tool_duration_ms = tool_duration_total_ms;
+                summary.cost_usd = crate::engine::types::estimate_cost_usd(
+                    model,
+                    last_input_tokens,
+                    total_output_tokens,
+                    total_cache_read,
+                    total_cache_create,
+                );
 
                 if let Some(es) = app_handle.try_state::<crate::engine::state::EngineState>() {
                     telem::persist_summary(&es.store, &summary);

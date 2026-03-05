@@ -108,8 +108,8 @@ pub fn estimate_cost_usd(
     // Regular input tokens (subtract cached from total input for accurate costing)
     let regular_input = input.saturating_sub(cache_read + cache_create);
     let input_cost = (regular_input as f64 * p.input / 1_000_000.0)
-        + (cache_read as f64 * p.input * 0.10 / 1_000_000.0)   // 90% discount
-        + (cache_create as f64 * p.input * 0.25 / 1_000_000.0); // 75% discount on write
+        + (cache_read as f64 * p.input * 0.10 / 1_000_000.0)   // 90% discount on reads
+        + (cache_create as f64 * p.input * 1.25 / 1_000_000.0); // 25% surcharge on writes
     let output_cost = output as f64 * p.output / 1_000_000.0;
     input_cost + output_cost
 }
@@ -438,11 +438,11 @@ mod tests {
     }
 
     #[test]
-    fn cache_create_discount() {
+    fn cache_create_surcharge() {
         // 500 total input, 300 cache_create → 200 regular
         let cost = estimate_cost_usd("claude-sonnet-4-20250514", 500, 50, 0, 300);
         let regular_input = 200.0 * 3.0 / 1_000_000.0;
-        let cache_create = 300.0 * 3.0 * 0.25 / 1_000_000.0;
+        let cache_create = 300.0 * 3.0 * 1.25 / 1_000_000.0; // 25% surcharge
         let output = 50.0 * 15.0 / 1_000_000.0;
         let expected = regular_input + cache_create + output;
         assert!((cost - expected).abs() < 1e-10);
