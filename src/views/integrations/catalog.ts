@@ -266,7 +266,7 @@ const CURATED: ServiceDefinition[] = [
     'n8n-nodes-base.gmail',
     'https://developers.google.com/workspace',
     true,
-    undefined,
+    [], // OAuth-only — no manual credential fields (prevents CREDENTIAL_OVERRIDES fallback)
     {
       title: 'Connect Google Workspace',
       steps: [
