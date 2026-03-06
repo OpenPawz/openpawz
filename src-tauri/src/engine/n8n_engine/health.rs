@@ -218,7 +218,11 @@ pub async fn setup_owner_if_needed(base_url: &str) -> Result<(), String> {
 /// This signs in as owner and calls `PATCH /rest/mcp/settings`
 /// with `{ "mcpAccessEnabled": true }`. Idempotent — safe to call
 /// multiple times.
-pub async fn enable_mcp_access(base_url: &str) -> Result<(), String> {
+///
+/// If owner-session login fails (e.g. vault password mismatch after
+/// a reinstall), falls back to `X-N8N-API-KEY` header authentication
+/// so MCP can still be enabled without a valid session.
+pub async fn enable_mcp_access(base_url: &str, api_key: &str) -> Result<(), String> {
     let base = base_url.trim_end_matches('/');
 
     let client = reqwest::Client::builder()
@@ -227,7 +231,7 @@ pub async fn enable_mcp_access(base_url: &str) -> Result<(), String> {
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    // Sign in to get session
+    // Try session-based authentication first
     let password = owner_password();
     let login_url = format!("{}/rest/login", base);
     let login_body = serde_json::json!({
@@ -235,30 +239,44 @@ pub async fn enable_mcp_access(base_url: &str) -> Result<(), String> {
         "password": password
     });
 
-    let login_resp = client
+    let session_ok = match client
         .post(&login_url)
         .header("Content-Type", "application/json")
         .json(&login_body)
         .send()
         .await
-        .map_err(|e| format!("Login for MCP enable failed: {}", e))?;
+    {
+        Ok(resp) if resp.status().is_success() => true,
+        Ok(resp) => {
+            let status = resp.status();
+            log::warn!(
+                "[n8n] Session login for MCP enable returned HTTP {} — falling back to API key",
+                status
+            );
+            false
+        }
+        Err(e) => {
+            log::warn!(
+                "[n8n] Session login for MCP enable failed: {} — falling back to API key",
+                e
+            );
+            false
+        }
+    };
 
-    if !login_resp.status().is_success() {
-        let status = login_resp.status();
-        let body = login_resp.text().await.unwrap_or_default();
-        return Err(format!(
-            "Login for MCP enable failed (HTTP {}): {}",
-            status,
-            safe_truncate(&body, 200)
-        ));
-    }
-
-    // Enable MCP access
+    // Build the PATCH request — use session cookie if login succeeded,
+    // otherwise fall back to X-N8N-API-KEY header.
     let settings_url = format!("{}/rest/mcp/settings", base);
-    let settings_resp = client
+    let mut req = client
         .patch(&settings_url)
         .header("Content-Type", "application/json")
-        .json(&serde_json::json!({"mcpAccessEnabled": true}))
+        .json(&serde_json::json!({"mcpAccessEnabled": true}));
+
+    if !session_ok {
+        req = req.header("X-N8N-API-KEY", api_key);
+    }
+
+    let settings_resp = req
         .send()
         .await
         .map_err(|e| format!("MCP settings request failed: {}", e))?;
@@ -287,12 +305,16 @@ pub async fn enable_mcp_access(base_url: &str) -> Result<(), String> {
 ///   1. Sign in as owner → get session cookie
 ///   2. GET /rest/mcp/api-key → get-or-create MCP API key (returns data.apiKey)
 ///
+/// If owner-session login fails (e.g. vault password mismatch), falls back
+/// to `X-N8N-API-KEY` header authentication so MCP tokens can still be
+/// retrieved without a valid session.
+///
 /// The MCP API key is a JWT with audience "mcp-server-api", separate from
 /// N8N_API_KEY. It is required for Bearer auth on `/mcp-server/http`.
 /// Note: n8n 2.9.x uses `GET` (not POST) to retrieve/create the key via
 /// `McpServerApiKeyService.getOrCreateApiKey()`. The returned `apiKey`
 /// field is the full unredacted JWT on first creation.
-pub async fn retrieve_mcp_token(base_url: &str) -> Result<String, String> {
+pub async fn retrieve_mcp_token(base_url: &str, api_key: &str) -> Result<String, String> {
     let base = base_url.trim_end_matches('/');
 
     // Use a cookie-aware client for session management
@@ -302,7 +324,7 @@ pub async fn retrieve_mcp_token(base_url: &str) -> Result<String, String> {
         .build()
         .map_err(|e| format!("HTTP client error: {}", e))?;
 
-    // Step 1: Sign in to get session cookie
+    // Step 1: Try session-based authentication
     let password = owner_password();
     let login_url = format!("{}/rest/login", base);
     let login_body = serde_json::json!({
@@ -310,33 +332,45 @@ pub async fn retrieve_mcp_token(base_url: &str) -> Result<String, String> {
         "password": password
     });
 
-    let login_resp = client
+    let session_ok = match client
         .post(&login_url)
         .header("Content-Type", "application/json")
         .json(&login_body)
         .send()
         .await
-        .map_err(|e| format!("Login request failed: {}", e))?;
-
-    if !login_resp.status().is_success() {
-        let status = login_resp.status();
-        let body = login_resp.text().await.unwrap_or_default();
-        return Err(format!(
-            "Login failed (HTTP {}): {}",
-            status,
-            safe_truncate(&body, 200)
-        ));
-    }
-
-    log::info!("[n8n] Login successful, retrieving MCP API key");
+    {
+        Ok(resp) if resp.status().is_success() => {
+            log::info!("[n8n] Login successful, retrieving MCP API key");
+            true
+        }
+        Ok(resp) => {
+            let status = resp.status();
+            log::warn!(
+                "[n8n] Session login for MCP token returned HTTP {} — falling back to API key",
+                status
+            );
+            false
+        }
+        Err(e) => {
+            log::warn!(
+                "[n8n] Session login for MCP token failed: {} — falling back to API key",
+                e
+            );
+            false
+        }
+    };
 
     // Step 2: Get-or-create MCP API key via GET /rest/mcp/api-key
     // n8n 2.9.x uses GET — the endpoint calls getOrCreateApiKey() which
     // returns the existing key or creates a new one with audience "mcp-server-api".
     // Response: { "data": { "apiKey": "<jwt>", "audience": "mcp-server-api", ... } }
     let mcp_key_url = format!("{}/rest/mcp/api-key", base);
-    let mcp_resp = client
-        .get(&mcp_key_url)
+    let mut req = client.get(&mcp_key_url);
+    if !session_ok {
+        req = req.header("X-N8N-API-KEY", api_key);
+    }
+
+    let mcp_resp = req
         .send()
         .await
         .map_err(|e| format!("MCP API key request failed: {}", e))?;
@@ -379,8 +413,12 @@ pub async fn retrieve_mcp_token(base_url: &str) -> Result<String, String> {
         // Key is redacted — rotate to get fresh unredacted JWT
         log::info!("[n8n] MCP API key is redacted, rotating to get fresh key");
         let rotate_url = format!("{}/rest/mcp/api-key/rotate", base);
-        let rotate_resp = client
-            .post(&rotate_url)
+        let mut rotate_req = client.post(&rotate_url);
+        if !session_ok {
+            rotate_req = rotate_req.header("X-N8N-API-KEY", api_key);
+        }
+
+        let rotate_resp = rotate_req
             .send()
             .await
             .map_err(|e| format!("MCP API key rotation failed: {}", e))?;
