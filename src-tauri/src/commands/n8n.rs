@@ -3393,15 +3393,16 @@ pub(crate) fn map_integration_to_skill(
             }
             "telegram"
         }
-        // ── Services that map to the generic REST API skill ──
+        // ── Services with per-service skill vaults ──────────────────────
+        // Each service gets its own skill_id so connecting multiple services
+        // doesn't overwrite credentials.  The rest_api_call tool uses the
+        // `service` parameter to look up the right vault.
         "notion" => {
+            // Notion has a dedicated builtin skill with detailed API docs
             if let Some(v) = creds.get("api_key").or(creds.get("access_token")) {
-                mapped.insert("API_KEY".into(), v.clone());
+                mapped.insert("NOTION_API_KEY".into(), v.clone());
             }
-            mapped.insert("API_BASE_URL".into(), "https://api.notion.com/v1".into());
-            mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
-            mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            "notion"
         }
         "linear" => {
             if let Some(v) = creds.get("api_key") {
@@ -3410,7 +3411,12 @@ pub(crate) fn map_integration_to_skill(
             mapped.insert("API_BASE_URL".into(), "https://api.linear.app".into());
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Linear".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "GraphQL API for issue tracking. POST /graphql with query body.".into(),
+            );
+            "linear"
         }
         "stripe" => {
             if let Some(v) = creds.get("secret_key").or(creds.get("api_key")) {
@@ -3419,7 +3425,12 @@ pub(crate) fn map_integration_to_skill(
             mapped.insert("API_BASE_URL".into(), "https://api.stripe.com/v1".into());
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Stripe".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Payments API. Use form-encoded bodies for POST/PUT.".into(),
+            );
+            "stripe"
         }
         "todoist" => {
             if let Some(v) = creds.get("api_token").or(creds.get("api_key")) {
@@ -3431,7 +3442,12 @@ pub(crate) fn map_integration_to_skill(
             );
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Todoist".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Task management. GET/POST /tasks, /projects, /sections, /labels.".into(),
+            );
+            "todoist"
         }
         "clickup" => {
             if let Some(v) = creds.get("api_key") {
@@ -3443,7 +3459,12 @@ pub(crate) fn map_integration_to_skill(
             );
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "ClickUp".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Project management. GET /team, /space, /task.".into(),
+            );
+            "clickup"
         }
         "airtable" => {
             if let Some(v) = creds.get("api_key") {
@@ -3452,7 +3473,12 @@ pub(crate) fn map_integration_to_skill(
             mapped.insert("API_BASE_URL".into(), "https://api.airtable.com/v0".into());
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Airtable".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Spreadsheet-database. GET/POST /{baseId}/{tableName}.".into(),
+            );
+            "airtable"
         }
         "sendgrid" => {
             if let Some(v) = creds.get("api_key") {
@@ -3461,7 +3487,12 @@ pub(crate) fn map_integration_to_skill(
             mapped.insert("API_BASE_URL".into(), "https://api.sendgrid.com/v3".into());
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "SendGrid".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Email API. POST /mail/send with JSON body.".into(),
+            );
+            "sendgrid"
         }
         "jira" => {
             // Jira uses Basic auth — store domain + encoded credentials
@@ -3484,7 +3515,12 @@ pub(crate) fn map_integration_to_skill(
                 mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
                 mapped.insert("API_AUTH_PREFIX".into(), "Basic".into());
             }
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Jira".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Issue tracking. GET/POST /issue, /search, /project.".into(),
+            );
+            "jira"
         }
         "zendesk" => {
             let subdomain = creds.get("subdomain").cloned().unwrap_or_default();
@@ -3504,7 +3540,12 @@ pub(crate) fn map_integration_to_skill(
                 mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
                 mapped.insert("API_AUTH_PREFIX".into(), "Basic".into());
             }
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Zendesk".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Support tickets. GET/POST /tickets, /users, /organizations.".into(),
+            );
+            "zendesk"
         }
         "hubspot" => {
             if let Some(v) = creds.get("access_token").or(creds.get("api_key")) {
@@ -3513,7 +3554,12 @@ pub(crate) fn map_integration_to_skill(
             mapped.insert("API_BASE_URL".into(), "https://api.hubapi.com".into());
             mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
             mapped.insert("API_AUTH_PREFIX".into(), "Bearer".into());
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "HubSpot".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "CRM. GET/POST /crm/v3/objects/contacts, /deals, /companies.".into(),
+            );
+            "hubspot"
         }
         "twilio" => {
             let sid = creds.get("account_sid").cloned().unwrap_or_default();
@@ -3532,14 +3578,24 @@ pub(crate) fn map_integration_to_skill(
                 mapped.insert("API_AUTH_HEADER".into(), "Authorization".into());
                 mapped.insert("API_AUTH_PREFIX".into(), "Basic".into());
             }
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Twilio".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Messaging API. POST /Messages.json to send SMS.".into(),
+            );
+            "twilio"
         }
         "microsoft-teams" => {
             // MS Teams uses OAuth — store client credentials for now
             for (k, v) in creds {
                 mapped.insert(k.to_uppercase(), v.clone());
             }
-            "rest_api"
+            mapped.insert("SERVICE_NAME".into(), "Microsoft Teams".into());
+            mapped.insert(
+                "SERVICE_HINT".into(),
+                "Chat & channels via Microsoft Graph API.".into(),
+            );
+            "microsoft_teams"
         }
         // ── Google Workspace: tools read from vault directly, but we
         // map here so the skill auto-enables on OAuth connect ──
@@ -3573,10 +3629,21 @@ pub fn service_to_skill_id(service_id: &str) -> String {
         "github" | "github-app" => "github".into(),
         "trello" => "trello".into(),
         "telegram" => "telegram".into(),
-        // All these map to the shared rest_api skill
-        "notion" | "linear" | "stripe" | "todoist" | "clickup" | "airtable" | "sendgrid"
-        | "jira" | "zendesk" | "hubspot" | "shopify" | "pagerduty" | "twilio"
-        | "microsoft-teams" => "rest_api".into(),
+        // Each service has its own vault — no more rest_api collision
+        "notion" => "notion".into(),
+        "linear" => "linear".into(),
+        "stripe" => "stripe".into(),
+        "todoist" => "todoist".into(),
+        "clickup" => "clickup".into(),
+        "airtable" => "airtable".into(),
+        "sendgrid" => "sendgrid".into(),
+        "jira" => "jira".into(),
+        "zendesk" => "zendesk".into(),
+        "hubspot" => "hubspot".into(),
+        "twilio" => "twilio".into(),
+        "shopify" => "shopify".into(),
+        "pagerduty" => "pagerduty".into(),
+        "microsoft-teams" => "microsoft_teams".into(),
         "google" | "google-workspace" => "google_workspace".into(),
         "gmail" | "google-drive" | "google-calendar" | "google-sheets" | "google-docs" => {
             "google_workspace".into()
@@ -3746,15 +3813,17 @@ mod tests {
     }
 
     #[test]
-    fn map_notion_to_rest_api() {
+    fn map_notion_to_dedicated_skill() {
         let creds =
             std::collections::HashMap::from([("api_key".to_string(), "secret_abc".to_string())]);
         let (skill_id, mapped) = map_integration_to_skill("notion", &creds);
-        assert_eq!(skill_id, "rest_api");
-        assert_eq!(mapped.get("API_KEY"), Some(&"secret_abc".to_string()));
         assert_eq!(
-            mapped.get("API_BASE_URL"),
-            Some(&"https://api.notion.com/v1".to_string())
+            skill_id, "notion",
+            "Notion should use its dedicated builtin skill"
+        );
+        assert_eq!(
+            mapped.get("NOTION_API_KEY"),
+            Some(&"secret_abc".to_string())
         );
     }
 
@@ -3766,7 +3835,7 @@ mod tests {
             ("api_token".to_string(), "jira_tok_123".to_string()),
         ]);
         let (skill_id, mapped) = map_integration_to_skill("jira", &creds);
-        assert_eq!(skill_id, "rest_api");
+        assert_eq!(skill_id, "jira", "Jira should have its own skill vault");
         assert!(
             mapped
                 .get("API_BASE_URL")
@@ -3775,6 +3844,7 @@ mod tests {
             "Jira base URL should contain the domain"
         );
         assert_eq!(mapped.get("API_AUTH_PREFIX"), Some(&"Basic".to_string()));
+        assert_eq!(mapped.get("SERVICE_NAME"), Some(&"Jira".to_string()));
     }
 
     #[test]
@@ -3808,16 +3878,29 @@ mod tests {
     }
 
     #[test]
-    fn service_to_skill_id_rest_api_group() {
-        for service in &[
-            "notion", "linear", "stripe", "todoist", "clickup", "airtable", "sendgrid", "jira",
-            "zendesk", "hubspot",
-        ] {
+    fn service_to_skill_id_per_service_vaults() {
+        // Each service now maps to its own skill_id — no more rest_api collision
+        let expected: Vec<(&str, &str)> = vec![
+            ("notion", "notion"),
+            ("linear", "linear"),
+            ("stripe", "stripe"),
+            ("todoist", "todoist"),
+            ("clickup", "clickup"),
+            ("airtable", "airtable"),
+            ("sendgrid", "sendgrid"),
+            ("jira", "jira"),
+            ("zendesk", "zendesk"),
+            ("hubspot", "hubspot"),
+            ("twilio", "twilio"),
+            ("microsoft-teams", "microsoft_teams"),
+        ];
+        for (service, expected_skill) in &expected {
             assert_eq!(
                 service_to_skill_id(service),
-                "rest_api",
-                "Service '{}' should map to 'rest_api'",
-                service
+                *expected_skill,
+                "Service '{}' should map to '{}'",
+                service,
+                expected_skill
             );
         }
     }
@@ -3826,6 +3909,107 @@ mod tests {
     fn service_to_skill_id_unknown_is_identity() {
         assert_eq!(service_to_skill_id("acme-api"), "acme-api");
         assert_eq!(service_to_skill_id("custom-thing"), "custom-thing");
+    }
+
+    // ── Per-service credential isolation tests ─────────────────────
+
+    #[test]
+    fn map_per_service_no_collision() {
+        // Two services can be provisioned simultaneously without overwriting each other
+        let notion_creds =
+            std::collections::HashMap::from([("api_key".to_string(), "notion_key".to_string())]);
+        let linear_creds =
+            std::collections::HashMap::from([("api_key".to_string(), "linear_key".to_string())]);
+
+        let (notion_skill, notion_mapped) = map_integration_to_skill("notion", &notion_creds);
+        let (linear_skill, linear_mapped) = map_integration_to_skill("linear", &linear_creds);
+
+        // Distinct skill IDs — stored in separate vault namespaces
+        assert_ne!(
+            notion_skill, linear_skill,
+            "Services must not share skill_id"
+        );
+        assert_eq!(notion_skill, "notion");
+        assert_eq!(linear_skill, "linear");
+
+        // Notion stores under NOTION_API_KEY, Linear stores under API_KEY
+        assert_eq!(
+            notion_mapped.get("NOTION_API_KEY"),
+            Some(&"notion_key".to_string())
+        );
+        assert_eq!(
+            linear_mapped.get("API_KEY"),
+            Some(&"linear_key".to_string())
+        );
+    }
+
+    #[test]
+    fn map_per_service_includes_service_name() {
+        // Per-service mappings should include SERVICE_NAME metadata so the AI
+        // knows what service it's talking to.
+        let services_with_names = vec![
+            ("linear", "Linear"),
+            ("stripe", "Stripe"),
+            ("todoist", "Todoist"),
+            ("clickup", "ClickUp"),
+            ("airtable", "Airtable"),
+            ("sendgrid", "SendGrid"),
+            ("jira", "Jira"),
+            ("zendesk", "Zendesk"),
+            ("hubspot", "HubSpot"),
+            ("twilio", "Twilio"),
+            ("microsoft-teams", "Microsoft Teams"),
+        ];
+        for (service_id, expected_name) in services_with_names {
+            let mut creds = std::collections::HashMap::new();
+            // Provide minimum creds each service might need
+            creds.insert("api_key".into(), "test_key".into());
+            creds.insert("domain".into(), "test.example.com".into());
+            creds.insert("email".into(), "test@example.com".into());
+            creds.insert("api_token".into(), "test_token".into());
+            creds.insert("account_sid".into(), "AC123".into());
+            creds.insert("auth_token".into(), "token123".into());
+            creds.insert("subdomain".into(), "testco".into());
+
+            let (_skill_id, mapped) = map_integration_to_skill(service_id, &creds);
+            assert_eq!(
+                mapped.get("SERVICE_NAME"),
+                Some(&expected_name.to_string()),
+                "Service '{}' should include SERVICE_NAME='{}'",
+                service_id,
+                expected_name,
+            );
+        }
+    }
+
+    #[test]
+    fn map_per_service_includes_service_hint() {
+        let creds = std::collections::HashMap::from([("api_key".to_string(), "key".to_string())]);
+        let (_skill_id, mapped) = map_integration_to_skill("linear", &creds);
+        assert!(
+            mapped.get("SERVICE_HINT").is_some(),
+            "Per-service mappings should include SERVICE_HINT for AI context"
+        );
+        assert!(
+            mapped.get("SERVICE_HINT").unwrap().contains("GraphQL"),
+            "Linear hint should mention GraphQL"
+        );
+    }
+
+    #[test]
+    fn map_integration_notion_uses_access_token() {
+        // Notion OAuth returns access_token, not api_key
+        let creds = std::collections::HashMap::from([(
+            "access_token".to_string(),
+            "ntn_oauth_token".to_string(),
+        )]);
+        let (skill_id, mapped) = map_integration_to_skill("notion", &creds);
+        assert_eq!(skill_id, "notion");
+        assert_eq!(
+            mapped.get("NOTION_API_KEY"),
+            Some(&"ntn_oauth_token".to_string()),
+            "Notion should accept access_token as NOTION_API_KEY"
+        );
     }
 
     // ── OAuth→n8n node mapping ─────────────────────────────────────
