@@ -40,6 +40,7 @@ pub mod sandbox;
 pub mod skills;
 pub mod slack;
 pub mod sol_dex;
+pub mod speculative;
 pub mod swarm;
 pub mod tasks;
 pub mod telegram;

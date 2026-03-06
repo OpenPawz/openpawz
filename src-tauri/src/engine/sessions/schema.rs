@@ -562,6 +562,19 @@ pub(crate) fn run_migrations(conn: &Connection) -> EngineResult<()> {
     )
     .ok();
 
+    // ── Speculative Execution: tool transition patterns (Phase 4) ────
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS tool_sequences (
+            from_tool TEXT NOT NULL,
+            to_tool TEXT NOT NULL,
+            count INTEGER NOT NULL DEFAULT 1,
+            last_seen INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (from_tool, to_tool)
+        );
+        CREATE INDEX IF NOT EXISTS idx_tool_sequences_from ON tool_sequences(from_tool);",
+    )
+    .ok();
+
     Ok(())
 }
 
@@ -610,5 +623,6 @@ mod tests {
         assert!(tables.contains(&"tasks".to_string()));
         assert!(tables.contains(&"engine_config".to_string()));
         assert!(tables.contains(&"tool_embeddings".to_string()));
+        assert!(tables.contains(&"tool_sequences".to_string()));
     }
 }
