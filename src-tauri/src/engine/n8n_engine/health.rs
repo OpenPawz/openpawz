@@ -131,49 +131,27 @@ pub async fn get_n8n_version(base_url: &str, api_key: &str) -> Option<String> {
 /// The owner credentials used for headless n8n operation.
 const OWNER_EMAIL: &str = "agent@paw.local";
 
-/// Get or derive the n8n owner password.
+/// Get or generate the n8n owner password.
 ///
-/// The password is derived deterministically from the n8n encryption key
-/// using HMAC-SHA256.  This means the password is always reproducible as
-/// long as the encryption key is the same — no separate vault entry that
-/// can go out of sync with n8n's database.
+/// Uses `OsRng` (CSPRNG) to generate 32 bytes of entropy, hex-encoded to a
+/// 64-char password.  The raw bytes are wrapped in `Zeroizing` so they are
+/// securely wiped from memory after encoding.  The password is stored in the
+/// OS keychain via the unified vault — never hardcoded, unique per install.
 ///
-/// If the encryption key is not yet in the vault (first run before n8n
-/// is provisioned), falls back to a temporary random password.  The
-/// provisioning code in `process.rs`/`docker.rs` generates and stores
-/// the encryption key before calling any health functions, so in
-/// practice the HMAC path is always taken.
+/// If the vault already has a password, it is returned as-is. A new one
+/// is only generated when the vault has no entry (fresh install or vault
+/// cleared). When the vault is cleared but n8n's database still has the
+/// old owner, the 401 recovery path in `enable_mcp_access()` /
+/// `retrieve_mcp_token()` handles the mismatch by resetting the owner
+/// in the database and recreating it with the new password.
 fn owner_password() -> String {
     use crate::engine::key_vault;
 
-    // Derive from the n8n encryption key — HMAC-SHA256 so it's stable
-    if let Some(enc_key) = key_vault::get(key_vault::PURPOSE_N8N_ENCRYPTION) {
-        use hmac::{Hmac, Mac};
-        use sha2::Sha256;
-
-        type HmacSha256 = Hmac<Sha256>;
-        let mut mac =
-            HmacSha256::new_from_slice(enc_key.as_bytes()).expect("HMAC accepts any key size");
-        mac.update(b"paw-n8n-owner-v1");
-        let result = mac.finalize().into_bytes();
-        let pw: String = result.iter().map(|b| format!("{:02x}", b)).collect();
-
-        // Migrate: if an old random password exists in the vault, remove it
-        // so there's no confusion about which password is authoritative.
-        if key_vault::get(key_vault::PURPOSE_N8N_OWNER).is_some() {
-            log::info!("[n8n] Migrating owner password from random → derived (HMAC)");
-            key_vault::remove(key_vault::PURPOSE_N8N_OWNER);
-        }
-
-        return pw;
-    }
-
-    // Fallback: no encryption key yet — use vault-backed random password
-    // (this only happens before first provisioning)
     if let Some(pw) = key_vault::get(key_vault::PURPOSE_N8N_OWNER) {
         return pw;
     }
 
+    // CSPRNG — 32 bytes = 256 bits of entropy, zeroized after use
     use rand::rngs::OsRng;
     use rand::RngCore;
     use zeroize::Zeroizing;
@@ -181,9 +159,10 @@ fn owner_password() -> String {
     let mut bytes = Zeroizing::new([0u8; 32]);
     OsRng.fill_bytes(bytes.as_mut());
     let pw: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    // `bytes` is zeroized on drop here
 
     key_vault::set(key_vault::PURPOSE_N8N_OWNER, &pw);
-    log::info!("[n8n] Generated temporary owner password (will derive from encryption key after provisioning)");
+    log::info!("[n8n] Generated new owner password (256-bit CSPRNG) and stored in vault");
     pw
 }
 
@@ -193,6 +172,9 @@ fn owner_password() -> String {
 /// This is the recovery path when the vault password and n8n's stored
 /// password hash go out of sync (e.g. vault cleared, n8n data persists).
 /// Only deletes our service account — user workflows are preserved.
+///
+/// Disables FK constraints during delete to avoid cascading issues with
+/// `shared_workflow`, `shared_credentials`, and other referencing tables.
 fn reset_n8n_owner_in_db() -> Result<(), String> {
     let base = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -226,9 +208,46 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| format!("Failed to open n8n database: {}", e))?;
 
+    // Set a busy timeout so we don't fail if n8n has the DB locked
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
+
+    // Disable FK constraints so referencing rows in shared_workflow,
+    // shared_credentials, etc. don't block the delete.
+    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        .map_err(|e| format!("Failed to disable FK constraints: {}", e))?;
+
+    // Find the user ID first so we can clean up referencing rows
+    let user_id: Option<String> = conn
+        .query_row(
+            "SELECT id FROM user WHERE email = ?1",
+            [OWNER_EMAIL],
+            |row| row.get(0),
+        )
+        .ok();
+
+    if let Some(ref uid) = user_id {
+        // Clean up rows that reference this user to avoid orphans
+        for table in &[
+            "shared_workflow",
+            "shared_credentials",
+        ] {
+            let sql = format!("DELETE FROM \"{}\" WHERE \"userId\" = ?1", table);
+            match conn.execute(&sql, [uid]) {
+                Ok(n) if n > 0 => {
+                    log::debug!("[n8n] Cleaned {} row(s) from {}", n, table);
+                }
+                _ => {}
+            }
+        }
+    }
+
     let deleted: usize = conn
         .execute("DELETE FROM user WHERE email = ?1", [OWNER_EMAIL])
         .map_err(|e| format!("Failed to delete n8n owner: {}", e))?;
+
+    // Re-enable FK constraints
+    let _ = conn.execute_batch("PRAGMA foreign_keys = ON;");
 
     if deleted > 0 {
         log::info!(
