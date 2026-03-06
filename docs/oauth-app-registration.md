@@ -78,13 +78,21 @@ export OPENPAWZ_GITHUB_CLIENT_ID="Ov23liXXXXXXXXXXXXXX"
    - Select **External** user type
    - Fill in app name, support email, developer contact email
    - Add scopes:
-     - `https://www.googleapis.com/auth/gmail.readonly`
-     - `https://www.googleapis.com/auth/calendar.readonly`
-     - `https://www.googleapis.com/auth/drive.readonly`
+     - `https://www.googleapis.com/auth/gmail.modify` (sensitive)
      - `https://www.googleapis.com/auth/gmail.send` (sensitive)
      - `https://www.googleapis.com/auth/calendar` (sensitive)
      - `https://www.googleapis.com/auth/drive` (sensitive)
      - `https://www.googleapis.com/auth/spreadsheets` (sensitive)
+     - `https://www.googleapis.com/auth/documents` (sensitive)
+     - `https://www.googleapis.com/auth/chat.messages` (sensitive)
+     - `https://www.googleapis.com/auth/chat.spaces.readonly`
+     - `https://www.googleapis.com/auth/tasks`
+     - `https://www.googleapis.com/auth/contacts.readonly`
+     - `https://www.googleapis.com/auth/keep`
+     - `https://www.googleapis.com/auth/forms.body.readonly`
+     - `https://www.googleapis.com/auth/forms.responses.readonly`
+     - `https://www.googleapis.com/auth/youtube.readonly`
+     - `https://www.googleapis.com/auth/cloud-platform` (sensitive — Vertex AI Vector Search)
 4. Go to **APIs & Services → Credentials → Create Credentials → OAuth client ID**
    - Application type: **Desktop app**
    - Name: `OpenPawz Desktop`

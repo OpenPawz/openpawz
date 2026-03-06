@@ -613,27 +613,47 @@ static GOOGLE_OAUTH: OAuthConfig = OAuthConfig {
     env_prefix: "GOOGLE",
     auth_url: "https://accounts.google.com/o/oauth2/v2/auth",
     token_url: "https://oauth2.googleapis.com/token",
-    // Set OPENPAWZ_GOOGLE_CLIENT_ID and OPENPAWZ_GOOGLE_CLIENT_SECRET at
-    // build time (via .env.local or env vars) to enable Google OAuth.
+    // PKCE Client IDs are public (RFC 8252 §8.1) — safe to ship in source.
+    // Override at build time with OPENPAWZ_GOOGLE_CLIENT_ID env var if needed.
     client_id: match option_env!("OPENPAWZ_GOOGLE_CLIENT_ID") {
         Some(v) => v,
-        None => "REPLACE_WITH_GOOGLE_CLIENT_ID",
+        None => "797133120028-qpdvbm5jihdqlj53mnps9k5gkvtbfgm5.apps.googleusercontent.com",
     },
     client_secret: option_env!("OPENPAWZ_GOOGLE_CLIENT_SECRET"),
     default_scopes: &[
+        // Core productivity (existing)
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/documents",
+        // Chat & communication
+        "https://www.googleapis.com/auth/chat.messages",
+        "https://www.googleapis.com/auth/chat.spaces.readonly",
+        // Tasks, Contacts
+        "https://www.googleapis.com/auth/tasks",
+        "https://www.googleapis.com/auth/contacts.readonly",
+        // Forms (read-only)
+        "https://www.googleapis.com/auth/forms.body.readonly",
+        "https://www.googleapis.com/auth/forms.responses.readonly",
+        // YouTube (read-only)
+        "https://www.googleapis.com/auth/youtube.readonly",
+        // Vertex AI Vector Search
+        "https://www.googleapis.com/auth/cloud-platform",
     ],
     write_scopes: &[
+        // Core productivity (existing)
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/documents",
+        // Chat, Tasks (read/write)
+        "https://www.googleapis.com/auth/chat.messages",
+        "https://www.googleapis.com/auth/tasks",
+        // Vertex AI Vector Search
+        "https://www.googleapis.com/auth/cloud-platform",
     ],
     revoke_url: Some("https://oauth2.googleapis.com/revoke"),
 };
