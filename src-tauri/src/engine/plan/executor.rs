@@ -328,13 +328,17 @@ mod tests {
     #[test]
     fn test_retry_backoff_values() {
         // Verify exponential backoff formula: base * 2^retry
-        assert_eq!(RETRY_BASE_DELAY_MS * (1 << 1u32.min(4)), 2000); // retry 1: 2s
-        assert_eq!(RETRY_BASE_DELAY_MS * (1 << 2u32.min(4)), 4000); // retry 2: 4s
+        let retry_1: u32 = 1;
+        let retry_2: u32 = 2;
+        assert_eq!(RETRY_BASE_DELAY_MS * (1 << retry_1.min(4)), 2000); // retry 1: 2s
+        assert_eq!(RETRY_BASE_DELAY_MS * (1 << retry_2.min(4)), 4000); // retry 2: 4s
     }
 
     #[test]
     fn test_plan_timeout_sanity() {
         // Plan timeout should be >= 5 * node timeout (for a fully sequential 5-node plan)
-        assert!(PLAN_TIMEOUT_MS >= 5 * DEFAULT_NODE_TIMEOUT_MS);
+        let plan_t = PLAN_TIMEOUT_MS;
+        let node_t = DEFAULT_NODE_TIMEOUT_MS;
+        assert!(plan_t >= 5 * node_t);
     }
 }

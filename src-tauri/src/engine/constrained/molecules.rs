@@ -97,7 +97,7 @@ pub fn apply_google_tool_config(body: &mut Value, config: &ConstraintConfig) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::constrained::atoms::{detect_constraints, ConstraintLevel};
+    use crate::engine::constrained::atoms::detect_constraints;
     use crate::engine::types::ProviderKind;
     use serde_json::json;
 
