@@ -194,17 +194,36 @@ fn owner_password() -> String {
 /// password hash go out of sync (e.g. vault cleared, n8n data persists).
 /// Only deletes our service account — user workflows are preserved.
 fn reset_n8n_owner_in_db() -> Result<(), String> {
-    let db_path = dirs::home_dir()
+    let base = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(".openpawz")
-        .join("n8n-data")
-        .join("database.sqlite");
+        .join("n8n-data");
 
-    if !db_path.exists() {
-        return Err(format!("n8n database not found at {}", db_path.display()));
-    }
+    // n8n stores its database at different paths depending on the mode:
+    //   Process mode (npx):  $N8N_USER_FOLDER/.n8n/database.sqlite
+    //   Docker mode:         $bind_mount/database.sqlite  (mounted as /home/node/.n8n)
+    let candidates = [
+        base.join(".n8n").join("database.sqlite"), // Process mode
+        base.join("database.sqlite"),              // Docker mode
+    ];
 
-    let conn = rusqlite::Connection::open(&db_path)
+    let db_path = candidates
+        .iter()
+        .find(|p| p.exists())
+        .ok_or_else(|| {
+            format!(
+                "n8n database not found at any of: {}",
+                candidates
+                    .iter()
+                    .map(|p| p.display().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        })?;
+
+    log::info!("[n8n] Found n8n database at {}", db_path.display());
+
+    let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| format!("Failed to open n8n database: {}", e))?;
 
     let deleted: usize = conn
