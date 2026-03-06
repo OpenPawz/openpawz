@@ -32,6 +32,7 @@ pub mod nextcloud;
 pub mod nostr;
 pub mod oauth;
 pub mod orchestrator;
+pub mod plan;
 pub mod routing;
 pub mod sandbox;
 pub mod skills;

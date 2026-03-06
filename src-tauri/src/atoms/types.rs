@@ -235,6 +235,33 @@ pub enum EngineEvent {
         component_id: String,
         patch: CanvasComponentPatch,
     },
+
+    // ── Plan execution events (Phase 0: Action DAG) ──────────────────
+    /// An execution plan is starting
+    #[serde(rename = "plan_start")]
+    PlanStart {
+        session_id: String,
+        run_id: String,
+        description: String,
+        node_count: usize,
+    },
+    /// A plan node is starting execution
+    #[serde(rename = "plan_node_start")]
+    PlanNodeStart {
+        session_id: String,
+        run_id: String,
+        node_id: String,
+        tool: String,
+    },
+    /// An execution plan completed (success or partial)
+    #[serde(rename = "plan_complete")]
+    PlanComplete {
+        session_id: String,
+        run_id: String,
+        success_count: usize,
+        total_count: usize,
+        duration_ms: u64,
+    },
 }
 
 // ── Canvas Components (Agent Canvas) ──────────────────────────────────
