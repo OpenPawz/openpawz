@@ -418,7 +418,11 @@ pub async fn run_agent_turn(
         sorted_indices.sort();
 
         for idx in sorted_indices {
-            let (id, name, arguments, thought_sig, thoughts) = tool_call_map.get(&idx).unwrap();
+            let entry = match tool_call_map.get(&idx) {
+                Some(e) => e,
+                None => continue, // skip missing indices (shouldn't happen)
+            };
+            let (id, name, arguments, thought_sig, thoughts) = entry;
 
             // Generate ID if provider didn't supply one
             let call_id = if id.is_empty() {
