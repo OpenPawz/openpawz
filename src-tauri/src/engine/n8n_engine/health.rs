@@ -131,20 +131,49 @@ pub async fn get_n8n_version(base_url: &str, api_key: &str) -> Option<String> {
 /// The owner credentials used for headless n8n operation.
 const OWNER_EMAIL: &str = "agent@paw.local";
 
-/// Get or generate the n8n owner password.
+/// Get or derive the n8n owner password.
 ///
-/// Uses `OsRng` (CSPRNG) to generate 32 bytes of entropy, hex-encoded to a
-/// 64-char password.  The raw bytes are wrapped in `Zeroizing` so they are
-/// securely wiped from memory after encoding.  The password is stored in the
-/// OS keychain via the unified vault — never hardcoded, unique per install.
+/// The password is derived deterministically from the n8n encryption key
+/// using HMAC-SHA256.  This means the password is always reproducible as
+/// long as the encryption key is the same — no separate vault entry that
+/// can go out of sync with n8n's database.
+///
+/// If the encryption key is not yet in the vault (first run before n8n
+/// is provisioned), falls back to a temporary random password.  The
+/// provisioning code in `process.rs`/`docker.rs` generates and stores
+/// the encryption key before calling any health functions, so in
+/// practice the HMAC path is always taken.
 fn owner_password() -> String {
     use crate::engine::key_vault;
 
+    // Derive from the n8n encryption key — HMAC-SHA256 so it's stable
+    if let Some(enc_key) = key_vault::get(key_vault::PURPOSE_N8N_ENCRYPTION) {
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+
+        type HmacSha256 = Hmac<Sha256>;
+        let mut mac =
+            HmacSha256::new_from_slice(enc_key.as_bytes()).expect("HMAC accepts any key size");
+        mac.update(b"paw-n8n-owner-v1");
+        let result = mac.finalize().into_bytes();
+        let pw: String = result.iter().map(|b| format!("{:02x}", b)).collect();
+
+        // Migrate: if an old random password exists in the vault, remove it
+        // so there's no confusion about which password is authoritative.
+        if key_vault::get(key_vault::PURPOSE_N8N_OWNER).is_some() {
+            log::info!("[n8n] Migrating owner password from random → derived (HMAC)");
+            key_vault::remove(key_vault::PURPOSE_N8N_OWNER);
+        }
+
+        return pw;
+    }
+
+    // Fallback: no encryption key yet — use vault-backed random password
+    // (this only happens before first provisioning)
     if let Some(pw) = key_vault::get(key_vault::PURPOSE_N8N_OWNER) {
         return pw;
     }
 
-    // CSPRNG — 32 bytes = 256 bits of entropy, zeroized after use
     use rand::rngs::OsRng;
     use rand::RngCore;
     use zeroize::Zeroizing;
@@ -152,11 +181,47 @@ fn owner_password() -> String {
     let mut bytes = Zeroizing::new([0u8; 32]);
     OsRng.fill_bytes(bytes.as_mut());
     let pw: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
-    // `bytes` is zeroized on drop here
 
     key_vault::set(key_vault::PURPOSE_N8N_OWNER, &pw);
-    log::info!("[n8n] Generated new owner password (256-bit CSPRNG) and stored in vault");
+    log::info!("[n8n] Generated temporary owner password (will derive from encryption key after provisioning)");
     pw
+}
+
+/// Attempt to reset the n8n owner by removing the `agent@paw.local` user
+/// from n8n's SQLite database.
+///
+/// This is the recovery path when the vault password and n8n's stored
+/// password hash go out of sync (e.g. vault cleared, n8n data persists).
+/// Only deletes our service account — user workflows are preserved.
+fn reset_n8n_owner_in_db() -> Result<(), String> {
+    let db_path = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".openpawz")
+        .join("n8n-data")
+        .join("database.sqlite");
+
+    if !db_path.exists() {
+        return Err(format!("n8n database not found at {}", db_path.display()));
+    }
+
+    let conn = rusqlite::Connection::open(&db_path)
+        .map_err(|e| format!("Failed to open n8n database: {}", e))?;
+
+    let deleted: usize = conn
+        .execute("DELETE FROM user WHERE email = ?1", [OWNER_EMAIL])
+        .map_err(|e| format!("Failed to delete n8n owner: {}", e))?;
+
+    if deleted > 0 {
+        log::info!(
+            "[n8n] Reset owner '{}' in n8n database ({} row(s) deleted)",
+            OWNER_EMAIL,
+            deleted
+        );
+    } else {
+        log::debug!("[n8n] No owner '{}' found in n8n database", OWNER_EMAIL);
+    }
+
+    Ok(())
 }
 
 /// Set up the n8n owner account if one doesn't exist yet.
@@ -219,81 +284,105 @@ pub async fn setup_owner_if_needed(base_url: &str) -> Result<(), String> {
 /// with `{ "mcpAccessEnabled": true }`. Idempotent — safe to call
 /// multiple times.
 ///
-/// If owner-session login fails (e.g. vault password mismatch after
-/// a reinstall), falls back to `X-N8N-API-KEY` header authentication
-/// so MCP can still be enabled without a valid session.
-pub async fn enable_mcp_access(base_url: &str, api_key: &str) -> Result<(), String> {
+/// If owner-session login fails with 401 (password mismatch), attempts
+/// automatic recovery: deletes the stale owner from n8n's database,
+/// recreates it with the current derived password, and retries login.
+pub async fn enable_mcp_access(base_url: &str, _api_key: &str) -> Result<(), String> {
     let base = base_url.trim_end_matches('/');
 
-    let client = reqwest::Client::builder()
-        .cookie_store(true)
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    // Inner function that attempts login + PATCH
+    async fn try_enable(base: &str, password: &str) -> Result<(), (u16, String)> {
+        let client = reqwest::Client::builder()
+            .cookie_store(true)
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| (0u16, format!("HTTP client error: {}", e)))?;
 
-    // Try session-based authentication first
-    let password = owner_password();
-    let login_url = format!("{}/rest/login", base);
-    let login_body = serde_json::json!({
-        "emailOrLdapLoginId": OWNER_EMAIL,
-        "password": password
-    });
+        let login_url = format!("{}/rest/login", base);
+        let login_body = serde_json::json!({
+            "emailOrLdapLoginId": OWNER_EMAIL,
+            "password": password
+        });
 
-    let session_ok = match client
-        .post(&login_url)
-        .header("Content-Type", "application/json")
-        .json(&login_body)
-        .send()
-        .await
-    {
-        Ok(resp) if resp.status().is_success() => true,
-        Ok(resp) => {
-            let status = resp.status();
-            log::warn!(
-                "[n8n] Session login for MCP enable returned HTTP {} — falling back to API key",
-                status
-            );
-            false
+        let login_resp = client
+            .post(&login_url)
+            .header("Content-Type", "application/json")
+            .json(&login_body)
+            .send()
+            .await
+            .map_err(|e| (0u16, format!("Login request failed: {}", e)))?;
+
+        let login_status = login_resp.status().as_u16();
+        if !login_resp.status().is_success() {
+            let body = login_resp.text().await.unwrap_or_default();
+            return Err((
+                login_status,
+                format!(
+                    "Login failed (HTTP {}): {}",
+                    login_status,
+                    safe_truncate(&body, 200)
+                ),
+            ));
         }
-        Err(e) => {
-            log::warn!(
-                "[n8n] Session login for MCP enable failed: {} — falling back to API key",
-                e
-            );
-            false
+
+        let settings_url = format!("{}/rest/mcp/settings", base);
+        let settings_resp = client
+            .patch(&settings_url)
+            .header("Content-Type", "application/json")
+            .json(&serde_json::json!({"mcpAccessEnabled": true}))
+            .send()
+            .await
+            .map_err(|e| (0u16, format!("MCP settings request failed: {}", e)))?;
+
+        match settings_resp.status().as_u16() {
+            200 | 204 => {
+                log::info!("[n8n] MCP access enabled");
+                Ok(())
+            }
+            status => {
+                let body = settings_resp.text().await.unwrap_or_default();
+                Err((
+                    status,
+                    format!(
+                        "MCP enable failed (HTTP {}): {}",
+                        status,
+                        safe_truncate(&body, 200)
+                    ),
+                ))
+            }
         }
-    };
-
-    // Build the PATCH request — use session cookie if login succeeded,
-    // otherwise fall back to X-N8N-API-KEY header.
-    let settings_url = format!("{}/rest/mcp/settings", base);
-    let mut req = client
-        .patch(&settings_url)
-        .header("Content-Type", "application/json")
-        .json(&serde_json::json!({"mcpAccessEnabled": true}));
-
-    if !session_ok {
-        req = req.header("X-N8N-API-KEY", api_key);
     }
 
-    let settings_resp = req
-        .send()
-        .await
-        .map_err(|e| format!("MCP settings request failed: {}", e))?;
+    let password = owner_password();
 
-    match settings_resp.status().as_u16() {
-        200 | 204 => {
-            log::info!("[n8n] MCP access enabled");
-            Ok(())
+    // First attempt
+    match try_enable(base, &password).await {
+        Ok(()) => return Ok(()),
+        Err((401, msg)) => {
+            log::warn!(
+                "[n8n] MCP enable login failed (401) — resetting owner and retrying: {}",
+                msg
+            );
         }
-        status => {
-            let body = settings_resp.text().await.unwrap_or_default();
-            Err(format!(
-                "MCP enable failed (HTTP {}): {}",
-                status,
-                safe_truncate(&body, 200)
-            ))
-        }
+        Err((_, msg)) => return Err(msg),
+    }
+
+    // Recovery: delete stale owner from n8n DB, recreate with our password, retry
+    if let Err(e) = reset_n8n_owner_in_db() {
+        log::warn!("[n8n] Could not reset owner in database: {}", e);
+        return Err("Login failed (HTTP 401) and owner reset failed — MCP unavailable".into());
+    }
+
+    // Wait briefly for n8n to notice the DB change
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+    // Recreate the owner
+    setup_owner_if_needed(base_url).await?;
+
+    // Retry login + enable
+    match try_enable(base, &password).await {
+        Ok(()) => Ok(()),
+        Err((_, msg)) => Err(format!("MCP enable failed after owner reset: {}", msg)),
     }
 }
 
@@ -305,149 +394,160 @@ pub async fn enable_mcp_access(base_url: &str, api_key: &str) -> Result<(), Stri
 ///   1. Sign in as owner → get session cookie
 ///   2. GET /rest/mcp/api-key → get-or-create MCP API key (returns data.apiKey)
 ///
-/// If owner-session login fails (e.g. vault password mismatch), falls back
-/// to `X-N8N-API-KEY` header authentication so MCP tokens can still be
-/// retrieved without a valid session.
+/// If login fails with 401 (password mismatch), attempts automatic recovery
+/// by resetting the owner in the database and retrying.
 ///
 /// The MCP API key is a JWT with audience "mcp-server-api", separate from
 /// N8N_API_KEY. It is required for Bearer auth on `/mcp-server/http`.
-/// Note: n8n 2.9.x uses `GET` (not POST) to retrieve/create the key via
-/// `McpServerApiKeyService.getOrCreateApiKey()`. The returned `apiKey`
-/// field is the full unredacted JWT on first creation.
-pub async fn retrieve_mcp_token(base_url: &str, api_key: &str) -> Result<String, String> {
+pub async fn retrieve_mcp_token(base_url: &str, _api_key: &str) -> Result<String, String> {
     let base = base_url.trim_end_matches('/');
 
-    // Use a cookie-aware client for session management
-    let client = reqwest::Client::builder()
-        .cookie_store(true)
-        .timeout(std::time::Duration::from_secs(10))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    // Inner function that attempts login + token retrieval
+    async fn try_retrieve(base: &str, password: &str) -> Result<String, (u16, String)> {
+        let client = reqwest::Client::builder()
+            .cookie_store(true)
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .map_err(|e| (0u16, format!("HTTP client error: {}", e)))?;
 
-    // Step 1: Try session-based authentication
-    let password = owner_password();
-    let login_url = format!("{}/rest/login", base);
-    let login_body = serde_json::json!({
-        "emailOrLdapLoginId": OWNER_EMAIL,
-        "password": password
-    });
+        // Step 1: Sign in to get session cookie
+        let login_url = format!("{}/rest/login", base);
+        let login_body = serde_json::json!({
+            "emailOrLdapLoginId": OWNER_EMAIL,
+            "password": password
+        });
 
-    let session_ok = match client
-        .post(&login_url)
-        .header("Content-Type", "application/json")
-        .json(&login_body)
-        .send()
-        .await
-    {
-        Ok(resp) if resp.status().is_success() => {
-            log::info!("[n8n] Login successful, retrieving MCP API key");
-            true
-        }
-        Ok(resp) => {
-            let status = resp.status();
-            log::warn!(
-                "[n8n] Session login for MCP token returned HTTP {} — falling back to API key",
-                status
-            );
-            false
-        }
-        Err(e) => {
-            log::warn!(
-                "[n8n] Session login for MCP token failed: {} — falling back to API key",
-                e
-            );
-            false
-        }
-    };
-
-    // Step 2: Get-or-create MCP API key via GET /rest/mcp/api-key
-    // n8n 2.9.x uses GET — the endpoint calls getOrCreateApiKey() which
-    // returns the existing key or creates a new one with audience "mcp-server-api".
-    // Response: { "data": { "apiKey": "<jwt>", "audience": "mcp-server-api", ... } }
-    let mcp_key_url = format!("{}/rest/mcp/api-key", base);
-    let mut req = client.get(&mcp_key_url);
-    if !session_ok {
-        req = req.header("X-N8N-API-KEY", api_key);
-    }
-
-    let mcp_resp = req
-        .send()
-        .await
-        .map_err(|e| format!("MCP API key request failed: {}", e))?;
-
-    let mcp_status = mcp_resp.status();
-    if !mcp_status.is_success() {
-        let body = mcp_resp.text().await.unwrap_or_default();
-        return Err(format!(
-            "MCP API key retrieval failed (HTTP {}): {}",
-            mcp_status,
-            safe_truncate(&body, 500)
-        ));
-    }
-
-    let mcp_data: serde_json::Value = mcp_resp
-        .json()
-        .await
-        .map_err(|e| format!("Parse MCP API key response: {}", e))?;
-
-    log::debug!(
-        "[n8n] MCP API key response: status={}, has_data={}",
-        mcp_status,
-        mcp_data.get("data").is_some()
-    );
-
-    // Extract the JWT from data.apiKey
-    // On first call this is the full unredacted JWT. On subsequent calls
-    // n8n redacts it (e.g. "******xxxx"). If we get a redacted key,
-    // rotate to get a fresh unredacted one.
-    if let Some(token) = mcp_data
-        .get("data")
-        .and_then(|d| d.get("apiKey"))
-        .and_then(|t| t.as_str())
-    {
-        if !token.is_empty() && !token.contains('*') {
-            log::info!("[n8n] Retrieved MCP API key (audience: mcp-server-api)");
-            return Ok(token.to_string());
-        }
-
-        // Key is redacted — rotate to get fresh unredacted JWT
-        log::info!("[n8n] MCP API key is redacted, rotating to get fresh key");
-        let rotate_url = format!("{}/rest/mcp/api-key/rotate", base);
-        let mut rotate_req = client.post(&rotate_url);
-        if !session_ok {
-            rotate_req = rotate_req.header("X-N8N-API-KEY", api_key);
-        }
-
-        let rotate_resp = rotate_req
+        let login_resp = client
+            .post(&login_url)
+            .header("Content-Type", "application/json")
+            .json(&login_body)
             .send()
             .await
-            .map_err(|e| format!("MCP API key rotation failed: {}", e))?;
+            .map_err(|e| (0u16, format!("Login request failed: {}", e)))?;
 
-        if rotate_resp.status().is_success() {
-            let rotate_data: serde_json::Value = rotate_resp
-                .json()
+        let login_status = login_resp.status().as_u16();
+        if !login_resp.status().is_success() {
+            let body = login_resp.text().await.unwrap_or_default();
+            return Err((
+                login_status,
+                format!(
+                    "Login failed (HTTP {}): {}",
+                    login_status,
+                    safe_truncate(&body, 200)
+                ),
+            ));
+        }
+
+        log::info!("[n8n] Login successful, retrieving MCP API key");
+
+        // Step 2: Get-or-create MCP API key
+        let mcp_key_url = format!("{}/rest/mcp/api-key", base);
+        let mcp_resp = client
+            .get(&mcp_key_url)
+            .send()
+            .await
+            .map_err(|e| (0u16, format!("MCP API key request failed: {}", e)))?;
+
+        let mcp_status = mcp_resp.status();
+        if !mcp_status.is_success() {
+            let body = mcp_resp.text().await.unwrap_or_default();
+            return Err((
+                mcp_status.as_u16(),
+                format!(
+                    "MCP API key retrieval failed (HTTP {}): {}",
+                    mcp_status,
+                    safe_truncate(&body, 500)
+                ),
+            ));
+        }
+
+        let mcp_data: serde_json::Value = mcp_resp
+            .json()
+            .await
+            .map_err(|e| (0u16, format!("Parse MCP API key response: {}", e)))?;
+
+        log::debug!(
+            "[n8n] MCP API key response: status={}, has_data={}",
+            mcp_status,
+            mcp_data.get("data").is_some()
+        );
+
+        // Extract the JWT from data.apiKey
+        if let Some(token) = mcp_data
+            .get("data")
+            .and_then(|d| d.get("apiKey"))
+            .and_then(|t| t.as_str())
+        {
+            if !token.is_empty() && !token.contains('*') {
+                log::info!("[n8n] Retrieved MCP API key (audience: mcp-server-api)");
+                return Ok(token.to_string());
+            }
+
+            // Key is redacted — rotate to get fresh unredacted JWT
+            log::info!("[n8n] MCP API key is redacted, rotating to get fresh key");
+            let rotate_url = format!("{}/rest/mcp/api-key/rotate", base);
+            let rotate_resp = client
+                .post(&rotate_url)
+                .send()
                 .await
-                .map_err(|e| format!("Parse rotated MCP API key: {}", e))?;
+                .map_err(|e| (0u16, format!("MCP API key rotation failed: {}", e)))?;
 
-            if let Some(new_token) = rotate_data
-                .get("data")
-                .and_then(|d| d.get("apiKey"))
-                .and_then(|t| t.as_str())
-            {
-                if !new_token.is_empty() && !new_token.contains('*') {
-                    log::info!("[n8n] Rotated MCP API key successfully");
-                    return Ok(new_token.to_string());
+            if rotate_resp.status().is_success() {
+                let rotate_data: serde_json::Value = rotate_resp
+                    .json()
+                    .await
+                    .map_err(|e| (0u16, format!("Parse rotated MCP API key: {}", e)))?;
+
+                if let Some(new_token) = rotate_data
+                    .get("data")
+                    .and_then(|d| d.get("apiKey"))
+                    .and_then(|t| t.as_str())
+                {
+                    if !new_token.is_empty() && !new_token.contains('*') {
+                        log::info!("[n8n] Rotated MCP API key successfully");
+                        return Ok(new_token.to_string());
+                    }
                 }
             }
         }
+
+        let resp_str = serde_json::to_string(&mcp_data).unwrap_or_default();
+        Err((
+            0,
+            format!(
+                "MCP API key response missing data.apiKey: {}",
+                safe_truncate(&resp_str, 300)
+            ),
+        ))
     }
 
-    // Log the response shape for debugging if apiKey wasn't found
-    let resp_str = serde_json::to_string(&mcp_data).unwrap_or_default();
-    Err(format!(
-        "MCP API key response missing data.apiKey: {}",
-        safe_truncate(&resp_str, 300)
-    ))
+    let password = owner_password();
+
+    // First attempt
+    match try_retrieve(base, &password).await {
+        Ok(token) => return Ok(token),
+        Err((401, msg)) => {
+            log::warn!(
+                "[n8n] MCP token login failed (401) — resetting owner and retrying: {}",
+                msg
+            );
+        }
+        Err((_, msg)) => return Err(msg),
+    }
+
+    // Recovery: delete stale owner from n8n DB, recreate, retry
+    if let Err(e) = reset_n8n_owner_in_db() {
+        log::warn!("[n8n] Could not reset owner in database: {}", e);
+        return Err("Login failed (HTTP 401) and owner reset failed — MCP unavailable".into());
+    }
+
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    setup_owner_if_needed(base_url).await?;
+
+    match try_retrieve(base, &password).await {
+        Ok(token) => Ok(token),
+        Err((_, msg)) => Err(format!("MCP token retrieval failed after owner reset: {}", msg)),
+    }
 }
 
 // ── Session-authenticated client ───────────────────────────────────────
@@ -457,44 +557,72 @@ pub async fn retrieve_mcp_token(base_url: &str, api_key: &str) -> Result<String,
 /// accept the `X-N8N-API-KEY` header — they require a browser-style
 /// session obtained via `POST /rest/login`.
 ///
+/// If login fails with 401 (password mismatch), attempts owner reset
+/// recovery before giving up.
+///
 /// Returns `Ok(client)` with the session cookie already stored, or
 /// `Err` if login fails (e.g. owner not set up yet).
 pub async fn session_client(base_url: &str) -> Result<reqwest::Client, String> {
     let base = base_url.trim_end_matches('/');
 
-    let client = reqwest::Client::builder()
-        .cookie_store(true)
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|e| format!("HTTP client error: {}", e))?;
+    async fn try_login(base: &str, password: &str) -> Result<reqwest::Client, (u16, String)> {
+        let client = reqwest::Client::builder()
+            .cookie_store(true)
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .map_err(|e| (0u16, format!("HTTP client error: {}", e)))?;
 
-    let password = owner_password();
-    let login_url = format!("{}/rest/login", base);
-    let login_body = serde_json::json!({
-        "emailOrLdapLoginId": OWNER_EMAIL,
-        "password": password
-    });
+        let login_url = format!("{}/rest/login", base);
+        let login_body = serde_json::json!({
+            "emailOrLdapLoginId": OWNER_EMAIL,
+            "password": password
+        });
 
-    let resp = client
-        .post(&login_url)
-        .header("Content-Type", "application/json")
-        .json(&login_body)
-        .send()
-        .await
-        .map_err(|e| format!("n8n session login failed: {}", e))?;
+        let resp = client
+            .post(&login_url)
+            .header("Content-Type", "application/json")
+            .json(&login_body)
+            .send()
+            .await
+            .map_err(|e| (0u16, format!("n8n session login failed: {}", e)))?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!(
-            "n8n session login HTTP {}: {}",
-            status,
-            safe_truncate(&body, 200)
-        ));
+        if !resp.status().is_success() {
+            let status = resp.status().as_u16();
+            let body = resp.text().await.unwrap_or_default();
+            return Err((
+                status,
+                format!("n8n session login HTTP {}: {}", status, safe_truncate(&body, 200)),
+            ));
+        }
+
+        log::debug!("[n8n] Session login successful — cookie-authenticated client ready");
+        Ok(client)
     }
 
-    log::debug!("[n8n] Session login successful — cookie-authenticated client ready");
-    Ok(client)
+    let password = owner_password();
+
+    match try_login(base, &password).await {
+        Ok(client) => return Ok(client),
+        Err((401, msg)) => {
+            log::warn!(
+                "[n8n] Session login failed (401) — resetting owner: {}",
+                msg
+            );
+        }
+        Err((_, msg)) => return Err(msg),
+    }
+
+    // Recovery
+    if let Err(e) = reset_n8n_owner_in_db() {
+        return Err(format!("Session login 401 and owner reset failed: {}", e));
+    }
+    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    setup_owner_if_needed(base).await?;
+
+    match try_login(base, &password).await {
+        Ok(client) => Ok(client),
+        Err((_, msg)) => Err(format!("Session login failed after owner reset: {}", msg)),
+    }
 }
 
 // ── Version guard ──────────────────────────────────────────────────────
