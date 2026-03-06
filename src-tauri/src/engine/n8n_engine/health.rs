@@ -357,8 +357,9 @@ pub async fn retrieve_mcp_token(base_url: &str) -> Result<String, String> {
         .map_err(|e| format!("Parse MCP API key response: {}", e))?;
 
     log::debug!(
-        "[n8n] MCP API key response: {}",
-        serde_json::to_string(&mcp_data).unwrap_or_default()
+        "[n8n] MCP API key response: status={}, has_data={}",
+        mcp_status,
+        mcp_data.get("data").is_some()
     );
 
     // Extract the JWT from data.apiKey

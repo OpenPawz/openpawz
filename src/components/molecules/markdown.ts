@@ -87,7 +87,8 @@ export function formatMarkdown(text: string): string {
   //    Links
   html = html.replace(
     /\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g,
-    (_m, label, url) => `<a href="${escAttr(url)}" target="_blank" rel="noopener">${label}</a>`,
+    (_m, label, url) =>
+      `<a href="${escAttr(url)}" target="_blank" rel="noopener">${escHtml(label)}</a>`,
   );
 
   //    Newlines → <br> (after all block-level transforms)
