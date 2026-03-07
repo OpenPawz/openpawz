@@ -2,6 +2,7 @@
 
 > **Total: ~190 unique OAuth2 services** extracted from Nango's provider configs.
 > Sandbox/staging duplicates and aliases (e.g., YouTube = Google, Outlook = Microsoft) are excluded.
+> **247 provider endpoint configs** available in `providers.json` (from Nango OSS, MIT-licensed).
 >
 > **Redirect URI for all registrations:** `http://127.0.0.1:0/callback`
 > (OpenPawz uses ephemeral port binding — the exact port is assigned at runtime.
@@ -12,12 +13,28 @@
 
 1. Go to the **Developer Console** link for each service
 2. Create an OAuth2 application / integration
+   - **App name:** `OpenPawz`
+   - **App type:** Native / Desktop / Installed (not web server)
+   - **Website:** `https://openpawz.com`
 3. Set the **Redirect URI** as noted above
 4. Request the **Scopes** listed (minimum viable)
-5. Copy the **Client ID** and **Client Secret**
-6. Store them in your `.env` or build config with the pattern: `OAUTH_<SERVICE>_CLIENT_ID`
+5. Copy the **Client ID** and **Client Secret** (if issued)
+6. Apply the client ID:
+   - **Tier 1a** (static config in `oauth.rs`): Set env var `OPENPAWZ_{PREFIX}_CLIENT_ID` or update code
+   - **Tier 1b** (dynamic in `registrations.json`): Update JSON or set env var `OPENPAWZ_{SERVICE}_CLIENT_ID`
+   - **New services**: Add entry to `registrations.json` — provider endpoint data auto-loads from `providers.json`
+7. Mark the checkbox ✅
 
 **Status Legend:** ⬜ Not started | 🔄 In progress | ✅ Registered
+
+---
+
+## ✅ Currently Working
+
+| Service | Client ID | Tier | Config |
+|---|---|---|---|
+| ✅ **Google Workspace** | `797133120028-...` | 1a static | `oauth.rs GOOGLE_OAUTH` |
+| ✅ **Microsoft 365** | `e1026883-ecd3-...` | 1a static | `oauth.rs MICROSOFT_OAUTH` |
 
 ---
 
@@ -337,42 +354,79 @@
 | 173 | **Meta Marketing** | https://developers.facebook.com | _(alias: Facebook OAuth)_ | — | ✓ | ⬜ |
 | 174 | **AWS Cognito** | https://console.aws.amazon.com/cognito | `https://{subdomain}.auth.{region}.amazoncognito.com/oauth2/authorize` | `openid` | ✓ | ⬜ |
 
-## Already Registered in OpenPawz (Tier 1 — 13 services)
+## Tier 1a — Static Config in `oauth.rs` (11 services)
 
-These are already configured in `oauth.rs`. Mark them ✅ once Client IDs are set:
+These are hardcoded in `oauth.rs`. Set env var or replace placeholder in code.
 
-| Service | Env Var Pattern | Status |
-|---------|----------------|--------|
-| GitHub | `OAUTH_GITHUB_CLIENT_ID` | ⬜ |
-| Google | `OAUTH_GOOGLE_CLIENT_ID` | ⬜ |
-| Slack | `OAUTH_SLACK_CLIENT_ID` | ⬜ |
-| Discord | `OAUTH_DISCORD_CLIENT_ID` | ⬜ |
-| Microsoft | `OAUTH_MICROSOFT_CLIENT_ID` | ⬜ |
-| Notion | `OAUTH_NOTION_CLIENT_ID` | ⬜ |
-| Spotify | `OAUTH_SPOTIFY_CLIENT_ID` | ⬜ |
-| Twitter | `OAUTH_TWITTER_CLIENT_ID` | ⬜ |
-| LinkedIn | `OAUTH_LINKEDIN_CLIENT_ID` | ⬜ |
-| Dropbox | `OAUTH_DROPBOX_CLIENT_ID` | ⬜ |
-| Zoom | `OAUTH_ZOOM_CLIENT_ID` | ⬜ |
-| Figma | `OAUTH_FIGMA_CLIENT_ID` | ⬜ |
-| Asana | `OAUTH_ASANA_CLIENT_ID` | ⬜ |
+| Service | Env Var | Status |
+|---------|---------|--------|
+| Google | `OPENPAWZ_GOOGLE_CLIENT_ID` | ✅ Real client ID shipped |
+| Microsoft 365 | `OPENPAWZ_MICROSOFT_CLIENT_ID` | ✅ Real client ID shipped |
+| GitHub | `OPENPAWZ_GITHUB_CLIENT_ID` | ⬜ |
+| Discord | `OPENPAWZ_DISCORD_CLIENT_ID` | ⬜ |
+| Slack | `OPENPAWZ_SLACK_CLIENT_ID` | ⬜ |
+| Notion | `OPENPAWZ_NOTION_CLIENT_ID` | ⬜ |
+| Spotify | `OPENPAWZ_SPOTIFY_CLIENT_ID` | ⬜ |
+| Dropbox | `OPENPAWZ_DROPBOX_CLIENT_ID` | ⬜ |
+| Linear | `OPENPAWZ_LINEAR_CLIENT_ID` | ⬜ |
+| Figma | `OPENPAWZ_FIGMA_CLIENT_ID` | ⬜ |
+| Reddit | `OPENPAWZ_REDDIT_CLIENT_ID` | ⬜ |
+
+## Tier 1b — Dynamic Config in `registrations.json` (30 services)
+
+These use provider endpoints from `providers.json` + client IDs from `registrations.json`.
+Once a real client ID is set, the generic `service_api` tool handles all API calls.
+
+| Service | Env Var | Status |
+|---------|---------|--------|
+| HubSpot | `OPENPAWZ_HUBSPOT_CLIENT_ID` | ⬜ |
+| Salesforce | `OPENPAWZ_SALESFORCE_CLIENT_ID` | ⬜ |
+| Slack | `OPENPAWZ_SLACK_CLIENT_ID` | ⬜ |
+| Jira | `OPENPAWZ_JIRA_CLIENT_ID` | ⬜ |
+| Notion | `OPENPAWZ_NOTION_CLIENT_ID` | ⬜ |
+| GitHub | `OPENPAWZ_GITHUB_CLIENT_ID` | ⬜ |
+| Linear | `OPENPAWZ_LINEAR_CLIENT_ID` | ⬜ |
+| Figma | `OPENPAWZ_FIGMA_CLIENT_ID` | ⬜ |
+| Asana | `OPENPAWZ_ASANA_CLIENT_ID` | ⬜ |
+| Airtable | `OPENPAWZ_AIRTABLE_CLIENT_ID` | ⬜ |
+| Shopify | `OPENPAWZ_SHOPIFY_CLIENT_ID` | ⬜ |
+| Stripe | `OPENPAWZ_STRIPE_CLIENT_ID` | ⬜ |
+| Trello | `OPENPAWZ_TRELLO_CLIENT_ID` | ⬜ |
+| Zoom | `OPENPAWZ_ZOOM_CLIENT_ID` | ⬜ |
+| QuickBooks | `OPENPAWZ_QUICKBOOKS_CLIENT_ID` | ⬜ |
+| Mailchimp | `OPENPAWZ_MAILCHIMP_CLIENT_ID` | ⬜ |
+| Zendesk | `OPENPAWZ_ZENDESK_CLIENT_ID` | ⬜ |
+| ClickUp | `OPENPAWZ_CLICKUP_CLIENT_ID` | ⬜ |
+| Monday | `OPENPAWZ_MONDAY_CLIENT_ID` | ⬜ |
+| Pipedrive | `OPENPAWZ_PIPEDRIVE_CLIENT_ID` | ⬜ |
+| Intercom | `OPENPAWZ_INTERCOM_CLIENT_ID` | ⬜ |
+| Twitter/X | `OPENPAWZ_TWITTER_CLIENT_ID` | ⬜ |
+| LinkedIn | `OPENPAWZ_LINKEDIN_CLIENT_ID` | ⬜ |
+| Spotify | `OPENPAWZ_SPOTIFY_CLIENT_ID` | ⬜ |
+| Dropbox | `OPENPAWZ_DROPBOX_CLIENT_ID` | ⬜ |
+| Discord | `OPENPAWZ_DISCORD_CLIENT_ID` | ⬜ |
+| Todoist | `OPENPAWZ_TODOIST_CLIENT_ID` | ⬜ |
+| Calendly | `OPENPAWZ_CALENDLY_CLIENT_ID` | ⬜ |
+| Xero | `OPENPAWZ_XERO_CLIENT_ID` | ⬜ |
+| DocuSign | `OPENPAWZ_DOCUSIGN_CLIENT_ID` | ⬜ |
 
 ---
 
-## Time Estimates
+## Progress Summary
 
-| Batch | Count | Est. Time | Description |
-|-------|-------|-----------|-------------|
-| Tier S (Big platforms) | ~15 | 4-6 hrs | Google, Microsoft, Salesforce, GitHub, Slack, etc. — longer approval processes |
-| Tier A (Common SaaS) | ~40 | 8-10 hrs | HubSpot, Jira, Notion, Dropbox, Box, etc. — standard OAuth app registration |
-| Tier B (Specialized) | ~60 | 10-15 hrs | Smaller services — straightforward but many |
-| Tier C (Niche/Enterprise) | ~60 | 10-15 hrs | Odoo, NetSuite, SAP, etc. — may require business accounts |
-| **Total** | **~175** | **32-46 hrs** | Spread across 5-7 days |
+| Tier | Total | Done | Remaining |
+|------|-------|------|-----------|
+| ✅ Working (real client IDs) | 2 | 2 | 0 |
+| Tier 1a (static in oauth.rs) | 11 | 2 | 9 |
+| Tier 1b (dynamic in registrations.json) | 30 | 0 | 30 |
+| Tier 3 (RFC 7591 auto-register) | 5 | 5 | 0 |
+| Full catalog (providers.json) | 247 | — | Add to registrations.json as needed |
+| **Unique services needing client IDs** | **~50** | **2** | **~48** |
 
 ## Priority Order (Register These First)
 
-1. **Google** — covers ~10 service aliases (Gmail, Calendar, Drive, Sheets, YouTube)
-2. **Microsoft** — covers ~8 aliases (Outlook, OneDrive, Teams, SharePoint)
+1. ~~**Google** — covers ~10 service aliases (Gmail, Calendar, Drive, Sheets, YouTube)~~ ✅ DONE
+2. ~~**Microsoft** — covers ~8 aliases (Outlook, OneDrive, Teams, SharePoint)~~ ✅ DONE
 3. **GitHub** — most common developer integration
 4. **Slack** — most common team chat integration
 5. **Salesforce** — most common CRM
