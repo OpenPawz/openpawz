@@ -34,8 +34,9 @@ export function formatMarkdown(text: string): string {
   // Match complete fenced code blocks: ```lang\n...```
   let html = text.replace(/```(\w*)\n([\s\S]*?)```/g, (_m, lang, code) => {
     const idx = codeBlocks.length;
+    const langLabel = lang ? `<span class="code-lang">${escHtml(lang)}</span>` : '';
     codeBlocks.push(
-      `<pre class="code-block" data-lang="${escAttr(lang)}"><code>${escHtml(code.trimEnd())}</code></pre>`,
+      `<div class="code-block-wrapper">${langLabel}<button class="code-copy-btn" title="Copy"><span class="ms" style="font-size:14px">content_copy</span></button><pre class="code-block" data-lang="${escAttr(lang)}"><code>${escHtml(code.trimEnd())}</code></pre></div>`,
     );
     return `${pfx}${idx}${pfx}`;
   });
@@ -45,8 +46,9 @@ export function formatMarkdown(text: string): string {
   // rather than being mangled by the inline markdown transforms.
   html = html.replace(/```(\w*)\n([\s\S]+)$/g, (_m, lang, code) => {
     const idx = codeBlocks.length;
+    const langLabel = lang ? `<span class="code-lang">${escHtml(lang)}</span>` : '';
     codeBlocks.push(
-      `<pre class="code-block streaming" data-lang="${escAttr(lang)}"><code>${escHtml(code.trimEnd())}</code></pre>`,
+      `<div class="code-block-wrapper streaming">${langLabel}<pre class="code-block streaming" data-lang="${escAttr(lang)}"><code>${escHtml(code.trimEnd())}</code></pre></div>`,
     );
     return `${pfx}${idx}${pfx}`;
   });
@@ -235,4 +237,29 @@ function replaceEmojis(text: string): string {
     text = text.replace(re, replacement);
   }
   return text;
+}
+
+// ── Code block copy button wiring ────────────────────────────────────────
+
+/**
+ * Wire up all code-copy-btn buttons inside a container.
+ * Call after setting innerHTML with formatMarkdown output.
+ * Uses event delegation on the container.
+ */
+export function wireCodeCopyButtons(container: HTMLElement): void {
+  container.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest('.code-copy-btn') as HTMLElement | null;
+    if (!btn) return;
+    const wrapper = btn.closest('.code-block-wrapper');
+    const codeEl = wrapper?.querySelector('code');
+    if (!codeEl) return;
+    navigator.clipboard.writeText(codeEl.textContent ?? '').then(() => {
+      btn.innerHTML = '<span class="ms" style="font-size:14px">check</span>';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.innerHTML = '<span class="ms" style="font-size:14px">content_copy</span>';
+        btn.classList.remove('copied');
+      }, 1500);
+    });
+  });
 }

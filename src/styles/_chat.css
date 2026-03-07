@@ -1042,3 +1042,226 @@
   border-radius: 50%;
   cursor: pointer;
 }
+
+/* ─── @ Mention Autocomplete ─── */
+.at-autocomplete-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  z-index: 300;
+  max-height: 260px;
+  overflow-y: auto;
+  background: var(--bg-card, var(--bg-secondary));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.25);
+  margin-bottom: 4px;
+  padding: 4px 0;
+}
+.at-ac-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.at-ac-item:hover,
+.at-ac-item.selected {
+  background: var(--hover, var(--bg-tertiary));
+}
+.at-ac-item .ms {
+  color: var(--accent);
+}
+.at-ac-label {
+  font-weight: 600;
+  min-width: 70px;
+}
+.at-ac-desc {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* ─── Context Chips ─── */
+.context-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 12px 0;
+}
+.context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-subtle, color-mix(in srgb, var(--accent) 12%, transparent));
+  border-radius: var(--radius-pill, 999px);
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  white-space: nowrap;
+}
+.context-chip .ms {
+  color: var(--accent);
+}
+.context-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin-left: 2px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+  border-radius: 50%;
+  transition: background 0.1s, color 0.1s;
+}
+.context-chip-remove:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+/* ─── Follow-up Suggestions ─── */
+.follow-up-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 0;
+}
+.follow-up-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+.follow-up-pill .ms {
+  font-size: 12px;
+}
+.follow-up-pill:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-subtle, color-mix(in srgb, var(--accent) 8%, transparent));
+}
+.follow-up-pill:active {
+  transform: scale(0.97);
+}
+
+/* ─── Agent Step Indicator ─── */
+.agent-step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+.step-spin {
+  animation: stepSpin 1s linear infinite;
+}
+@keyframes stepSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* ─── Edit Button (user messages) ─── */
+.message-edit-btn {
+  position: absolute;
+  top: 0;
+  left: -28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.message.user {
+  position: relative;
+}
+.message.user:hover .message-edit-btn {
+  opacity: 1;
+}
+.message-edit-btn:hover {
+  color: var(--accent);
+}
+.message-edit-area {
+  width: 100%;
+  max-width: 85%;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  resize: vertical;
+  outline: none;
+  margin-left: auto;
+}
+.message-edit-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+/* ─── Keyboard Shortcuts (empty state) ─── */
+.empty-shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.shortcut-row kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-muted);
+}

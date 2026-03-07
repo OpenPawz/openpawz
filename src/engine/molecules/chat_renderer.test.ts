@@ -7,6 +7,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 // Mock the markdown formatter and icon helper to avoid pulling in full deps.
 vi.mock('../../components/molecules/markdown', () => ({
   formatMarkdown: (text: string) => text,
+  wireCodeCopyButtons: () => {},
+  escHtml: (s: string) => s,
 }));
 vi.mock('../../components/helpers', () => ({
   icon: (name: string) => `<svg data-icon="${name}"></svg>`,
