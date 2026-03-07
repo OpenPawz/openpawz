@@ -107,7 +107,7 @@ Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into
         SkillDefinition {
             id: "google_workspace".into(),
             name: "Google Workspace".into(),
-            description: "Gmail, Calendar, Drive, Sheets, and Docs — full read/write access via Google OAuth. Connect once, control everything.".into(),
+            description: "Gmail, Calendar, Drive, Sheets, Docs, Chat, Tasks, Contacts, Forms, YouTube, and Vertex AI — full Google Workspace access via OAuth. Connect once, control everything.".into(),
             icon: "☁️".into(),
             category: SkillCategory::Vault,
             tier: SkillTier::Integration,
@@ -121,25 +121,75 @@ Do NOT run exec/curl to call the Discord API — use your built-in tools."#.into
                 "google_docs_create".into(), "google_api".into(),
             ],
             required_binaries: vec![], required_env_vars: vec![],
-            install_hint: "Connect Google in the Integrations view — one OAuth login grants access to Gmail, Calendar, Drive, Sheets, and Docs. No API keys needed.".into(),
-            agent_instructions: r#"You have full Google Workspace access with 13 built-in tools:
+            install_hint: "Connect Google in the Integrations view — one OAuth login grants access to Gmail, Calendar, Drive, Sheets, Docs, Chat, Tasks, Contacts, Forms, YouTube, and Vertex AI. No API keys needed.".into(),
+            agent_instructions: r#"You have full Google Workspace access with 13 dedicated tools PLUS the google_api escape hatch for 6 additional services.
 
-**Gmail**: google_gmail_list (search/list), google_gmail_read (read full email), google_gmail_send (send email)
-**Calendar**: google_calendar_list (list events), google_calendar_create (create event)
-**Drive**: google_drive_list (search files), google_drive_read (read/export), google_drive_upload (upload text), google_drive_share (share with user)
-**Sheets**: google_sheets_read (read ranges), google_sheets_append (add rows)
-**Docs**: google_docs_create (create document)
-**Generic**: google_api (any Google API call)
+## Dedicated Tools (use these first)
+
+**Gmail** (read + write):
+  google_gmail_list — search/list messages. Supports Gmail search syntax: 'is:unread', 'from:user@co.com', 'subject:invoice after:2025/01/01'
+  google_gmail_read — read full email content by ID
+  google_gmail_send — send email (to, subject, body, cc, bcc)
+
+**Calendar** (read + write):
+  google_calendar_list — list events in a date range (defaults to today)
+  google_calendar_create — create event with attendees, recurrence, timezone
+
+**Drive** (read + write):
+  google_drive_list — search files. Query syntax: "name contains 'report'", "mimeType='application/pdf'"
+  google_drive_read — read file content; exports Docs/Sheets/Slides as text
+  google_drive_upload — upload a text file, returns file ID and link
+  google_drive_share — share a file with a user (reader/commenter/writer)
+
+**Sheets** (read + write):
+  google_sheets_read — read cell data using A1 notation (e.g. 'Sheet1!A1:D10')
+  google_sheets_append — append rows to a spreadsheet
+
+**Docs** (write):
+  google_docs_create — create a new Google Doc with title and body
+
+## google_api — Generic Escape Hatch (ALL Google APIs)
+  google_api — make any authenticated call to googleapis.com. Use this for services without dedicated tools.
+
+## Additional Services via google_api
+
+Your OAuth token ALSO grants access to these services. Use google_api to call them:
+
+**Google Chat** (read spaces + send messages):
+  GET https://chat.googleapis.com/v1/spaces — list spaces
+  POST https://chat.googleapis.com/v1/spaces/{space}/messages — send message
+  GET https://chat.googleapis.com/v1/spaces/{space}/messages — list messages
+
+**Google Tasks** (read + write):
+  GET https://tasks.googleapis.com/tasks/v1/users/@me/lists — list task lists
+  GET https://tasks.googleapis.com/tasks/v1/lists/{list}/tasks — list tasks
+  POST https://tasks.googleapis.com/tasks/v1/lists/{list}/tasks — create task
+  PATCH https://tasks.googleapis.com/tasks/v1/lists/{list}/tasks/{task} — update task
+
+**Google Contacts** (read-only):
+  GET https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers — list contacts
+  GET https://people.googleapis.com/v1/people/{resourceName}?personFields=names,emailAddresses — get contact
+
+**Google Forms** (read-only):
+  GET https://forms.googleapis.com/v1/forms/{formId} — get form structure
+  GET https://forms.googleapis.com/v1/forms/{formId}/responses — list responses
+
+**YouTube** (read-only):
+  GET https://www.googleapis.com/youtube/v3/search?part=snippet&q={query} — search videos
+  GET https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&mine=true — my channel
+  GET https://www.googleapis.com/youtube/v3/playlists?part=snippet&mine=true — my playlists
+
+**Vertex AI / Google Cloud** (full access):
+  Custom model endpoints, vector search, Gemini API through cloud-platform scope
 
 RULES:
 - Always CONFIRM with the user before sending emails, creating events, sharing files, or modifying data
-- Use Gmail search syntax: 'is:unread', 'from:user@co.com', 'subject:invoice after:2025/01/01'
-- Use A1 notation for Sheets: 'Sheet1!A1:D10'
-- Use Drive query syntax: "name contains 'report'", "mimeType='application/pdf'"
 - Get IDs from list tools before using read/update tools
 - For Sheets, prefer google_sheets_read/append over google_api
 - Summarize email/document content rather than dumping raw data
-- NEVER use exec/curl to call Google APIs — use your built-in tools"#.into(),
+- NEVER use exec/curl to call Google APIs — use your built-in tools or google_api
+- For Chat, Tasks, Contacts, Forms, YouTube, and Vertex AI — use google_api with the endpoints listed above
+- Contacts and Forms are READ-ONLY. Do not attempt to write to them."#.into(),
             default_enabled: false,
         },
         SkillDefinition {

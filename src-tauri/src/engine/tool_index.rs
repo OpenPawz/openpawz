@@ -216,7 +216,7 @@ pub fn domain_summaries() -> Vec<(&'static str, &'static str, &'static str)> {
         (
             "google",
             "mail",
-            "Google Workspace — Gmail, Calendar, Drive, Sheets, Docs",
+            "Google Workspace — Gmail, Calendar, Drive, Sheets, Docs, Chat, Tasks, Contacts, Forms, YouTube, and Vertex AI. Use dedicated tools for Gmail/Calendar/Drive/Sheets/Docs, or google_api for Chat/Tasks/Contacts/Forms/YouTube/Vertex AI.",
         ),
         ("messaging", "forum", "Slack and Telegram messaging"),
         (
