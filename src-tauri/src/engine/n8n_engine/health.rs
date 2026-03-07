@@ -350,6 +350,52 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
     }
 
     log::warn!("[n8n] User table appears empty or fully clean — nothing to reset");
+
+    // ── Empty table recovery ───────────────────────────────────────
+    // Previous DELETE operations (from earlier fix iterations) wiped all
+    // users.  n8n's `setupOwner()` does `findOneOrFail` looking for a
+    // user with `role.slug = 'global:owner'` — zero rows → HTTP 500.
+    //
+    // Fix: INSERT a shell user with the owner role (NULL password,
+    // NULL lastActiveAt).  This replicates the row n8n creates on
+    // first boot.  `setupOwner` will find it and set our password.
+    let row_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM user", [], |r| r.get(0))
+        .unwrap_or(0);
+
+    if row_count == 0 {
+        log::info!("[n8n] User table is empty — inserting shell owner user");
+
+        let user_id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+
+        // Determine the correct role identifier.
+        // The schema has `roleSlug` column (FK to role.slug).
+        let role_value = "global:owner";
+
+        let insert_sql = "\
+            INSERT INTO user (id, email, \"firstName\", \"lastName\", password, \
+            \"createdAt\", \"updatedAt\", disabled, \"mfaEnabled\", \"roleSlug\") \
+            VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?5, 0, 0, ?6)";
+
+        match conn.execute(
+            insert_sql,
+            rusqlite::params![user_id, OWNER_EMAIL, "Paw", "Agent", now, role_value],
+        ) {
+            Ok(_) => {
+                log::info!(
+                    "[n8n] Inserted shell owner user (id={}, roleSlug={})",
+                    user_id, role_value
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                log::warn!("[n8n] Failed to insert shell user: {}", e);
+                // Fall through — caller will see setup 500 and can retry
+            }
+        }
+    }
+
     Ok(())
 }
 
