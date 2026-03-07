@@ -30,15 +30,14 @@ fn load_service_token(service_id: &str) -> Result<String, String> {
 
     // Try the standard key format, then common aliases
     let key = format!("oauth:{}", service_id);
-    let encrypted = key_vault::get(&key)
-        .ok_or_else(|| {
-            let display = provider_registry::display_name(service_id)
-                .unwrap_or_else(|| service_id.to_string());
-            format!(
-                "{display} is not connected. The user needs to connect {display} — \
+    let encrypted = key_vault::get(&key).ok_or_else(|| {
+        let display =
+            provider_registry::display_name(service_id).unwrap_or_else(|| service_id.to_string());
+        format!(
+            "{display} is not connected. The user needs to connect {display} — \
                  go to Integrations → {display} → Connect."
-            )
-        })?;
+        )
+    })?;
 
     let json = match decrypt_credential(&encrypted, &vault_key) {
         Ok(j) => j,
@@ -70,12 +69,11 @@ pub fn definitions() -> Vec<ToolDefinition> {
         tool_type: "function".into(),
         function: FunctionDefinition {
             name: "service_api".into(),
-            description: Some(
+            description:
                 "Make an API request to any connected OAuth service (HubSpot, Salesforce, \
                 Slack, Jira, Notion, Airtable, Shopify, Stripe, etc.). The service must be \
                 connected via OAuth first. Use the provider's REST API paths."
                     .into(),
-            ),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -125,10 +123,7 @@ async fn execute_service_api(args: &serde_json::Value) -> Result<String, String>
         .get("service")
         .and_then(|v| v.as_str())
         .ok_or("Missing 'service' parameter")?;
-    let method = args
-        .get("method")
-        .and_then(|v| v.as_str())
-        .unwrap_or("GET");
+    let method = args.get("method").and_then(|v| v.as_str()).unwrap_or("GET");
     let path = args
         .get("path")
         .and_then(|v| v.as_str())
@@ -161,7 +156,10 @@ async fn execute_service_api(args: &serde_json::Value) -> Result<String, String>
     // §Security: Verify the resolved URL still points to the expected base domain
     // This prevents path traversal attacks like "/../other-service"
     if !url.starts_with(base) {
-        return Err("Path traversal detected — the resolved URL doesn't match the service's base URL.".into());
+        return Err(
+            "Path traversal detected — the resolved URL doesn't match the service's base URL."
+                .into(),
+        );
     }
 
     info!(
@@ -197,12 +195,12 @@ async fn execute_service_api(args: &serde_json::Value) -> Result<String, String>
     if let Some(query) = args.get("query").and_then(|v| v.as_object()) {
         let pairs: Vec<(String, String)> = query
             .iter()
-            .filter_map(|(k, v)| {
+            .map(|(k, v)| {
                 let val = match v {
                     serde_json::Value::String(s) => s.clone(),
                     other => other.to_string(),
                 };
-                Some((k.clone(), val))
+                (k.clone(), val)
             })
             .collect();
         request = request.query(&pairs);

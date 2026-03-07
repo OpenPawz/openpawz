@@ -137,9 +137,15 @@ pub fn tool_domain(name: &str) -> &'static str {
         n if n.starts_with("google_") => "google",
 
         // Microsoft 365
-        n if n.starts_with("outlook_") || n.starts_with("onedrive_") || n.starts_with("teams_")
-            || n.starts_with("ms_tasks_") || n.starts_with("onenote_")
-            || n == "microsoft_api" => "microsoft",
+        n if n.starts_with("outlook_")
+            || n.starts_with("onedrive_")
+            || n.starts_with("teams_")
+            || n.starts_with("ms_tasks_")
+            || n.starts_with("onenote_")
+            || n == "microsoft_api" =>
+        {
+            "microsoft"
+        }
 
         // Integrations
         "rest_api_call" | "webhook_send" | "image_generate" => "integrations",
@@ -841,7 +847,7 @@ mod tests {
 
     #[test]
     fn core_tools_count() {
-        assert_eq!(CORE_TOOLS.len(), 10);
+        assert_eq!(CORE_TOOLS.len(), 21);
     }
 
     // ── domain_summaries ───────────────────────────────────────────

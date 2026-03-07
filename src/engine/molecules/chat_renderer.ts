@@ -442,11 +442,7 @@ export function renderSingleMessage(
   // ── OAuth reconnect action button ──────────────────────────────────
   // Detect when the agent's response mentions OAuth/token failures and
   // inject an inline reconnect button so users can fix it with one click.
-  if (
-    msg.role === 'assistant' &&
-    !opts.isStreaming &&
-    opts.onOAuthReconnect
-  ) {
+  if (msg.role === 'assistant' && !opts.isStreaming && opts.onOAuthReconnect) {
     const detected = detectOAuthError(msg.content);
     if (detected) {
       const row = document.createElement('div');
@@ -458,7 +454,8 @@ export function renderSingleMessage(
       reconnectBtn.innerHTML = `<span class="ms" style="font-size:16px">link</span> Reconnect ${escHtml(displayName)}`;
       reconnectBtn.addEventListener('click', () => {
         reconnectBtn.disabled = true;
-        reconnectBtn.innerHTML = '<span class="ms" style="font-size:16px;animation:spin 1s linear infinite">sync</span> Connecting…';
+        reconnectBtn.innerHTML =
+          '<span class="ms" style="font-size:16px;animation:spin 1s linear infinite">sync</span> Connecting…';
         opts.onOAuthReconnect!(detected);
       });
 
@@ -474,7 +471,10 @@ export function renderSingleMessage(
 
 /** Known OAuth service name patterns and their canonical service IDs. */
 const OAUTH_SERVICE_PATTERNS: Array<[RegExp, string]> = [
-  [/\bgoogle|gmail|g\s?suite|google[\s-]?workspace|google[\s-]?sheets|google[\s-]?calendar|google[\s-]?drive|google[\s-]?docs/i, 'google-workspace'],
+  [
+    /\bgoogle|gmail|g\s?suite|google[\s-]?workspace|google[\s-]?sheets|google[\s-]?calendar|google[\s-]?drive|google[\s-]?docs/i,
+    'google-workspace',
+  ],
   [/\bgithub/i, 'github'],
   [/\bdiscord/i, 'discord'],
   [/\bslack/i, 'slack'],
@@ -493,7 +493,8 @@ const OAUTH_SERVICE_PATTERNS: Array<[RegExp, string]> = [
  */
 function detectOAuthError(content: string): string | null {
   // Must contain an error indicator
-  const errorIndicators = /\b(401|403|token\s*expired|reconnect|not\s*connected|unauthorized|insufficient\s*permission|credential|re-?authenticate)/i;
+  const errorIndicators =
+    /\b(401|403|token\s*expired|reconnect|not\s*connected|unauthorized|insufficient\s*permission|credential|re-?authenticate)/i;
   if (!errorIndicators.test(content)) return null;
 
   // Match against known services

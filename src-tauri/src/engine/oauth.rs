@@ -555,8 +555,9 @@ pub fn get_oauth_config(service_id: &str) -> Option<&'static OAuthConfig> {
         "github" => Some(&GITHUB_OAUTH),
         "google" | "google-workspace" | "gmail" | "google-drive" | "google-calendar"
         | "google-sheets" | "google-docs" => Some(&GOOGLE_OAUTH),
-        "microsoft" | "microsoft-365" | "outlook" | "onedrive" | "microsoft-teams"
-        | "teams" => Some(&MICROSOFT_OAUTH),
+        "microsoft" | "microsoft-365" | "outlook" | "onedrive" | "microsoft-teams" | "teams" => {
+            Some(&MICROSOFT_OAUTH)
+        }
         "discord" => Some(&DISCORD_OAUTH),
         "slack" => Some(&SLACK_OAUTH),
         "notion" => Some(&NOTION_OAUTH),

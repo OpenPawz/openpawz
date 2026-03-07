@@ -42,13 +42,13 @@ pub struct ProviderConfig {
     #[serde(default)]
     pub authorization_method: Option<String>,
     #[serde(default)]
-    pub authorization_params: Option<HashMap<String, String>>,
+    pub authorization_params: Option<HashMap<String, serde_json::Value>>,
     #[serde(default)]
-    pub token_params: Option<HashMap<String, String>>,
+    pub token_params: Option<HashMap<String, serde_json::Value>>,
     #[serde(default)]
     pub default_scopes: Option<Vec<String>>,
     #[serde(default)]
-    pub proxy_headers: Option<HashMap<String, String>>,
+    pub proxy_headers: Option<HashMap<String, serde_json::Value>>,
     #[serde(default)]
     pub categories: Option<Vec<String>>,
     #[serde(default)]
@@ -92,6 +92,20 @@ pub struct DynamicOAuthConfig {
 
 // ── Registry ───────────────────────────────────────────────────────────
 
+/// Convert a HashMap<String, Value> to HashMap<String, String> by
+/// stringifying non-string values (bools, numbers) for downstream use.
+fn value_map_to_string(map: &HashMap<String, serde_json::Value>) -> HashMap<String, String> {
+    map.iter()
+        .map(|(k, v)| {
+            let s = match v {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            (k.clone(), s)
+        })
+        .collect()
+}
+
 struct Registry {
     providers: HashMap<String, ProviderConfig>,
     registrations: HashMap<String, Registration>,
@@ -104,8 +118,7 @@ fn registry() -> &'static Registry {
         let providers: HashMap<String, ProviderConfig> =
             serde_json::from_str(PROVIDERS_JSON).unwrap_or_default();
         // Filter out _comment key from registrations
-        let raw: serde_json::Value =
-            serde_json::from_str(REGISTRATIONS_JSON).unwrap_or_default();
+        let raw: serde_json::Value = serde_json::from_str(REGISTRATIONS_JSON).unwrap_or_default();
         let registrations: HashMap<String, Registration> = if let Some(obj) = raw.as_object() {
             obj.iter()
                 .filter(|(k, _)| !k.starts_with('_'))
@@ -170,9 +183,12 @@ pub fn get_dynamic_config(service_id: &str) -> Option<DynamicOAuthConfig> {
             .clone()
             .unwrap_or_else(|| "form".to_string()),
         authorization_method: provider.authorization_method.clone(),
-        authorization_params: provider.authorization_params.clone(),
-        token_params: provider.token_params.clone(),
-        proxy_headers: provider.proxy_headers.clone(),
+        authorization_params: provider
+            .authorization_params
+            .as_ref()
+            .map(value_map_to_string),
+        token_params: provider.token_params.as_ref().map(value_map_to_string),
+        proxy_headers: provider.proxy_headers.as_ref().map(value_map_to_string),
     })
 }
 
@@ -208,7 +224,7 @@ pub fn get_proxy_headers(service_id: &str) -> Option<HashMap<String, String>> {
     registry()
         .providers
         .get(service_id)
-        .and_then(|p| p.proxy_headers.clone())
+        .and_then(|p| p.proxy_headers.as_ref().map(value_map_to_string))
 }
 
 /// List all service IDs that have both a provider config AND a registration.
@@ -256,7 +272,11 @@ mod tests {
     #[test]
     fn test_registrations_load() {
         let ids = registered_service_ids();
-        assert!(ids.len() > 10, "Expected 10+ registrations, got {}", ids.len());
+        assert!(
+            ids.len() > 10,
+            "Expected 10+ registrations, got {}",
+            ids.len()
+        );
     }
 
     #[test]
