@@ -274,6 +274,51 @@ RULES:
             default_enabled: false,
         },
         SkillDefinition {
+            id: "connected_services".into(),
+            name: "Connected Services".into(),
+            description: "Generic API access to any OAuth-connected service — HubSpot, Salesforce, Slack, Jira, Notion, Airtable, Shopify, Stripe, Zendesk, ClickUp, Monday, Pipedrive, Intercom, Asana, Trello, Zoom, QuickBooks, Mailchimp, Xero, DocuSign, Calendly, Todoist, Linear, Figma, and 200+ more.".into(),
+            icon: "🔗".into(),
+            category: SkillCategory::Vault,
+            tier: SkillTier::Integration,
+            required_credentials: vec![],
+            tool_names: vec!["service_api".into()],
+            required_binaries: vec![], required_env_vars: vec![],
+            install_hint: "Connect any supported service in the Integrations view — one OAuth login per service. The service_api tool provides REST API access to all connected services.".into(),
+            agent_instructions: r#"You have the service_api tool for making REST API calls to any OAuth-connected service.
+
+## service_api — Universal API Proxy
+  service_api(service, method, path, query?, body?) — call any endpoint on a connected service.
+
+## Supported Services (when connected via OAuth)
+HubSpot, Salesforce, Slack, Jira, Notion, Airtable, Shopify, Stripe, Zendesk,
+ClickUp, Monday, Pipedrive, Intercom, Asana, Trello, Zoom, QuickBooks, Mailchimp,
+Xero, DocuSign, Calendly, Todoist, Linear, Figma, GitHub, LinkedIn, Twitter,
+Spotify, Dropbox, Discord, and 200+ more.
+
+## Usage Pattern
+1. Specify the service name (lowercase, e.g., 'hubspot', 'salesforce', 'slack')
+2. Specify HTTP method (GET, POST, PUT, PATCH, DELETE)
+3. Specify the API path relative to the service's base URL
+4. Optionally include query parameters and/or JSON body
+
+## Examples
+- HubSpot contacts: service_api(service="hubspot", method="GET", path="/crm/v3/objects/contacts")
+- Salesforce query: service_api(service="salesforce", method="GET", path="/services/data/v59.0/query", query={"q": "SELECT Id, Name FROM Account LIMIT 10"})
+- Slack message: service_api(service="slack", method="POST", path="/api/chat.postMessage", body={"channel": "C123", "text": "Hello!"})
+- Jira issues: service_api(service="jira", method="GET", path="/rest/api/3/search", query={"jql": "project=PROJ AND status=Open"})
+- Notion pages: service_api(service="notion", method="POST", path="/v1/search", body={"query": "Meeting Notes"})
+- Airtable records: service_api(service="airtable", method="GET", path="/v0/{baseId}/{tableName}")
+- Linear issues: service_api(service="linear", method="POST", path="/graphql", body={"query": "{ issues { nodes { title state { name } } } }"})
+
+## Rules
+- The service MUST be connected via OAuth first. If you get a "not connected" error, tell the user to connect the service in Integrations.
+- Always CONFIRM with the user before creating, modifying, or deleting data.
+- Use the service's official REST API documentation for endpoint paths.
+- For Google and Microsoft services, prefer dedicated tools (google_* and outlook_*/onedrive_*/teams_*) over service_api.
+- NEVER use exec/curl to call APIs — use service_api instead."#.into(),
+            default_enabled: false,
+        },
+        SkillDefinition {
             id: "discourse".into(),
             name: "Discourse".into(),
             description: "Full Discourse forum management — topics, posts, categories, users, search, tags, badges, groups, site settings, backups, and more".into(),

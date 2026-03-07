@@ -125,8 +125,14 @@ pub enum OAuthTier {
 
 /// Resolve which OAuth tier should handle a given service.
 pub fn resolve_tier(service_id: &str) -> OAuthTier {
-    // Tier 1: Services with shipped Client IDs (our PKCE engine)
+    // Tier 1a: Services with shipped static Client IDs (our PKCE engine)
     if get_oauth_config(service_id).is_some() {
+        return OAuthTier::ShippedPkce;
+    }
+
+    // Tier 1b: Dynamic providers with registered (non-placeholder) Client IDs
+    // These come from provider_registry (Nango data + our registrations.json)
+    if crate::engine::provider_registry::is_ready(service_id) {
         return OAuthTier::ShippedPkce;
     }
 

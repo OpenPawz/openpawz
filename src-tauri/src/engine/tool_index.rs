@@ -148,6 +148,9 @@ pub fn tool_domain(name: &str) -> &'static str {
         // MCP tools
         n if n.starts_with("mcp_") => "mcp",
 
+        // Generic Service API (connected OAuth services)
+        "service_api" => "services",
+
         // Tool RAG meta-tool
         "request_tools" => "meta",
 
@@ -264,6 +267,11 @@ pub fn domain_summaries() -> Vec<(&'static str, &'static str, &'static str)> {
             "solana",
             "trending_up",
             "Solana/Jupiter — swaps, quotes, token info, portfolio",
+        ),
+        (
+            "services",
+            "api",
+            "Connected Services — generic REST API access to any OAuth-connected service (HubSpot, Salesforce, Slack, Jira, Notion, Airtable, Shopify, Stripe, Zendesk, and 200+ more). Use service_api tool.",
         ),
     ]
 }

@@ -31,6 +31,7 @@ pub mod memory;
 pub mod microsoft;
 pub mod n8n;
 pub mod request_tools;
+pub mod service_api;
 pub mod skill_output;
 pub mod skill_storage;
 pub mod skills_tools;
@@ -157,6 +158,7 @@ impl ToolDefinition {
                 "dex" => tools.extend(dex::definitions()),
                 "google_workspace" => tools.extend(google::definitions()),
                 "microsoft_365" => tools.extend(microsoft::definitions()),
+                "connected_services" => tools.extend(service_api::definitions()),
                 _ => {}
             }
         }
@@ -257,7 +259,8 @@ pub async fn execute_tool(
         .or(discord::execute(name, &args, app_handle).await)
         .or(discourse::execute(name, &args, app_handle).await)
         .or(google::execute(name, &args, app_handle).await)
-        .or(microsoft::execute(name, &args, app_handle).await);
+        .or(microsoft::execute(name, &args, app_handle).await)
+        .or(service_api::execute(name, &args, app_handle).await);
 
     // Try MCP tools (prefixed with `mcp_`) if no built-in handled it.
     // When a worker_model is configured, delegate MCP calls to the local
