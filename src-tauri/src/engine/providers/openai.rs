@@ -85,13 +85,22 @@ impl OpenAiProvider {
         //  2. .../openai/deployments/{name}/chat/completions?api-version=…  (classic Azure OpenAI)
         //  3. .../openai/responses?api-version=…  (Responses API — gpt-5.4, o3-pro)
         //
+        // Anthropic URLs (.../anthropic/v1/messages) are routed to
+        // AnthropicProvider in mod.rs and should never reach here — but if
+        // they do, leave the URL untouched as a safety net.
+        //
         // If the URL already contains /chat/completions, store it as-is.
         // If it's a /responses URL, convert to deployment-based /chat/completions.
         // If it's a bare resource URL, normalise to /models as a fallback.
         if config.kind == ProviderKind::AzureFoundry {
             let trimmed = base_url.trim_end_matches('/');
 
-            if trimmed.contains("/chat/completions") {
+            if trimmed.contains("/anthropic") {
+                // Anthropic wire format — should have been routed to
+                // AnthropicProvider. Keep as-is; chat_stream will fail
+                // gracefully with a clear error rather than mangling the URL.
+                base_url = trimmed.to_string();
+            } else if trimmed.contains("/chat/completions") {
                 // Full Target URI — already a chat/completions endpoint.
                 // Use as-is, preserving the api-version query param.
                 base_url = trimmed.to_string();

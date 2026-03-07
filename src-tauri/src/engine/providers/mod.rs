@@ -37,6 +37,17 @@ impl AnyProvider {
         let provider: Box<dyn AiProvider> = match config.kind {
             ProviderKind::Anthropic => Box::new(AnthropicProvider::new(config)),
             ProviderKind::Google => Box::new(GoogleProvider::new(config)),
+            // Azure AI Foundry hosts heterogeneous models.  If the Target URI
+            // contains "/anthropic" it's the Anthropic proxy and needs the
+            // native Anthropic wire format (Messages API), not OpenAI's.
+            ProviderKind::AzureFoundry
+                if config
+                    .base_url
+                    .as_deref()
+                    .map_or(false, |u| u.contains("/anthropic")) =>
+            {
+                Box::new(AnthropicProvider::new(config))
+            }
             // All OpenAI-compatible variants:
             // OpenAI, Ollama, OpenRouter, Custom, DeepSeek, Grok, Mistral, Moonshot
             _ => Box::new(OpenAiProvider::new(config)),
