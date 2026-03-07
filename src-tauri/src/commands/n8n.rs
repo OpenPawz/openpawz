@@ -3962,7 +3962,7 @@ mod tests {
             ("zendesk", "Zendesk"),
             ("hubspot", "HubSpot"),
             ("twilio", "Twilio"),
-            ("microsoft-teams", "Microsoft Teams"),
+            ("microsoft-teams", "Microsoft 365"),
         ];
         for (service_id, expected_name) in services_with_names {
             let mut creds = std::collections::HashMap::new();

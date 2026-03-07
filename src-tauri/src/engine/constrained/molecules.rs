@@ -311,8 +311,8 @@ mod tests {
 
         normalize_tool_required(&mut tools);
 
-        // No required field should be added for empty properties
-        assert!(tools[0]["function"]["parameters"].get("required").is_none());
+        // Empty properties should get required: [] (OpenAI strict mode needs it)
+        assert_eq!(tools[0]["function"]["parameters"]["required"], json!([]));
         // additionalProperties: false is added (object with properties key)
         assert_eq!(
             tools[0]["function"]["parameters"]["additionalProperties"],

@@ -847,7 +847,7 @@ mod tests {
 
     #[test]
     fn core_tools_count() {
-        assert_eq!(CORE_TOOLS.len(), 10);
+        assert_eq!(CORE_TOOLS.len(), 21);
     }
 
     // ── domain_summaries ───────────────────────────────────────────
