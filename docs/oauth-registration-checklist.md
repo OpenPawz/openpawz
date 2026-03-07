@@ -1,23 +1,55 @@
 # OAuth App Registration Checklist
 
-> **Total: ~190 unique OAuth2 services** extracted from Nango's provider configs.
-> Sandbox/staging duplicates and aliases (e.g., YouTube = Google, Outlook = Microsoft) are excluded.
->
-> **Redirect URI for all registrations:** `http://127.0.0.1:0/callback`
-> (OpenPawz uses ephemeral port binding — the exact port is assigned at runtime.
-> Most providers accept `http://localhost/callback` or `http://127.0.0.1/callback` as a wildcard localhost entry.
-> Some providers require an exact port — for those, use `http://localhost:19284/callback` as a fixed fallback.)
+> **Total: 174 services** listed below.
+> **247 provider endpoint configs** available in `providers.json` (from Nango OSS, MIT-licensed).
+> Aliases (YouTube = Google, Outlook = Microsoft, etc.) share one registration — no duplicate work.
 
-## How to Use This Checklist
+## Registration Instructions
 
-1. Go to the **Developer Console** link for each service
-2. Create an OAuth2 application / integration
-3. Set the **Redirect URI** as noted above
-4. Request the **Scopes** listed (minimum viable)
-5. Copy the **Client ID** and **Client Secret**
-6. Store them in your `.env` or build config with the pattern: `OAUTH_<SERVICE>_CLIENT_ID`
+**Every developer portal listed below is free.** You are registering an OAuth *app* (a client ID), not signing up for the paid product. The developer portal is always separate from the product's pricing. Do not skip any service.
+
+**For step-by-step instructions on each service, see the [Registration Guide](oauth-app-registration.md).** It tells you exactly what to click on every portal.
+
+### What You Need
+
+| Field | Value |
+|-------|-------|
+| **App name** | `OpenPawz` |
+| **App type** | Native / Desktop / Installed (not "web server") |
+| **Website** | `https://openpawz.com` |
+| **Redirect URI** | `http://127.0.0.1:0/callback` (if the portal rejects port 0, use `http://localhost:19284/callback`) |
+| **Email** | `dev@openpawz.ai` |
+
+### Steps (Same for Every Service)
+
+1. Click the **Developer Console** link in the table below
+2. Sign up or log in (free — use `dev@openpawz.ai`)
+3. Create a new OAuth2 app with the values above
+4. Copy the **Client ID** (and **Client Secret** if one is issued)
+5. Save both in your Bitwarden entry for that service
+6. Mark the row ✅ in this checklist
+
+### Platform-Specific Notes
+
+A few platforms have an extra step beyond basic registration. These are **not blockers** — you can still register the app and get a client ID. The extra step only matters for production/public use later.
+
+| Platform | Extra Step | Impact |
+|----------|-----------|--------|
+| **Facebook / Instagram / Meta Marketing** | App Review required for production | App works in Development Mode immediately — limited to test users. Submit for review later. |
+| **TikTok** | App Review required for production | Same as Facebook — dev mode works now, review later. |
+| **Twitter/X** | Developer access application | Usually approved same-day. Apply at developer.twitter.com. |
+| **Shopify** | Requires free Partners account | Sign up at partners.shopify.com (free). Then create the app from there. |
 
 **Status Legend:** ⬜ Not started | 🔄 In progress | ✅ Registered
+
+---
+
+## ✅ Currently Working
+
+| Service | Client ID | Tier | Config |
+|---|---|---|---|
+| ✅ **Google Workspace** | `797133120028-...` | 1a static | `oauth.rs GOOGLE_OAUTH` |
+| ✅ **Microsoft 365** | `e1026883-ecd3-...` | 1a static | `oauth.rs MICROSOFT_OAUTH` |
 
 ---
 
@@ -337,57 +369,43 @@
 | 173 | **Meta Marketing** | https://developers.facebook.com | _(alias: Facebook OAuth)_ | — | ✓ | ⬜ |
 | 174 | **AWS Cognito** | https://console.aws.amazon.com/cognito | `https://{subdomain}.auth.{region}.amazoncognito.com/oauth2/authorize` | `openid` | ✓ | ⬜ |
 
-## Already Registered in OpenPawz (Tier 1 — 13 services)
-
-These are already configured in `oauth.rs`. Mark them ✅ once Client IDs are set:
-
-| Service | Env Var Pattern | Status |
-|---------|----------------|--------|
-| GitHub | `OAUTH_GITHUB_CLIENT_ID` | ⬜ |
-| Google | `OAUTH_GOOGLE_CLIENT_ID` | ⬜ |
-| Slack | `OAUTH_SLACK_CLIENT_ID` | ⬜ |
-| Discord | `OAUTH_DISCORD_CLIENT_ID` | ⬜ |
-| Microsoft | `OAUTH_MICROSOFT_CLIENT_ID` | ⬜ |
-| Notion | `OAUTH_NOTION_CLIENT_ID` | ⬜ |
-| Spotify | `OAUTH_SPOTIFY_CLIENT_ID` | ⬜ |
-| Twitter | `OAUTH_TWITTER_CLIENT_ID` | ⬜ |
-| LinkedIn | `OAUTH_LINKEDIN_CLIENT_ID` | ⬜ |
-| Dropbox | `OAUTH_DROPBOX_CLIENT_ID` | ⬜ |
-| Zoom | `OAUTH_ZOOM_CLIENT_ID` | ⬜ |
-| Figma | `OAUTH_FIGMA_CLIENT_ID` | ⬜ |
-| Asana | `OAUTH_ASANA_CLIENT_ID` | ⬜ |
-
 ---
 
-## Time Estimates
+## After Registration — Wiring In Client IDs
 
-| Batch | Count | Est. Time | Description |
-|-------|-------|-----------|-------------|
-| Tier S (Big platforms) | ~15 | 4-6 hrs | Google, Microsoft, Salesforce, GitHub, Slack, etc. — longer approval processes |
-| Tier A (Common SaaS) | ~40 | 8-10 hrs | HubSpot, Jira, Notion, Dropbox, Box, etc. — standard OAuth app registration |
-| Tier B (Specialized) | ~60 | 10-15 hrs | Smaller services — straightforward but many |
-| Tier C (Niche/Enterprise) | ~60 | 10-15 hrs | Odoo, NetSuite, SAP, etc. — may require business accounts |
-| **Total** | **~175** | **32-46 hrs** | Spread across 5-7 days |
+Once you've registered apps and saved the credentials in Bitwarden, export the vault and hand it off. The client IDs will be wired into the code:
 
-## Priority Order (Register These First)
-
-1. **Google** — covers ~10 service aliases (Gmail, Calendar, Drive, Sheets, YouTube)
-2. **Microsoft** — covers ~8 aliases (Outlook, OneDrive, Teams, SharePoint)
-3. **GitHub** — most common developer integration
-4. **Slack** — most common team chat integration
-5. **Salesforce** — most common CRM
-6. **HubSpot** — #2 CRM
-7. **Jira/Atlassian** — project management
-8. **Discord** — community platform
-9. **Zoom** — video conferencing
-10. **Notion** — knowledge base
+- **High-priority services** (GitHub, Slack, Discord, etc.) → hardcoded in `oauth.rs` via env vars like `OPENPAWZ_GITHUB_CLIENT_ID`
+- **Everything else** → added to `registrations.json` with env var `OPENPAWZ_{SERVICE}_CLIENT_ID`
+- **No code changes needed per service** — the generic provider system handles the rest automatically
 
 ---
 
 ## Notes
 
-- **Dynamic domains** (marked with `{subdomain}` or `{hostname}`): These require the user to input their instance URL. The OAuth app registration is on the central developer portal, but the auth/token URLs are instance-specific.
-- **PKCE ✗**: These services explicitly disable PKCE. They still work with the authorization code flow but require a client secret.
-- **Sandbox entries**: Excluded from this list. If you need sandbox environments for development, register separately on the sandbox developer portals.
+- **Dynamic domains** (marked with `{subdomain}` or `{hostname}`): The user provides their instance URL at connect time. Register the app on the central developer portal — the auth/token URLs are instance-specific but the client ID is the same.
+- **PKCE ✗**: These services don't support PKCE. They still work with authorization code flow but require a client secret.
 - **Aliases**: YouTube = Google, Outlook = Microsoft, SharePoint = Microsoft, etc. One registration covers all.
-- **Meta/Facebook**: Requires App Review for production access. Start with development mode for testing.
+- **Scopes**: If the Scopes column shows `—`, the default scopes are fine. Only request what's listed.
+
+## Progress Summary
+
+| Category | Done | Total |
+|----------|------|-------|
+| ✅ Registered (real client IDs) | 2 | 174 |
+| Google Workspace | ✅ | — |
+| Microsoft 365 | ✅ | — |
+| Everything else | 0 | 172 |
+
+## Priority Order (Register These First)
+
+1. ~~**Google** — covers Gmail, Calendar, Drive, Sheets, YouTube~~ ✅ DONE
+2. ~~**Microsoft** — covers Outlook, OneDrive, Teams, SharePoint~~ ✅ DONE
+3. **GitHub** — most common developer integration
+4. **Slack** — most common team chat
+5. **Discord** — community platform
+6. **Salesforce** — #1 CRM
+7. **HubSpot** — #2 CRM
+8. **Jira/Atlassian** — project management
+9. **Zoom** — video conferencing
+10. **Notion** — knowledge base
