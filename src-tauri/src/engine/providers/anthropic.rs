@@ -32,10 +32,10 @@ pub struct AnthropicProvider {
     /// API key wrapped in Zeroizing<> — automatically zeroed from RAM on drop.
     api_key: Zeroizing<String>,
     /// Any Azure-hosted endpoint — uses `api-key` header instead of
-    /// `x-api-key`, and classic Azure OpenAI also needs `?api-version=`.
+    /// `x-api-key`, and all Azure endpoints need `?api-version=`.
     is_azure: bool,
     /// Classic Azure OpenAI (*.openai.azure.com / *.cognitiveservices.azure.com)
-    /// needs `?api-version=` on the URL.  Azure AI Foundry does not.
+    /// uses a different api-version than Azure AI Foundry.
     is_azure_openai: bool,
 }
 
@@ -416,7 +416,7 @@ impl AnthropicProvider {
         thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
         let base = self.base_url.trim_end_matches('/');
-        let url = if base.contains("/v1/messages") {
+        let mut url = if base.contains("/v1/messages") {
             // Full endpoint URL (e.g. Azure AI Foundry Target URI) — use as-is.
             base.to_string()
         } else if self.is_azure_openai {
@@ -429,6 +429,12 @@ impl AnthropicProvider {
         } else {
             format!("{}/v1/messages", base)
         };
+
+        // Azure endpoints (including AI Foundry) require ?api-version=
+        if self.is_azure && !url.contains("api-version") {
+            let sep = if url.contains('?') { '&' } else { '?' };
+            url = format!("{}{}api-version=2025-03-01-preview", url, sep);
+        }
 
         let (system, mut formatted_messages) = Self::format_messages(messages);
 
