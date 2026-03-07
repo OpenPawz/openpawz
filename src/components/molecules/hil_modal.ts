@@ -122,7 +122,13 @@ interface BubbleOptions {
   tier: string;
   risk: RiskClassification | null;
   pattern: string | null;
-  netAudit: { isNetworkRequest: boolean; targets: string[]; isExfiltration: boolean; exfiltrationReason?: string | null; allTargetsLocal: boolean };
+  netAudit: {
+    isNetworkRequest: boolean;
+    targets: string[];
+    isExfiltration: boolean;
+    exfiltrationReason?: string | null;
+    allTargetsLocal: boolean;
+  };
   requireTypeToConfirm: boolean;
   onAllow: () => void;
   onDeny: () => void;
@@ -168,7 +174,8 @@ function injectChatBubble(opts: BubbleOptions): HTMLElement | null {
   // Network audit banner
   let netBannerHtml = '';
   if (netAudit.isNetworkRequest) {
-    const targetStr = netAudit.targets.length > 0 ? netAudit.targets.join(', ') : 'unknown destination';
+    const targetStr =
+      netAudit.targets.length > 0 ? netAudit.targets.join(', ') : 'unknown destination';
     if (netAudit.isExfiltration) {
       netBannerHtml = `<div class="chat-approval-net-banner net-exfiltration"><span class="ms" style="font-size:14px">shield</span> <strong>Possible Data Exfiltration</strong> → ${escHtml(targetStr)}</div>`;
     } else if (!netAudit.allTargetsLocal) {
@@ -179,20 +186,27 @@ function injectChatBubble(opts: BubbleOptions): HTMLElement | null {
   }
 
   // Type-to-confirm (critical tools only)
-  const typeConfirmHtml = (isCritical && requireTypeToConfirm) ? `
+  const typeConfirmHtml =
+    isCritical && requireTypeToConfirm
+      ? `
     <div class="chat-approval-type-confirm">
       <label>Type <strong>ALLOW</strong> to continue:</label>
       <input type="text" class="bubble-type-input" spellcheck="false" autocomplete="off" />
-    </div>` : '';
+    </div>`
+      : '';
 
   // Always-allow-pattern dropdown item
-  const patternItemHtml = pattern ? `
+  const patternItemHtml = pattern
+    ? `
           <button class="approval-dropdown-item bubble-pattern-btn">
             <span class="ms" style="font-size:14px">rule</span> Always allow pattern: <code>${escHtml(pattern)}</code>
-          </button>` : '';
+          </button>`
+    : '';
 
   // Session override dropdown items (not for dangerous tools)
-  const sessionItems = isDangerous ? '' : `
+  const sessionItems = isDangerous
+    ? ''
+    : `
           <button class="approval-dropdown-item bubble-session-btn" data-minutes="480">
             <span class="ms" style="font-size:14px">check_circle</span> Allow all for this session
           </button>
@@ -218,11 +232,15 @@ function injectChatBubble(opts: BubbleOptions): HTMLElement | null {
     <div class="chat-approval-subtitle"><code>${escHtml(toolName)}</code>${args && 'command' in args ? ` — <span class="approval-cmd-preview">${escHtml(String(args.command).slice(0, 120))}</span>` : ''}</div>
     ${riskBannerHtml}
     ${netBannerHtml}
-    ${argsJson ? `
+    ${
+      argsJson
+        ? `
     <details class="chat-approval-details">
       <summary>Parameters</summary>
       <pre class="chat-approval-args-code"><code>${escHtml(argsJson)}</code></pre>
-    </details>` : ''}
+    </details>`
+        : ''
+    }
     ${typeConfirmHtml}
     <div class="chat-approval-buttons">
       <div class="approval-primary-group">

@@ -5,7 +5,7 @@
 use crate::engine::engram::CognitiveState;
 use crate::engine::memory::EmbeddingClient;
 use crate::engine::sessions::SessionStore;
-use crate::engine::speculative::{SpeculativeCache, SpeculationConfig};
+use crate::engine::speculative::{SpeculationConfig, SpeculativeCache};
 use crate::engine::tool_index::ToolIndex;
 use crate::engine::tool_registry::PersistentToolRegistry;
 use crate::engine::types::*;
@@ -403,9 +403,7 @@ impl EngineState {
 
         // Load speculation config from DB or use defaults
         let speculation_config = match store.get_config("speculation_config") {
-            Ok(Some(json)) => {
-                serde_json::from_str::<SpeculationConfig>(&json).unwrap_or_default()
-            }
+            Ok(Some(json)) => serde_json::from_str::<SpeculationConfig>(&json).unwrap_or_default(),
             _ => SpeculationConfig::default(),
         };
 

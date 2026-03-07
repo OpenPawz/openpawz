@@ -42,13 +42,12 @@ pub fn get_enabled_skill_instructions(
             continue;
         }
 
-        // For skills with credentials, inject actual values into the instructions
-        // UNLESS the skill has built-in tool_executor auth (credentials stay server-side)
-        let hidden_credential_skills = ["coinbase", "dex"];
-        let instructions = if !def.required_credentials.is_empty()
-            && !hidden_credential_skills.contains(&def.id.as_str())
-        {
-            inject_credentials_into_instructions(
+        // For skills with credentials, append a notice that creds are configured.
+        // §Security: Actual credential values are NEVER injected into the prompt.
+        // All skills — including coinbase, dex, and integrations — fetch credentials
+        // server-side at tool execution time via `get_skill_creds()`.
+        let instructions = if !def.required_credentials.is_empty() {
+            append_credential_notice(
                 store,
                 &def.id,
                 &def.required_credentials,
@@ -89,9 +88,9 @@ pub fn get_enabled_skill_instructions(
             continue;
         }
 
-        // TOML skills always get credential injection (no hidden-credential exceptions)
+        // TOML skills also get credential notice (never raw values)
         let instructions = if !def.required_credentials.is_empty() {
-            inject_credentials_into_instructions(
+            append_credential_notice(
                 store,
                 &def.id,
                 &def.required_credentials,
@@ -213,14 +212,13 @@ fn compress_skill_sections(sections: &[String], community: &str, budget: usize) 
     };
     let section_budget = budget.saturating_sub(overhead + community_reserve);
 
-    // Classify: sections with credentials are "priority" (they have actual API keys/URLs)
+    // Classify: sections with credentials are "priority" (they have configured credentials)
     let has_credentials = |s: &str| -> bool {
         let sl = s.to_lowercase();
-        sl.contains("api key")
+        sl.contains("credentials configured")
+            || sl.contains("api key")
             || sl.contains("api_key")
             || sl.contains("bearer ")
-            || sl.contains("token:")
-            || sl.contains("credentials available")
             || sl.contains("base url:")
             || sl.contains("endpoint:")
     };
@@ -327,10 +325,14 @@ fn compress_one_section(section: &str, max_chars: usize) -> String {
     )
 }
 
-/// Inject decrypted credential values into instruction text.
-/// Adds a "Credentials available:" block at the end of the instructions
-/// so the agent knows the actual API keys/tokens to use.
-fn inject_credentials_into_instructions(
+/// Append a credential-availability notice to skill instructions.
+///
+/// §Security: We NEVER inject actual decrypted credential values into the
+/// LLM prompt.  Instead we tell the model which credential fields are
+/// configured so it knows to use `rest_api_call`, `fetch`, or the
+/// skill-specific tool — all of which pull secrets server-side at
+/// execution time via `get_skill_creds()`.
+fn append_credential_notice(
     store: &SessionStore,
     skill_id: &str,
     required_credentials: &[CredentialField],
@@ -338,23 +340,20 @@ fn inject_credentials_into_instructions(
 ) -> String {
     match get_skill_credentials(store, skill_id) {
         Ok(creds) if !creds.is_empty() => {
-            let cred_lines: Vec<String> = required_credentials
+            let configured: Vec<&str> = required_credentials
                 .iter()
-                .filter_map(|field| {
-                    creds
-                        .get(&field.key)
-                        .map(|val| format!("- {} = {}", field.key, val))
-                })
+                .filter(|field| creds.contains_key(&field.key))
+                .map(|field| field.key.as_str())
                 .collect();
 
-            if cred_lines.is_empty() {
+            if configured.is_empty() {
                 return instructions.to_string();
             }
 
             format!(
-                "{}\n\nCredentials (use these values directly — do NOT ask the user for them):\n{}",
+                "{}\n\nCredentials configured (auto-injected at tool execution time — do NOT ask the user for them): {}",
                 instructions,
-                cred_lines.join("\n")
+                configured.join(", ")
             )
         }
         _ => instructions.to_string(),

@@ -200,19 +200,16 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
         base.join("database.sqlite"),              // Docker mode
     ];
 
-    let db_path = candidates
-        .iter()
-        .find(|p| p.exists())
-        .ok_or_else(|| {
-            format!(
-                "n8n database not found at any of: {}",
-                candidates
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-        })?;
+    let db_path = candidates.iter().find(|p| p.exists()).ok_or_else(|| {
+        format!(
+            "n8n database not found at any of: {}",
+            candidates
+                .iter()
+                .map(|p| p.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    })?;
 
     log::info!("[n8n] Found n8n database at {}", db_path.display());
 
@@ -248,7 +245,9 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
 
     let has_role_col = columns.iter().any(|c| c == "role");
     let has_role_slug = columns.iter().any(|c| c == "roleSlug");
-    let has_global_role = columns.iter().any(|c| c == "globalRole" || c == "global_role");
+    let has_global_role = columns
+        .iter()
+        .any(|c| c == "globalRole" || c == "global_role");
 
     // ── Diagnostic dump ────────────────────────────────────────────
     // Use only columns we know exist: id, email, password always exist.
@@ -264,7 +263,9 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
             for row in rows.flatten() {
                 log::info!(
                     "[n8n] DB user: id={}, email={}, has_password={}",
-                    row.0, row.1, row.2
+                    row.0,
+                    row.1,
+                    row.2
                 );
             }
         }
@@ -282,7 +283,11 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
     let sql = format!("UPDATE user SET {} WHERE email = ?1", update_set);
     let updated = conn.execute(&sql, [OWNER_EMAIL]).unwrap_or(0);
     if updated > 0 {
-        log::info!("[n8n] Reset owner by email '{}' ({} row(s))", OWNER_EMAIL, updated);
+        log::info!(
+            "[n8n] Reset owner by email '{}' ({} row(s))",
+            OWNER_EMAIL,
+            updated
+        );
         return Ok(());
     }
 
@@ -298,7 +303,10 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
 
     // Try by roleSlug column (some n8n versions use this instead of role)
     if has_role_slug {
-        let sql = format!("UPDATE user SET {} WHERE \"roleSlug\" = 'global:owner'", update_set);
+        let sql = format!(
+            "UPDATE user SET {} WHERE \"roleSlug\" = 'global:owner'",
+            update_set
+        );
         let updated = conn.execute(&sql, []).unwrap_or(0);
         if updated > 0 {
             log::info!("[n8n] Reset owner by roleSlug column ({} row(s))", updated);
@@ -330,7 +338,10 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
     let sql = format!("UPDATE user SET {} WHERE password IS NOT NULL", update_set);
     let updated = conn.execute(&sql, []).unwrap_or(0);
     if updated > 0 {
-        log::warn!("[n8n] Reset ALL user passwords ({} row(s)) — could not match by email/role", updated);
+        log::warn!(
+            "[n8n] Reset ALL user passwords ({} row(s)) — could not match by email/role",
+            updated
+        );
         return Ok(());
     }
 
@@ -343,7 +354,8 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
         if updated > 0 {
             log::info!(
                 "[n8n] Force-cleared {} column on {} user(s) (passwords already NULL)",
-                la_col, updated
+                la_col,
+                updated
             );
             return Ok(());
         }
@@ -367,7 +379,9 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
         log::info!("[n8n] User table is empty — inserting shell owner user");
 
         let user_id = uuid::Uuid::new_v4().to_string();
-        let now = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S%.3f").to_string();
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%d %H:%M:%S%.3f")
+            .to_string();
 
         // Determine the correct role identifier.
         // The schema has `roleSlug` column (FK to role.slug).
@@ -385,7 +399,8 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
             Ok(_) => {
                 log::info!(
                     "[n8n] Inserted shell owner user (id={}, roleSlug={})",
-                    user_id, role_value
+                    user_id,
+                    role_value
                 );
                 return Ok(());
             }
@@ -494,14 +509,24 @@ pub async fn setup_owner_if_needed(base_url: &str) -> Result<(), String> {
                     "[n8n] Owner setup password rejected by n8n: {}",
                     safe_truncate(&body, 200)
                 );
-                return Err(format!("Owner setup password rejected: {}", safe_truncate(&body, 200)));
+                return Err(format!(
+                    "Owner setup password rejected: {}",
+                    safe_truncate(&body, 200)
+                ));
             }
-            log::info!("[n8n] Owner setup returned 400 (already exists): {}", safe_truncate(&body, 200));
+            log::info!(
+                "[n8n] Owner setup returned 400 (already exists): {}",
+                safe_truncate(&body, 200)
+            );
             Ok(())
         }
         status => {
             let body = resp.text().await.unwrap_or_default();
-            log::warn!("[n8n] Owner setup returned HTTP {}: {}", status, safe_truncate(&body, 200));
+            log::warn!(
+                "[n8n] Owner setup returned HTTP {}: {}",
+                status,
+                safe_truncate(&body, 200)
+            );
             Err(format!(
                 "Owner setup returned HTTP {}: {}",
                 status,
@@ -767,7 +792,10 @@ pub async fn retrieve_mcp_token(base_url: &str, _api_key: &str) -> Result<String
 
     match try_retrieve(base, &password).await {
         Ok(token) => Ok(token),
-        Err((_, msg)) => Err(format!("MCP token retrieval failed after owner reset: {}", msg)),
+        Err((_, msg)) => Err(format!(
+            "MCP token retrieval failed after owner reset: {}",
+            msg
+        )),
     }
 }
 
@@ -812,7 +840,11 @@ pub async fn session_client(base_url: &str) -> Result<reqwest::Client, String> {
             let body = resp.text().await.unwrap_or_default();
             return Err((
                 status,
-                format!("n8n session login HTTP {}: {}", status, safe_truncate(&body, 200)),
+                format!(
+                    "n8n session login HTTP {}: {}",
+                    status,
+                    safe_truncate(&body, 200)
+                ),
             ));
         }
 

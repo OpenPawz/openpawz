@@ -10,7 +10,7 @@ use crate::atoms::types::*;
 use crate::engine::skills;
 use crate::engine::state::EngineState;
 use crate::engine::util::safe_truncate;
-use log::info;
+use log::{debug, info};
 use tauri::Manager;
 
 pub mod agent_comms;
@@ -173,12 +173,9 @@ pub async fn execute_tool(
     let name = &tool_call.function.name;
     let args_str = &tool_call.function.arguments;
 
-    info!(
-        "[engine] Executing tool: {} agent={} args={}",
-        name,
-        agent_id,
-        safe_truncate(args_str, 200)
-    );
+    // §Security: Log tool invocation at debug level only, and redact args
+    // to prevent credential fragments from leaking into logs.
+    debug!("[engine] Executing tool: {} agent={}", name, agent_id,);
 
     // Default empty/whitespace args to {} — models sometimes send no args
     // for tools that take no parameters (e.g. mcp_refresh).

@@ -63,6 +63,33 @@ pub async fn delegate_to_worker(
 
     let worker_model = worker_model.filter(|m| !m.is_empty())?;
 
+    // §Security: Check if the tool is in the blocked list BEFORE sending any
+    // arguments to the worker model.  Previously, blocked tool arguments were
+    // forwarded to the worker in the task prompt before the worker's own
+    // execute_worker_tool could reject them — leaking potentially sensitive
+    // tool call content to the cheaper/third-party worker model.
+    {
+        let name_lower = tool_call.function.name.to_lowercase();
+        const WORKER_BLOCKED_TOOLS: &[&str] = &[
+            "exec",
+            "write_file",
+            "delete_file",
+            "append_file",
+            "email_send",
+            "webhook_send",
+            "rest_api_call",
+            "slack_send",
+            "github_api",
+        ];
+        if WORKER_BLOCKED_TOOLS.iter().any(|b| name_lower == *b) {
+            info!(
+                "[worker-delegate] Tool '{}' is blocked for worker — returning to main agent",
+                tool_call.function.name
+            );
+            return None; // Signal caller to handle directly (HIL path)
+        }
+    }
+
     info!(
         "[worker-delegate] Delegating '{}' to worker model '{}'",
         tool_call.function.name, worker_model

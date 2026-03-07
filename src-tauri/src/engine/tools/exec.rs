@@ -99,6 +99,16 @@ async fn execute_exec(
                 r"echo\s.*\$.*secret",
                 r"echo\s.*\$.*token",
                 r"echo\s.*\$.*password",
+                // Encoding-based exfiltration bypass
+                r"base64.*\|.*curl",
+                r"base64.*\|.*wget",
+                r"xxd.*\|.*curl",
+                r"openssl.*enc.*\|.*curl",
+                // Env dumping
+                r"\benv\b\s*\|",
+                r"\bprintenv\b\s*$",
+                r"\bset\b\s*\|",
+                r"\bexport\s+-p\b",
                 // Data exfiltration via curl/wget
                 r"curl\s.*-d\s.*@",
                 r"curl\s.*--data.*@",

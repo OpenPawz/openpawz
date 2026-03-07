@@ -229,7 +229,12 @@ export function createChatInput(config: ChatInputConfig = {}): ChatInputControll
     }
 
     // Input history: arrow-up/down when cursor is at start/end or empty
-    if (e.key === 'ArrowUp' && !e.shiftKey && textarea.selectionStart === 0 && inputHistory.length > 0) {
+    if (
+      e.key === 'ArrowUp' &&
+      !e.shiftKey &&
+      textarea.selectionStart === 0 &&
+      inputHistory.length > 0
+    ) {
       e.preventDefault();
       if (historyIdx === -1) historyScratch = textarea.value;
       if (historyIdx < inputHistory.length - 1) {
@@ -240,7 +245,12 @@ export function createChatInput(config: ChatInputConfig = {}): ChatInputControll
       }
       return;
     }
-    if (e.key === 'ArrowDown' && !e.shiftKey && historyIdx >= 0 && textarea.selectionEnd === textarea.value.length) {
+    if (
+      e.key === 'ArrowDown' &&
+      !e.shiftKey &&
+      historyIdx >= 0 &&
+      textarea.selectionEnd === textarea.value.length
+    ) {
       e.preventDefault();
       historyIdx--;
       textarea.value = historyIdx >= 0 ? inputHistory[historyIdx] : historyScratch;
@@ -309,9 +319,19 @@ export function createChatInput(config: ChatInputConfig = {}): ChatInputControll
   // ── @ Mention System ──────────────────────────────────────────────────
 
   const AT_MENTIONS: Array<{ mention: string; label: string; icon: string; desc: string }> = [
-    { mention: '@workspace', label: 'Workspace', icon: 'folder_open', desc: 'Include workspace context' },
+    {
+      mention: '@workspace',
+      label: 'Workspace',
+      icon: 'folder_open',
+      desc: 'Include workspace context',
+    },
     { mention: '@terminal', label: 'Terminal', icon: 'terminal', desc: 'Include terminal output' },
-    { mention: '@selection', label: 'Selection', icon: 'select_all', desc: 'Include selected text' },
+    {
+      mention: '@selection',
+      label: 'Selection',
+      icon: 'select_all',
+      desc: 'Include selected text',
+    },
     { mention: '@web', label: 'Web', icon: 'language', desc: 'Search the web' },
     { mention: '@memory', label: 'Memory', icon: 'psychology', desc: 'Search long-term memory' },
     { mention: '@tasks', label: 'Tasks', icon: 'task_alt', desc: 'Current tasks context' },
@@ -326,9 +346,7 @@ export function createChatInput(config: ChatInputConfig = {}): ChatInputControll
     }
     const query = atMatch[1].toLowerCase();
     const matches = AT_MENTIONS.filter(
-      (m) =>
-        m.mention.toLowerCase().includes(`@${query}`) ||
-        m.label.toLowerCase().includes(query),
+      (m) => m.mention.toLowerCase().includes(`@${query}`) || m.label.toLowerCase().includes(query),
     );
     if (matches.length === 0) {
       if (atPopup) atPopup.style.display = 'none';
@@ -382,16 +400,14 @@ export function createChatInput(config: ChatInputConfig = {}): ChatInputControll
     }
     contextChips.style.display = 'flex';
     contextChips.innerHTML = activeContexts
-      .map(
-        (c, i) => {
-          const m = AT_MENTIONS.find((m) => m.mention === c.type);
-          return `<span class="context-chip" data-idx="${i}">
+      .map((c, i) => {
+        const m = AT_MENTIONS.find((m) => m.mention === c.type);
+        return `<span class="context-chip" data-idx="${i}">
           <span class="ms" style="font-size:12px">${m?.icon ?? 'label'}</span>
           ${escHtml(c.label)}
           <button class="context-chip-remove" data-idx="${i}" title="Remove">×</button>
         </span>`;
-        },
-      )
+      })
       .join('');
     contextChips.querySelectorAll('.context-chip-remove').forEach((btn) => {
       btn.addEventListener('click', (e) => {

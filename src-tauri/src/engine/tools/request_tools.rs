@@ -200,7 +200,10 @@ async fn execute_request_tools(
                 }
             }
             let tool_index = state.tool_index.lock().await;
-            tool_index.search(query, 6, client).await.unwrap_or_default()
+            tool_index
+                .search(query, 6, client)
+                .await
+                .unwrap_or_default()
         } else {
             Vec::new()
         }

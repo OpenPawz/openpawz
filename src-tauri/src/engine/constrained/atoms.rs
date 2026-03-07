@@ -153,7 +153,9 @@ pub fn detect_constraints(provider: ProviderKind, model: &str) -> ConstraintConf
         // ── Grok, Mistral, Moonshot, Azure AI Foundry ──────────────
         // OpenAI-compatible APIs that don't support strict mode.
         // Foundry hosts heterogeneous models; safest default is no-strict.
-        ProviderKind::Grok | ProviderKind::Mistral | ProviderKind::Moonshot
+        ProviderKind::Grok
+        | ProviderKind::Mistral
+        | ProviderKind::Moonshot
         | ProviderKind::AzureFoundry => ConstraintConfig {
             level: ConstraintLevel::Structured,
             strict_tools: false,

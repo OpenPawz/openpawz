@@ -36,7 +36,12 @@ function generateFollowUpSuggestions(content: string): string[] {
     suggestions.push('How do I fix this?');
   }
   // If it mentions files or configuration
-  if (lower.includes('config') || lower.includes('setting') || lower.includes('.json') || lower.includes('.yaml')) {
+  if (
+    lower.includes('config') ||
+    lower.includes('setting') ||
+    lower.includes('.json') ||
+    lower.includes('.yaml')
+  ) {
     suggestions.push('Show me an example configuration');
   }
   // Generic follow-up if we have room

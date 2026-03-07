@@ -6,6 +6,7 @@ use crate::commands::state::EngineState;
 use crate::engine::channels;
 use crate::engine::mcp::types::{McpServerConfig, McpTransport};
 use crate::engine::skills;
+use crate::engine::skills::{encrypt_credential, get_vault_key};
 use log::info;
 use tauri::State;
 
@@ -276,7 +277,7 @@ pub async fn engine_toml_skill_install(
                 _ => McpTransport::Stdio,
             };
 
-            let config = McpServerConfig {
+            let mut config = McpServerConfig {
                 id: format!("skill-{}", skill_id),
                 name: manifest.skill.name.clone(),
                 transport,
@@ -286,6 +287,29 @@ pub async fn engine_toml_skill_install(
                 url: mcp.url.clone(),
                 enabled: true,
             };
+
+            // §Security: Encrypt env values before persisting to DB
+            if let Ok(vault_key) = get_vault_key() {
+                for val in config.env.values_mut() {
+                    if !val.is_empty() && !val.starts_with("aes:") {
+                        if let Ok(enc) = encrypt_credential(val, &vault_key) {
+                            *val = enc;
+                        }
+                    }
+                }
+            }
+
+            // Keep a decrypted copy for the immediate connect() call
+            let mut connect_config = config.clone();
+            if let Ok(vault_key) = get_vault_key() {
+                for val in connect_config.env.values_mut() {
+                    if val.starts_with("aes:") {
+                        if let Ok(dec) = skills::decrypt_credential(val, &vault_key) {
+                            *val = dec;
+                        }
+                    }
+                }
+            }
 
             // Persist to MCP server list
             let mut servers: Vec<McpServerConfig> =
@@ -303,9 +327,9 @@ pub async fn engine_toml_skill_install(
                 );
             }
 
-            // Connect the MCP server
+            // Connect the MCP server (with decrypted env)
             let mut reg = state.mcp_registry.lock().await;
-            if let Err(e) = reg.connect(config).await {
+            if let Err(e) = reg.connect(connect_config).await {
                 // Non-fatal: skill is installed, MCP connection can be retried
                 log::warn!(
                     "[engine] MCP server for skill '{}' failed to connect: {}",
