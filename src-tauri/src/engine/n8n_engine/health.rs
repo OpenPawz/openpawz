@@ -4,6 +4,7 @@
 
 use super::types::*;
 use crate::engine::util::safe_truncate;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 // ── Probing ────────────────────────────────────────────────────────────
 
@@ -168,28 +169,22 @@ fn owner_password() -> String {
 
 /// Reset the n8n owner so `POST /rest/owner/setup` can re-run.
 ///
-/// n8n's `setupOwner()` flow works as follows:
+/// n8n's `setupOwner()` flow:
 ///   1. `hasInstanceOwner()` — queries the `user` table for a user with
 ///      the `global:owner` role whose `password` or `lastActiveAt` is
 ///      NOT NULL.  If found → 400 "already set up".
 ///   2. If NOT found → finds the "shell" owner user (role = global:owner,
 ///      password IS NULL) and sets the password on it.
 ///
-/// Simply deleting the user row fails because step (2) then can't find
-/// the shell user to update (→ 500).  Instead, we NULL out the password
-/// and lastActiveAt fields, turning the existing owner back into a shell
-/// user.  This makes `hasInstanceOwner()` return false and lets
-/// `setupOwner()` find and re-initialize the shell user with our new
-/// password.
+/// We NULL out the password and lastActiveAt fields for ALL users with
+/// the owner role — not just `agent@paw.local` — in case the owner was
+/// set up via a different path (web UI, earlier code version, etc.).
 fn reset_n8n_owner_in_db() -> Result<(), String> {
     let base = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
         .join(".openpawz")
         .join("n8n-data");
 
-    // n8n stores its database at different paths depending on the mode:
-    //   Process mode (npx):  $N8N_USER_FOLDER/.n8n/database.sqlite
-    //   Docker mode:         $bind_mount/database.sqlite  (mounted as /home/node/.n8n)
     let candidates = [
         base.join(".n8n").join("database.sqlite"), // Process mode
         base.join("database.sqlite"),              // Docker mode
@@ -214,30 +209,125 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
     let conn = rusqlite::Connection::open(db_path)
         .map_err(|e| format!("Failed to open n8n database: {}", e))?;
 
-    // Set a busy timeout so we don't fail if n8n has the DB locked
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
 
-    // NULL out password + lastActiveAt so n8n treats this as a "shell" user
-    // that hasn't been set up yet.  The owner row stays intact (preserving
-    // role, shared_workflow, shared_credentials references) — only the
-    // credential fields are cleared.
-    let updated: usize = conn
+    // Log what we find for diagnostics
+    if let Ok(mut stmt) = conn.prepare(
+        "SELECT id, email, role, password IS NOT NULL as has_pw FROM user LIMIT 10"
+    ) {
+        if let Ok(rows) = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0).unwrap_or_default(),
+                row.get::<_, String>(1).unwrap_or_default(),
+                row.get::<_, String>(2).unwrap_or_default(),
+                row.get::<_, bool>(3).unwrap_or(false),
+            ))
+        }) {
+            for row in rows.flatten() {
+                log::info!(
+                    "[n8n] DB user: id={}, email={}, role={}, has_password={}",
+                    row.0, row.1, row.2, row.3
+                );
+            }
+        }
+    }
+
+    // Try updating by email first (most specific)
+    let updated_by_email: usize = conn
         .execute(
             "UPDATE user SET password = NULL, \"lastActiveAt\" = NULL WHERE email = ?1",
             [OWNER_EMAIL],
         )
-        .map_err(|e| format!("Failed to reset n8n owner password: {}", e))?;
+        .unwrap_or(0);
 
-    if updated > 0 {
+    if updated_by_email > 0 {
         log::info!(
-            "[n8n] Reset owner '{}' password in n8n database (shell-user state restored)",
+            "[n8n] Reset owner by email '{}' ({} row(s) → shell-user state)",
             OWNER_EMAIL,
+            updated_by_email,
         );
-    } else {
-        log::debug!("[n8n] No owner '{}' found in n8n database", OWNER_EMAIL);
+        return Ok(());
     }
 
+    // Fallback: update ANY user with the global owner role
+    // n8n stores role as a string column "global:owner" in recent versions
+    let updated_by_role: usize = conn
+        .execute(
+            "UPDATE user SET password = NULL, \"lastActiveAt\" = NULL \
+             WHERE role = 'global:owner'",
+            [],
+        )
+        .unwrap_or(0);
+
+    if updated_by_role > 0 {
+        log::info!(
+            "[n8n] Reset owner by role 'global:owner' ({} row(s) → shell-user state)",
+            updated_by_role,
+        );
+        return Ok(());
+    }
+
+    // Last resort: reset ALL users' passwords (usually just 1 user in headless mode)
+    let updated_all: usize = conn
+        .execute(
+            "UPDATE user SET password = NULL, \"lastActiveAt\" = NULL \
+             WHERE password IS NOT NULL",
+            [],
+        )
+        .unwrap_or(0);
+
+    if updated_all > 0 {
+        log::warn!(
+            "[n8n] Reset ALL user passwords ({} row(s) → shell-user state) — \
+             could not match by email or role",
+            updated_all,
+        );
+    } else {
+        log::warn!("[n8n] No users with passwords found in n8n database — cannot reset");
+    }
+
+    Ok(())
+}
+
+// ── Centralized 401 recovery ───────────────────────────────────────────
+
+/// Ensures only one concurrent caller performs the owner password reset.
+/// Subsequent callers skip the reset and just wait for the first to finish.
+static OWNER_RECOVERY_DONE: AtomicBool = AtomicBool::new(false);
+
+/// One-shot 401 recovery: reset the owner to shell-user state in the DB,
+/// then re-run `setup_owner_if_needed` to set our vault password.
+///
+/// Only the first caller performs the actual reset.  Concurrent callers
+/// see that recovery is already in progress and wait briefly before
+/// returning, allowing the primary caller to finish.
+async fn recover_owner_401(base_url: &str) -> Result<(), String> {
+    // compare_exchange: only the first caller performs recovery
+    if OWNER_RECOVERY_DONE
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_err()
+    {
+        // Another caller already did (or is doing) recovery — just wait
+        log::info!("[n8n] Owner recovery already in progress, waiting…");
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        return Ok(());
+    }
+
+    log::info!("[n8n] Starting owner 401 recovery (one-shot)");
+
+    if let Err(e) = reset_n8n_owner_in_db() {
+        log::warn!("[n8n] Could not reset owner in database: {}", e);
+        return Err(format!("Login 401 and owner reset failed: {}", e));
+    }
+
+    // Wait for n8n to pick up the DB change on next query
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    // Re-run owner setup (sets our password on the now-shell user)
+    setup_owner_if_needed(base_url).await?;
+
+    log::info!("[n8n] Owner 401 recovery complete");
     Ok(())
 }
 
@@ -384,17 +474,8 @@ pub async fn enable_mcp_access(base_url: &str, _api_key: &str) -> Result<(), Str
         Err((_, msg)) => return Err(msg),
     }
 
-    // Recovery: reset owner to shell-user state, re-run setup with our password, retry
-    if let Err(e) = reset_n8n_owner_in_db() {
-        log::warn!("[n8n] Could not reset owner in database: {}", e);
-        return Err("Login failed (HTTP 401) and owner reset failed — MCP unavailable".into());
-    }
-
-    // Wait briefly for n8n to pick up the DB change
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
-    // Re-run owner setup (sets our password on the now-shell user)
-    setup_owner_if_needed(base_url).await?;
+    // Centralized recovery — only runs once even if multiple callers hit 401
+    recover_owner_401(base_url).await?;
 
     // Retry login + enable
     match try_enable(base, &password).await {
@@ -552,14 +633,8 @@ pub async fn retrieve_mcp_token(base_url: &str, _api_key: &str) -> Result<String
         Err((_, msg)) => return Err(msg),
     }
 
-    // Recovery: reset owner to shell-user state, re-run setup, retry
-    if let Err(e) = reset_n8n_owner_in_db() {
-        log::warn!("[n8n] Could not reset owner in database: {}", e);
-        return Err("Login failed (HTTP 401) and owner reset failed — MCP unavailable".into());
-    }
-
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    setup_owner_if_needed(base_url).await?;
+    // Centralized recovery — only runs once even if multiple callers hit 401
+    recover_owner_401(base_url).await?;
 
     match try_retrieve(base, &password).await {
         Ok(token) => Ok(token),
@@ -629,12 +704,8 @@ pub async fn session_client(base_url: &str) -> Result<reqwest::Client, String> {
         Err((_, msg)) => return Err(msg),
     }
 
-    // Recovery: reset owner to shell-user state, re-run setup, retry
-    if let Err(e) = reset_n8n_owner_in_db() {
-        return Err(format!("Session login 401 and owner reset failed: {}", e));
-    }
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    setup_owner_if_needed(base).await?;
+    // Centralized recovery — only runs once even if multiple callers hit 401
+    recover_owner_401(base).await?;
 
     match try_login(base, &password).await {
         Ok(client) => Ok(client),
