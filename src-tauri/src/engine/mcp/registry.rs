@@ -112,7 +112,7 @@ impl McpRegistry {
                         "[mcp] Injection detected in result from server '{}' tool '{}' (severity={:?})",
                         server_id, tool_name, sev
                     );
-                    if sev >= InjectionSeverity::High {
+                    if sev >= InjectionSeverity::Medium {
                         Ok(sanitize_recalled_memory(&text))
                     } else {
                         Ok(text)
@@ -129,7 +129,7 @@ impl McpRegistry {
                         "[mcp] Injection detected in error from server '{}' tool '{}' (severity={:?})",
                         server_id, tool_name, sev
                     );
-                    if sev >= InjectionSeverity::High {
+                    if sev >= InjectionSeverity::Medium {
                         Err(sanitize_recalled_memory(&err))
                     } else {
                         Err(err)

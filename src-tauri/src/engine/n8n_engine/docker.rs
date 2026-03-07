@@ -132,6 +132,12 @@ pub async fn provision_docker_container(
         "N8N_BASIC_AUTH_ACTIVE=false".to_string(),
         "N8N_SECURE_COOKIE=false".to_string(),
         format!("GENERIC_TIMEZONE={}", tz),
+        // §Security: These secrets are passed as env vars because n8n has no
+        // file-based secret injection. They are visible in `docker inspect` and
+        // /proc/<pid>/environ inside the container. This is acceptable for a
+        // local desktop app (same user context). If the threat model changes,
+        // use Docker Swarm secrets or a custom entrypoint that reads from a
+        // mounted volume.
         format!("N8N_ENCRYPTION_KEY={}", encryption_key),
         format!("N8N_API_KEY={}", api_key),
         // Disable telemetry for self-hosted
@@ -246,7 +252,7 @@ pub async fn provision_docker_container(
 
     // Enable MCP access with retry (disabled by default even after owner creation)
     for attempt in 1..=3 {
-        match super::health::enable_mcp_access(&url).await {
+        match super::health::enable_mcp_access(&url, &api_key).await {
             Ok(_) => break,
             Err(e) if attempt < 3 => {
                 log::info!(
@@ -381,7 +387,7 @@ pub async fn restart_existing_container(
         }
         // Ensure MCP access is enabled (with retry)
         for attempt in 1..=3 {
-            match super::health::enable_mcp_access(&url).await {
+            match super::health::enable_mcp_access(&url, &config.api_key).await {
                 Ok(_) => break,
                 Err(e) if attempt < 3 => {
                     log::info!(

@@ -77,6 +77,16 @@ const SAFE_TOOLS: &[&str] = &[
     "search_ncnodes",
     "n8n_list_workflows",
     "mcp_refresh",
+    // Canvas (internal UI — zero side effects)
+    "canvas_push",
+    "canvas_update",
+    "canvas_save",
+    "canvas_load",
+    "canvas_list_dashboards",
+    "canvas_delete_dashboard",
+    "canvas_list_templates",
+    "canvas_from_template",
+    "canvas_create_template",
 ];
 
 // ── Unified loop ───────────────────────────────────────────────────────
@@ -172,10 +182,10 @@ pub(crate) async fn run_orchestrator_loop(
                     )
                 });
                 if let Some(id) = &tc_delta.id {
-                    entry.0 = id.clone();
+                    entry.0.push_str(id);
                 }
                 if let Some(name) = &tc_delta.function_name {
-                    entry.1 = name.clone();
+                    entry.1.push_str(name);
                 }
                 if let Some(args_delta) = &tc_delta.arguments_delta {
                     entry.2.push_str(args_delta);
@@ -237,7 +247,13 @@ pub(crate) async fn run_orchestrator_loop(
             let (id, name, arguments, thought_sig, thoughts) = tool_call_map
                 .get(&idx)
                 .ok_or_else(|| EngineError::Other(format!("Missing tool call at index {}", idx)))?;
-            let call_id = if id.is_empty() {
+            let call_id = if id.is_empty() || (id.len() < 8 && !id.starts_with("call_")) {
+                if !id.is_empty() {
+                    log::warn!(
+                        "[orchestrator] Replacing suspicious tool_call id '{}' (len={}) with generated UUID",
+                        id, id.len()
+                    );
+                }
                 format!("call_{}", uuid::Uuid::new_v4())
             } else {
                 id.clone()

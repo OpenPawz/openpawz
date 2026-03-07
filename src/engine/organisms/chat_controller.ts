@@ -42,6 +42,8 @@ import {
   appendStreamingDelta as rendererAppendDelta,
   appendThinkingDelta as rendererAppendThinking,
   scrollToBottom as rendererScrollToBottom,
+  showToolStep,
+  clearToolStep,
   type RenderOpts,
 } from '../molecules/chat_renderer';
 import {
@@ -194,6 +196,14 @@ function buildRenderOpts(): RenderOpts {
       speakMessage(text, btn, _ttsState);
       syncTtsToAppState();
     },
+    onFeedback: (messageId: string, helpful: boolean) => {
+      const sessionId = appState.currentSessionKey;
+      const agentId = agent?.id ?? 'default';
+      if (!sessionId) return;
+      pawEngine
+        .messageFeedback(sessionId, messageId, agentId, helpful)
+        .catch((e) => console.warn('[chat] Feedback error:', e));
+    },
     isStreaming: appState.activeStreams.has(appState.currentSessionKey ?? ''),
   };
 }
@@ -308,6 +318,18 @@ export function appendThinkingDelta(text: string): void {
 
   rendererAppendThinking(streamMsg, ss.thinkingContent);
   scrollToBottom();
+}
+
+/** Show a tool-step indicator in the streaming message. */
+export function handleToolStart(toolName: string): void {
+  const chatMessages = $('chat-messages');
+  if (chatMessages) showToolStep(chatMessages, toolName);
+}
+
+/** Clear the tool-step indicator from the streaming message. */
+export function handleToolEnd(_toolName: string): void {
+  const chatMessages = $('chat-messages');
+  if (chatMessages) clearToolStep(chatMessages);
 }
 
 export function finalizeStreaming(

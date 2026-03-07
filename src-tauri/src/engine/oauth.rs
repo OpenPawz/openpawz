@@ -396,23 +396,15 @@ pub async fn start_rfc7591_flow(
     let auth_code = wait_for_callback(listener, &state).await?;
 
     // 7. Exchange code for tokens (using dynamic client_id)
-    // Note: Box::leak is acceptable here — this runs at most once per service
-    // in a desktop app's lifetime, so the tiny leak is inconsequential.
-    let dynamic_config = OAuthConfig {
-        name: "Dynamic",
-        env_prefix: "DYNAMIC",
-        auth_url: "",
-        token_url: Box::leak(token_url.to_string().into_boxed_str()),
-        client_id: Box::leak(reg.client_id.clone().into_boxed_str()),
-        client_secret: reg
-            .client_secret
-            .as_ref()
-            .map(|s| &*Box::leak(s.clone().into_boxed_str())),
-        default_scopes: &[],
-        write_scopes: &[],
-        revoke_url: None,
-    };
-    let tokens = exchange_code(&dynamic_config, &auth_code, &code_verifier, &redirect_uri).await?;
+    let tokens = exchange_code(
+        token_url,
+        &reg.client_id,
+        reg.client_secret.as_deref(),
+        &auth_code,
+        &code_verifier,
+        &redirect_uri,
+    )
+    .await?;
 
     info!(
         "[oauth-rfc7591] RFC 7591 flow completed for '{}'",
@@ -621,27 +613,47 @@ static GOOGLE_OAUTH: OAuthConfig = OAuthConfig {
     env_prefix: "GOOGLE",
     auth_url: "https://accounts.google.com/o/oauth2/v2/auth",
     token_url: "https://oauth2.googleapis.com/token",
-    // Set OPENPAWZ_GOOGLE_CLIENT_ID and OPENPAWZ_GOOGLE_CLIENT_SECRET at
-    // build time (via .env.local or env vars) to enable Google OAuth.
+    // PKCE Client IDs are public (RFC 8252 §8.1) — safe to ship in source.
+    // Override at build time with OPENPAWZ_GOOGLE_CLIENT_ID env var if needed.
     client_id: match option_env!("OPENPAWZ_GOOGLE_CLIENT_ID") {
         Some(v) => v,
-        None => "REPLACE_WITH_GOOGLE_CLIENT_ID",
+        None => "797133120028-qpdvbm5jihdqlj53mnps9k5gkvtbfgm5.apps.googleusercontent.com",
     },
     client_secret: option_env!("OPENPAWZ_GOOGLE_CLIENT_SECRET"),
     default_scopes: &[
+        // Core productivity (existing)
         "https://www.googleapis.com/auth/gmail.modify",
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/documents",
+        // Chat & communication
+        "https://www.googleapis.com/auth/chat.messages",
+        "https://www.googleapis.com/auth/chat.spaces.readonly",
+        // Tasks, Contacts
+        "https://www.googleapis.com/auth/tasks",
+        "https://www.googleapis.com/auth/contacts.readonly",
+        // Forms (read-only)
+        "https://www.googleapis.com/auth/forms.body.readonly",
+        "https://www.googleapis.com/auth/forms.responses.readonly",
+        // YouTube (read-only)
+        "https://www.googleapis.com/auth/youtube.readonly",
+        // Vertex AI Vector Search
+        "https://www.googleapis.com/auth/cloud-platform",
     ],
     write_scopes: &[
+        // Core productivity (existing)
         "https://www.googleapis.com/auth/gmail.send",
         "https://www.googleapis.com/auth/calendar",
         "https://www.googleapis.com/auth/drive",
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/documents",
+        // Chat, Tasks (read/write)
+        "https://www.googleapis.com/auth/chat.messages",
+        "https://www.googleapis.com/auth/tasks",
+        // Vertex AI Vector Search
+        "https://www.googleapis.com/auth/cloud-platform",
     ],
     revoke_url: Some("https://oauth2.googleapis.com/revoke"),
 };
@@ -837,6 +849,11 @@ pub async fn start_oauth_flow(
     let (code_verifier, code_challenge) = generate_pkce_pair();
 
     // 2. Bind ephemeral TCP listener on any available port
+    // §Security: RFC 8252 §8.3 mandates the loopback interface for native app
+    // OAuth redirects. The callback uses HTTP (not HTTPS) which is acceptable
+    // per the RFC — the security relies on the OS loopback protection and the
+    // single-use authorization code + PKCE. The listener is short-lived and
+    // closes after receiving one callback.
     let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| {
         error!("[oauth] Failed to bind callback server: {}", e);
         EngineError::Other(format!("Failed to start OAuth callback server: {}", e))
@@ -895,7 +912,15 @@ pub async fn start_oauth_flow(
     info!("[oauth] Received authorization code for '{}'", service_id);
 
     // 6. Exchange authorization code for tokens
-    let tokens = exchange_code(config, &auth_code, &code_verifier, &redirect_uri).await?;
+    let tokens = exchange_code(
+        config.token_url,
+        config.effective_client_id(),
+        config.effective_client_secret(),
+        &auth_code,
+        &code_verifier,
+        &redirect_uri,
+    )
+    .await?;
 
     info!(
         "[oauth] Token exchange successful for '{}' — scopes: {:?}",
@@ -1003,16 +1028,14 @@ async fn wait_for_callback(listener: TcpListener, expected_state: &str) -> Engin
 
 /// Exchange an authorization code for access + refresh tokens via the token endpoint.
 async fn exchange_code(
-    config: &OAuthConfig,
+    token_url: &str,
+    client_id: &str,
+    client_secret: Option<&str>,
     code: &str,
     code_verifier: &str,
     redirect_uri: &str,
 ) -> EngineResult<OAuthTokens> {
     let client = super::http::pinned_client();
-
-    // Resolve effective credentials (compile-time or runtime env var)
-    let client_id = config.effective_client_id();
-    let client_secret = config.effective_client_secret();
 
     let mut params = HashMap::new();
     params.insert("grant_type", "authorization_code");
@@ -1027,7 +1050,7 @@ async fn exchange_code(
     }
 
     let response = client
-        .post(config.token_url)
+        .post(token_url)
         .header("Accept", "application/json")
         .form(&params)
         .send()

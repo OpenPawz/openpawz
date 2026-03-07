@@ -17,7 +17,7 @@ pub struct ProviderConfig {
     pub default_model: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProviderKind {
     OpenAI,
@@ -30,6 +30,10 @@ pub enum ProviderKind {
     Grok,
     Mistral,
     Moonshot,
+    /// Azure AI Foundry — uses the Azure AI Inference API
+    /// (OpenAI-compatible with `api-key` header + `api-version` query param).
+    #[serde(alias = "azure_foundry")]
+    AzureFoundry,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -234,6 +238,33 @@ pub enum EngineEvent {
         agent_id: String,
         component_id: String,
         patch: CanvasComponentPatch,
+    },
+
+    // ── Plan execution events (Phase 0: Action DAG) ──────────────────
+    /// An execution plan is starting
+    #[serde(rename = "plan_start")]
+    PlanStart {
+        session_id: String,
+        run_id: String,
+        description: String,
+        node_count: usize,
+    },
+    /// A plan node is starting execution
+    #[serde(rename = "plan_node_start")]
+    PlanNodeStart {
+        session_id: String,
+        run_id: String,
+        node_id: String,
+        tool: String,
+    },
+    /// An execution plan completed (success or partial)
+    #[serde(rename = "plan_complete")]
+    PlanComplete {
+        session_id: String,
+        run_id: String,
+        success_count: usize,
+        total_count: usize,
+        duration_ms: u64,
     },
 }
 

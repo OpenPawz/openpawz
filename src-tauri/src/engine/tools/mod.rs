@@ -10,7 +10,7 @@ use crate::atoms::types::*;
 use crate::engine::skills;
 use crate::engine::state::EngineState;
 use crate::engine::util::safe_truncate;
-use log::info;
+use log::{debug, info};
 use tauri::Manager;
 
 pub mod agent_comms;
@@ -41,6 +41,62 @@ pub mod telegram;
 pub mod web;
 pub mod worker_delegate;
 
+/// Build the `execute_plan` tool definition (Action DAG pseudo-tool).
+/// This is not backed by a tool module — the agent loop intercepts
+/// it and hands off to the plan executor.
+pub fn plan_tool_definition() -> ToolDefinition {
+    ToolDefinition {
+        tool_type: "function".into(),
+        function: FunctionDefinition {
+            name: "execute_plan".into(),
+            description: "Execute a multi-step action plan as a DAG. Use this when a task \
+                requires multiple tool calls that can be planned upfront. The engine will \
+                validate the plan, execute independent steps in parallel, and return all \
+                results. Each node specifies a tool and its arguments, with optional \
+                dependencies on other nodes. Prefer this over sequential tool calls when \
+                you can determine all steps in advance."
+                .into(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "description": {
+                        "type": "string",
+                        "description": "Human-readable description of what this plan accomplishes"
+                    },
+                    "nodes": {
+                        "type": "array",
+                        "description": "The nodes (tool calls) to execute. Nodes without dependencies run in parallel.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {
+                                    "type": "string",
+                                    "description": "Unique identifier for this node (e.g., 'a', 'b', 'step_1')"
+                                },
+                                "tool": {
+                                    "type": "string",
+                                    "description": "Name of the tool to execute"
+                                },
+                                "args": {
+                                    "type": "object",
+                                    "description": "Arguments to pass to the tool"
+                                },
+                                "depends_on": {
+                                    "type": "array",
+                                    "items": {"type": "string"},
+                                    "description": "IDs of nodes that must complete before this node runs. Empty = no dependencies."
+                                }
+                            },
+                            "required": ["id", "tool", "args"]
+                        }
+                    }
+                },
+                "required": ["nodes"]
+            }),
+        },
+    }
+}
+
 // ── ToolDefinition helpers (keep backward-compatible API for all callers) ───
 
 impl ToolDefinition {
@@ -65,6 +121,7 @@ impl ToolDefinition {
         tools.extend(squads::definitions());
         tools.extend(request_tools::definitions());
         tools.extend(n8n::definitions());
+        tools.push(plan_tool_definition());
         tools
     }
 
@@ -116,12 +173,9 @@ pub async fn execute_tool(
     let name = &tool_call.function.name;
     let args_str = &tool_call.function.arguments;
 
-    info!(
-        "[engine] Executing tool: {} agent={} args={}",
-        name,
-        agent_id,
-        safe_truncate(args_str, 200)
-    );
+    // §Security: Log tool invocation at debug level only, and redact args
+    // to prevent credential fragments from leaking into logs.
+    debug!("[engine] Executing tool: {} agent={}", name, agent_id,);
 
     // Default empty/whitespace args to {} — models sometimes send no args
     // for tools that take no parameters (e.g. mcp_refresh).

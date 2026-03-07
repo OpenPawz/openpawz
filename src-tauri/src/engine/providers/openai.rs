@@ -14,6 +14,9 @@ use reqwest::Client;
 use serde_json::{json, Value};
 use zeroize::Zeroizing;
 
+// Import constrained decoding for strict mode / JSON format enforcement
+use crate::engine::constrained;
+
 // ── Shared retry utilities ─────────────────────────────────────────────────
 // Re-export from engine::http so existing callers (anthropic, google) work
 // with `use super::openai::{MAX_RETRIES, ...}` unchanged.
@@ -39,6 +42,9 @@ pub struct OpenAiProvider {
     /// API key wrapped in Zeroizing<> — automatically zeroed from RAM on drop.
     api_key: Zeroizing<String>,
     is_azure: bool,
+    /// The concrete provider variant — needed for constrained decoding
+    /// capability detection (e.g. Ollama vs OpenAI vs DeepSeek).
+    provider_kind: ProviderKind,
 }
 
 impl OpenAiProvider {
@@ -58,12 +64,32 @@ impl OpenAiProvider {
             }
         }
 
+        // Azure AI Foundry: normalise the user's URL so it ends with /models.
+        // Users may paste the full resource URL, a specific deployment path,
+        // or even the whole /models/chat/completions endpoint.  We strip
+        // everything after the host and append /models so that
+        // chat_stream() can simply append /chat/completions?api-version=….
+        if config.kind == ProviderKind::AzureFoundry {
+            let trimmed = base_url.trim_end_matches('/');
+            // Strip known Azure path suffixes so we're left with the base.
+            let host_base = trimmed
+                .split("/openai")
+                .next()
+                .unwrap_or(trimmed)
+                .split("/models")
+                .next()
+                .unwrap_or(trimmed)
+                .trim_end_matches('/');
+            base_url = format!("{}/models", host_base);
+        }
+
         let is_azure = base_url.contains(".azure.com");
         OpenAiProvider {
             client: pinned_client(),
             base_url,
             api_key: Zeroizing::new(config.api_key.clone()),
             is_azure,
+            provider_kind: config.kind,
         }
     }
 
@@ -101,9 +127,22 @@ impl OpenAiProvider {
                 });
                 if let Some(tc) = &msg.tool_calls {
                     m["tool_calls"] = json!(tc);
+                    // Debug: log tool_call IDs being sent to API
+                    for t in tc {
+                        log::debug!(
+                            "[format-msg] assistant tool_call: id={:?} fn={}\",",
+                            t.id,
+                            t.function.name
+                        );
+                    }
                 }
                 if let Some(id) = &msg.tool_call_id {
                     m["tool_call_id"] = json!(id);
+                    log::debug!(
+                        "[format-msg] tool result: tool_call_id={:?} role={:?}",
+                        id,
+                        msg.role
+                    );
                 }
                 if let Some(name) = &msg.name {
                     m["name"] = json!(name);
@@ -161,6 +200,14 @@ impl OpenAiProvider {
                 let func = &tc["function"];
                 let function_name = func["name"].as_str().map(|s| s.to_string());
                 let arguments_delta = func["arguments"].as_str().map(|s| s.to_string());
+                if id.is_some() || function_name.is_some() {
+                    log::debug!(
+                        "[sse-debug] tool_call delta: index={} id={:?} name={:?}",
+                        index,
+                        id,
+                        function_name
+                    );
+                }
                 tool_calls.push(ToolCallDelta {
                     index,
                     id,
@@ -210,7 +257,7 @@ impl AiProvider for OpenAiProvider {
     }
 
     fn kind(&self) -> ProviderKind {
-        ProviderKind::OpenAI
+        self.provider_kind
     }
 
     /// Send a chat completion request with SSE streaming.
@@ -230,7 +277,7 @@ impl AiProvider for OpenAiProvider {
             if base.contains('?') {
                 format!("{}/chat/completions", base)
             } else {
-                format!("{}/chat/completions?api-version=2024-05-01-preview", base)
+                format!("{}/chat/completions?api-version=2025-03-01-preview", base)
             }
         } else {
             format!("{}/chat/completions", self.base_url.trim_end_matches('/'))
@@ -245,7 +292,30 @@ impl AiProvider for OpenAiProvider {
         });
 
         if !tools.is_empty() {
-            body["tools"] = json!(Self::format_tools(tools));
+            let constraint_config = constrained::detect_constraints(self.provider_kind, model);
+            let mut formatted_tools = json!(Self::format_tools(tools));
+
+            // Apply strict mode for OpenAI Structured Outputs (gpt-4o, o1, o3, etc.)
+            if let Some(arr) = formatted_tools.as_array_mut() {
+                constrained::apply_openai_strict(arr, &constraint_config);
+            }
+
+            body["tools"] = formatted_tools;
+
+            // Apply Ollama JSON format mode to constrain output to valid JSON
+            constrained::apply_ollama_json_format(&mut body, &constraint_config);
+
+            if constraint_config.strict_tools {
+                info!(
+                    "[engine] OpenAI constrained decoding: strict=true for model={}",
+                    model
+                );
+            } else if constraint_config.json_format {
+                info!(
+                    "[engine] Ollama constrained decoding: format=json for model={}",
+                    model
+                );
+            }
         }
         if let Some(temp) = temperature {
             body["temperature"] = json!(temp);
@@ -359,20 +429,28 @@ impl AiProvider for OpenAiProvider {
                 };
             }
 
-            // ── Read SSE stream (exact logic preserved) ──────────────────
+            // ── Read SSE stream ─────────────────────────────────────────
+            // Accumulate raw bytes to avoid `from_utf8_lossy` corrupting
+            // multi-byte UTF-8 sequences that span TCP packet boundaries.
             let mut chunks = Vec::new();
             let mut byte_stream = response.bytes_stream();
-            let mut buffer = String::new();
+            let mut raw_buf: Vec<u8> = Vec::new();
 
             while let Some(result) = byte_stream.next().await {
                 let bytes = result
                     .map_err(|e| ProviderError::Transport(format!("Stream read error: {}", e)))?;
-                buffer.push_str(&String::from_utf8_lossy(&bytes));
+                raw_buf.extend_from_slice(&bytes);
 
-                // Process complete SSE lines
-                while let Some(line_end) = buffer.find('\n') {
-                    let line = buffer[..line_end].trim().to_string();
-                    buffer = buffer[line_end + 1..].to_string();
+                // Process complete SSE lines (delimited by \n)
+                while let Some(pos) = raw_buf.iter().position(|&b| b == b'\n') {
+                    let line_bytes = raw_buf[..pos].to_vec();
+                    raw_buf = raw_buf[pos + 1..].to_vec();
+
+                    // Convert the complete line to UTF-8 (lossless for valid data)
+                    let line = match std::str::from_utf8(&line_bytes) {
+                        Ok(s) => s.trim().to_string(),
+                        Err(_) => continue, // skip malformed lines
+                    };
 
                     if let Some(data) = line.strip_prefix("data: ") {
                         if let Some(chunk) = Self::parse_sse_chunk(data) {
