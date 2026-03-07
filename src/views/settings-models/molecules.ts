@@ -522,16 +522,20 @@ function buildAddProviderForm(config: EngineConfig): HTMLDivElement {
     }
     // Azure AI Foundry needs a resource-specific URL — show a helpful placeholder
     if (kind === 'azurefoundry') {
-      urlInp.placeholder = 'https://your-resource.services.ai.azure.com';
+      urlInp.placeholder = 'Paste the full Target URI from Foundry';
       const sub = urlRow.querySelector('small');
-      if (sub) sub.textContent = 'Paste your Foundry resource URL — path is auto-normalised';
+      if (sub) sub.textContent = 'Paste the exact Target URI from your Foundry deployment';
+      // For Azure Foundry: ID = model name, auto-sync
+      idInp.placeholder = 'grok-4-1-fast-reasoning';
+      const idSub = idRow.querySelector('small');
+      if (idSub) idSub.textContent = 'Use the model name as the ID (e.g. grok-4-1-fast-reasoning)';
     } else {
       urlInp.placeholder = DEFAULT_BASE_URLS[kind] ?? '';
       const sub = urlRow.querySelector('small');
       if (sub) sub.textContent = 'Leave blank for default';
     }
     if (!idInp.value) {
-      idInp.value = kind;
+      idInp.value = kind === 'azurefoundry' ? '' : kind;
     }
     const models = POPULAR_MODELS[kind] ?? [];
     if (models.length && !modelInp.value) {
@@ -540,6 +544,13 @@ function buildAddProviderForm(config: EngineConfig): HTMLDivElement {
   });
 
   kindSel.dispatchEvent(new Event('change'));
+
+  // Azure Foundry: auto-sync model name from ID (3-input flow: name, URL, key)
+  idInp.addEventListener('input', () => {
+    if (kindSel.value === 'azurefoundry') {
+      modelInp.value = idInp.value.trim();
+    }
+  });
 
   const formBtns = document.createElement('div');
   formBtns.style.cssText = 'display:flex;gap:8px;margin-top:16px';
@@ -552,8 +563,8 @@ function buildAddProviderForm(config: EngineConfig): HTMLDivElement {
       showToast('Enter a provider ID', 'error');
       return;
     }
-    if (!/^[a-zA-Z][a-zA-Z0-9_-]*$/.test(id)) {
-      showToast('ID must start with a letter (letters, numbers, hyphens)', 'error');
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(id)) {
+      showToast('ID must start with a letter or number (letters, numbers, dots, hyphens)', 'error');
       return;
     }
     if (config.providers.some((p) => p.id === id)) {

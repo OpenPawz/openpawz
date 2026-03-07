@@ -64,23 +64,53 @@ impl OpenAiProvider {
             }
         }
 
-        // Azure AI Foundry: normalise the user's URL so it ends with /models.
-        // Users may paste the full resource URL, a specific deployment path,
-        // or even the whole /models/chat/completions endpoint.  We strip
-        // everything after the host and append /models so that
-        // chat_stream() can simply append /chat/completions?api-version=….
+        // Azure AI Foundry: Users paste the full Target URI from the Foundry
+        // portal.  Three URL patterns exist:
+        //
+        //  1. .../models/chat/completions?api-version=…  (unified inference — grok, kimi, etc.)
+        //  2. .../openai/deployments/{name}/chat/completions?api-version=…  (classic Azure OpenAI)
+        //  3. .../openai/responses?api-version=…  (Responses API — gpt-5.4, o3-pro)
+        //
+        // If the URL already contains /chat/completions, store it as-is.
+        // If it's a /responses URL, convert to deployment-based /chat/completions.
+        // If it's a bare resource URL, normalise to /models as a fallback.
         if config.kind == ProviderKind::AzureFoundry {
             let trimmed = base_url.trim_end_matches('/');
-            // Strip known Azure path suffixes so we're left with the base.
-            let host_base = trimmed
-                .split("/openai")
-                .next()
-                .unwrap_or(trimmed)
-                .split("/models")
-                .next()
-                .unwrap_or(trimmed)
-                .trim_end_matches('/');
-            base_url = format!("{}/models", host_base);
+
+            if trimmed.contains("/chat/completions") {
+                // Full Target URI — already a chat/completions endpoint.
+                // Use as-is, preserving the api-version query param.
+                base_url = trimmed.to_string();
+            } else if trimmed.contains("/openai") {
+                // Responses API or other Azure OpenAI path — convert to
+                // deployment-based chat/completions using the model name.
+                let host = trimmed
+                    .split("/openai")
+                    .next()
+                    .unwrap_or(trimmed)
+                    .trim_end_matches('/');
+                let api_version = trimmed
+                    .split("api-version=")
+                    .nth(1)
+                    .and_then(|v| v.split('&').next())
+                    .unwrap_or("2025-03-01-preview");
+                let model = config
+                    .default_model
+                    .as_deref()
+                    .unwrap_or("gpt-4o");
+                base_url = format!(
+                    "{}/openai/deployments/{}/chat/completions?api-version={}",
+                    host, model, api_version
+                );
+            } else {
+                // Bare resource URL (e.g. https://xxx.services.ai.azure.com)
+                let host_base = trimmed
+                    .split("/models")
+                    .next()
+                    .unwrap_or(trimmed)
+                    .trim_end_matches('/');
+                base_url = format!("{}/models", host_base);
+            }
         }
 
         let is_azure = base_url.contains(".azure.com");
@@ -272,11 +302,13 @@ impl AiProvider for OpenAiProvider {
         thinking_level: Option<&str>,
     ) -> Result<Vec<StreamChunk>, ProviderError> {
         let url = if self.is_azure {
-            // Azure AI Services: append api-version query param
-            let base = self.base_url.trim_end_matches('/');
-            if base.contains('?') {
-                format!("{}/chat/completions", base)
+            if self.base_url.contains("/chat/completions") {
+                // Full endpoint URL — already normalised in constructor.
+                // Preserves the user's api-version and path.
+                self.base_url.clone()
             } else {
+                // Legacy base URL (e.g. /models) — append path.
+                let base = self.base_url.trim_end_matches('/');
                 format!("{}/chat/completions?api-version=2025-03-01-preview", base)
             }
         } else {
@@ -491,8 +523,28 @@ impl AiProvider for OpenAiProvider {
     /// For other OpenAI-compatible APIs this calls `GET /models`.
     async fn list_models(&self) -> Result<Vec<ModelInfo>, ProviderError> {
         let url = if self.is_azure {
-            let base = self.base_url.trim_end_matches('/');
-            format!("{}?api-version=2025-03-01-preview", base)
+            // Reconstruct the models list URL from the stored endpoint.
+            let base = &self.base_url;
+            let api_version = base
+                .split("api-version=")
+                .nth(1)
+                .and_then(|v| v.split('&').next())
+                .unwrap_or("2025-03-01-preview");
+
+            if base.contains("/models/chat/completions") {
+                // Unified inference — strip /chat/completions to get /models
+                let models_base = base.split("/chat/completions").next().unwrap_or(base);
+                let models_base = models_base.split('?').next().unwrap_or(models_base);
+                format!("{}?api-version={}", models_base.trim_end_matches('/'), api_version)
+            } else if base.contains("/openai/deployments/") {
+                // Classic Azure OpenAI — use /openai/models endpoint
+                let host = base.split("/openai").next().unwrap_or(base).trim_end_matches('/');
+                format!("{}/openai/models?api-version={}", host, api_version)
+            } else {
+                // Fallback — base is already /models or similar
+                let clean = base.split('?').next().unwrap_or(base).trim_end_matches('/');
+                format!("{}?api-version={}", clean, api_version)
+            }
         } else if self.provider_kind == ProviderKind::Ollama {
             // Ollama's model list endpoint is /api/tags, not /v1/models
             let base = self.base_url.trim_end_matches('/');
