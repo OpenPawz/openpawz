@@ -441,7 +441,10 @@ impl AnthropicProvider {
         // ── Multi-turn conversation caching: mark a breakpoint in the
         // conversation history so Anthropic caches the prefix. This
         // gives ~90% discount on input tokens for the cached portion.
-        Self::add_turn_cache_breakpoints(&mut formatted_messages);
+        // (Skip on Azure — prompt caching not supported.)
+        if !self.is_azure {
+            Self::add_turn_cache_breakpoints(&mut formatted_messages);
+        }
 
         // Model-aware max_tokens via the Engram model capability registry.
         // Replaces the hardcoded 4096/8192 split with accurate per-model values.
@@ -459,22 +462,31 @@ impl AnthropicProvider {
         // cache_control on the last block.  Anthropic caches the entire
         // prefix up to and including the marked block, giving a 90%
         // discount on input tokens for subsequent requests within 5 min.
+        // Azure AI Foundry doesn't support prompt caching, so send
+        // plain system text there.
         if let Some(sys) = system {
-            body["system"] = json!([
-                {
-                    "type": "text",
-                    "text": sys,
-                    "cache_control": { "type": "ephemeral" }
-                }
-            ]);
+            if self.is_azure {
+                body["system"] = json!(sys);
+            } else {
+                body["system"] = json!([
+                    {
+                        "type": "text",
+                        "text": sys,
+                        "cache_control": { "type": "ephemeral" }
+                    }
+                ]);
+            }
         }
         if !tools.is_empty() {
             let mut tool_list = Self::format_tools(tools);
             // Mark the last tool for caching so the entire tools prefix is
             // included in the cached segment along with the system prompt.
-            if let Some(last) = tool_list.last_mut() {
-                if let Some(obj) = last.as_object_mut() {
-                    obj.insert("cache_control".into(), json!({ "type": "ephemeral" }));
+            // (Skip on Azure — prompt caching not supported.)
+            if !self.is_azure {
+                if let Some(last) = tool_list.last_mut() {
+                    if let Some(obj) = last.as_object_mut() {
+                        obj.insert("cache_control".into(), json!({ "type": "ephemeral" }));
+                    }
                 }
             }
             body["tools"] = json!(tool_list);
@@ -509,7 +521,10 @@ impl AnthropicProvider {
             }
         }
 
-        info!("[engine] Anthropic request to {} model={}", url, model);
+        info!(
+            "[engine] Anthropic request to {} model={} azure={}",
+            url, model, self.is_azure
+        );
 
         // Circuit breaker: reject immediately if too many recent failures
         if let Err(msg) = ANTHROPIC_CIRCUIT.check() {
@@ -534,11 +549,16 @@ impl AnthropicProvider {
                 .client
                 .post(&url)
                 .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
-                .header(
+                .header("Content-Type", "application/json");
+            // Azure AI Foundry may not support all Anthropic beta features.
+            // Only send prompt-caching and interleaved-thinking headers for
+            // direct Anthropic endpoints.
+            if !self.is_azure {
+                req = req.header(
                     "anthropic-beta",
                     "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14",
                 );
+            }
             if self.is_azure {
                 req = req.header("api-key", self.api_key.as_str());
             } else {
