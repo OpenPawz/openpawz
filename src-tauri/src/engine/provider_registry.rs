@@ -104,8 +104,7 @@ fn registry() -> &'static Registry {
         let providers: HashMap<String, ProviderConfig> =
             serde_json::from_str(PROVIDERS_JSON).unwrap_or_default();
         // Filter out _comment key from registrations
-        let raw: serde_json::Value =
-            serde_json::from_str(REGISTRATIONS_JSON).unwrap_or_default();
+        let raw: serde_json::Value = serde_json::from_str(REGISTRATIONS_JSON).unwrap_or_default();
         let registrations: HashMap<String, Registration> = if let Some(obj) = raw.as_object() {
             obj.iter()
                 .filter(|(k, _)| !k.starts_with('_'))
@@ -256,7 +255,11 @@ mod tests {
     #[test]
     fn test_registrations_load() {
         let ids = registered_service_ids();
-        assert!(ids.len() > 10, "Expected 10+ registrations, got {}", ids.len());
+        assert!(
+            ids.len() > 10,
+            "Expected 10+ registrations, got {}",
+            ids.len()
+        );
     }
 
     #[test]

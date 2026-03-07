@@ -3595,7 +3595,8 @@ pub(crate) fn map_integration_to_skill(
             mapped.insert("SERVICE_NAME".into(), "Microsoft 365".into());
             mapped.insert(
                 "SERVICE_HINT".into(),
-                "Outlook, Calendar, OneDrive, Teams, Tasks, OneNote via Microsoft Graph API.".into(),
+                "Outlook, Calendar, OneDrive, Teams, Tasks, OneNote via Microsoft Graph API."
+                    .into(),
             );
             "microsoft_365"
         }

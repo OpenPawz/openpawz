@@ -406,7 +406,10 @@ async fn mail_list(args: &serde_json::Value) -> Result<String, String> {
         return Ok("No messages found.".into());
     }
 
-    info!("[microsoft] outlook_mail_list returned {} messages", messages.len());
+    info!(
+        "[microsoft] outlook_mail_list returned {} messages",
+        messages.len()
+    );
     serde_json::to_string_pretty(&messages).map_err(|e| format!("Serialize error: {e}"))
 }
 
@@ -605,7 +608,10 @@ async fn calendar_list(args: &serde_json::Value) -> Result<String, String> {
         return Ok("No events found in the specified range.".into());
     }
 
-    info!("[microsoft] outlook_calendar_list returned {} events", events.len());
+    info!(
+        "[microsoft] outlook_calendar_list returned {} events",
+        events.len()
+    );
     serde_json::to_string_pretty(&events).map_err(|e| format!("Serialize error: {e}"))
 }
 
@@ -783,9 +789,7 @@ async fn drive_read(args: &serde_json::Value) -> Result<String, String> {
         || mime.contains("markdown");
 
     if is_text && size < 1_000_000 {
-        let download_url = meta["@microsoft.graph.downloadUrl"]
-            .as_str()
-            .unwrap_or("");
+        let download_url = meta["@microsoft.graph.downloadUrl"].as_str().unwrap_or("");
         if !download_url.is_empty() {
             let content_resp = http()
                 .get(download_url)
@@ -1004,8 +1008,7 @@ async fn tasks_list(args: &serde_json::Value) -> Result<String, String> {
             .unwrap_or_default();
 
         info!("[microsoft] ms_tasks_list returned {} lists", lists.len());
-        return serde_json::to_string_pretty(&lists)
-            .map_err(|e| format!("Serialize error: {e}"));
+        return serde_json::to_string_pretty(&lists).map_err(|e| format!("Serialize error: {e}"));
     }
 
     // List tasks in a specific list
@@ -1166,7 +1169,10 @@ async fn onenote_list(args: &serde_json::Value) -> Result<String, String> {
         return Ok("No OneNote notebooks found.".into());
     }
 
-    info!("[microsoft] onenote_list returned {} notebooks", notebooks.len());
+    info!(
+        "[microsoft] onenote_list returned {} notebooks",
+        notebooks.len()
+    );
     serde_json::to_string_pretty(&notebooks).map_err(|e| format!("Serialize error: {e}"))
 }
 
