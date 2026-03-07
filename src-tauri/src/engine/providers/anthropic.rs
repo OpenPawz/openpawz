@@ -443,8 +443,10 @@ impl AnthropicProvider {
         // ── Multi-turn conversation caching: mark a breakpoint in the
         // conversation history so Anthropic caches the prefix. This
         // gives ~90% discount on input tokens for the cached portion.
-        // (Skip on Azure — prompt caching not supported.)
-        if !self.is_azure {
+        // (Skip on classic Azure OpenAI — prompt caching not supported.
+        //  Azure AI Foundry's /anthropic proxy IS native Anthropic and
+        //  accepts all caching features.)
+        if !self.is_azure_openai {
             Self::add_turn_cache_breakpoints(&mut formatted_messages);
         }
 
@@ -464,10 +466,11 @@ impl AnthropicProvider {
         // cache_control on the last block.  Anthropic caches the entire
         // prefix up to and including the marked block, giving a 90%
         // discount on input tokens for subsequent requests within 5 min.
-        // Azure AI Foundry doesn't support prompt caching, so send
-        // plain system text there.
+        // Classic Azure OpenAI doesn't support prompt caching, so send
+        // plain system text there.  Azure AI Foundry's /anthropic proxy
+        // IS native Anthropic and accepts cache_control.
         if let Some(sys) = system {
-            if self.is_azure {
+            if self.is_azure_openai {
                 body["system"] = json!(sys);
             } else {
                 body["system"] = json!([
@@ -483,8 +486,9 @@ impl AnthropicProvider {
             let mut tool_list = Self::format_tools(tools);
             // Mark the last tool for caching so the entire tools prefix is
             // included in the cached segment along with the system prompt.
-            // (Skip on Azure — prompt caching not supported.)
-            if !self.is_azure {
+            // (Skip on classic Azure OpenAI — prompt caching not supported.
+            //  Azure AI Foundry's /anthropic proxy accepts cache_control.)
+            if !self.is_azure_openai {
                 if let Some(last) = tool_list.last_mut() {
                     if let Some(obj) = last.as_object_mut() {
                         obj.insert("cache_control".into(), json!({ "type": "ephemeral" }));
@@ -552,16 +556,18 @@ impl AnthropicProvider {
                 .post(&url)
                 .header("anthropic-version", "2023-06-01")
                 .header("Content-Type", "application/json");
-            // Azure AI Foundry may not support all Anthropic beta features.
-            // Only send prompt-caching and interleaved-thinking headers for
-            // direct Anthropic endpoints.
-            if !self.is_azure {
+            // Classic Azure OpenAI doesn't support Anthropic beta features.
+            // Azure AI Foundry's /anthropic proxy IS native Anthropic and
+            // accepts the beta header — only skip for classic Azure OpenAI.
+            if !self.is_azure_openai {
                 req = req.header(
                     "anthropic-beta",
                     "prompt-caching-2024-07-31,interleaved-thinking-2025-05-14",
                 );
             }
-            if self.is_azure {
+            // Azure AI Foundry /anthropic proxy uses native Anthropic auth
+            // (x-api-key). Only classic Azure OpenAI uses the api-key header.
+            if self.is_azure_openai {
                 req = req.header("api-key", self.api_key.as_str());
             } else {
                 req = req.header("x-api-key", self.api_key.as_str());

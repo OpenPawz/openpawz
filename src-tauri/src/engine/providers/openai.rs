@@ -46,6 +46,13 @@ fn get_circuit(base_url: &str) -> Arc<CircuitBreaker> {
         .clone()
 }
 
+/// Returns true for OpenAI reasoning models that reject the `temperature`
+/// parameter (only the default value 1 is accepted).
+fn is_reasoning_model(model: &str) -> bool {
+    let m = model.to_lowercase();
+    m.starts_with("o1") || m.starts_with("o3") || m.starts_with("o4")
+}
+
 // ── OpenAI provider struct ─────────────────────────────────────────────────
 
 pub struct OpenAiProvider {
@@ -362,7 +369,9 @@ impl OpenAiProvider {
             body["tools"] = json!(resp_tools);
         }
         if let Some(temp) = temperature {
-            body["temperature"] = json!(temp);
+            if !is_reasoning_model(model) {
+                body["temperature"] = json!(temp);
+            }
         }
         if let Some(level) = thinking_level {
             let effort = match level {
@@ -804,7 +813,9 @@ impl AiProvider for OpenAiProvider {
             }
         }
         if let Some(temp) = temperature {
-            body["temperature"] = json!(temp);
+            if !is_reasoning_model(model) {
+                body["temperature"] = json!(temp);
+            }
         }
 
         // OpenAI reasoning models (o1, o3, o4-mini) support reasoning_effort
