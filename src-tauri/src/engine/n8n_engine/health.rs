@@ -169,16 +169,14 @@ fn owner_password() -> String {
 
 /// Reset the n8n owner so `POST /rest/owner/setup` can re-run.
 ///
-/// n8n's `setupOwner()` flow:
-///   1. `hasInstanceOwner()` — queries the `user` table for a user with
-///      the `global:owner` role whose `password` or `lastActiveAt` is
-///      NOT NULL.  If found → 400 "already set up".
-///   2. If NOT found → finds the "shell" owner user (role = global:owner,
-///      password IS NULL) and sets the password on it.
+/// n8n's `setupOwner()` checks `hasInstanceOwner()` which looks for a
+/// user with the owner role whose `password` OR `lastActiveAt` (or
+/// similar timestamp column) is NOT NULL.  We NULL out those columns so
+/// the check returns false and setup can proceed.
 ///
-/// We NULL out the password and lastActiveAt fields for ALL users with
-/// the owner role — not just `agent@paw.local` — in case the owner was
-/// set up via a different path (web UI, earlier code version, etc.).
+/// Column names vary across n8n versions (camelCase vs snake_case,
+/// `role` column vs `globalRole` relation, etc.).  This function
+/// introspects the actual schema via PRAGMA and adapts accordingly.
 fn reset_n8n_owner_in_db() -> Result<(), String> {
     let base = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -212,81 +210,123 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
     conn.busy_timeout(std::time::Duration::from_secs(5))
         .map_err(|e| format!("Failed to set busy timeout: {}", e))?;
 
-    // Log what we find for diagnostics
-    if let Ok(mut stmt) = conn.prepare(
-        "SELECT id, email, role, password IS NOT NULL as has_pw FROM user LIMIT 10"
-    ) {
+    // ── Schema introspection ───────────────────────────────────────
+    // Get actual column names so we can adapt to any n8n version.
+    let columns: Vec<String> = {
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(user)")
+            .map_err(|e| format!("PRAGMA table_info failed: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| format!("Failed to read table_info: {}", e))?;
+        rows.flatten().collect()
+    };
+
+    log::info!("[n8n] User table columns: {:?}", columns);
+
+    // Determine the correct column name for "last active" timestamp.
+    // n8n versions use either camelCase or snake_case.
+    let last_active_col = if columns.iter().any(|c| c == "lastActiveAt") {
+        Some("lastActiveAt")
+    } else if columns.iter().any(|c| c == "last_active_at") {
+        Some("last_active_at")
+    } else {
+        None
+    };
+
+    let has_role_col = columns.iter().any(|c| c == "role");
+    let has_global_role = columns.iter().any(|c| c == "globalRole" || c == "global_role");
+
+    // ── Diagnostic dump ────────────────────────────────────────────
+    // Use only columns we know exist: id, email, password always exist.
+    let diag_sql = "SELECT id, email, password IS NOT NULL as has_pw FROM user LIMIT 10";
+    if let Ok(mut stmt) = conn.prepare(diag_sql) {
         if let Ok(rows) = stmt.query_map([], |row| {
             Ok((
                 row.get::<_, String>(0).unwrap_or_default(),
                 row.get::<_, String>(1).unwrap_or_default(),
-                row.get::<_, String>(2).unwrap_or_default(),
-                row.get::<_, bool>(3).unwrap_or(false),
+                row.get::<_, bool>(2).unwrap_or(false),
             ))
         }) {
             for row in rows.flatten() {
                 log::info!(
-                    "[n8n] DB user: id={}, email={}, role={}, has_password={}",
-                    row.0, row.1, row.2, row.3
+                    "[n8n] DB user: id={}, email={}, has_password={}",
+                    row.0, row.1, row.2
                 );
             }
         }
     }
 
-    // Try updating by email first (most specific)
-    let updated_by_email: usize = conn
-        .execute(
-            "UPDATE user SET password = NULL, \"lastActiveAt\" = NULL WHERE email = ?1",
-            [OWNER_EMAIL],
-        )
-        .unwrap_or(0);
-
-    if updated_by_email > 0 {
-        log::info!(
-            "[n8n] Reset owner by email '{}' ({} row(s) → shell-user state)",
-            OWNER_EMAIL,
-            updated_by_email,
-        );
-        return Ok(());
-    }
-
-    // Fallback: update ANY user with the global owner role
-    // n8n stores role as a string column "global:owner" in recent versions
-    let updated_by_role: usize = conn
-        .execute(
-            "UPDATE user SET password = NULL, \"lastActiveAt\" = NULL \
-             WHERE role = 'global:owner'",
-            [],
-        )
-        .unwrap_or(0);
-
-    if updated_by_role > 0 {
-        log::info!(
-            "[n8n] Reset owner by role 'global:owner' ({} row(s) → shell-user state)",
-            updated_by_role,
-        );
-        return Ok(());
-    }
-
-    // Last resort: reset ALL users' passwords (usually just 1 user in headless mode)
-    let updated_all: usize = conn
-        .execute(
-            "UPDATE user SET password = NULL, \"lastActiveAt\" = NULL \
-             WHERE password IS NOT NULL",
-            [],
-        )
-        .unwrap_or(0);
-
-    if updated_all > 0 {
-        log::warn!(
-            "[n8n] Reset ALL user passwords ({} row(s) → shell-user state) — \
-             could not match by email or role",
-            updated_all,
-        );
+    // ── Build the UPDATE statement dynamically ─────────────────────
+    // Always NULL password; also NULL the last-active timestamp if it exists.
+    let update_set = if let Some(la_col) = last_active_col {
+        format!("password = NULL, \"{}\" = NULL", la_col)
     } else {
-        log::warn!("[n8n] No users with passwords found in n8n database — cannot reset");
+        "password = NULL".to_string()
+    };
+
+    // Try updating by email first
+    let sql = format!("UPDATE user SET {} WHERE email = ?1", update_set);
+    let updated = conn.execute(&sql, [OWNER_EMAIL]).unwrap_or(0);
+    if updated > 0 {
+        log::info!("[n8n] Reset owner by email '{}' ({} row(s))", OWNER_EMAIL, updated);
+        return Ok(());
     }
 
+    // Try by role column (n8n 1.76+ stores role directly on user table)
+    if has_role_col {
+        let sql = format!("UPDATE user SET {} WHERE role = 'global:owner'", update_set);
+        let updated = conn.execute(&sql, []).unwrap_or(0);
+        if updated > 0 {
+            log::info!("[n8n] Reset owner by role column ({} row(s))", updated);
+            return Ok(());
+        }
+    }
+
+    // Try via globalRole foreign key (older n8n versions)
+    if has_global_role {
+        let gr_col = if columns.iter().any(|c| c == "globalRole") {
+            "globalRole"
+        } else {
+            "global_role"
+        };
+        // Owner role ID is typically "1" or the first role created
+        let sql = format!(
+            "UPDATE user SET {} WHERE \"{}\" IN \
+             (SELECT id FROM role WHERE name = 'owner' OR scope = 'global' LIMIT 1)",
+            update_set, gr_col
+        );
+        let updated = conn.execute(&sql, []).unwrap_or(0);
+        if updated > 0 {
+            log::info!("[n8n] Reset owner via globalRole FK ({} row(s))", updated);
+            return Ok(());
+        }
+    }
+
+    // Last resort: reset ALL users with passwords
+    let sql = format!("UPDATE user SET {} WHERE password IS NOT NULL", update_set);
+    let updated = conn.execute(&sql, []).unwrap_or(0);
+    if updated > 0 {
+        log::warn!("[n8n] Reset ALL user passwords ({} row(s)) — could not match by email/role", updated);
+        return Ok(());
+    }
+
+    // If we reach here, all passwords are ALREADY null (previous recovery worked).
+    // The problem is that setup_owner_if_needed still gets 400 — likely because
+    // the last-active timestamp wasn't cleared.  Force-clear it on ALL users.
+    if let Some(la_col) = last_active_col {
+        let sql = format!("UPDATE user SET \"{}\" = NULL", la_col);
+        let updated = conn.execute(&sql, []).unwrap_or(0);
+        if updated > 0 {
+            log::info!(
+                "[n8n] Force-cleared {} column on {} user(s) (passwords already NULL)",
+                la_col, updated
+            );
+            return Ok(());
+        }
+    }
+
+    log::warn!("[n8n] User table appears empty or fully clean — nothing to reset");
     Ok(())
 }
 
@@ -367,12 +407,13 @@ pub async fn setup_owner_if_needed(base_url: &str) -> Result<(), String> {
             Ok(())
         }
         400 => {
-            // Owner already exists — this is fine
-            log::debug!("[n8n] Owner account already exists");
+            let body = resp.text().await.unwrap_or_default();
+            log::info!("[n8n] Owner setup returned 400 (already exists): {}", safe_truncate(&body, 200));
             Ok(())
         }
         status => {
             let body = resp.text().await.unwrap_or_default();
+            log::warn!("[n8n] Owner setup returned HTTP {}: {}", status, safe_truncate(&body, 200));
             Err(format!(
                 "Owner setup returned HTTP {}: {}",
                 status,
