@@ -149,7 +149,14 @@ fn owner_password() -> String {
     use crate::engine::key_vault;
 
     if let Some(pw) = key_vault::get(key_vault::PURPOSE_N8N_OWNER) {
-        return pw;
+        // Validate that the stored password meets n8n's requirements
+        // (at least 1 uppercase letter).  Older versions of this code
+        // generated lowercase-hex-only passwords that n8n rejects.
+        if pw.chars().any(|c| c.is_ascii_uppercase()) {
+            return pw;
+        }
+        log::info!("[n8n] Existing vault password lacks uppercase — regenerating");
+        key_vault::remove(key_vault::PURPOSE_N8N_OWNER);
     }
 
     // CSPRNG — 32 bytes = 256 bits of entropy, zeroized after use
@@ -159,7 +166,11 @@ fn owner_password() -> String {
 
     let mut bytes = Zeroizing::new([0u8; 32]);
     OsRng.fill_bytes(bytes.as_mut());
-    let pw: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    // Prefix ensures n8n password-policy compliance:
+    //   "Kx" → uppercase K + lowercase x
+    //   the hex body contributes digits (0-9) + lowercase (a-f)
+    let hex: String = bytes.iter().map(|b| format!("{:02x}", b)).collect();
+    let pw = format!("Kx{}", hex);
     // `bytes` is zeroized on drop here
 
     key_vault::set(key_vault::PURPOSE_N8N_OWNER, &pw);
@@ -235,6 +246,7 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
     };
 
     let has_role_col = columns.iter().any(|c| c == "role");
+    let has_role_slug = columns.iter().any(|c| c == "roleSlug");
     let has_global_role = columns.iter().any(|c| c == "globalRole" || c == "global_role");
 
     // ── Diagnostic dump ────────────────────────────────────────────
@@ -279,6 +291,16 @@ fn reset_n8n_owner_in_db() -> Result<(), String> {
         let updated = conn.execute(&sql, []).unwrap_or(0);
         if updated > 0 {
             log::info!("[n8n] Reset owner by role column ({} row(s))", updated);
+            return Ok(());
+        }
+    }
+
+    // Try by roleSlug column (some n8n versions use this instead of role)
+    if has_role_slug {
+        let sql = format!("UPDATE user SET {} WHERE \"roleSlug\" = 'global:owner'", update_set);
+        let updated = conn.execute(&sql, []).unwrap_or(0);
+        if updated > 0 {
+            log::info!("[n8n] Reset owner by roleSlug column ({} row(s))", updated);
             return Ok(());
         }
     }
@@ -356,19 +378,29 @@ async fn recover_owner_401(base_url: &str) -> Result<(), String> {
 
     log::info!("[n8n] Starting owner 401 recovery (one-shot)");
 
-    if let Err(e) = reset_n8n_owner_in_db() {
-        log::warn!("[n8n] Could not reset owner in database: {}", e);
-        return Err(format!("Login 401 and owner reset failed: {}", e));
+    let result = async {
+        if let Err(e) = reset_n8n_owner_in_db() {
+            log::warn!("[n8n] Could not reset owner in database: {}", e);
+            return Err(format!("Login 401 and owner reset failed: {}", e));
+        }
+
+        // Wait for n8n to pick up the DB change on next query
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+        // Re-run owner setup (sets our password on the now-shell user)
+        setup_owner_if_needed(base_url).await?;
+
+        log::info!("[n8n] Owner 401 recovery complete");
+        Ok(())
+    }
+    .await;
+
+    if result.is_err() {
+        // Allow retry on next 401 if this attempt failed
+        OWNER_RECOVERY_DONE.store(false, Ordering::Release);
     }
 
-    // Wait for n8n to pick up the DB change on next query
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-    // Re-run owner setup (sets our password on the now-shell user)
-    setup_owner_if_needed(base_url).await?;
-
-    log::info!("[n8n] Owner 401 recovery complete");
-    Ok(())
+    result
 }
 
 /// Set up the n8n owner account if one doesn't exist yet.
@@ -408,6 +440,15 @@ pub async fn setup_owner_if_needed(base_url: &str) -> Result<(), String> {
         }
         400 => {
             let body = resp.text().await.unwrap_or_default();
+            // Distinguish "owner already exists" (expected) from
+            // password-validation errors (actionable bug).
+            if body.contains("password") || body.contains("Password") {
+                log::error!(
+                    "[n8n] Owner setup password rejected by n8n: {}",
+                    safe_truncate(&body, 200)
+                );
+                return Err(format!("Owner setup password rejected: {}", safe_truncate(&body, 200)));
+            }
             log::info!("[n8n] Owner setup returned 400 (already exists): {}", safe_truncate(&body, 200));
             Ok(())
         }
