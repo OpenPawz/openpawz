@@ -637,6 +637,103 @@
 .chat-approval-bubble.bubble-external { border-left: 3px solid var(--status-warning); }
 .chat-approval-bubble.bubble-dangerous { border-left: 3px solid var(--status-error); }
 
+/* ── Inline risk banner (replaces modal risk banner) ── */
+.chat-approval-risk-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  border-top: 1px solid var(--border);
+}
+.chat-approval-risk-banner .ms { margin-top: 1px; }
+.chat-approval-risk-banner.risk-critical {
+  background: color-mix(in srgb, var(--status-error) 12%, transparent);
+  color: var(--status-error);
+}
+.chat-approval-risk-banner.risk-high {
+  background: color-mix(in srgb, var(--status-error) 8%, transparent);
+  color: var(--status-error);
+}
+.chat-approval-risk-banner .risk-reason-text {
+  font-size: 11px;
+  opacity: 0.85;
+  margin-top: 2px;
+}
+
+/* ── Inline network audit banner ── */
+.chat-approval-net-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  font-size: 11px;
+  border-top: 1px solid var(--border);
+}
+.chat-approval-net-banner.net-exfiltration {
+  background: color-mix(in srgb, var(--status-error) 12%, transparent);
+  color: var(--status-error);
+}
+.chat-approval-net-banner.net-external {
+  background: color-mix(in srgb, var(--status-warning) 8%, transparent);
+  color: var(--status-warning);
+}
+.chat-approval-net-banner.net-local {
+  color: var(--text-secondary);
+}
+
+/* ── Type-to-confirm (critical tools) ── */
+.chat-approval-type-confirm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  border-top: 1px solid var(--border);
+}
+.chat-approval-type-confirm label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.chat-approval-type-confirm .bubble-type-input {
+  flex: 1;
+  max-width: 120px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  background: var(--bg-input, var(--bg-tertiary));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  outline: none;
+}
+.chat-approval-type-confirm .bubble-type-input:focus {
+  border-color: var(--accent);
+}
+
+/* ── Dropdown divider & label ── */
+.approval-dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+.approval-dropdown-label {
+  padding: 6px 14px 2px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+/* Hide risk/net banners + type-confirm on resolved */
+.chat-approval-bubble.resolved .chat-approval-risk-banner,
+.chat-approval-bubble.resolved .chat-approval-net-banner,
+.chat-approval-bubble.resolved .chat-approval-type-confirm { display: none; }
+
 /* ─── Security Settings ─── */
 .security-toggles {
   display: flex;
