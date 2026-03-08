@@ -811,18 +811,18 @@ async function _generateRecall() {
 
     const unComplete = pawEngine.on('complete', (ev: EngineEvent) => {
       if (ev.session_id !== sessionId) return;
-      // Defer by one macrotask so any queued delta events can drain first
-      // before we unsubscribe the listener — prevents half-sentence cutoff.
-      setTimeout(() => {
-        cleanup();
-        out.innerHTML = escHtml(accumulated);
-        if (accumulated) {
-          localStorage.setItem('paw-recall-text', accumulated);
-          localStorage.setItem('paw-recall-ts', new Date().toISOString());
-        }
-        btn.disabled = false;
-        btn.textContent = '↺ Recap';
-      }, 0);
+      // ev.text is the full assembled response from Rust — use it as the
+      // authoritative final text instead of accumulated deltas, which can
+      // be incomplete if any delta events were dropped or arrived out of order.
+      const finalText = ev.text || accumulated;
+      cleanup();
+      out.innerHTML = escHtml(finalText);
+      if (finalText) {
+        localStorage.setItem('paw-recall-text', finalText);
+        localStorage.setItem('paw-recall-ts', new Date().toISOString());
+      }
+      btn.disabled = false;
+      btn.textContent = '↺ Recap';
     });
 
     const unError = pawEngine.on('error', (ev: EngineEvent) => {
