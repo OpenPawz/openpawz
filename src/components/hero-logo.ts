@@ -3,41 +3,41 @@
 // Replaces the hero tesseract on the Today dashboard.
 // Renders the OpenPawz logo centered with:
 //   • Animated orbital status ring (segments for system components)
-//   • Breathing glow pulse matching the kinetic palette
+//   • Breathing glow pulse matching the accent colour
 //   • Interactive pointer-driven parallax on the logo
-//   • Colour cycling through kinetic design system colours
+//   • Reactive segment states (active/inactive/error)
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Segment state drives opacity and pulse intensity */
+export type SegmentState = 'active' | 'inactive' | 'error';
 
 export interface HeroLogoInstance {
   canvas: HTMLCanvasElement;
   destroy(): void;
   resize(): void;
+  /** Update the state of a segment by label (CONDUCTOR, ENGRAM, LIBRARIAN, FOREMAN) */
+  setSegmentState(label: string, state: SegmentState): void;
 }
 
-// ── Kinetic palette for colour cycling ──────────────────────────────────────
+// ── Accent colour (consistent, not multicolour) ────────────────────────────
 
-const PALETTE: [number, number, number][] = [
-  [99, 102, 241], // indigo/accent
-  [255, 77, 77], // atmo red
-  [212, 168, 83], // kinetic gold
-  [143, 176, 160], // kinetic sage
-  [168, 85, 247], // purple
-];
+const ACCENT: [number, number, number] = [99, 102, 241]; // indigo/accent
+const ERROR_COLOR: [number, number, number] = [255, 77, 77]; // red for errors
 
 // ── Status ring segments (system components) ────────────────────────────────
 
 interface RingSegment {
   label: string;
-  color: [number, number, number];
   /** Arc length as fraction of full circle (sums to ~0.85 to leave gaps) */
   arc: number;
+  state: SegmentState;
 }
 
-const SEGMENTS: RingSegment[] = [
-  { label: 'CONDUCTOR', color: [255, 77, 77], arc: 0.22 },
-  { label: 'ENGRAM', color: [212, 168, 83], arc: 0.18 },
-  { label: 'LIBRARIAN', color: [143, 176, 160], arc: 0.2 },
-  { label: 'FOREMAN', color: [99, 102, 241], arc: 0.22 },
+const INITIAL_SEGMENTS: Omit<RingSegment, 'state'>[] = [
+  { label: 'CONDUCTOR', arc: 0.22 },
+  { label: 'ENGRAM', arc: 0.18 },
+  { label: 'LIBRARIAN', arc: 0.2 },
+  { label: 'FOREMAN', arc: 0.22 },
 ];
 
 const GAP = 0.04; // gap between segments (radians fraction of 2π)
@@ -65,6 +65,7 @@ export function createHeroLogo(container: HTMLElement): HeroLogoInstance {
         canvas.remove();
       },
       resize() {},
+      setSegmentState() {},
     };
   }
   const ctx = ctxRaw;
@@ -72,6 +73,12 @@ export function createHeroLogo(container: HTMLElement): HeroLogoInstance {
   let destroyed = false;
   let frameId = 0;
   const t0 = performance.now();
+
+  // ── Reactive segment state ──
+  const segments: RingSegment[] = INITIAL_SEGMENTS.map((s) => ({
+    ...s,
+    state: 'active' as SegmentState,
+  }));
 
   // ── Load logo image ──
   const logo = new Image();
@@ -141,17 +148,8 @@ export function createHeroLogo(container: HTMLElement): HeroLogoInstance {
     const cy = h / 2;
     const minDim = Math.min(w, h);
 
-    // ── Colour cycling (global accent for glow) ──
-    const cSpeed = 0.12;
-    const cp = (((t * cSpeed) % PALETTE.length) + PALETTE.length) % PALETTE.length;
-    const ci = Math.floor(cp);
-    const cf = cp - ci;
-    const ni = (ci + 1) % PALETTE.length;
-    const [r1, g1, b1] = PALETTE[ci];
-    const [r2, g2, b2] = PALETTE[ni];
-    const acR = Math.round(r1 + (r2 - r1) * cf);
-    const acG = Math.round(g1 + (g2 - g1) * cf);
-    const acB = Math.round(b1 + (b2 - b1) * cf);
+    // ── Accent colour (single, consistent) ──
+    const [acR, acG, acB] = ACCENT;
 
     // Breathing pulse (0.7 → 1.0)
     const breath = 0.7 + 0.3 * (0.5 + 0.5 * Math.sin(t * 1.8));
@@ -168,26 +166,32 @@ export function createHeroLogo(container: HTMLElement): HeroLogoInstance {
     ctx.stroke();
     ctx.restore();
 
-    // ── LAYER 2: Status ring segments ──
+    // ── LAYER 2: Status ring segments (single accent colour, reactive) ──
     const ringR = minDim * 0.36;
     const ringWidth = 3 * dpr;
     const ringRotation = t * 0.15; // slow rotation
     let angleOffset = ringRotation;
 
-    for (const seg of SEGMENTS) {
+    for (const seg of segments) {
       const arcRad = seg.arc * Math.PI * 2;
       const gapRad = GAP * Math.PI * 2;
       const startAngle = angleOffset;
       const endAngle = angleOffset + arcRad;
 
+      // Reactive: pick colour and intensity based on segment state
+      const segColor: [number, number, number] = seg.state === 'error' ? ERROR_COLOR : ACCENT;
+      const stateAlpha = seg.state === 'inactive' ? 0.2 : 1.0;
+      const pulseMult = seg.state === 'error' ? 1.5 : 1.0; // errors pulse stronger
+
       // Segment pulse — each slightly offset for organic feel
-      const segPulse = 0.6 + 0.4 * (0.5 + 0.5 * Math.sin(t * 2.0 + angleOffset * 3));
+      const segPulse =
+        (0.6 + 0.4 * (0.5 + 0.5 * Math.sin(t * 2.0 * pulseMult + angleOffset * 3))) * stateAlpha;
 
       // Glow pass
       ctx.save();
-      ctx.strokeStyle = `rgba(${seg.color[0]},${seg.color[1]},${seg.color[2]},${0.3 * segPulse})`;
+      ctx.strokeStyle = `rgba(${segColor[0]},${segColor[1]},${segColor[2]},${0.3 * segPulse})`;
       ctx.lineWidth = (ringWidth + 4 * dpr) * segPulse;
-      ctx.shadowColor = `rgb(${seg.color[0]},${seg.color[1]},${seg.color[2]})`;
+      ctx.shadowColor = `rgb(${segColor[0]},${segColor[1]},${segColor[2]})`;
       ctx.shadowBlur = 12 * dpr * segPulse;
       ctx.lineCap = 'round';
       ctx.beginPath();
@@ -197,9 +201,9 @@ export function createHeroLogo(container: HTMLElement): HeroLogoInstance {
 
       // Core pass (bright, thin)
       ctx.save();
-      const br = Math.min(255, seg.color[0] + 60);
-      const bg = Math.min(255, seg.color[1] + 60);
-      const bb = Math.min(255, seg.color[2] + 60);
+      const br = Math.min(255, segColor[0] + 60);
+      const bg = Math.min(255, segColor[1] + 60);
+      const bb = Math.min(255, segColor[2] + 60);
       ctx.strokeStyle = `rgba(${br},${bg},${bb},${0.7 * segPulse})`;
       ctx.lineWidth = ringWidth;
       ctx.lineCap = 'round';
@@ -214,7 +218,7 @@ export function createHeroLogo(container: HTMLElement): HeroLogoInstance {
         const dy = cy + Math.sin(angle) * ringR;
         ctx.save();
         ctx.fillStyle = `rgba(${br},${bg},${bb},${0.9 * segPulse})`;
-        ctx.shadowColor = `rgb(${seg.color[0]},${seg.color[1]},${seg.color[2]})`;
+        ctx.shadowColor = `rgb(${segColor[0]},${segColor[1]},${segColor[2]})`;
         ctx.shadowBlur = 6 * dpr * segPulse;
         ctx.beginPath();
         ctx.arc(dx, dy, 2 * dpr, 0, Math.PI * 2);
@@ -343,6 +347,10 @@ export function createHeroLogo(container: HTMLElement): HeroLogoInstance {
     canvas,
     resize() {
       syncSize();
+    },
+    setSegmentState(label: string, state: SegmentState) {
+      const seg = segments.find((s) => s.label === label);
+      if (seg) seg.state = state;
     },
     destroy() {
       destroyed = true;
