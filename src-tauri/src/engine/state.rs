@@ -354,6 +354,11 @@ pub struct EngineState {
     /// Uses tokio::sync::Mutex per-agent to allow holding across .await points
     /// (e.g., ContextBuilder.build()) without race conditions.
     pub cognitive_states: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<CognitiveState>>>>>,
+    /// Broadcast channel for SSE subscribers (e.g. the Pawz VS Code extension
+    /// connecting via the webhook `/chat/stream` endpoint).
+    /// Every `engine-event` is sent here alongside the Tauri webview emit so that
+    /// non-webview clients receive real-time streaming events.
+    pub sse_events: tokio::sync::broadcast::Sender<String>,
 }
 
 impl EngineState {
@@ -411,6 +416,11 @@ impl EngineState {
             _ => SpeculationConfig::default(),
         };
 
+        // SSE broadcast channel — capacity of 1024 events per subscriber.
+        // The VS Code extension (and any other SSE client) subscribes before
+        // each agent turn and drains events in real time.
+        let (sse_tx, _) = tokio::sync::broadcast::channel::<String>(1024);
+
         Ok(EngineState {
             store,
             config: Mutex::new(config),
@@ -431,6 +441,7 @@ impl EngineState {
             request_queue: Arc::new(Mutex::new(HashMap::new())),
             yield_signals: Arc::new(Mutex::new(HashMap::new())),
             cognitive_states: Arc::new(Mutex::new(HashMap::new())),
+            sse_events: sse_tx,
         })
     }
 
