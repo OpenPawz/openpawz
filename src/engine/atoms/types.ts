@@ -1181,6 +1181,15 @@ export interface EngineSquadMember {
 
 // ── Flows (Visual Pipelines) ──────────────────────────────────────────
 
+/** A typed edge between two memories in the knowledge graph. */
+export interface MemoryEdge {
+  source_id: string;
+  target_id: string;
+  edge_type: string;
+  weight: number;
+  created_at: string;
+}
+
 /** Persisted flow graph envelope. graph_json holds the full FlowGraph JSON. */
 export interface EngineFlow {
   id: string;

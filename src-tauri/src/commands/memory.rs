@@ -60,6 +60,28 @@ pub fn engine_memory_stats(state: State<'_, EngineState>) -> Result<MemoryStats,
 }
 
 #[tauri::command]
+pub fn engine_memory_get(
+    state: State<'_, EngineState>,
+    id: String,
+) -> Result<Option<Memory>, String> {
+    state.store.get_memory_by_id(&id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn engine_memory_update(
+    state: State<'_, EngineState>,
+    id: String,
+    content: String,
+    category: String,
+    importance: u8,
+) -> Result<(), String> {
+    state
+        .store
+        .update_memory(&id, &content, &category, importance)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn engine_memory_delete(state: State<'_, EngineState>, id: String) -> Result<(), String> {
     state.store.delete_memory(&id).map_err(|e| e.to_string())
 }
@@ -72,6 +94,17 @@ pub fn engine_memory_list(
     state
         .store
         .list_memories(limit.unwrap_or(100))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn engine_memory_edges(
+    state: State<'_, EngineState>,
+    limit: Option<usize>,
+) -> Result<Vec<crate::atoms::engram_types::MemoryEdge>, String> {
+    state
+        .store
+        .engram_list_all_edges(limit.unwrap_or(500))
         .map_err(|e| e.to_string())
 }
 

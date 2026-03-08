@@ -901,6 +901,20 @@ impl SessionStore {
         Ok(count as usize)
     }
 
+    /// List all edges (for graph visualization). Limited to avoid OOM.
+    pub fn engram_list_all_edges(&self, limit: usize) -> EngineResult<Vec<MemoryEdge>> {
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
+            "SELECT source_id, target_id, edge_type, weight, created_at
+             FROM memory_edges ORDER BY weight DESC LIMIT ?1",
+        )?;
+        let edges = stmt
+            .query_map(params![limit as i64], Self::edge_from_row)?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(edges)
+    }
+
     // ── Semantic row mapper ─────────────────────────────────────────
 
     fn semantic_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SemanticMemory> {

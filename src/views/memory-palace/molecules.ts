@@ -392,17 +392,17 @@ export async function palaceRecallById(memoryId: string): Promise<void> {
   if (emptyEl) emptyEl.style.display = 'none';
 
   try {
-    const memories = await pawEngine.memorySearch(memoryId, 1);
+    const mem = await pawEngine.memoryGet(memoryId);
     resultsEl.innerHTML = '';
-    if (memories.length) {
+    if (mem) {
       resultsEl.appendChild(
         renderRecallCard({
-          id: memories[0].id,
-          text: memories[0].content,
-          category: memories[0].category,
-          importance: memories[0].importance,
-          score: memories[0].score,
-          agent_id: memories[0].agent_id,
+          id: mem.id,
+          text: mem.content,
+          category: mem.category,
+          importance: mem.importance,
+          score: mem.score,
+          agent_id: mem.agent_id,
         }),
       );
     } else {
@@ -432,11 +432,15 @@ export function renderRecallCard(mem: RecallCardData): HTMLElement {
   const deleteBtn = mem.id
     ? `<button class="btn-icon palace-delete-memory" data-memory-id="${escHtml(mem.id)}" title="Delete memory"><span class="ms ms-sm">delete</span></button>`
     : '';
+  const editBtn = mem.id
+    ? `<button class="btn-icon palace-edit-memory" data-memory-id="${escHtml(mem.id)}" title="Edit memory"><span class="ms ms-sm">edit</span></button>`
+    : '';
 
   card.innerHTML = `
     <div class="palace-result-header">
       <span class="palace-result-type">${escHtml(mem.category ?? 'other')}</span>
       ${score}
+      ${editBtn}
       ${deleteBtn}
     </div>
     <div class="palace-result-content">${escHtml(mem.text ?? '')}</div>
@@ -463,6 +467,104 @@ export function renderRecallCard(mem: RecallCardData): HTMLElement {
       } catch (err) {
         showToast(`Failed to delete: ${err}`, 'error');
       }
+    });
+  }
+
+  // Wire edit button — inline edit form
+  const editEl = card.querySelector('.palace-edit-memory');
+  if (editEl && mem.id) {
+    editEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const contentEl = card.querySelector('.palace-result-content') as HTMLElement;
+      const metaEl = card.querySelector('.palace-result-meta') as HTMLElement;
+      const headerEl = card.querySelector('.palace-result-header') as HTMLElement;
+      if (!contentEl) return;
+
+      // Build category options
+      const categories = [
+        'other',
+        'preference',
+        'fact',
+        'decision',
+        'procedure',
+        'concept',
+        'code',
+        'person',
+        'project',
+      ];
+      const catOpts = categories
+        .map(
+          (c) =>
+            `<option value="${c}"${c === (mem.category ?? 'other') ? ' selected' : ''}>${c}</option>`,
+        )
+        .join('');
+
+      const editForm = document.createElement('div');
+      editForm.className = 'palace-edit-form';
+      editForm.innerHTML = `
+        <textarea class="palace-edit-content" rows="4">${escHtml(mem.text ?? '')}</textarea>
+        <div class="palace-edit-row">
+          <label>Category
+            <select class="palace-edit-category">${catOpts}</select>
+          </label>
+          <label>Importance
+            <input type="number" class="palace-edit-importance" min="1" max="10" value="${mem.importance ?? 5}">
+          </label>
+        </div>
+        <div class="palace-edit-actions">
+          <button class="btn btn-sm palace-edit-save">Save</button>
+          <button class="btn btn-sm btn-secondary palace-edit-cancel">Cancel</button>
+        </div>
+      `;
+
+      // Hide normal display
+      contentEl.style.display = 'none';
+      if (metaEl) metaEl.style.display = 'none';
+      headerEl.insertAdjacentElement('afterend', editForm);
+
+      // Cancel
+      editForm.querySelector('.palace-edit-cancel')!.addEventListener('click', () => {
+        editForm.remove();
+        contentEl.style.display = '';
+        if (metaEl) metaEl.style.display = '';
+      });
+
+      // Save
+      editForm.querySelector('.palace-edit-save')!.addEventListener('click', async () => {
+        const newContent = (
+          editForm.querySelector('.palace-edit-content') as HTMLTextAreaElement
+        ).value.trim();
+        const newCategory = (editForm.querySelector('.palace-edit-category') as HTMLSelectElement)
+          .value;
+        const newImportance = parseInt(
+          (editForm.querySelector('.palace-edit-importance') as HTMLInputElement).value,
+          10,
+        );
+        if (!newContent) {
+          showToast('Content cannot be empty', 'error');
+          return;
+        }
+
+        try {
+          await pawEngine.memoryUpdate(mem.id!, newContent, newCategory, newImportance);
+          showToast('Memory updated', 'success');
+          // Refresh the card in-place
+          editForm.remove();
+          contentEl.textContent = newContent;
+          contentEl.style.display = '';
+          if (metaEl) metaEl.style.display = '';
+          // Update header category badge
+          const typeSpan = headerEl.querySelector('.palace-result-type');
+          if (typeSpan) typeSpan.textContent = newCategory;
+          // Update importance tag
+          const impTag = metaEl?.querySelector('.palace-result-tag:not(.palace-result-agent)');
+          if (impTag) impTag.textContent = `importance: ${newImportance}`;
+          // Refresh sidebar too
+          await loadPalaceSidebar();
+        } catch (err) {
+          showToast(`Failed to update: ${err}`, 'error');
+        }
+      });
     });
   }
 

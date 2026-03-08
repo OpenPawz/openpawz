@@ -179,6 +179,7 @@
 }
 .palace-sidebar {
   width: 300px;
+  min-width: 260px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   display: flex;
@@ -382,6 +383,57 @@
   opacity: 1;
   color: var(--danger);
 }
+.palace-edit-memory {
+  opacity: 0.4;
+  transition: opacity var(--transition-fast);
+}
+.palace-edit-memory:hover {
+  opacity: 1;
+  color: var(--accent);
+}
+.palace-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0;
+}
+.palace-edit-form textarea {
+  width: 100%;
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  resize: vertical;
+  font-family: inherit;
+}
+.palace-edit-row {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+}
+.palace-edit-row label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.palace-edit-row select,
+.palace-edit-row input[type="number"] {
+  font-size: 12px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+.palace-edit-actions {
+  display: flex;
+  gap: 8px;
+}
 .palace-list-empty {
   padding: 24px;
   text-align: center;
@@ -533,10 +585,41 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  background: var(--bg-primary);
 }
 .palace-graph-container canvas {
   width: 100%;
   height: 100%;
+  display: block;
+}
+.palace-graph-tooltip {
+  position: absolute;
+  pointer-events: none;
+  z-index: 10;
+  background: var(--bg-secondary, #1e1e23);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 4px);
+  padding: 8px 10px;
+  max-width: 280px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.palace-graph-tooltip-cat {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 2px;
+}
+.palace-graph-tooltip-text {
+  font-size: 12px;
+  color: var(--text-primary, #e0e0e0);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.palace-graph-tooltip-meta {
+  font-size: 10px;
+  color: var(--text-muted, #888);
+  margin-top: 4px;
 }
 /* Remember form */
 .palace-remember-form {
