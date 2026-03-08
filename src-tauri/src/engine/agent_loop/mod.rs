@@ -387,6 +387,24 @@ pub async fn run_agent_turn(
                 name: None,
             });
 
+            // ── Phase 3: Flush remaining batched deltas BEFORE Complete ──
+            // Must happen first so the streaming bubble on the frontend shows
+            // the full text before lifecycle:end resolves the stream promise.
+            // Previously this flush happened after Complete, causing the
+            // streaming preview to briefly show truncated content.
+            if let Some(batch) = delta_batcher.flush() {
+                let _ = app_handle.emit(
+                    "engine-event",
+                    EngineEvent::Delta {
+                        session_id: session_id.to_string(),
+                        run_id: run_id.to_string(),
+                        text: batch.combined_text,
+                    },
+                );
+            }
+            // Log binary IPC batcher stats for the session
+            crate::engine::binary_ipc::log_session_stats(&delta_batcher.stats(), 0);
+
             // Emit completion event
             let usage = if last_input_tokens > 0 || total_output_tokens > 0 {
                 Some(TokenUsage {
@@ -439,20 +457,6 @@ pub async fn run_agent_turn(
                 }
                 telem::emit_summary(app_handle, &summary);
             }
-
-            // ── Phase 3: Flush remaining batched deltas ───────────────
-            if let Some(batch) = delta_batcher.flush() {
-                let _ = app_handle.emit(
-                    "engine-event",
-                    EngineEvent::Delta {
-                        session_id: session_id.to_string(),
-                        run_id: run_id.to_string(),
-                        text: batch.combined_text,
-                    },
-                );
-            }
-            // Log binary IPC batcher stats for the session
-            crate::engine::binary_ipc::log_session_stats(&delta_batcher.stats(), 0);
 
             // ── Phase 4: Log speculation stats for the session ────────
             crate::engine::speculative::log_session_speculation_stats(&speculation_stats);
