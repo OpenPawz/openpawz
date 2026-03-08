@@ -17,18 +17,22 @@ import {
   formatCost,
   agentStatus,
   getPawzMessage,
-  buildHeatmapData,
   buildCapabilityGroups,
 } from './atoms';
 import { renderSkillWidgets } from '../../components/molecules/skill-widget';
-import type { SkillOutput, EngineSkillStatus } from '../../engine/atoms/types';
+import type {
+  SkillOutput,
+  EngineSkillStatus,
+  TelemetryDailySummary,
+  TelemetryModelBreakdown,
+} from '../../engine/atoms/types';
 import { appState } from '../../state';
 import {
   renderDashboardIntegrations,
   wireDashboardEvents,
   loadServiceHealth,
 } from '../../features/integration-health';
-import { heatmapStrip } from '../../components/molecules/data-viz';
+import { sparkline } from '../../components/molecules/data-viz';
 import { isShowcaseActive, getShowcaseData } from '../../components/showcase';
 import {
   kineticRow,
@@ -864,22 +868,172 @@ function showQuickMemoryModal() {
   document.addEventListener('keydown', onEsc);
 }
 
-/** Populate the 30-day activity heatmap card. */
-export async function fetchHeatmap() {
-  const container = $('cmd-heatmap-body');
+/** Populate the TELEMETRY card — 14-day trends + today's headline stats + model breakdown. */
+export async function fetchTelemetry() {
+  const container = $('cmd-telemetry-body');
   if (!container) return;
 
+  // Build date range: last 14 days
+  const today = new Date();
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  const start = new Date(today);
+  start.setDate(start.getDate() - 13);
+
   try {
-    // Combine task activity + chat sessions for a complete picture
-    const [taskItems, sessions] = await Promise.all([
-      pawEngine.taskActivity(undefined, 500).catch(() => []),
-      pawEngine.sessionsList(500).catch(() => []),
+    const [range, modelBreakdown] = await Promise.all([
+      pawEngine.getMetricsRange(fmt(start), fmt(today)).catch(() => [] as TelemetryDailySummary[]),
+      pawEngine.getModelBreakdown(fmt(today)).catch(() => [] as TelemetryModelBreakdown[]),
     ]);
-    const days = buildHeatmapData(taskItems, sessions);
-    container.innerHTML = heatmapStrip(days);
+
+    // Build a complete 14-day map (fill in zeroes for missing days)
+    const dayMap = new Map<string, TelemetryDailySummary>();
+    range.forEach((r) => dayMap.set(r.date, r));
+    const allDays: TelemetryDailySummary[] = [];
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + i);
+      const key = fmt(d);
+      allDays.push(
+        dayMap.get(key) ?? {
+          date: key,
+          input_tokens: 0,
+          output_tokens: 0,
+          cost_usd: 0,
+          tool_calls: 0,
+          tool_duration_ms: 0,
+          llm_duration_ms: 0,
+          total_duration_ms: 0,
+          rounds: 0,
+          turn_count: 0,
+        },
+      );
+    }
+
+    const todayData = dayMap.get(fmt(today)) ?? allDays[allDays.length - 1];
+    const totalTokensToday = todayData.input_tokens + todayData.output_tokens;
+    const avgLlmMs =
+      todayData.turn_count > 0 ? Math.round(todayData.llm_duration_ms / todayData.turn_count) : 0;
+
+    // Sparkline data arrays
+    const costData = allDays.map((d) => d.cost_usd);
+    const tokenData = allDays.map((d) => d.input_tokens + d.output_tokens);
+    const maxCost = Math.max(...costData, 0.0001);
+    const maxTokens = Math.max(...tokenData, 1);
+
+    // Build day-label ticks (first and last only)
+    const tickFirst = new Date(start).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+    const tickLast = today.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+    // Model breakdown bars
+    const totalCostBreakdown = modelBreakdown.reduce((s, m) => s + m.cost_usd, 0) || 0.0001;
+    const modelBars = modelBreakdown
+      .sort((a, b) => b.cost_usd - a.cost_usd)
+      .slice(0, 5)
+      .map((m) => {
+        const pct = ((m.cost_usd / totalCostBreakdown) * 100).toFixed(0);
+        const rawModel = m.model ?? 'unknown';
+        const modelLabel = rawModel.includes('/') ? rawModel.split('/').pop()! : rawModel;
+        const modelShort = modelLabel.length > 22 ? `${modelLabel.slice(0, 20)}…` : modelLabel;
+        return `
+          <div class="telem-model-row">
+            <span class="telem-model-name" title="${escHtml(rawModel)}">${escHtml(modelShort)}</span>
+            <div class="telem-model-bar-wrap">
+              <div class="telem-model-bar" style="width:${pct}%"></div>
+            </div>
+            <span class="telem-model-pct">${pct}%</span>
+          </div>`;
+      })
+      .join('');
+
+    container.innerHTML = `
+      <div class="telem-grid">
+
+        <!-- Col 1: Today stats -->
+        <div class="telem-col telem-col-stats">
+          <div class="telem-col-label">TODAY</div>
+          <div class="telem-stat">
+            <span class="telem-stat-val" id="telem-turns">—</span>
+            <span class="telem-stat-lbl">turns</span>
+          </div>
+          <div class="telem-stat">
+            <span class="telem-stat-val" id="telem-tools">—</span>
+            <span class="telem-stat-lbl">tool calls</span>
+          </div>
+          <div class="telem-stat">
+            <span class="telem-stat-val" id="telem-tokens">—</span>
+            <span class="telem-stat-lbl">tokens</span>
+          </div>
+          <div class="telem-stat">
+            <span class="telem-stat-val" id="telem-latency">—</span>
+            <span class="telem-stat-lbl">avg latency</span>
+          </div>
+        </div>
+
+        <!-- Col 2: Sparklines -->
+        <div class="telem-col telem-col-charts">
+          <div class="telem-chart-row">
+            <span class="telem-chart-label">cost / day</span>
+            <div class="telem-chart-wrap">
+              ${sparkline(costData, 'var(--accent,#d4654a)', 260, 36)}
+            </div>
+            <span class="telem-chart-peak">${formatCost(maxCost)}</span>
+          </div>
+          <div class="telem-chart-ticks">
+            <span>${escHtml(tickFirst)}</span>
+            <span>14d</span>
+            <span>${escHtml(tickLast)}</span>
+          </div>
+          <div class="telem-chart-row" style="margin-top:8px">
+            <span class="telem-chart-label">tokens / day</span>
+            <div class="telem-chart-wrap">
+              ${sparkline(tokenData, 'var(--kinetic-sage,#8fb0a0)', 260, 36)}
+            </div>
+            <span class="telem-chart-peak">${formatTokens(maxTokens)}</span>
+          </div>
+        </div>
+
+        <!-- Col 3: Model breakdown -->
+        <div class="telem-col telem-col-models">
+          <div class="telem-col-label">MODELS TODAY</div>
+          ${modelBars || `<div class="today-section-empty" style="text-align:left">No model usage today</div>`}
+        </div>
+
+      </div>
+    `;
+
+    // Animate count-up for today's stats
+    const { animateCountUp } = await import('../../components/molecules/data-viz');
+    const turnsEl = document.getElementById('telem-turns');
+    const toolsEl = document.getElementById('telem-tools');
+    const tokensEl = document.getElementById('telem-tokens');
+    const latencyEl = document.getElementById('telem-latency');
+
+    if (turnsEl) animateCountUp(turnsEl, todayData.turn_count, 700);
+    if (toolsEl) animateCountUp(toolsEl, todayData.tool_calls, 700);
+    if (tokensEl) {
+      // Use formatTokens for the final value but animate raw number
+      const t = totalTokensToday;
+      animateCountUp(
+        {
+          set textContent(v: string) {
+            tokensEl.textContent = formatTokens(Number(v));
+          },
+        } as unknown as HTMLElement,
+        t,
+        700,
+      );
+      // Just set directly — animateCountUp works on integers, formatting separately
+      tokensEl.textContent = formatTokens(t);
+    }
+    if (latencyEl) {
+      latencyEl.textContent = avgLlmMs > 0 ? `${(avgLlmMs / 1000).toFixed(1)}s` : '—';
+    }
   } catch (e) {
-    console.warn('[today] Heatmap fetch failed:', e);
-    container.innerHTML = `<div class="today-section-empty">No activity data</div>`;
+    console.warn('[today] Telemetry fetch failed:', e);
+    container.innerHTML = `<div class="today-section-empty">No telemetry data yet — start a chat to generate metrics</div>`;
   }
 }
 
@@ -1078,13 +1232,14 @@ export function renderToday() {
         </div>
       </div>
 
-      <!-- Row 5: Heatmap (full width) -->
+      <!-- Row 5: Telemetry (full width) -->
       <div class="cmd-card bento-cell bento-span-full">
         <div class="today-card-header">
-          <span class="today-card-title">30-DAY HEATMAP</span>
+          <span class="today-card-title">TELEMETRY</span>
+          <span class="today-card-count" id="cmd-telemetry-label" style="margin-left:auto;font-size:10px;opacity:0.5">14-day</span>
         </div>
-        <div class="today-card-body" id="cmd-heatmap-body">
-          ${skelLines(1)}
+        <div class="today-card-body" style="max-height:none" id="cmd-telemetry-body">
+          ${skelLines(2)}
         </div>
       </div>
 
