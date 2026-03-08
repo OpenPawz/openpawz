@@ -45,7 +45,7 @@ graph TD
         A["Understands user intent"]
         B["Calls request_tools() with natural language query"]
     end
-    subgraph Librarian[\"Librarian (any embedding model)\"]
+    subgraph Librarian["Librarian (any embedding model)"]
         C["Embeds the query → 768-dim vector"]
         D["Cosine similarity against tool index"]
         E["Domain expansion: siblings included"]

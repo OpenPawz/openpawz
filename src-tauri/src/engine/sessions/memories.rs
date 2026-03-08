@@ -63,6 +63,50 @@ impl SessionStore {
         Ok(())
     }
 
+    /// Get a single memory by ID.
+    pub fn get_memory_by_id(&self, id: &str) -> EngineResult<Option<Memory>> {
+        let conn = self.conn.lock();
+        let result = conn.query_row(
+            "SELECT id, content, category, importance, created_at, agent_id FROM memories WHERE id = ?1",
+            params![id],
+            Memory::from_row,
+        );
+        match result {
+            Ok(mem) => Ok(Some(mem)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Update a memory's content, category, and importance.
+    pub fn update_memory(
+        &self,
+        id: &str,
+        content: &str,
+        category: &str,
+        importance: u8,
+    ) -> EngineResult<()> {
+        let conn = self.conn.lock();
+        let updated = conn.execute(
+            "UPDATE memories SET content = ?2, category = ?3, importance = ?4 WHERE id = ?1",
+            params![id, content, category, importance as i32],
+        )?;
+        if updated == 0 {
+            return Err(crate::atoms::error::EngineError::Other(format!(
+                "Memory '{}' not found",
+                id
+            )));
+        }
+        // Sync FTS5 index
+        conn.execute(
+            "INSERT OR REPLACE INTO memories_fts (id, content, category, agent_id) \
+             SELECT id, content, category, agent_id FROM memories WHERE id = ?1",
+            params![id],
+        )
+        .ok();
+        Ok(())
+    }
+
     pub fn memory_stats(&self) -> EngineResult<MemoryStats> {
         let conn = self.conn.lock();
 

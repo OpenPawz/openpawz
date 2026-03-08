@@ -89,6 +89,7 @@ import type {
   ForgeMetadataRow,
   ForgeSkillTreeNode,
   ForgeDomainSummary,
+  MemoryEdge,
 } from '../atoms/types';
 
 export class PawEngineClient {
@@ -281,12 +282,29 @@ export class PawEngineClient {
     return invoke<EngineMemoryStats>('engine_memory_stats');
   }
 
+  async memoryGet(id: string): Promise<EngineMemory | null> {
+    return invoke<EngineMemory | null>('engine_memory_get', { id });
+  }
+
+  async memoryUpdate(
+    id: string,
+    content: string,
+    category: string,
+    importance: number,
+  ): Promise<void> {
+    return invoke('engine_memory_update', { id, content, category, importance });
+  }
+
   async memoryDelete(id: string): Promise<void> {
     return invoke('engine_memory_delete', { id });
   }
 
   async memoryList(limit?: number): Promise<EngineMemory[]> {
     return invoke<EngineMemory[]>('engine_memory_list', { limit });
+  }
+
+  async memoryEdges(limit?: number): Promise<MemoryEdge[]> {
+    return invoke<MemoryEdge[]>('engine_memory_edges', { limit });
   }
 
   async getMemoryConfig(): Promise<EngineMemoryConfig> {
