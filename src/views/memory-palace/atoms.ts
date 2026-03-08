@@ -35,7 +35,10 @@ export interface RecallCardData {
 // ── Constants ──────────────────────────────────────────────────────────────
 
 export const CATEGORY_COLORS: Record<string, string> = {
-  other: '#676879',
+  // Core types
+  other: '#8A8478',
+  general: '#D4654A',
+  session: '#E8976B',
   preference: '#0073EA',
   fact: '#00CA72',
   decision: '#FDAB3D',
@@ -44,7 +47,31 @@ export const CATEGORY_COLORS: Record<string, string> = {
   code: '#579BFC',
   person: '#FF642E',
   project: '#CAB641',
+  // Extended types
+  infrastructure: '#5A96C8',
+  skill: '#FF8FAB',
+  task: '#4ECDC4',
+  memory: '#D4654A',
+  research: '#88B04B',
+  communication: '#F7C948',
+  system: '#7A8B9A',
+  trading: '#00B894',
+  automation: '#6C5CE7',
+  integration: '#FD79A8',
+  security: '#E17055',
+  workspace: '#A29BFE',
+  agent: '#FF7675',
 };
+
+/** Get a category color, generating a stable hue for unknown categories */
+export function getCategoryColor(cat: string): string {
+  if (CATEGORY_COLORS[cat]) return CATEGORY_COLORS[cat];
+  // Stable hash → warm hue
+  let hash = 0;
+  for (let i = 0; i < cat.length; i++) hash = cat.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = ((hash % 360) + 360) % 360;
+  return `hsl(${hue}, 55%, 55%)`;
+}
 
 // ── Pure validation ────────────────────────────────────────────────────────
 
