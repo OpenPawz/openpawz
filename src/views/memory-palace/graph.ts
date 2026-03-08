@@ -129,6 +129,7 @@ export function destroyPalaceGraph(): void {
   }
   _simRunning = false;
   _miniMode = false;
+  _eventsBound = false;
   _tooltip?.remove();
   _tooltip = null;
   _canvas = null;
@@ -199,6 +200,7 @@ export async function renderPalaceGraphInto(container: HTMLElement): Promise<voi
 
 export async function renderPalaceGraph(): Promise<void> {
   _miniMode = false;
+  _eventsBound = false;
   const canvas = $('palace-graph-render') as HTMLCanvasElement | null;
   const emptyEl = $('palace-graph-empty');
   if (!canvas) return;
