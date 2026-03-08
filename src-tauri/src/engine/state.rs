@@ -366,6 +366,10 @@ impl EngineState {
         // Initialize community skills table (skills.sh ecosystem)
         store.init_community_skills_table()?;
 
+        // Seed built-in canvas visualisation skills into Engram procedural memory.
+        // Uses deterministic IDs — idempotent on every startup.
+        crate::engine::engram::skill_library::seed_builtin_canvas_skills(&store).ok();
+
         // Load config from DB or use defaults
         let mut config = match store.get_config("engine_config") {
             Ok(Some(json)) => serde_json::from_str::<EngineConfig>(&json).unwrap_or_default(),
