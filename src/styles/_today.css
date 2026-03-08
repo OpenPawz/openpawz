@@ -847,37 +847,13 @@
 .engram-brain-wrap {
   flex: 0 0 58%;
   position: relative;
-  cursor: pointer;
   border-right: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
   overflow: hidden;
-  transition: background 0.2s;
-}
-.engram-brain-wrap::after {
-  content: 'click to store a memory';
-  position: absolute;
-  bottom: 10px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 9px;
-  font-family: var(--font-mono);
-  color: var(--text-muted);
-  opacity: 0;
-  transition: opacity 0.2s;
-  white-space: nowrap;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  pointer-events: none;
-}
-.engram-brain-wrap:hover::after {
-  opacity: 0.8;
-}
-.engram-brain-wrap:hover {
-  background: rgba(212, 101, 74, 0.03);
-}
-.engram-brain-canvas {
-  position: absolute;
-  inset: 0;
-  display: block;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    rgba(212, 101, 74, 0.04) 0%,
+    transparent 70%
+  );
 }
 .engram-stats-col {
   flex: 1;

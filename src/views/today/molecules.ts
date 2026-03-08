@@ -42,10 +42,7 @@ import {
   type KineticStatus,
 } from '../../components/kinetic-row';
 import { createHeroLogo, type HeroLogoInstance } from '../../components/hero-logo';
-import {
-  createEngramBrain,
-  type EngramBrainInstance,
-} from '../../components/molecules/engram-brain';
+import { renderPalaceGraphInto } from '../memory-palace/graph';
 import {
   createSignalFlow,
   type SignalFlowInstance,
@@ -63,7 +60,6 @@ function skelLines(n = 3): string {
 
 // ── Hero logo + Engram brain instances ─────────────────────────────────
 let _heroLogo: HeroLogoInstance | null = null;
-let _engramBrain: EngramBrainInstance | null = null;
 let _signalFlow: SignalFlowInstance | null = null;
 let _engramCategories: [string, number][] = [];
 
@@ -1220,8 +1216,7 @@ export function renderToday() {
           <button class="btn btn-ghost btn-sm" id="engram-store-btn">+ Memory</button>
         </div>
         <div class="engram-card-body">
-          <div class="engram-brain-wrap" id="engram-brain-wrap" title="Click to store a memory in Engram">
-          </div>
+          <div class="engram-brain-wrap" id="engram-brain-wrap"></div>
           <div class="engram-stats-col" id="engram-stats-col">
             ${skelLines(3)}
           </div>
@@ -1313,11 +1308,10 @@ export function renderToday() {
     _heroLogo = createHeroLogo(logoCell);
   }
 
-  // ── Hydrate the Engram brain canvas ──
+  // ── Hydrate the Engram knowledge graph ──
   const brainWrap = $('engram-brain-wrap');
   if (brainWrap) {
-    _engramBrain?.destroy();
-    _engramBrain = createEngramBrain(brainWrap);
+    void renderPalaceGraphInto(brainWrap);
   }
 
   // ── Hydrate the Signal Flow canvas ──
@@ -1486,7 +1480,7 @@ function bindEvents() {
   $('today-memory-vault-btn')?.addEventListener('click', () => switchView('memory-palace'));
 
   // ── Engram card ─────────────────────────────────────────────────────────
-  $('engram-brain-wrap')?.addEventListener('click', showQuickMemoryModal);
+  // Graph handles its own click/hover interactions; modal only via + Memory btn
   $('engram-store-btn')?.addEventListener('click', showQuickMemoryModal);
 
   // ── Kinetic: apply spring hover to bento cards ──

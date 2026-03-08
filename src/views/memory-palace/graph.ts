@@ -119,6 +119,73 @@ export function initPalaceGraph(): void {
   // rendering triggered by tab switch
 }
 
+/** Stop the animation loop and release all graph state. Safe to call multiple times. */
+export function destroyPalaceGraph(): void {
+  if (_animId) {
+    cancelAnimationFrame(_animId);
+    _animId = 0;
+  }
+  _simRunning = false;
+  _tooltip?.remove();
+  _tooltip = null;
+  _canvas = null;
+  _ctx = null;
+  _nodes = [];
+  _edges = [];
+  _hoveredNode = null;
+  _dragNode = null;
+}
+
+/**
+ * Render the knowledge graph into an arbitrary container element.
+ * Creates its own <canvas> if none already present.
+ * Use this for embedded views (e.g. Today dashboard); use renderPalaceGraph()
+ * for the full Memory Palace view where fixed DOM IDs are present.
+ */
+export async function renderPalaceGraphInto(container: HTMLElement): Promise<void> {
+  destroyPalaceGraph();
+
+  let canvas = container.querySelector('canvas') as HTMLCanvasElement | null;
+  if (!canvas) {
+    canvas = document.createElement('canvas');
+    canvas.style.cssText = 'display:block;position:absolute;inset:0;width:100%;height:100%;';
+    container.appendChild(canvas);
+  }
+
+  try {
+    const [engineMems, engineEdges] = await Promise.all([
+      pawEngine.memoryList(200),
+      pawEngine.memoryEdges(500).catch(() => [] as MemoryEdge[]),
+    ]);
+
+    if (!engineMems.length) {
+      canvas.style.display = 'none';
+      // Show a subtle placeholder text via 2D fill
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        const dpr = window.devicePixelRatio || 1;
+        const w = container.clientWidth || 300;
+        const h = container.clientHeight || 180;
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+        canvas.style.cssText = 'display:block;position:absolute;inset:0;width:100%;height:100%;';
+        ctx.scale(dpr, dpr);
+        ctx.fillStyle = 'rgba(255,255,255,0.22)';
+        ctx.font = '700 11px ui-monospace,monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('No memories yet', w / 2, h / 2);
+      }
+      return;
+    }
+
+    canvas.style.display = 'block';
+    _buildGraph(engineMems, engineEdges, canvas);
+  } catch (e) {
+    console.warn('[graph] renderPalaceGraphInto failed:', e);
+  }
+}
+
 export async function renderPalaceGraph(): Promise<void> {
   const canvas = $('palace-graph-render') as HTMLCanvasElement | null;
   const emptyEl = $('palace-graph-empty');
