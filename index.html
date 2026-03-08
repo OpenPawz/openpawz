@@ -1424,6 +1424,15 @@
                       <span>Enabled</span>
                     </label>
                   </div>
+                  <label class="tasks-modal-cron-toggle" style="margin-top: 8px">
+                    <input type="checkbox" id="tasks-modal-input-persistent" />
+                    <span>Persistent (re-run continuously after each completion)</span>
+                  </label>
+                </div>
+                <div class="tasks-modal-field">
+                  <label>Event Trigger <span style="font-weight:normal;color:var(--text-muted)">(optional)</span></label>
+                  <input type="text" id="tasks-modal-input-event-trigger" class="form-input" placeholder='e.g. {"type":"webhook","path":"/deploy"}' />
+                  <div class="tasks-modal-hint">JSON event condition that fires this task. Supports: <code>webhook</code>, <code>agent_message</code>.</div>
                 </div>
                 <div class="tasks-modal-field">
                   <label>Model Override</label>

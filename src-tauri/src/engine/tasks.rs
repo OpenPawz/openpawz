@@ -972,7 +972,8 @@ pub fn compute_next_run(
         }
     }
 
-    Some((*from + chrono::Duration::hours(1)).to_rfc3339())
+    warn!("[tasks] Unrecognised schedule format '{}' — supported: 'every Xm', 'every Xh', 'daily HH:MM'", s);
+    None
 }
 
 #[cfg(test)]
@@ -1091,11 +1092,11 @@ mod tests {
     // ── Fallback behavior ──────────────────────────────────────────
 
     #[test]
-    fn unknown_format_defaults_to_1h() {
+    fn unknown_format_returns_none() {
         let from = utc(2025, 6, 15, 10, 0);
-        let next = compute_next_run(&Some("every monday".into()), &from).unwrap();
-        // Unrecognized format → fallback +1 hour
-        assert!(next.contains("11:00"));
+        // Unrecognized format → None (not silent +1h fallback)
+        let result = compute_next_run(&Some("every monday".into()), &from);
+        assert!(result.is_none());
     }
 
     #[test]
