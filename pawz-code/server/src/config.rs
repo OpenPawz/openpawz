@@ -15,12 +15,22 @@ pub struct Config {
     pub bind: String,
     /// Bearer token required on every /chat/stream request
     pub auth_token: String,
-    /// LLM provider: "anthropic" | "openai"
+    /// LLM provider: "anthropic" | "openai" | "openai-compatible" | "claude_code"
+    ///
+    /// Set to "claude_code" to route through the Claude Code CLI subprocess
+    /// (`claude` binary) instead of calling an API directly. Requires Claude
+    /// Code to be installed and authenticated with a Max subscription.
+    /// No `api_key` is needed when using this provider.
     #[serde(default = "default_provider")]
     pub provider: String,
-    /// API key for the provider
+    /// API key for the provider (not required when provider = "claude_code")
     #[serde(default)]
     pub api_key: String,
+    /// Path to the `claude` binary when provider = "claude_code".
+    /// Defaults to "claude" (resolved via $PATH). Override if claude is
+    /// installed in a non-standard location.
+    #[serde(default)]
+    pub claude_binary_path: Option<String>,
     /// Model name (e.g. "claude-opus-4-5", "gpt-4o", "llama3")
     #[serde(default = "default_model")]
     pub model: String,
@@ -129,6 +139,7 @@ impl Config {
             max_rounds: default_max_rounds(),
             workspace_root: None,
             model_roles: ModelRoles::default(),
+            claude_binary_path: None,
         };
 
         std::fs::create_dir_all(path.parent().unwrap())?;

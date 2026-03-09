@@ -2,6 +2,7 @@
 // Streaming LLM calls for Anthropic (Claude) and OpenAI-compatible APIs.
 // Returns a LlmResult with the final text, tool calls, and usage.
 
+use crate::claude_code;
 use crate::config::Config;
 use crate::types::{FunctionCall, LlmResult, Message, ToolCall, ToolDef, TokenUsage};
 use anyhow::{bail, Result};
@@ -12,6 +13,12 @@ use serde_json::Value;
 
 /// Call the configured LLM provider with streaming. Calls `on_delta` for every
 /// text token. Returns the complete LlmResult when the stream is done.
+///
+/// Provider dispatch:
+/// - "claude_code"        — Claude Code CLI subprocess (no API key required)
+/// - "openai"             — OpenAI Chat Completions API
+/// - "openai-compatible"  — Any OpenAI-compatible API (Ollama, OpenRouter, etc.)
+/// - anything else        — Anthropic Messages API (default)
 pub async fn call_streaming(
     config: &Config,
     client: &reqwest::Client,
@@ -21,6 +28,9 @@ pub async fn call_streaming(
     on_delta: impl Fn(&str) + Send + Sync,
 ) -> Result<LlmResult> {
     match config.provider.as_str() {
+        "claude_code" => {
+            claude_code::call_claude_code(config, system, messages, tools, on_delta).await
+        }
         "openai" | "openai-compatible" => {
             call_openai(config, client, system, messages, tools, on_delta).await
         }

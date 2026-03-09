@@ -4,6 +4,7 @@
 // Auth: bearer token checked on every request except /health.
 
 mod agent;
+mod claude_code;
 mod config;
 mod engram;
 mod memory;
@@ -258,14 +259,29 @@ async fn main() -> anyhow::Result<()> {
 
     let config = config::Config::load_or_create()?;
 
-    if config.api_key.is_empty() {
+    // api_key is not required when using the claude_code provider — the claude
+    // CLI handles authentication independently via its own login flow.
+    if config.api_key.is_empty() && config.provider != "claude_code" {
         eprintln!(
             "[pawz-code] ERROR: api_key is not set in {}\n\
-             [pawz-code] Edit the file and add your {} API key, then restart.",
+             [pawz-code] Edit the file and add your {} API key, then restart.\n\
+             [pawz-code] TIP: Set provider = \"claude_code\" to use the Claude CLI instead.",
             config::Config::config_path().display(),
             config.provider
         );
         std::process::exit(1);
+    }
+
+    if config.provider == "claude_code" {
+        let binary = config
+            .claude_binary_path
+            .as_deref()
+            .unwrap_or("claude");
+        eprintln!(
+            "[pawz-code] Provider: claude_code (binary: {})\n\
+             [pawz-code] Make sure you are logged in: run `{} login` first.",
+            binary, binary
+        );
     }
 
     let bind = format!("{}:{}", config.bind, config.port);
