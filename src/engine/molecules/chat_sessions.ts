@@ -9,7 +9,7 @@ import {
   persistAgentSessionMap,
   groupSessionMap,
 } from '../../state/index';
-import { escHtml } from '../../components/helpers';
+import { escHtml, parseDate } from '../../components/helpers';
 import * as AgentsModule from '../../views/agents';
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -296,7 +296,7 @@ export function createSessionManager(deps: SessionManagerDeps): SessionManager {
           id: m.id,
           role: m.role as 'user' | 'assistant' | 'system',
           content: m.content,
-          timestamp: new Date(m.created_at),
+          timestamp: parseDate(m.created_at),
         }));
       deps.renderMessages();
     } catch (e) {

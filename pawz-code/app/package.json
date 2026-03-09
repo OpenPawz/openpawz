@@ -1,0 +1,18 @@
+{
+  "name": "pawz-code-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pawz CODE — compact Tauri control panel",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "tauri": "tauri"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "@tauri-apps/api": "^2.0.0",
+    "vite": "^5.0.0",
+    "typescript": "^5.0.0"
+  }
+}

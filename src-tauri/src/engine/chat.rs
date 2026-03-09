@@ -136,6 +136,28 @@ pub fn build_runtime_context(
     agent_id: &str,
     user_timezone: &str,
 ) -> String {
+    // Resolve a human-friendly agent name so the model knows its own identity.
+    // The default agent's display name is "Pawz" (set in frontend), but the
+    // backend only stores agent_id. For non-default agents, the agent_id slug
+    // is title-cased ("agent-code-monkey-123" → "Code Monkey").
+    let agent_display_name: String = if agent_id == "default" {
+        "Pawz".to_string()
+    } else {
+        agent_id
+            .strip_prefix("agent-")
+            .unwrap_or(agent_id)
+            .split('-')
+            .filter(|s| !s.chars().all(|c| c.is_ascii_digit()))
+            .map(|w| {
+                let mut chars = w.chars();
+                match chars.next() {
+                    Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
     let now_utc = chrono::Utc::now();
     let time_str = if let Ok(tz) = user_timezone.parse::<chrono_tz::Tz>() {
         let local: chrono::DateTime<chrono_tz::Tz> = now_utc.with_timezone(&tz);
@@ -179,18 +201,19 @@ pub fn build_runtime_context(
 
     format!(
         "## Runtime\n\
-        Model: {} | Provider: {} | Session: {} | Agent: {}\n\
-        Time: {}\n\
+        Name: {} | Agent ID: {} | Model: {} | Provider: {}\n\
+        Session: {} | Time: {}\n\
         Workspace: {}\n\
         \n\
         ## Environment\n\
         OS: {} ({}) | Shell: {}\n\
         Host: {} | User: {} | Home: {}\n\
         OpenPawz: v{}",
+        agent_display_name,
+        agent_id,
         model,
         provider_name,
         session_id,
-        agent_id,
         time_str,
         ws.display(),
         os_name,

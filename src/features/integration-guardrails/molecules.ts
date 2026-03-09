@@ -4,6 +4,7 @@
 // dry-run plans, and audit log viewer. Calls IPC for persistence.
 
 import { invoke } from '@tauri-apps/api/core';
+import { parseDate } from '../../components/helpers';
 import {
   type IntegrationRiskLevel,
   type DryRunPlan,
@@ -167,7 +168,7 @@ export function renderAuditLog(logs: CredentialUsageLog[]): string {
           : log.result === 'denied'
             ? 'var(--warning)'
             : 'var(--danger)';
-      const ts = new Date(log.timestamp).toLocaleString();
+      const ts = parseDate(log.timestamp).toLocaleString();
       return `
       <tr class="guardrail-audit-row">
         <td>${_esc(ts)}</td>

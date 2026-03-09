@@ -33,7 +33,7 @@ import { engineChatSend } from '../molecules/bridge';
 import { pawEngine } from '../molecules/ipc_client';
 import { extractContent, fileToBase64 } from '../atoms/chat';
 import { showToast } from '../../components/toast';
-import { escHtml } from '../../components/helpers';
+import { escHtml, parseDate } from '../../components/helpers';
 
 // ── Module state ─────────────────────────────────────────────────────────
 
@@ -738,7 +738,7 @@ async function _loadHistory(hubId: string, sessionKey: string) {
         .map((m) => ({
           role: m.role as 'user' | 'assistant',
           content: extractContent(m.content),
-          timestamp: new Date(m.created_at),
+          timestamp: parseDate(m.created_at),
           toolCalls: m.tool_calls_json ? JSON.parse(m.tool_calls_json) : undefined,
           agentId: m.agent_id,
         }));

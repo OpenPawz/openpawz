@@ -110,26 +110,55 @@ impl SessionStore {
     pub fn memory_stats(&self) -> EngineResult<MemoryStats> {
         let conn = self.conn.lock();
 
-        let total: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?;
+        // Count from both old `memories` table and new `episodic_memories` table
+        let old_total: i64 = conn.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?;
+        let episodic_total: i64 = conn
+            .query_row("SELECT COUNT(*) FROM episodic_memories", [], |r| r.get(0))
+            .unwrap_or(0);
+        let total = old_total + episodic_total;
 
-        let has_embeddings: bool = conn
+        let has_embeddings_old: bool = conn
             .query_row(
                 "SELECT COUNT(*) > 0 FROM memories WHERE embedding IS NOT NULL",
                 [],
                 |r| r.get(0),
             )
             .unwrap_or(false);
+        let has_embeddings_episodic: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM episodic_memories WHERE embedding IS NOT NULL",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(false);
+        let has_embeddings = has_embeddings_old || has_embeddings_episodic;
 
-        let mut stmt = conn.prepare(
-            "SELECT category, COUNT(*) FROM memories GROUP BY category ORDER BY COUNT(*) DESC",
-        )?;
+        // Merge categories from both tables
+        let mut cat_map = std::collections::HashMap::<String, i64>::new();
 
-        let categories: Vec<(String, i64)> = stmt
+        let mut stmt = conn.prepare("SELECT category, COUNT(*) FROM memories GROUP BY category")?;
+        for row in stmt
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
             })?
             .filter_map(|r| r.ok())
-            .collect();
+        {
+            *cat_map.entry(row.0).or_insert(0) += row.1;
+        }
+
+        let mut stmt2 =
+            conn.prepare("SELECT category, COUNT(*) FROM episodic_memories GROUP BY category")?;
+        for row in stmt2
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+        {
+            *cat_map.entry(row.0).or_insert(0) += row.1;
+        }
+
+        let mut categories: Vec<(String, i64)> = cat_map.into_iter().collect();
+        categories.sort_by(|a, b| b.1.cmp(&a.1));
 
         Ok(MemoryStats {
             total_memories: total,

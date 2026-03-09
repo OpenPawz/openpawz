@@ -164,6 +164,7 @@ describe('describeAge', () => {
   it('says days ago', () => {
     const d = new Date();
     d.setDate(d.getDate() - 5);
+    d.setHours(0, 0, 0, 0);
     expect(describeAge(d.toISOString())).toBe('5d ago');
   });
 });

@@ -4,7 +4,12 @@
 
 import { pawEngine } from '../../engine';
 import { appState, agentSessionMap, persistAgentSessionMap } from '../../state/index';
-import { escHtml, confirmModal } from '../../components/helpers';
+import {
+  escHtml,
+  confirmModal,
+  confirmDeleteSessionModal,
+  parseDate,
+} from '../../components/helpers';
 import { showToast } from '../../components/toast';
 import * as AgentsModule from '../../views/agents';
 import { getAutocompleteSuggestions } from '../../features/slash-commands';
@@ -224,9 +229,15 @@ export function initChatListeners(deps: ChatListenerDeps): void {
 
   $('session-delete-btn')?.addEventListener('click', async () => {
     if (!appState.currentSessionKey || !appState.wsConnected) return;
-    if (!(await confirmModal('Delete this session? This cannot be undone.'))) return;
+    const { confirmed, deleteMemory } = await confirmDeleteSessionModal();
+    if (!confirmed) return;
     try {
-      await pawEngine.sessionDelete(appState.currentSessionKey);
+      const sessionId = appState.currentSessionKey;
+      if (deleteMemory) {
+        const count = await pawEngine.memoryDeleteBySession(sessionId);
+        if (count > 0) showToast(`Deleted ${count} memor${count === 1 ? 'y' : 'ies'}`, 'info');
+      }
+      await pawEngine.sessionDelete(sessionId);
       appState.currentSessionKey = null;
       appState.messages = [];
       deps.renderMessages();
@@ -266,7 +277,7 @@ export function initChatListeners(deps: ChatListenerDeps): void {
       appState.messages = history.map((m) => ({
         role: m.role as 'user' | 'assistant' | 'system',
         content: m.content,
-        timestamp: new Date(m.created_at),
+        timestamp: parseDate(m.created_at),
       }));
       deps.renderMessages();
     } catch (e) {

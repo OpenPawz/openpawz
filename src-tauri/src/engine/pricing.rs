@@ -118,14 +118,33 @@ pub fn estimate_cost_usd(
 
 /// How complex a user message is — determines model tier.
 /// Classify a user message's complexity to choose the right model tier.
-/// Looks for signals of multi-step reasoning, code, analysis, etc.
+///
+/// Uses the retrieval gate as the first pass — `GateDecision::Skip` means
+/// the query is trivial (greeting, identity question, topic switch) and
+/// `DeepRetrieve` means it's definitely complex. Only `Retrieve` queries
+/// fall through to the keyword heuristics.
+///
+/// This unification prevents the gate and auto-tier from disagreeing
+/// (e.g., gate says "trivial" but auto-tier says "use expensive model").
 pub fn classify_task_complexity(message: &str) -> TaskComplexity {
+    use crate::engine::engram::gated_search::{gate_decision, GateDecision};
+
     let msg = message.to_lowercase();
     let len = msg.len();
 
-    // Long messages are usually complex
+    // ── Phase 1: Length heuristic (checked first — overrides gate) ───────
+    // Long messages are usually complex regardless of structure.
     if len > 1500 {
         return TaskComplexity::Complex;
+    }
+
+    // ── Phase 0: Use retrieval gate as primary structural classifier ─────
+    // The gate already does structural analysis (noun density, verb patterns,
+    // anaphora detection, deep-signal matching). Leverage it.
+    match gate_decision(message) {
+        GateDecision::Skip | GateDecision::Defer(_) => return TaskComplexity::Simple,
+        GateDecision::DeepRetrieve => return TaskComplexity::Complex,
+        _ => {} // Retrieve/Refuse → fall through to keyword heuristics
     }
 
     // Code-related signals

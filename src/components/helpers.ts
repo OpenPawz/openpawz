@@ -2,6 +2,21 @@
 
 export const $ = (id: string) => document.getElementById(id);
 
+/**
+ * Safely parse a date string from the database.
+ * SQLite datetime('now') returns "YYYY-MM-DD HH:MM:SS" (no T, no timezone)
+ * which is not reliably parsed by `new Date()` across environments.
+ * This normalises it to ISO 8601 before parsing.
+ */
+export function parseDate(raw: string | Date | undefined | null): Date {
+  if (!raw) return new Date(0);
+  if (raw instanceof Date) return raw;
+  // If the string looks like SQLite format (has space separator, no T), normalise it
+  const normalised = raw.includes('T') ? raw : `${raw.replace(' ', 'T')}Z`;
+  const d = new Date(normalised);
+  return isNaN(d.getTime()) ? new Date(0) : d;
+}
+
 // ── Material Symbols icon helper ───────────────────────────────────────────
 const _iconMap: Record<string, string> = {
   paperclip: 'attach_file',
@@ -261,6 +276,64 @@ export function confirmModal(message: string, title = 'Confirm'): Promise<boolea
   });
 }
 
+/** Show a delete-session dialog with a checkbox to optionally delete associated memories. */
+export function confirmDeleteSessionModal(): Promise<{
+  confirmed: boolean;
+  deleteMemory: boolean;
+}> {
+  return new Promise((resolve) => {
+    const overlay = $('delete-session-modal');
+    const checkbox = $('delete-session-memory-checkbox') as HTMLInputElement | null;
+    const okBtn = $('delete-session-modal-ok');
+    const cancelBtn = $('delete-session-modal-cancel');
+    const closeBtn = $('delete-session-modal-close');
+    if (!overlay) {
+      resolve({ confirmed: false, deleteMemory: false });
+      return;
+    }
+
+    if (checkbox) checkbox.checked = false;
+    overlay.style.display = 'flex';
+    okBtn?.focus();
+
+    function cleanup() {
+      overlay!.style.display = 'none';
+      okBtn?.removeEventListener('click', onOk);
+      cancelBtn?.removeEventListener('click', onCancel);
+      closeBtn?.removeEventListener('click', onCancel);
+      overlay?.removeEventListener('click', onBackdrop);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onOk() {
+      const deleteMemory = checkbox?.checked ?? false;
+      cleanup();
+      resolve({ confirmed: true, deleteMemory });
+    }
+    function onCancel() {
+      cleanup();
+      resolve({ confirmed: false, deleteMemory: false });
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        onOk();
+      }
+    }
+    function onBackdrop(e: MouseEvent) {
+      if (e.target === overlay) onCancel();
+    }
+
+    okBtn?.addEventListener('click', onOk);
+    cancelBtn?.addEventListener('click', onCancel);
+    closeBtn?.addEventListener('click', onCancel);
+    overlay.addEventListener('click', onBackdrop);
+    document.addEventListener('keydown', onKey);
+  });
+}
+
 // Tauri 2 WKWebView (macOS) does not support window.prompt() — it returns null.
 // This custom modal replaces all prompt() usage in the app.
 export function promptModal(title: string, placeholder?: string): Promise<string | null> {
@@ -321,10 +394,11 @@ export function promptModal(title: string, placeholder?: string): Promise<string
 }
 
 export function formatTimeAgo(date: string | Date): string {
-  const seconds = Math.floor((Date.now() - new Date(date).getTime()) / 1000);
+  const d = typeof date === 'string' ? parseDate(date) : date;
+  const seconds = Math.floor((Date.now() - d.getTime()) / 1000);
   if (seconds < 60) return 'just now';
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   if (seconds < 2592000) return `${Math.floor(seconds / 86400)}d ago`;
-  return new Date(date).toLocaleDateString();
+  return d.toLocaleDateString();
 }

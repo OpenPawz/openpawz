@@ -13,7 +13,7 @@ import {
   persistGroupSessionMap,
 } from '../../state/index';
 import { showToast } from '../../components/toast';
-import { confirmModal, promptModal, escHtml } from '../../components/helpers';
+import { confirmModal, promptModal, escHtml, parseDate } from '../../components/helpers';
 import * as AgentsModule from '../../views/agents';
 import {
   type ConversationEntry,
@@ -207,7 +207,7 @@ export async function refreshConversationList(): Promise<void> {
         if (msgs.length) {
           lastMessage = truncatePreview(msgs[0].content ?? '');
           lastRole = msgs[0].role === 'assistant' ? 'assistant' : 'user';
-          lastTs = new Date(msgs[0].created_at).getTime() || lastTs;
+          lastTs = parseDate(msgs[0].created_at).getTime() || lastTs;
         }
       } catch {
         // Swallow preview errors

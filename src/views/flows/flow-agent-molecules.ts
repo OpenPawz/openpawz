@@ -17,6 +17,7 @@ import {
 import type { FlowGraph } from './atoms';
 import type { Agent } from '../agents/atoms';
 import { formatMarkdown } from '../../components/molecules/markdown';
+import { parseDate } from '../../components/helpers';
 import { engineChatSend } from '../../engine/molecules/bridge';
 import { subscribeSession, type StreamHandlers } from '../../engine/molecules/event_bus';
 import { refreshAvailableModels } from '../agents/helpers';
@@ -453,7 +454,7 @@ function appendMessageEl(msg: FlowAgentMessage): void {
 
   const time = document.createElement('div');
   time.className = 'message-time';
-  time.textContent = new Date(msg.timestamp).toLocaleTimeString([], {
+  time.textContent = parseDate(msg.timestamp).toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });

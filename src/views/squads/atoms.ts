@@ -1,7 +1,7 @@
 // src/views/squads/atoms.ts — Squads view rendering helpers
 
 import type { EngineSquad, EngineSquadMember, EngineAgentMessage } from '../../engine/atoms/types';
-import { escHtml } from '../../components/helpers';
+import { escHtml, parseDate } from '../../components/helpers';
 
 /** Render a single squad card for the list sidebar. */
 export function renderSquadCard(squad: EngineSquad, isActive: boolean): string {
@@ -89,7 +89,7 @@ export function filterHandoffs(messages: EngineAgentMessage[]): EngineAgentMessa
 
 /** Render a single squad message card (broadcast or direct). */
 export function renderSquadMessageCard(msg: EngineAgentMessage): string {
-  const time = msg.created_at ? new Date(msg.created_at).toLocaleTimeString() : '';
+  const time = msg.created_at ? parseDate(msg.created_at).toLocaleTimeString() : '';
   return `<div class="squad-msg-card${msg.read ? '' : ' unread'}">
     <div class="squad-msg-header">
       <span class="squad-msg-author">${escHtml(msg.from_agent)}</span>

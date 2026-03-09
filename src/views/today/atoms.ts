@@ -6,6 +6,7 @@ import type {
   EngineTaskActivity,
   EngineSkillStatus,
 } from '../../engine/atoms/types';
+import { parseDate } from '../../components/helpers';
 
 export interface Task {
   id: string;
@@ -34,7 +35,7 @@ export function filterTodayTasks(tasks: EngineTask[]): EngineTask[] {
     // Always show pending/in-progress tasks regardless of age
     if (t.status !== 'done') return true;
     // Only include done tasks completed today
-    return new Date(t.updated_at).toDateString() === today;
+    return parseDate(t.updated_at).toDateString() === today;
   });
 }
 
@@ -112,7 +113,7 @@ export function getPawzMessage(pendingTasks: number, completedToday: number): st
 }
 
 export function isToday(dateStr: string): boolean {
-  const date = new Date(dateStr);
+  const date = parseDate(dateStr);
   const today = new Date();
   return date.toDateString() === today.toDateString();
 }
@@ -144,7 +145,7 @@ export function activityIcon(kind: string): string {
 
 /** Format an ISO timestamp to a short relative string (e.g. "3m ago", "2h ago"). */
 export function relativeTime(isoStr: string): string {
-  const diff = Date.now() - new Date(isoStr).getTime();
+  const diff = Date.now() - parseDate(isoStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -177,7 +178,7 @@ export function formatCost(n: number): string {
 /** Determine agent status from its last activity timestamp. */
 export function agentStatus(lastUsed?: string): 'active' | 'idle' | 'offline' {
   if (!lastUsed) return 'offline';
-  const diffMs = Date.now() - new Date(lastUsed).getTime();
+  const diffMs = Date.now() - parseDate(lastUsed).getTime();
   if (diffMs < 5 * 60_000) return 'active'; // active within last 5 minutes
   if (diffMs < 24 * 60 * 60_000) return 'idle'; // used today
   return 'offline';

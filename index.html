@@ -3885,6 +3885,27 @@
       </div>
     </div>
 
+    <!-- Delete Session Modal (with optional memory deletion) -->
+    <div class="modal-overlay" id="delete-session-modal" style="display: none; z-index: 10000">
+      <div class="modal-card" style="width: 440px">
+        <div class="modal-header">
+          <h2 class="modal-title">Delete Session</h2>
+          <button class="btn-icon" id="delete-session-modal-close">✕</button>
+        </div>
+        <div class="modal-body" style="display: flex; flex-direction: column; gap: 12px">
+          <p style="margin: 0">Delete this session? This cannot be undone.</p>
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none">
+            <input type="checkbox" id="delete-session-memory-checkbox" />
+            <span>Also delete memories created in this session</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="delete-session-modal-cancel">Cancel</button>
+          <button class="btn btn-danger" id="delete-session-modal-ok">Delete Session</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Generic Prompt Modal (replaces window.prompt which doesn't work in Tauri webview) -->
     <div class="modal-overlay" id="prompt-modal" style="display: none; z-index: 10000">
       <div class="modal-card" style="width: 420px">

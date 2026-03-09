@@ -14,7 +14,7 @@ use crate::engine::mcp::McpRegistry;
 
 use crate::atoms::engram_types::EngramConfig;
 use crate::atoms::error::EngineResult;
-use log::info;
+use log::{info, warn};
 use parking_lot::Mutex;
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -354,6 +354,9 @@ pub struct EngineState {
     /// Uses tokio::sync::Mutex per-agent to allow holding across .await points
     /// (e.g., ContextBuilder.build()) without race conditions.
     pub cognitive_states: Arc<Mutex<HashMap<String, Arc<tokio::sync::Mutex<CognitiveState>>>>>,
+    /// HNSW vector index for approximate nearest-neighbor search on episodic
+    /// memory embeddings. Built from DB on startup, updated incrementally.
+    pub hnsw_index: crate::engine::engram::hnsw::SharedHnswIndex,
     /// Broadcast channel for SSE subscribers (e.g. the Pawz VS Code extension
     /// connecting via the webhook `/chat/stream` endpoint).
     /// Every `engine-event` is sent here alongside the Tauri webview emit so that
@@ -416,6 +419,16 @@ impl EngineState {
             _ => SpeculationConfig::default(),
         };
 
+        // Build HNSW index from existing episodic memory embeddings
+        let hnsw_index = {
+            let idx = crate::engine::engram::hnsw::new_shared();
+            match crate::engine::engram::hnsw::rebuild_shared(&idx, &store) {
+                Ok(()) => info!("[engine] HNSW index built from DB"),
+                Err(e) => warn!("[engine] HNSW index build failed (non-fatal): {}", e),
+            }
+            idx
+        };
+
         // SSE broadcast channel — capacity of 1024 events per subscriber.
         // The VS Code extension (and any other SSE client) subscribes before
         // each agent turn and drains events in real time.
@@ -441,6 +454,7 @@ impl EngineState {
             request_queue: Arc::new(Mutex::new(HashMap::new())),
             yield_signals: Arc::new(Mutex::new(HashMap::new())),
             cognitive_states: Arc::new(Mutex::new(HashMap::new())),
+            hnsw_index,
             sse_events: sse_tx,
         })
     }

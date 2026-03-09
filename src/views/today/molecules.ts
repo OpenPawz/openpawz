@@ -3,7 +3,7 @@
 import { pawEngine } from '../../engine';
 import { getAgents, loadAgents, setSelectedAgent } from '../agents';
 import { switchView } from '../router';
-import { $, escHtml } from '../../components/helpers';
+import { $, escHtml, parseDate } from '../../components/helpers';
 import { showToast } from '../../components/toast';
 import {
   type Task,
@@ -667,7 +667,7 @@ export async function fetchFleetStatus(retries = 3) {
 
 // ── Time-ago formatter ───────────────────────────────────────────────
 function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseDate(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -764,7 +764,7 @@ async function _generateRecall() {
     // Today's memories
     const todayStr = new Date().toDateString();
     const todayMems = mems
-      .filter((m) => new Date(m.created_at).toDateString() === todayStr)
+      .filter((m) => parseDate(m.created_at).toDateString() === todayStr)
       .slice(0, 10)
       .map((m) => `• ${m.content.slice(0, 100)}`);
 

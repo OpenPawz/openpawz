@@ -299,6 +299,10 @@ export class PawEngineClient {
     return invoke('engine_memory_delete', { id });
   }
 
+  async memoryDeleteBySession(sessionId: string): Promise<number> {
+    return invoke<number>('engine_memory_delete_by_session', { sessionId });
+  }
+
   async memoryList(limit?: number): Promise<EngineMemory[]> {
     return invoke<EngineMemory[]>('engine_memory_list', { limit });
   }

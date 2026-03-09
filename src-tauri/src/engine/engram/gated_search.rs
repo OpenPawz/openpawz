@@ -64,6 +64,53 @@ pub const CRAG_THRESHOLD_AMBIGUOUS: f32 = 0.3;
 /// Maximum sub-queries in a CRAG decompose-and-retry pass.
 const MAX_DECOMPOSE_SUB_QUERIES: usize = 6;
 
+/// Words indicating the query is about the agent itself (identity/capability).
+/// Used structurally: must co-occur with a 2nd-person pronoun ("you"/"your")
+/// to trigger Skip. "what is your name" matches; "what is the name" does not.
+static META_NOUNS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    [
+        "name",
+        "role",
+        "model",
+        "purpose",
+        "identity",
+        "version",
+        "capabilities",
+        "tools",
+        "skills",
+        "provider",
+    ]
+    .into_iter()
+    .collect()
+});
+
+/// Explicit topic-switch signals. When the user says one of these, they're
+/// explicitly resetting context — memory recall from the old topic would be
+/// counterproductive.
+static TOPIC_SWITCH_SIGNALS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
+    [
+        "new topic",
+        "change topic",
+        "moving on",
+        "lets move on",
+        "let's move on",
+        "start over",
+        "never mind",
+        "nevermind",
+        "forget it",
+        "forget that",
+        "something else",
+        "anyway",
+    ]
+    .into_iter()
+    .collect()
+});
+
+/// Minimum relevance score for recalled memories to be injected.
+/// If the best recalled memory scores below this, the user likely switched
+/// topics and injection would contaminate the response.
+pub const TOPIC_SHIFT_RELEVANCE_FLOOR: f32 = 0.25;
+
 /// Skip-gate: social/ACK tokens.
 /// O(1) lookup via HashSet. Includes multi-language greetings (es/fr/de/pt/ja).
 static SKIP_TOKENS: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
@@ -292,6 +339,31 @@ pub fn gate_decision(query: &str) -> GateDecision {
         }
     }
 
+    // Self-referential queries: 2nd-person pronoun + meta-noun.
+    // "what is your name" → Skip; "what is the project name" → Retrieve.
+    // Structural: detects any phrasing with "you"/"your" + identity/capability noun.
+    if words
+        .iter()
+        .any(|w| *w == "you" || *w == "your" || *w == "yourself" || *w == "ya" || *w == "ur")
+    {
+        let has_meta_noun = words
+            .iter()
+            .any(|w| META_NOUNS.contains(w.trim_matches(|c: char| !c.is_alphanumeric())));
+        // Also catch "who are you", "what are you"
+        let is_identity_question =
+            q.starts_with("who ") || (q.starts_with("what ") && q.contains(" you"));
+        if has_meta_noun || is_identity_question {
+            return GateDecision::Skip;
+        }
+    }
+
+    // Explicit topic-switch signals — user is deliberately changing context.
+    for signal in TOPIC_SWITCH_SIGNALS.iter() {
+        if q.contains(signal) {
+            return GateDecision::Skip;
+        }
+    }
+
     // Pure computation (digits + operators only)
     if q.chars()
         .all(|c| c.is_ascii_digit() || " +-*/().=^%".contains(c))
@@ -459,6 +531,10 @@ pub struct GatedSearchRequest<'a> {
     /// If `None`, read-path scope verification is skipped — backward-
     /// compatible but not recommended for production code paths.
     pub capability: Option<&'a super::memory_bus::AgentCapability>,
+    /// Optional HNSW vector index for O(log n) approximate nearest-neighbor
+    /// search. When provided and non-empty, replaces the O(n) brute-force
+    /// scan in the vector search component of graph::search.
+    pub hnsw_index: Option<&'a super::hnsw::SharedHnswIndex>,
 }
 
 /// Unified entry point for ALL memory retrieval across the system.
@@ -599,6 +675,7 @@ pub async fn gated_search(
         embedding_client,
         effective_budget,
         momentum,
+        req.hnsw_index,
     )
     .await?;
 
@@ -664,6 +741,7 @@ pub async fn gated_search(
                         embedding_client,
                         effective_budget / 2, // half budget per sub-query
                         momentum,
+                        req.hnsw_index,
                     )
                     .await
                     {
@@ -723,6 +801,7 @@ pub async fn gated_search(
                         embedding_client,
                         effective_budget / 2,
                         momentum,
+                        req.hnsw_index,
                     )
                     .await
                     {
@@ -1008,6 +1087,44 @@ fn community_augmented_search(
 
     if community_ids.is_empty() {
         return Ok(recall_result);
+    }
+
+    // Stage 1.5: Community summary injection — inject hierarchical summaries
+    // from the memory_communities table as high-value context entries.
+    // This is the core GraphRAG "global query" mechanism: instead of individual
+    // memories, inject the community-level summary for broader context.
+    {
+        let rc = store.read_conn();
+        let conn = rc.lock();
+        let tok = Tokenizer::heuristic();
+        for cid in &community_ids {
+            let ok = conn.query_row(
+                "SELECT summary, label FROM memory_communities WHERE id = ?1",
+                rusqlite::params![cid],
+                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+            );
+            if let Ok((summary, label)) = ok {
+                if !summary.is_empty() {
+                    let trust = TrustScore {
+                        relevance: 0.6, // moderate — community context, not direct match
+                        accuracy: 0.7,
+                        freshness: 0.8,
+                        utility: 0.5,
+                    };
+                    recall_result.memories.push(RetrievedMemory {
+                        token_cost: tok.count_tokens(&summary),
+                        content: summary,
+                        compression_level: CompressionLevel::Full,
+                        memory_id: format!("community:{}", cid),
+                        memory_type: MemoryType::Semantic,
+                        trust_score: trust,
+                        category: format!("community:{}", label),
+                        created_at: String::new(),
+                        agent_id: String::new(),
+                    });
+                }
+            }
+        }
     }
 
     // Stage 2: Intra-community retrieval — fetch members of those communities
@@ -1545,9 +1662,7 @@ mod tests {
         use crate::engine::sessions::{schema_for_testing, SessionStore};
         let conn = rusqlite::Connection::open_in_memory().unwrap();
         schema_for_testing(&conn);
-        SessionStore {
-            conn: std::sync::Arc::new(parking_lot::Mutex::new(conn)),
-        }
+        SessionStore::from_connection(conn)
     }
 
     fn store_test_memory(
@@ -1630,6 +1745,7 @@ mod tests {
                 momentum: None,
                 model: Some("gpt-4o"),
                 capability: None,
+                hnsw_index: None,
             },
         )
         .await
@@ -1684,6 +1800,7 @@ mod tests {
                 momentum: None,
                 model: Some("gpt-4o"),
                 capability: None,
+                hnsw_index: None,
             },
         )
         .await
@@ -1716,6 +1833,7 @@ mod tests {
                 momentum: None,
                 model: None,
                 capability: None,
+                hnsw_index: None,
             },
         )
         .await
@@ -1756,6 +1874,7 @@ mod tests {
                 momentum: None,
                 model: Some("claude-opus-4-6"),
                 capability: None,
+                hnsw_index: None,
             },
         )
         .await
@@ -1806,6 +1925,7 @@ mod tests {
                 momentum: None,
                 model: Some("gpt-4o"),
                 capability: None,
+                hnsw_index: None,
             },
         )
         .await
@@ -1852,6 +1972,7 @@ mod tests {
                 momentum: None,
                 model: Some("phi-3-mini"),
                 capability: None,
+                hnsw_index: None,
             },
         )
         .await
@@ -1869,6 +1990,7 @@ mod tests {
                 momentum: None,
                 model: Some("claude-opus-4-6"),
                 capability: None,
+                hnsw_index: None,
             },
         )
         .await
@@ -1923,6 +2045,7 @@ mod tests {
                     momentum: None,
                     model: None,
                     capability: None,
+                    hnsw_index: None,
                 },
             )
             .await

@@ -1,7 +1,7 @@
 // Automations / Cron View — DOM rendering + IPC
 
 import { pawEngine, type EngineTask, type EngineTaskActivity } from '../../engine';
-import { $, escHtml, escAttr, confirmModal } from '../../components/helpers';
+import { $, escHtml, escAttr, confirmModal, parseDate } from '../../components/helpers';
 import { showToast } from '../../components/toast';
 import { isConnected } from '../../state/connection';
 import { MORNING_BRIEF_PROMPT, isValidSchedule } from './atoms';
@@ -138,7 +138,7 @@ function renderActivityCard(activity: EngineTaskActivity, container: HTMLElement
   const statusClass = isFailed ? 'failed' : 'success';
   card.className = `auto-card${isFailed ? ' auto-card-error' : ''}`;
 
-  const timeStr = activity.created_at ? new Date(activity.created_at).toLocaleString() : '';
+  const timeStr = activity.created_at ? parseDate(activity.created_at).toLocaleString() : '';
   const kindLabel = activity.kind.replace(/_/g, ' ');
 
   card.innerHTML = `
