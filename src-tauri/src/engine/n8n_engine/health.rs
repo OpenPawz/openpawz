@@ -161,12 +161,10 @@ fn owner_password() -> String {
     }
 
     // CSPRNG — 24 bytes = 192 bits of entropy, zeroized after use
-    use rand::rngs::OsRng;
-    use rand::RngCore;
     use zeroize::Zeroizing;
 
     let mut bytes = Zeroizing::new([0u8; 24]);
-    OsRng.fill_bytes(bytes.as_mut());
+    getrandom::getrandom(bytes.as_mut()).expect("OS CSPRNG failed");
     // "Kx" prefix (2) + 48 hex chars (24 bytes) = 50 chars total.
     // n8n requires 8–64 chars, ≥1 uppercase, ≥1 lowercase, ≥1 digit.
     // K=uppercase, x=lowercase, hex gives digits+lowercase.

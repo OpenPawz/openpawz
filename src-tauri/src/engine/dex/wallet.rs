@@ -25,7 +25,7 @@ pub async fn execute_dex_wallet_create(
 
     // Generate a new secp256k1 keypair using OS CSPRNG (never thread_rng for crypto keys)
     use k256::ecdsa::SigningKey;
-    let signing_key = SigningKey::random(&mut rand::rngs::OsRng);
+    let signing_key = SigningKey::random(&mut rand_core::OsRng);
     let verifying_key = signing_key.verifying_key();
 
     // Get uncompressed public key bytes

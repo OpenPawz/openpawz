@@ -182,9 +182,8 @@ fn build_cdp_jwt(
 
     let now = chrono::Utc::now().timestamp() as u64;
     let nonce: String = {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        let bytes: Vec<u8> = (0..32).map(|_| rng.gen::<u8>()).collect();
+        let mut bytes = [0u8; 32];
+        getrandom::getrandom(&mut bytes).expect("OS CSPRNG failed");
         bytes.iter().map(|b| format!("{:02x}", b)).collect()
     };
     let uri = format!("{} {}{}", method, host, path);

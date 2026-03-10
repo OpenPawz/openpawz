@@ -40,7 +40,7 @@ pub async fn run(
     format: &OutputFormat,
 ) -> Result<(), String> {
     match action {
-        MemoryAction::List { limit, agent } => {
+        MemoryAction::List { limit, agent: _ } => {
             let memories = store.list_memories(limit).map_err(|e| e.to_string())?;
             match format {
                 OutputFormat::Json => {

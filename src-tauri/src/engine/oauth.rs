@@ -381,9 +381,8 @@ pub async fn start_rfc7591_flow(
         auth_url_full.push_str(&format!("&scope={}", urlencoding::encode(&scope_str)));
     }
     let state = {
-        use rand::Rng;
         let mut buf = [0u8; 16];
-        rand::thread_rng().fill(&mut buf);
+        getrandom::getrandom(&mut buf).expect("OS CSPRNG failed");
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
     };
     auth_url_full.push_str(&format!("&state={}", urlencoding::encode(&state)));
@@ -866,11 +865,9 @@ static MICROSOFT_OAUTH: OAuthConfig = OAuthConfig {
 /// Generate a PKCE code_verifier and code_challenge (S256 method).
 /// See RFC 7636 §4.1 and §4.2.
 pub fn generate_pkce_pair() -> (String, String) {
-    use rand::Rng;
-
     // code_verifier: 32 random bytes → base64url (43 chars)
     let mut verifier_bytes = [0u8; 32];
-    rand::thread_rng().fill(&mut verifier_bytes);
+    getrandom::getrandom(&mut verifier_bytes).expect("OS CSPRNG failed");
     let code_verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(verifier_bytes);
 
     // code_challenge: SHA256(code_verifier) → base64url
@@ -956,9 +953,8 @@ pub async fn start_oauth_flow(
     }
     // state parameter for CSRF protection
     let state = {
-        use rand::Rng;
         let mut buf = [0u8; 16];
-        rand::thread_rng().fill(&mut buf);
+        getrandom::getrandom(&mut buf).expect("OS CSPRNG failed");
         base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf)
     };
     auth_url.push_str(&format!("&state={}", urlencoding::encode(&state)));

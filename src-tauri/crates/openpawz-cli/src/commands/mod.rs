@@ -8,15 +8,13 @@ pub mod status;
 use crate::OutputFormat;
 
 /// Format a value as JSON or return None for other formats.
+#[allow(dead_code)]
 pub fn json_print<T: serde::Serialize>(value: &T, format: &OutputFormat) -> Result<(), String> {
-    match format {
-        OutputFormat::Json => {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(value).map_err(|e| e.to_string())?
-            );
-        }
-        _ => {}
+    if let OutputFormat::Json = format {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(value).map_err(|e| e.to_string())?
+        );
     }
     Ok(())
 }

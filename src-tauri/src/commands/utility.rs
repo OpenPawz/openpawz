@@ -101,10 +101,8 @@ fn load_db_key_from_keychain() -> Result<Zeroizing<String>, String> {
         return Ok(Zeroizing::new(key));
     }
     // No key exists — generate a new random key using OS CSPRNG
-    use rand::rngs::OsRng;
-    use rand::RngCore;
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    getrandom::getrandom(&mut bytes).expect("OS CSPRNG failed");
     let key = Zeroizing::new(
         bytes
             .iter()

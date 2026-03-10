@@ -131,10 +131,8 @@ pub struct N8nEngineStatus {
 /// Generate a random 32-byte hex string for API keys / encryption keys.
 /// Uses the OS CSPRNG (OsRng) for cryptographic strength.
 pub fn generate_random_key() -> String {
-    use rand::rngs::OsRng;
-    use rand::RngCore;
     let mut bytes = [0u8; 32];
-    OsRng.fill_bytes(&mut bytes);
+    getrandom::getrandom(&mut bytes).expect("OS CSPRNG failed");
     let mut key = String::with_capacity(64);
     for b in &bytes {
         use std::fmt::Write;

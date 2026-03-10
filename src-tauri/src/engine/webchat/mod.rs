@@ -69,10 +69,8 @@ pub struct WebChatConfig {
 impl Default for WebChatConfig {
     fn default() -> Self {
         // Generate a cryptographically strong random 32-byte token (64 hex chars)
-        use rand::rngs::OsRng;
-        use rand::RngCore;
         let mut token_bytes = [0u8; 32];
-        OsRng.fill_bytes(&mut token_bytes);
+        getrandom::getrandom(&mut token_bytes).expect("OS CSPRNG failed");
         let token: String = token_bytes.iter().map(|b| format!("{:02x}", b)).collect();
         WebChatConfig {
             enabled: false,

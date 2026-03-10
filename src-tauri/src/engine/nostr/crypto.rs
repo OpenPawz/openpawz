@@ -37,7 +37,8 @@ pub(crate) fn sign_event(
     // BIP-340 Schnorr signature over the event id
     let signing_key =
         SigningKey::from_bytes(secret_key).map_err(|e| EngineError::Other(e.to_string()))?;
-    let aux_rand: [u8; 32] = rand::random();
+    let mut aux_rand = [0u8; 32];
+    getrandom::getrandom(&mut aux_rand).expect("OS CSPRNG failed");
     let sig = signing_key
         .sign_raw(&id_bytes, &aux_rand)
         .map_err(|e| EngineError::Other(e.to_string()))?;
@@ -120,7 +121,8 @@ pub(crate) fn nip04_encrypt(
     use cbc::cipher::{block_padding::Pkcs7, BlockEncryptMut, KeyIvInit};
 
     let shared = compute_shared_secret(secret_key, receiver_pk_hex)?;
-    let iv: [u8; 16] = rand::random();
+    let mut iv = [0u8; 16];
+    getrandom::getrandom(&mut iv).expect("OS CSPRNG failed");
 
     let pt = plaintext.as_bytes();
     // Buffer: plaintext + up to 16 bytes PKCS#7 padding
