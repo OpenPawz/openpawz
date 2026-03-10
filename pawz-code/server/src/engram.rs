@@ -23,7 +23,7 @@ pub fn store(
     content: &str,
     kind: &str,
 ) -> Result<()> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     db.execute(
         r#"INSERT INTO engram (scope, key, content, kind)
            VALUES (?1, ?2, ?3, ?4)
@@ -44,7 +44,7 @@ pub fn search(
     query: &str,
     scope: Option<&str>,
 ) -> Result<Vec<serde_json::Value>> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
 
     let mut out = Vec::new();
@@ -86,7 +86,7 @@ fn row_to_json(row: &rusqlite::Row) -> rusqlite::Result<serde_json::Value> {
 
 /// Load all engram entries for a scope as a context block.
 pub fn scope_context(state: &AppState, scope: &str) -> String {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut stmt = match db.prepare(
         "SELECT key, content, kind FROM engram WHERE scope = ?1 ORDER BY kind, updated_at DESC LIMIT 50",
     ) {
@@ -114,14 +114,14 @@ pub fn scope_context(state: &AppState, scope: &str) -> String {
 
 /// Count total engram entries.
 pub fn engram_count(state: &AppState) -> Result<i64> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let count: i64 = db.query_row("SELECT COUNT(*) FROM engram", [], |r| r.get(0))?;
     Ok(count)
 }
 
 /// Delete an engram entry.
 pub fn delete(state: &AppState, scope: &str, key: &str) -> Result<()> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     db.execute(
         "DELETE FROM engram WHERE scope = ?1 AND key = ?2",
         rusqlite::params![scope, key],

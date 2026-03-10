@@ -120,6 +120,21 @@ pub async fn run(state: Arc<AppState>, req: ChatRequest, session_id: String, run
     let mut total_usage: Option<TokenUsage> = None;
     let mut actual_model = state.config.model.clone();
 
+    // Resolve the model for this request based on its classified role
+    let request_role = match reduction::classify_request(&req.message) {
+        reduction::RequestKind::Conversational => "fast",
+        reduction::RequestKind::Exploration => "default",
+        reduction::RequestKind::Edit => "coder",
+        reduction::RequestKind::Execution => "default",
+        reduction::RequestKind::Architecture => "long_context",
+        reduction::RequestKind::Memory => "cheap",
+    };
+    let resolved_model = state.config.model_for_role(request_role).to_owned();
+    log::debug!(
+        "[agent] request_role={} resolved_model={}",
+        request_role, resolved_model
+    );
+
     // ── Agent loop ────────────────────────────────────────────────────────────
     loop {
         // Check cancellation
@@ -144,6 +159,12 @@ pub async fn run(state: Arc<AppState>, req: ChatRequest, session_id: String, run
         let sid = session_id.clone();
         let rid = run_id.clone();
 
+        let model_override = if resolved_model != state.config.model {
+            Some(resolved_model.as_str())
+        } else {
+            None
+        };
+
         let result = provider::call_streaming(
             &state.config,
             &client,
@@ -158,6 +179,7 @@ pub async fn run(state: Arc<AppState>, req: ChatRequest, session_id: String, run
                 };
                 state_c.fire(event_to_json(&ev));
             },
+            model_override,
         )
         .await;
 
@@ -254,6 +276,7 @@ pub async fn run(state: Arc<AppState>, req: ChatRequest, session_id: String, run
                 session_id: session_id.clone(),
                 run_id: run_id.clone(),
                 tool_call_id: tc.id.clone(),
+                tool_name: tc.function.name.clone(),
                 output: output.clone(),
                 success,
                 duration_ms: Some(duration_ms),

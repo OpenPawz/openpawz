@@ -101,6 +101,27 @@
         margin: 2px;
       }
       #status-text { font-size: 12px; color: #888; }
+      .config-field { margin-bottom: 8px; }
+      .config-field label {
+        display: block;
+        font-size: 11px;
+        color: #888;
+        margin-bottom: 4px;
+      }
+      .input {
+        width: 100%;
+        padding: 6px 8px;
+        background: #1e1e1e;
+        border: 1px solid #3e3e3e;
+        border-radius: 3px;
+        color: #d4d4d4;
+        font-family: monospace;
+        font-size: 12px;
+      }
+      .input:focus {
+        outline: none;
+        border-color: #0e639c;
+      }
       .footer {
         padding: 8px 16px;
         background: #252526;
@@ -122,6 +143,31 @@
       </div>
 
       <div class="content">
+        <!-- Auth Token Display (Prominent) -->
+        <div class="section">
+          <div class="section-title">🔑 Auth Token for VS Code</div>
+          <div class="card" style="background: #2a3a2a; border-color: #4ec9b0;">
+            <div style="margin-bottom: 8px;">
+              <label style="font-size: 11px; color: #888; display: block; margin-bottom: 4px;">
+                Copy this token and paste it in VS Code Settings → <code>pawzCode.authToken</code>
+              </label>
+              <div style="display: flex; gap: 8px; align-items: center;">
+                <input
+                  type="text"
+                  id="token-display"
+                  class="input"
+                  readonly
+                  style="flex: 1; font-family: monospace; font-size: 11px; background: #1a1a1a;"
+                  placeholder="No token configured yet"
+                >
+                <button class="btn btn-primary" onclick="copyToken()" style="flex-shrink: 0;">
+                  📋 Copy Token
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Daemon status -->
         <div class="section">
           <div class="section-title">Daemon Status</div>
@@ -176,12 +222,52 @@
           </div>
         </div>
 
+        <!-- Config Editor -->
+        <div class="section">
+          <div class="section-title">Configuration</div>
+          <div class="card" style="padding: 12px;">
+            <div class="config-field">
+              <label for="cfg-provider">Provider</label>
+              <select id="cfg-provider" class="input" onchange="onProviderChange()">
+                <option value="anthropic">Anthropic</option>
+                <option value="claude_code">Claude Code (No API Key)</option>
+                <option value="openai">OpenAI</option>
+                <option value="ollama">Ollama (Local)</option>
+              </select>
+            </div>
+            <div class="config-field" id="field-api-key">
+              <label for="cfg-api-key">API Key</label>
+              <input type="password" id="cfg-api-key" class="input" placeholder="sk-ant-...">
+            </div>
+            <div class="config-field">
+              <label for="cfg-model">Model</label>
+              <input type="text" id="cfg-model" class="input" placeholder="claude-sonnet-4-20250514">
+            </div>
+            <div class="config-field" id="field-claude-binary" style="display:none;">
+              <label for="cfg-claude-binary">Claude Binary Path</label>
+              <input type="text" id="cfg-claude-binary" class="input" placeholder="/Users/elibury/.local/bin/claude">
+            </div>
+            <div class="config-field">
+              <label for="cfg-token">Auth Token</label>
+              <div style="display:flex;gap:4px;">
+                <input type="password" id="cfg-token" class="input" placeholder="your-secret-token">
+                <button class="btn btn-ghost" onclick="generateToken()" style="flex-shrink:0;">Generate</button>
+              </div>
+            </div>
+            <div class="btn-group" style="margin-top:8px;">
+              <button class="btn btn-primary" onclick="loadConfigForm()">Load</button>
+              <button class="btn btn-primary" onclick="saveConfigForm()">Save</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Controls -->
         <div class="section">
           <div class="section-title">Controls</div>
           <div class="btn-group">
             <button class="btn btn-ghost" onclick="refresh()">↻ Refresh</button>
-            <button class="btn btn-ghost" onclick="openConfig()">⚙ Config</button>
+            <button class="btn btn-primary" id="btn-daemon" onclick="toggleDaemon()">▶ Start Daemon</button>
+            <button class="btn btn-ghost" id="btn-start-at-login" onclick="toggleStartAtLogin()">⟳ Start at Login</button>
           </div>
         </div>
 

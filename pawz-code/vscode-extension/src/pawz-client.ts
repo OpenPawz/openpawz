@@ -54,6 +54,7 @@ export class PawzCodeClient {
     req: CodeChatRequest,
     onEvent: (event: PawzEvent) => void,
     signal?: AbortSignal,
+    onRunId?: (runId: string) => void,
   ): Promise<void> {
     const url = new URL('/chat/stream', this.baseUrl).toString();
 
@@ -84,6 +85,8 @@ export class PawzCodeClient {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let runIdEmitted = false;
+    let streamCompleted = false;
 
     try {
       while (true) {
@@ -101,6 +104,14 @@ export class PawzCodeClient {
             if (trimmed.startsWith('data: ')) {
               try {
                 const event = JSON.parse(trimmed.slice(6)) as PawzEvent;
+                // Expose run_id to caller on first occurrence
+                if (!runIdEmitted && onRunId && event.run_id) {
+                  runIdEmitted = true;
+                  onRunId(event.run_id);
+                }
+                if (event.kind === 'complete' || event.kind === 'error') {
+                  streamCompleted = true;
+                }
                 onEvent(event);
               } catch {
                 // malformed SSE frame — skip
@@ -108,6 +119,12 @@ export class PawzCodeClient {
             }
           }
         }
+      }
+
+      // If the stream ended without a complete or error event, the daemon
+      // dropped the connection mid-run (crash, restart, network loss).
+      if (!streamCompleted) {
+        throw new Error('Connection to pawz-code dropped before run completed');
       }
     } finally {
       reader.releaseLock();

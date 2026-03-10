@@ -43,11 +43,58 @@ pawz-code/
 
 ---
 
-## Quick start
+## Quick Start
 
-### 1. Configure
+### 1. Build the server (one-time)
 
-On first run the binary creates `~/.pawz-code/config.toml`:
+```bash
+cd server
+cargo build --release
+```
+
+### 2. Start the Control Panel
+
+```bash
+cd app
+pnpm install  # first time only
+pnpm run tauri dev
+```
+
+The control panel will:
+- ✅ Auto-start the daemon
+- ✅ Display your auth token with a copy button
+- ✅ Show daemon status and logs
+
+### 3. Copy the auth token
+
+In the control panel UI, click **"📋 Copy Token"** at the top.
+
+### 4. Install VS Code extension
+
+```bash
+cd vscode-extension
+code --install-extension pawz-code-0.1.0.vsix
+```
+
+Or in VS Code: **Extensions → ⋯ → Install from VSIX** → select `pawz-code-0.1.0.vsix`.
+
+### 5. Paste token in VS Code
+
+Open VS Code settings (`Cmd+,`) and search for `pawzCode.authToken`, then paste the token.
+
+### 6. Test it!
+
+In VS Code chat: `@pawzcode hello!`
+
+Then try a follow-up: `what files are in this workspace?`
+
+The agent should respond to both messages (session persistence is now working).
+
+---
+
+## Configuration
+
+The control panel provides a configuration editor, or you can manually edit `~/.pawz-code/config.toml`:
 
 ```toml
 port = 3941
@@ -55,64 +102,51 @@ bind = "127.0.0.1"
 auth_token = "auto-generated"
 provider = "anthropic"
 api_key = ""           # ← add your API key here
-model = "claude-opus-4-5"
+model = "claude-sonnet-4-20250514"
 max_rounds = 20
 workspace_root = ""    # ← optional: absolute path to your repo
 ```
 
-Set `api_key` (Anthropic or OpenAI key) and optionally `workspace_root`.
+### Supported Providers
 
-Supported providers:
+| `provider`     | `base_url`            | Models                          |
+|----------------|----------------------|----------------------------------|
+| `anthropic`    | (auto)               | `claude-sonnet-4-20250514`, etc.|
+| `openai`       | (auto)               | `gpt-4o`, `o1`, etc.            |
+| `openai`       | `http://localhost:11434` | any Ollama model            |
+| `openai`       | `https://openrouter.ai/api` | any OpenRouter model       |
+| `claude_code`  | (none)               | uses your Claude Code install  |
 
-| `provider`  | `base_url`            | Models                          |
-|-------------|----------------------|----------------------------------|
-| `anthropic` | (auto)               | `claude-opus-4-5`, etc.        |
-| `openai`    | (auto)               | `gpt-4o`, `o1`, etc.            |
-| `openai`    | `http://localhost:11434` | any Ollama model            |
-| `openai`    | `https://openrouter.ai/api` | any OpenRouter model       |
+### Using `claude_code` provider
 
-### 2. Build and run
+`claude_code` routes requests through the Claude Code CLI instead of requiring an API key.
+
+Requirements:
+1. Install Claude Code: `npm install -g @anthropic-ai/claude-code`
+2. Authenticate: `claude login` (one-time, opens browser)
+3. Set in control panel or `~/.pawz-code/config.toml`:
+
+```toml
+provider = "claude_code"
+# api_key is not needed
+# Optionally override binary path:
+# claude_binary_path = "/usr/local/bin/claude"
+```
+
+---
+
+## Manual Daemon Control
+
+If you prefer not to use the control panel:
 
 ```bash
-cd pawz-code/server
-cargo build --release
+cd server
+cargo run
+# or
 ./target/release/pawz-code
 ```
 
-Or for development:
-
-```bash
-cargo run
-```
-
-You should see:
-```
-[pawz-code] Listening on http://127.0.0.1:3941
-[pawz-code] VS Code: set pawzCode.serverUrl = http://127.0.0.1:3941
-```
-
-### 3. Install the VS Code extension
-
-```bash
-cd pawz-code/vscode-extension
-npm install
-npm run package          # produces pawz-code-0.1.0.vsix
-```
-
-Then in VS Code: **Extensions → ⋯ → Install from VSIX** → select the `.vsix`.
-
-### 4. Configure VS Code
-
-Open VS Code settings and set:
-
-```json
-"pawzCode.serverUrl": "http://127.0.0.1:3941",
-"pawzCode.authToken": "<paste from config.toml>"
-```
-
-### 5. Use it
-
-In any VS Code chat panel: `@code what does the webhook.rs SSE handler do?`
+The daemon will print the auth token on first run. Copy it to VS Code settings.
 
 ---
 

@@ -25,8 +25,10 @@ export class ConnectionStateManager implements vscode.Disposable {
   private statusBarItem: vscode.StatusBarItem;
   private status: ConnectionStatus = 'unknown';
   private daemonInfo: DaemonStatus | null = null;
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private readonly HEARTBEAT_INTERVAL_MS = 15_000;
+  private heartbeatTimer: ReturnType<typeof setTimeout> | null = null;
+  private consecutiveFailures = 0;
+  private readonly BASE_INTERVAL_MS = 15_000;
+  private readonly MAX_INTERVAL_MS = 120_000;
 
   constructor(private readonly context: vscode.ExtensionContext) {
     this.statusBarItem = vscode.window.createStatusBarItem(
@@ -40,16 +42,38 @@ export class ConnectionStateManager implements vscode.Disposable {
     this.setStatus('unknown');
   }
 
-  /** Start polling the health endpoint */
+  /** Start polling the health endpoint with exponential backoff on failures. */
   startHeartbeat(): void {
     this.stopHeartbeat();
-    this.checkHealth();
-    this.heartbeatTimer = setInterval(() => this.checkHealth(), this.HEARTBEAT_INTERVAL_MS);
+    this.consecutiveFailures = 0;
+    void this.runHeartbeatCycle();
+  }
+
+  private scheduleNext(): void {
+    this.stopHeartbeat();
+    const interval =
+      this.consecutiveFailures === 0
+        ? this.BASE_INTERVAL_MS
+        : Math.min(
+            this.BASE_INTERVAL_MS * Math.pow(2, this.consecutiveFailures - 1),
+            this.MAX_INTERVAL_MS,
+          );
+    this.heartbeatTimer = setTimeout(() => void this.runHeartbeatCycle(), interval);
+  }
+
+  private async runHeartbeatCycle(): Promise<void> {
+    const ok = await this.checkHealth();
+    if (ok) {
+      this.consecutiveFailures = 0;
+    } else {
+      this.consecutiveFailures++;
+    }
+    this.scheduleNext();
   }
 
   stopHeartbeat(): void {
     if (this.heartbeatTimer !== null) {
-      clearInterval(this.heartbeatTimer);
+      clearTimeout(this.heartbeatTimer);
       this.heartbeatTimer = null;
     }
   }

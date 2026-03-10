@@ -33,6 +33,7 @@ pub enum EngineEvent {
         session_id: String,
         run_id: String,
         tool_call_id: String,
+        tool_name: String,
         output: String,
         success: bool,
         #[serde(skip_serializing_if = "Option::is_none")]

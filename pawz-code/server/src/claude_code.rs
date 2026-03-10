@@ -110,6 +110,7 @@ async fn run_once(
     cmd.arg("--output-format")
         .arg("stream-json")
         .arg("--print") // non-interactive; reads prompt from stdin
+        .arg("--verbose") // required when using --output-format=stream-json with --print
         // Disable any colour/spinner output that would pollute stdout
         .env("NO_COLOR", "1")
         .env("TERM", "dumb");
@@ -141,8 +142,14 @@ async fn run_once(
     }
 
     // ── Read stdout with explicit byte-level buffering ───────────────────────
-    let stdout = child.stdout.take().expect("stdout not captured");
-    let stderr = child.stderr.take().expect("stderr not captured");
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("claude: stdout pipe not available"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| anyhow::anyhow!("claude: stderr pipe not available"))?;
 
     // Spawn stderr collector (non-blocking, best-effort)
     let stderr_handle = tokio::spawn(async move {

@@ -316,6 +316,42 @@ pub fn all_tools() -> Vec<ToolDef> {
             }),
         },
         ToolDef {
+            name: "run_tests",
+            description: "Run the project's test suite. Auto-detects the test runner from workspace \
+                contents (Cargo.toml → cargo test, package.json → npm test, \
+                pytest.ini/pyproject.toml → pytest, go.mod → go test ./...). \
+                Returns structured output with pass/fail counts and any failing test names.",
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the project root (uses workspace_root if omitted)"
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": "Optional test name filter / pattern to pass to the test runner"
+                    }
+                }
+            }),
+        },
+        ToolDef {
+            name: "lint_check",
+            description: "Run the project's linter. Auto-detects the linter from workspace \
+                contents (Cargo.toml → cargo clippy, package.json → eslint/tsc, \
+                pyproject.toml → ruff, go.mod → go vet). \
+                Returns structured output with any lint errors or warnings.",
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "path": {
+                        "type": "string",
+                        "description": "Absolute path to the project root (uses workspace_root if omitted)"
+                    }
+                }
+            }),
+        },
+        ToolDef {
             name: "engram_store",
             description: "Store a compressed understanding of the codebase in Engram. \
                 Use this for architecture facts, module relationships, key entrypoints, \
@@ -391,6 +427,8 @@ pub async fn execute(
         "search_symbols" => Some(tool_search_symbols(args, state).await),
         "engram_store" => Some(tool_engram_store(args, state)),
         "engram_recall" => Some(tool_engram_recall(args, state)),
+        "run_tests" => Some(tool_run_tests(args, state).await),
+        "lint_check" => Some(tool_lint_check(args, state).await),
         _ => None,
     }
 }
@@ -740,6 +778,136 @@ fn tool_recall(args: &Value, state: &AppState) -> Result<String> {
 
 // ── apply_patch ──────────────────────────────────────────────────────────────
 
+/// Apply a standard unified diff to `original`, returning the patched content.
+///
+/// Handles the `---`/`+++`/`@@` format produced by git, diff -u, and most tools.
+/// Limitations (acceptable for LLM-generated patches):
+///   - Only handles single-file patches (one hunk group)
+///   - Context lines are matched but not validated (we trust LLM-generated context)
+///   - Does not handle binary patches
+///
+/// Returns `Err` with a descriptive message if the patch cannot be applied.
+fn apply_unified_diff(original: &str, patch: &str) -> Result<String> {
+    let orig_lines: Vec<&str> = original.lines().collect();
+    let patch_lines: Vec<&str> = patch.lines().collect();
+
+    // Collect all hunks
+    #[derive(Debug)]
+    struct Hunk {
+        orig_start: usize, // 1-based line number in original
+        operations: Vec<(char, String)>, // ('+'/'-'/' ', line)
+    }
+
+    let mut hunks: Vec<Hunk> = Vec::new();
+    let mut i = 0;
+
+    // Skip file header lines (--- / +++ / diff / index)
+    while i < patch_lines.len() {
+        let line = patch_lines[i];
+        if line.starts_with("@@") {
+            break;
+        }
+        i += 1;
+    }
+
+    // Parse hunks
+    while i < patch_lines.len() {
+        let line = patch_lines[i];
+        if !line.starts_with("@@") {
+            i += 1;
+            continue;
+        }
+
+        // Parse @@ -orig_start,orig_count +new_start,new_count @@
+        // e.g. "@@ -10,6 +10,8 @@"
+        let orig_start = parse_hunk_header(line)?;
+        i += 1;
+
+        let mut operations = Vec::new();
+        while i < patch_lines.len() {
+            let op_line = patch_lines[i];
+            if op_line.starts_with("@@") {
+                break; // start of next hunk
+            }
+            // Skip "\ No newline at end of file" marker
+            if op_line.starts_with('\\') {
+                i += 1;
+                continue;
+            }
+            if op_line.starts_with('+') {
+                operations.push(('+', op_line[1..].to_string()));
+            } else if op_line.starts_with('-') {
+                operations.push(('-', op_line[1..].to_string()));
+            } else {
+                // Context line (space or empty — some diffs omit the space)
+                let content = if op_line.starts_with(' ') {
+                    op_line[1..].to_string()
+                } else {
+                    op_line.to_string()
+                };
+                operations.push((' ', content));
+            }
+            i += 1;
+        }
+
+        hunks.push(Hunk { orig_start, operations });
+    }
+
+    if hunks.is_empty() {
+        bail!("apply_patch: no valid hunks found in the patch");
+    }
+
+    // Apply hunks from bottom to top so line number offsets don't shift
+    let mut result: Vec<String> = orig_lines.iter().map(|l| l.to_string()).collect();
+    let mut offset: i64 = 0;
+
+    for hunk in &hunks {
+        // orig_start is 1-based; convert to 0-based index adjusted by prior hunks
+        let start_idx = ((hunk.orig_start as i64 - 1) + offset) as usize;
+
+        // Count how many original lines this hunk consumes
+        let orig_count = hunk.operations.iter().filter(|(op, _)| *op == '-' || *op == ' ').count();
+
+        // Build the replacement lines
+        let new_lines: Vec<String> = hunk.operations.iter()
+            .filter(|(op, _)| *op == '+' || *op == ' ')
+            .map(|(_, line)| line.clone())
+            .collect();
+
+        // Validate bounds
+        if start_idx + orig_count > result.len() {
+            bail!(
+                "apply_patch: hunk at line {} extends beyond file length ({} lines, hunk needs {}..{})",
+                hunk.orig_start, result.len(), start_idx, start_idx + orig_count
+            );
+        }
+
+        // Replace the slice
+        result.splice(start_idx..start_idx + orig_count, new_lines.iter().cloned());
+
+        let added = hunk.operations.iter().filter(|(op, _)| *op == '+').count() as i64;
+        let removed = hunk.operations.iter().filter(|(op, _)| *op == '-').count() as i64;
+        offset += added - removed;
+    }
+
+    // Preserve trailing newline if the original had one
+    let mut out = result.join("\n");
+    if original.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    Ok(out)
+}
+
+fn parse_hunk_header(line: &str) -> Result<usize> {
+    // Expected: "@@ -<start>[,<count>] +<start>[,<count>] @@"
+    let after_at = line.strip_prefix("@@").ok_or_else(|| anyhow::anyhow!("apply_patch: malformed hunk header: {}", line))?;
+    let trimmed = after_at.trim_start();
+    let orig_part = trimmed.strip_prefix('-').ok_or_else(|| anyhow::anyhow!("apply_patch: hunk header missing '-': {}", line))?;
+    // orig_part is like "10,6 +10,8 @@"
+    let start_str = orig_part.split([',', ' ']).next().unwrap_or("0");
+    start_str.parse::<usize>().map_err(|_| anyhow::anyhow!("apply_patch: cannot parse hunk start from: {}", line))
+}
+
 async fn tool_apply_patch(args: &Value) -> Result<String> {
     let path_str = args["path"].as_str().ok_or_else(|| anyhow::anyhow!("apply_patch: missing 'path'"))?;
     let patch = args["patch"].as_str().ok_or_else(|| anyhow::anyhow!("apply_patch: missing 'patch'"))?;
@@ -751,7 +919,38 @@ async fn tool_apply_patch(args: &Value) -> Result<String> {
         bail!("apply_patch: file not found: {}", path.display());
     }
 
-    // Write patch to a temp file and apply with `patch` command
+    let original = std::fs::read_to_string(&path)
+        .map_err(|e| anyhow::anyhow!("apply_patch: cannot read file: {}", e))?;
+
+    // ── Primary path: pure-Rust unified diff parser ───────────────────────────
+    match apply_unified_diff(&original, patch) {
+        Ok(patched) => {
+            std::fs::write(&path, &patched)
+                .map_err(|e| anyhow::anyhow!("apply_patch: cannot write patched file: {}", e))?;
+            log::info!("[apply_patch] applied (pure-Rust) to {}", path_str);
+            return Ok(format!("Patch applied successfully to {}", path_str));
+        }
+        Err(rust_err) => {
+            log::warn!("[apply_patch] pure-Rust parser failed ({}), trying system patch", rust_err);
+        }
+    }
+
+    // ── Fallback: system `patch` binary ──────────────────────────────────────
+    // Check if `patch` exists first and give a clear error if not.
+    let patch_check = tokio::process::Command::new("patch")
+        .arg("--version")
+        .output()
+        .await;
+
+    if patch_check.is_err() || !patch_check.as_ref().map(|o| o.status.success()).unwrap_or(false) {
+        bail!(
+            "apply_patch: the pure-Rust parser could not handle this diff format, \
+             and the system `patch` binary is not available.\n\
+             On macOS run: xcode-select --install\n\
+             On Linux: sudo apt install patch  or  sudo yum install patch"
+        );
+    }
+
     let tmp_patch = std::env::temp_dir().join(format!("pawz-patch-{}.diff", uuid_short()));
     std::fs::write(&tmp_patch, patch)
         .map_err(|e| anyhow::anyhow!("apply_patch: failed to write temp patch: {}", e))?;
@@ -765,14 +964,13 @@ async fn tool_apply_patch(args: &Value) -> Result<String> {
         .await
         .map_err(|e| anyhow::anyhow!("apply_patch: failed to run patch command: {}", e))?;
 
-    // Clean up temp file
     let _ = std::fs::remove_file(&tmp_patch);
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     if output.status.success() {
-        log::info!("[apply_patch] patched {}", path_str);
+        log::info!("[apply_patch] applied (system patch) to {}", path_str);
         Ok(format!("Patch applied successfully to {}\n{}", path_str, stdout))
     } else {
         bail!("apply_patch: patch failed:\n{}\n{}", stdout, stderr)
@@ -995,4 +1193,182 @@ fn tool_engram_recall(args: &Value, state: &AppState) -> Result<String> {
         .collect();
 
     Ok(formatted.join("\n\n"))
+}
+
+// ── run_tests ─────────────────────────────────────────────────────────────────
+
+/// Detect the test runner from workspace root and run the test suite.
+async fn tool_run_tests(args: &Value, state: &AppState) -> Result<String> {
+    let root_str = args["path"]
+        .as_str()
+        .or_else(|| state.config.workspace_root.as_deref())
+        .ok_or_else(|| anyhow::anyhow!("run_tests: no path provided and no workspace_root configured"))?;
+
+    let root = PathBuf::from(root_str);
+    check_path(&root, "run_tests")?;
+
+    let filter = args["filter"].as_str().unwrap_or("");
+
+    // Detect test runner
+    let (runner, mut cmd_args) = detect_test_runner(&root)?;
+
+    if !filter.is_empty() {
+        match runner.as_str() {
+            "cargo" => { cmd_args.push("--".to_string()); cmd_args.push(filter.to_string()); }
+            "pytest" => { cmd_args.push("-k".to_string()); cmd_args.push(filter.to_string()); }
+            "go" => { cmd_args.push("-run".to_string()); cmd_args.push(filter.to_string()); }
+            _ => {} // npm test filter varies by framework
+        }
+    }
+
+    log::info!("[run_tests] runner={} args={:?} cwd={}", runner, cmd_args, root_str);
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(60),
+        tokio::process::Command::new(&runner)
+            .args(&cmd_args)
+            .current_dir(&root)
+            .output(),
+    )
+    .await;
+
+    match result {
+        Err(_) => Ok(format!("run_tests: timed out after 60s\nRunner: {} {}", runner, cmd_args.join(" "))),
+        Ok(Err(e)) => bail!("run_tests: failed to spawn {}: {}", runner, e),
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let exit_code = output.status.code().unwrap_or(-1);
+            let passed = exit_code == 0;
+
+            let mut out = format!(
+                "Test runner: {} {}\nStatus: {}\n\n",
+                runner,
+                cmd_args.join(" "),
+                if passed { "PASSED ✓" } else { "FAILED ✗" }
+            );
+
+            // Combine stdout + stderr (cargo test puts results on stderr)
+            let combined = format!("{}{}", stdout, stderr);
+            const MAX: usize = 20_000;
+            if combined.len() > MAX {
+                out.push_str(&combined[..MAX]);
+                out.push_str("\n... (truncated)");
+            } else {
+                out.push_str(&combined);
+            }
+            Ok(out)
+        }
+    }
+}
+
+fn detect_test_runner(root: &Path) -> Result<(String, Vec<String>)> {
+    // Priority order: Cargo → Go → Python → Node
+    if root.join("Cargo.toml").exists() {
+        return Ok(("cargo".into(), vec!["test".into()]));
+    }
+    if root.join("go.mod").exists() {
+        return Ok(("go".into(), vec!["test".into(), "./...".into()]));
+    }
+    if root.join("pytest.ini").exists()
+        || root.join("pyproject.toml").exists()
+        || root.join("setup.cfg").exists()
+    {
+        return Ok(("pytest".into(), vec![]));
+    }
+    if root.join("package.json").exists() {
+        // Prefer pnpm if lock file present, then npm
+        if root.join("pnpm-lock.yaml").exists() {
+            return Ok(("pnpm".into(), vec!["test".into(), "--".into()]));
+        }
+        return Ok(("npm".into(), vec!["test".into(), "--".into()]));
+    }
+    bail!(
+        "run_tests: could not detect a test runner in {}.\n\
+         Expected one of: Cargo.toml, go.mod, pytest.ini, pyproject.toml, package.json",
+        root.display()
+    )
+}
+
+// ── lint_check ────────────────────────────────────────────────────────────────
+
+/// Detect the linter from workspace root and run it.
+async fn tool_lint_check(args: &Value, state: &AppState) -> Result<String> {
+    let root_str = args["path"]
+        .as_str()
+        .or_else(|| state.config.workspace_root.as_deref())
+        .ok_or_else(|| anyhow::anyhow!("lint_check: no path provided and no workspace_root configured"))?;
+
+    let root = PathBuf::from(root_str);
+    check_path(&root, "lint_check")?;
+
+    let (runner, cmd_args) = detect_linter(&root)?;
+
+    log::info!("[lint_check] runner={} args={:?} cwd={}", runner, cmd_args, root_str);
+
+    let result = tokio::time::timeout(
+        Duration::from_secs(30),
+        tokio::process::Command::new(&runner)
+            .args(&cmd_args)
+            .current_dir(&root)
+            .output(),
+    )
+    .await;
+
+    match result {
+        Err(_) => Ok(format!("lint_check: timed out after 30s\nRunner: {} {}", runner, cmd_args.join(" "))),
+        Ok(Err(e)) => bail!("lint_check: failed to spawn {}: {}", runner, e),
+        Ok(Ok(output)) => {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let exit_code = output.status.code().unwrap_or(-1);
+            let clean = exit_code == 0;
+
+            let mut out = format!(
+                "Linter: {} {}\nStatus: {}\n\n",
+                runner,
+                cmd_args.join(" "),
+                if clean { "CLEAN ✓" } else { "ISSUES FOUND ✗" }
+            );
+
+            let combined = format!("{}{}", stdout, stderr);
+            if combined.trim().is_empty() && clean {
+                out.push_str("No issues found.");
+            } else {
+                const MAX: usize = 15_000;
+                if combined.len() > MAX {
+                    out.push_str(&combined[..MAX]);
+                    out.push_str("\n... (truncated)");
+                } else {
+                    out.push_str(&combined);
+                }
+            }
+            Ok(out)
+        }
+    }
+}
+
+fn detect_linter(root: &Path) -> Result<(String, Vec<String>)> {
+    if root.join("Cargo.toml").exists() {
+        return Ok(("cargo".into(), vec!["clippy".into(), "--".into(), "-D".into(), "warnings".into()]));
+    }
+    if root.join("go.mod").exists() {
+        return Ok(("go".into(), vec!["vet".into(), "./...".into()]));
+    }
+    if root.join("pyproject.toml").exists() {
+        return Ok(("ruff".into(), vec!["check".into(), ".".into()]));
+    }
+    if root.join("package.json").exists() {
+        // Prefer tsc type-check if tsconfig.json exists
+        if root.join("tsconfig.json").exists() {
+            return Ok(("npx".into(), vec!["tsc".into(), "--noEmit".into()]));
+        }
+        // Fall back to eslint
+        return Ok(("npx".into(), vec!["eslint".into(), ".".into()]));
+    }
+    bail!(
+        "lint_check: could not detect a linter in {}.\n\
+         Expected one of: Cargo.toml, go.mod, pyproject.toml, package.json",
+        root.display()
+    )
 }

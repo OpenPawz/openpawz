@@ -26,15 +26,26 @@ pub async fn call_streaming(
     messages: &[Message],
     tools: &[ToolDef],
     on_delta: impl Fn(&str) + Send + Sync,
+    model_override: Option<&str>,
 ) -> Result<LlmResult> {
-    match config.provider.as_str() {
+    // Build an ephemeral config with the resolved model so the inner
+    // functions don't need to know about role routing.
+    let effective_config;
+    let cfg = if let Some(m) = model_override {
+        effective_config = Config { model: m.to_owned(), ..config.clone() };
+        &effective_config
+    } else {
+        config
+    };
+
+    match cfg.provider.as_str() {
         "claude_code" => {
-            claude_code::call_claude_code(config, system, messages, tools, on_delta).await
+            claude_code::call_claude_code(cfg, system, messages, tools, on_delta).await
         }
         "openai" | "openai-compatible" => {
-            call_openai(config, client, system, messages, tools, on_delta).await
+            call_openai(cfg, client, system, messages, tools, on_delta).await
         }
-        _ => call_anthropic(config, client, system, messages, tools, on_delta).await,
+        _ => call_anthropic(cfg, client, system, messages, tools, on_delta).await,
     }
 }
 

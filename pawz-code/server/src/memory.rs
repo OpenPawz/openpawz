@@ -11,7 +11,7 @@ const HISTORY_LIMIT: usize = 40; // max messages loaded as context per turn
 
 /// Append a message to a session's conversation history.
 pub fn save_message(state: &AppState, session_id: &str, msg: &Message) -> Result<()> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let content_json = serde_json::to_string(&msg.blocks)?;
     db.execute(
         "INSERT INTO messages (session_id, role, content_json) VALUES (?1, ?2, ?3)",
@@ -22,7 +22,7 @@ pub fn save_message(state: &AppState, session_id: &str, msg: &Message) -> Result
 
 /// Load the last HISTORY_LIMIT messages for a session.
 pub fn load_history(state: &AppState, session_id: &str) -> Result<Vec<Message>> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut stmt = db.prepare(
         "SELECT role, content_json FROM (
             SELECT role, content_json, id FROM messages WHERE session_id = ?1 ORDER BY id DESC LIMIT ?2
@@ -51,7 +51,7 @@ pub fn load_history(state: &AppState, session_id: &str) -> Result<Vec<Message>> 
 
 /// Upsert a named memory note.
 pub fn remember(state: &AppState, key: &str, content: &str, tags: Option<&str>) -> Result<()> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     db.execute(
         r#"INSERT INTO memories (key, content, tags)
            VALUES (?1, ?2, ?3)
@@ -66,14 +66,14 @@ pub fn remember(state: &AppState, key: &str, content: &str, tags: Option<&str>) 
 
 /// Count total memory entries.
 pub fn memory_count(state: &AppState) -> anyhow::Result<i64> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let count: i64 = db.query_row("SELECT COUNT(*) FROM memories", [], |r| r.get(0))?;
     Ok(count)
 }
 
 /// Full-text search across all memory notes (key + content).
 pub fn recall(state: &AppState, query: &str) -> Result<Vec<(String, String)>> {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let pattern = format!("%{}%", query.replace('%', "\\%").replace('_', "\\_"));
     let mut stmt = db.prepare(
         "SELECT key, content FROM memories WHERE key LIKE ?1 ESCAPE '\\' OR content LIKE ?1 ESCAPE '\\' ORDER BY updated_at DESC LIMIT 20",
@@ -91,7 +91,7 @@ pub fn recall(state: &AppState, query: &str) -> Result<Vec<(String, String)>> {
 
 /// Load ALL memories as a formatted context block for the system prompt.
 pub fn all_memories_context(state: &AppState) -> String {
-    let db = state.db.lock().unwrap();
+    let db = state.db.lock().unwrap_or_else(|e| e.into_inner());
     let mut stmt = match db.prepare(
         "SELECT key, content FROM memories ORDER BY updated_at DESC LIMIT 50",
     ) {

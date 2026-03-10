@@ -86,7 +86,7 @@ fn default_model() -> String {
     "claude-opus-4-5".into()
 }
 fn default_max_rounds() -> u32 {
-    20
+    12
 }
 
 impl Config {

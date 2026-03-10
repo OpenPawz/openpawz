@@ -29,7 +29,7 @@ impl AppState {
         let conn = Connection::open(&db_path)?;
         init_schema(&conn)?;
 
-        let (tx, _) = broadcast::channel::<String>(1024);
+        let (tx, _) = broadcast::channel::<String>(4096);
 
         Ok(AppState {
             config: Arc::new(config),
@@ -42,18 +42,20 @@ impl AppState {
 
     /// Broadcast a serialised EngineEvent JSON string to all SSE subscribers.
     pub fn fire(&self, json: String) {
-        let _ = self.sse_tx.send(json);
+        if let Err(e) = self.sse_tx.send(json) {
+            log::warn!("[state] SSE broadcast send failed (no active subscribers or channel full): {}", e);
+        }
     }
 
     /// Register a new run as active.
     pub fn register_run(&self, run_id: &str) {
-        let mut runs = self.active_runs.lock().unwrap();
+        let mut runs = self.active_runs.lock().unwrap_or_else(|e| e.into_inner());
         runs.insert(run_id.to_string(), false);
     }
 
     /// Mark a run as cancelled.
     pub fn cancel_run(&self, run_id: &str) -> bool {
-        let mut runs = self.active_runs.lock().unwrap();
+        let mut runs = self.active_runs.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(flag) = runs.get_mut(run_id) {
             *flag = true;
             true
@@ -64,19 +66,19 @@ impl AppState {
 
     /// Check if a run has been cancelled.
     pub fn is_cancelled(&self, run_id: &str) -> bool {
-        let runs = self.active_runs.lock().unwrap();
+        let runs = self.active_runs.lock().unwrap_or_else(|e| e.into_inner());
         runs.get(run_id).copied().unwrap_or(false)
     }
 
     /// Remove a run from the active set.
     pub fn deregister_run(&self, run_id: &str) {
-        let mut runs = self.active_runs.lock().unwrap();
+        let mut runs = self.active_runs.lock().unwrap_or_else(|e| e.into_inner());
         runs.remove(run_id);
     }
 
     /// Return the count of currently active runs.
     pub fn active_run_count(&self) -> usize {
-        let runs = self.active_runs.lock().unwrap();
+        let runs = self.active_runs.lock().unwrap_or_else(|e| e.into_inner());
         runs.len()
     }
 }

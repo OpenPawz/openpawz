@@ -29,8 +29,8 @@
   "contributes": {
     "chatParticipants": [
       {
-        "id": "pawz-code",
-        "name": "code",
+        "id": "pawzcode",
+        "name": "pawzcode",
         "fullName": "Pawz CODE",
         "description": "Developer AI — remembers your codebase, runs tools, ships code",
         "isSticky": true
@@ -74,6 +74,10 @@
       }
     }
   },
+  "files": [
+    "out/**",
+    "images/**"
+  ],
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",

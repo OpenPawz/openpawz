@@ -98,6 +98,14 @@ export class ToolRenderer {
         }
         break;
       }
+      case 'run_tests': {
+        const filter = args['filter'] ? ` (filter: ${String(args['filter'])})` : '';
+        this.stream.progress(`Running tests${filter}…`);
+        break;
+      }
+      case 'lint_check':
+        this.stream.progress('Running lint check…');
+        break;
       default:
         this.stream.progress(`Calling ${name}…`);
     }
@@ -105,25 +113,48 @@ export class ToolRenderer {
 
   private handleToolResult(event: PawzEvent): void {
     if (!event.tool_call_id) return;
+
+    // Handle write_file results with diff buttons
     const pending = this.pendingWrites.get(event.tool_call_id);
-    if (!pending) return;
-    this.pendingWrites.delete(event.tool_call_id);
-    if (!event.success) return;
+    if (pending) {
+      this.pendingWrites.delete(event.tool_call_id);
+      if (event.success) {
+        const rel = vscode.workspace.asRelativePath(pending.filePath);
+        try {
+          this.stream.anchor(vscode.Uri.file(pending.filePath), rel);
+        } catch {
+          this.stream.markdown(`\`${rel}\``);
+        }
 
-    const rel = vscode.workspace.asRelativePath(pending.filePath);
-    try {
-      this.stream.anchor(vscode.Uri.file(pending.filePath), rel);
-    } catch {
-      this.stream.markdown(`\`${rel}\``);
+        if (pending.oldContent !== null && pending.oldContent !== pending.newContent) {
+          this.stream.button({
+            command: 'pawz-code.showDiff',
+            title: '$(diff) Show diff',
+            arguments: [pending.filePath, pending.oldContent ?? '', pending.newContent],
+          });
+        }
+      }
+      return;
     }
 
-    if (pending.oldContent !== null && pending.oldContent !== pending.newContent) {
-      this.stream.button({
-        command: 'pawz-code.showDiff',
-        title: '$(diff) Show diff',
-        arguments: [pending.filePath, pending.oldContent ?? '', pending.newContent],
-      });
-    }
+    // Show tool outputs for all other tools
+    if (!event.tool_name || !event.output) return;
+
+    // Skip showing output for these tools (handled elsewhere or too noisy)
+    if (event.tool_name === 'write_file' || event.tool_name === 'remember') return;
+
+    const output = event.output.trim();
+    if (!output || output.length === 0) return;
+
+    // Truncate very long outputs
+    const maxLen = 2000;
+    const truncated = output.length > maxLen ? output.slice(0, maxLen) + '\n\n... (truncated)' : output;
+
+    // Render output as collapsible code block
+    const icon = event.success ? '$(check)' : '$(error)';
+    const label = event.success ? event.tool_name : `${event.tool_name} (failed)`;
+
+    this.stream.markdown(`\n<details>\n<summary>${icon} ${label}</summary>\n\n\`\`\`\n${truncated}\n\`\`\`\n\n</details>\n\n`);
   }
 
   private captureOldContent(toolCallId: string, filePath: string, newContent: string): void {

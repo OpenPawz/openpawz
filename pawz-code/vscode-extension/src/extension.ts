@@ -16,7 +16,11 @@ import { PawzCodeClient } from './pawz-client';
 import { ToolRenderer } from './tool-renderer';
 import { ConnectionStateManager } from './connection-state';
 
-const PARTICIPANT_ID = 'pawz-code';
+const PARTICIPANT_ID = 'pawzcode';
+
+// Session management - map conversation to pawz-code session ID
+// We use WeakMap keyed by the history array to track conversations
+const conversationSessions = new WeakMap<readonly (vscode.ChatRequestTurn | vscode.ChatResponseTurn)[], string>();
 
 class MemoryContentProvider implements vscode.TextDocumentContentProvider {
   private store = new Map<string, string>();
@@ -99,23 +103,28 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       }
 
-      const lines = [
-        `**Pawz CODE** — Connected`,
-        ``,
-        `- Model: \`${info?.model ?? 'unknown'}\``,
-        `- Provider: \`${info?.provider ?? 'unknown'}\``,
-        `- Version: \`${info?.version ?? 'unknown'}\``,
-        `- Active runs: ${info?.active_runs ?? 0}`,
-        `- Memory entries: ${info?.memory_entries ?? 0}`,
-        `- Engram entries: ${info?.engram_entries ?? 0}`,
-        `- Protocols: ${(info?.protocols ?? []).join(', ') || 'none'}`,
+      // Show status in a native QuickPick panel instead of opening a text document
+      const qp = vscode.window.createQuickPick();
+      qp.title = 'Pawz CODE — Connected';
+      qp.placeholder = 'Status (read-only)';
+      qp.canSelectMany = false;
+      qp.items = [
+        { label: '$(check) Status', description: 'Connected', alwaysShow: true },
+        { label: '$(symbol-misc) Model', description: info?.model ?? 'unknown', alwaysShow: true },
+        { label: '$(cloud) Provider', description: info?.provider ?? 'unknown', alwaysShow: true },
+        { label: '$(tag) Version', description: info?.version ?? 'unknown', alwaysShow: true },
+        { label: '$(sync) Active runs', description: String(info?.active_runs ?? 0), alwaysShow: true },
+        { label: '$(database) Memory entries', description: String(info?.memory_entries ?? 0), alwaysShow: true },
+        { label: '$(book) Engram entries', description: String(info?.engram_entries ?? 0), alwaysShow: true },
+        {
+          label: '$(list-unordered) Protocols',
+          description: (info?.protocols ?? []).join(', ') || 'none',
+          alwaysShow: true,
+        },
       ];
-
-      const doc = await vscode.workspace.openTextDocument({
-        content: lines.join('\n'),
-        language: 'markdown',
-      });
-      await vscode.window.showTextDocument(doc, { preview: true });
+      qp.onDidAccept(() => qp.dispose());
+      qp.onDidHide(() => qp.dispose());
+      qp.show();
     }),
   );
 
@@ -145,13 +154,34 @@ export function activate(context: vscode.ExtensionContext): void {
 
 async function handleChatRequest(
   request: vscode.ChatRequest,
-  _context: vscode.ChatContext,
+  context: vscode.ChatContext,
   stream: vscode.ChatResponseStream,
   token: vscode.CancellationToken,
 ): Promise<void> {
   const cfg = vscode.workspace.getConfiguration('pawzCode');
   const serverUrl = cfg.get<string>('serverUrl') ?? 'http://127.0.0.1:3941';
   const authToken = cfg.get<string>('authToken') ?? '';
+
+  // Session persistence: use the conversation history as a stable reference
+  // The history array reference stays the same throughout a conversation thread
+  let sessionId: string | undefined;
+
+  if (context.history.length > 0) {
+    // Try to get existing session from this conversation
+    sessionId = conversationSessions.get(context.history);
+
+    if (!sessionId) {
+      // This is a continuation of a conversation, but we lost the session
+      // (e.g., extension reloaded). Create new session and store it.
+      sessionId = `vscode-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+      conversationSessions.set(context.history, sessionId);
+    }
+  } else {
+    // New conversation - generate session ID
+    sessionId = `vscode-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    // We can't store it in WeakMap yet since history is empty, but it will be
+    // stored on the next turn when history has content
+  }
 
   if (!authToken) {
     stream.markdown(
@@ -179,16 +209,51 @@ async function handleChatRequest(
 
   const client = new PawzCodeClient(serverUrl, authToken);
   const renderer = new ToolRenderer(stream);
-  const context = buildWorkspaceContext();
+  const workspaceContext = buildWorkspaceContext();
 
   const abortController = new AbortController();
-  token.onCancellationRequested(() => abortController.abort());
+
+  // Track the run_id so we can cancel the server-side agent loop on Stop.
+  let activeRunId: string | null = null;
+  let cancelPending = false;
+
+  const cancelRun = (runId: string): void => {
+    // Fire-and-forget — we don't want to block the cancellation path
+    fetch(new URL('/runs/cancel', serverUrl).toString(), {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ run_id: runId }),
+      signal: AbortSignal.timeout(3000),
+    }).catch(() => {
+      // Daemon may already be gone — ignore
+    });
+  };
+
+  token.onCancellationRequested(() => {
+    abortController.abort();
+    if (activeRunId) {
+      cancelRun(activeRunId);
+    } else {
+      // run_id hasn't arrived yet — mark as pending so we cancel when it does
+      cancelPending = true;
+    }
+  });
 
   try {
     await client.streamChat(
-      { message: request.prompt, context, user_id: 'vscode' },
+      { message: request.prompt, context: workspaceContext, user_id: 'vscode', session_id: sessionId },
       (event) => renderer.handleEvent(event),
       abortController.signal,
+      (runId) => {
+        activeRunId = runId;
+        // If cancellation was requested before the run_id arrived, cancel now
+        if (cancelPending) {
+          cancelRun(runId);
+        }
+      },
     );
 
     // After successful response, ensure connection state is updated
@@ -198,7 +263,7 @@ async function handleChatRequest(
   } catch (err: unknown) {
     if ((err as { name?: string }).name === 'AbortError') return;
     const msg = err instanceof Error ? err.message : String(err);
-    if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed')) {
+    if (msg.includes('ECONNREFUSED') || msg.includes('fetch failed') || msg.includes('dropped before run completed')) {
       // Update connection state
       void connectionManager?.checkHealth();
 
@@ -239,10 +304,36 @@ function buildWorkspaceContext(): string {
     }
   }
 
+  // Inject active VS Code diagnostics (errors + warnings, up to 20)
+  const allDiagnostics = vscode.languages
+    .getDiagnostics()
+    .flatMap(([uri, diags]) =>
+      diags
+        .filter(
+          (d) =>
+            d.severity === vscode.DiagnosticSeverity.Error ||
+            d.severity === vscode.DiagnosticSeverity.Warning,
+        )
+        .map((d) => ({ uri, d })),
+    )
+    // Sort errors before warnings
+    .sort((a, b) => a.d.severity - b.d.severity)
+    .slice(0, 20);
+
+  if (allDiagnostics.length > 0) {
+    const diagLines = allDiagnostics.map(({ uri, d }) => {
+      const rel = vscode.workspace.asRelativePath(uri);
+      const line = d.range.start.line + 1;
+      const sev = d.severity === vscode.DiagnosticSeverity.Error ? 'error' : 'warning';
+      return `  ${sev} ${rel}:${line} — ${d.message}`;
+    });
+    parts.push(`Active diagnostics (${allDiagnostics.length}):\n${diagLines.join('\n')}`);
+  }
+
   parts.push(
     'You have full access to the workspace via read_file, write_file, exec, ' +
-      'list_directory, grep, fetch, remember, recall, workspace_map, file_summary, ' +
-      'search_symbols, git_status, git_diff, apply_patch, engram_store, and engram_recall tools. ' +
+      'list_directory, grep, and fetch tools. ' +
+      'You also have remember and recall tools for persistent memory. ' +
       'Use absolute paths or resolve relative paths against the workspace root above.',
   );
 

@@ -155,14 +155,14 @@ pub fn load_protocols(state: &AppState) {
     }
 
     // Store in AppState protocol store
-    let mut store = state.protocols.lock().unwrap();
+    let mut store = state.protocols.lock().unwrap_or_else(|e| e.into_inner());
     *store = protocols;
     log::info!("[protocols] Loaded {} protocols", store.len());
 }
 
 /// Get list of loaded protocol names.
 pub fn loaded_protocol_names(state: &AppState) -> Vec<String> {
-    let store = state.protocols.lock().unwrap();
+    let store = state.protocols.lock().unwrap_or_else(|e| e.into_inner());
     let mut names: Vec<String> = store.keys().cloned().collect();
     names.sort();
     names
@@ -170,14 +170,14 @@ pub fn loaded_protocol_names(state: &AppState) -> Vec<String> {
 
 /// Get a specific protocol's text.
 pub fn get_protocol(state: &AppState, name: &str) -> Option<String> {
-    let store = state.protocols.lock().unwrap();
+    let store = state.protocols.lock().unwrap_or_else(|e| e.into_inner());
     store.get(name).cloned()
 }
 
 /// Build a combined protocol context string for the system prompt.
 /// Returns the selected protocols formatted for injection into the prompt.
 pub fn build_protocol_context(state: &AppState, names: &[&str]) -> String {
-    let store = state.protocols.lock().unwrap();
+    let store = state.protocols.lock().unwrap_or_else(|e| e.into_inner());
     let mut parts = Vec::new();
     for name in names {
         if let Some(text) = store.get(*name) {
