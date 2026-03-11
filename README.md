@@ -16,6 +16,8 @@ A native desktop AI platform that runs fully offline, connects to any provider, 
 
 *Private by default. Powerful by design. Extensible by nature.*
 
+[English](README.md) · [简体中文](README.zh-CN.md)
+
 </div>
 
 ---
