@@ -26,10 +26,8 @@
       "allow": [
         "$APPDATA/**",
         "$APPDATA",
-        "$HOME/**",
-        "$HOME",
-        "/tmp/**",
-        "/tmp"
+        "/tmp/openpawz/**",
+        "/tmp/openpawz"
       ]
     },
     "shell:allow-open",

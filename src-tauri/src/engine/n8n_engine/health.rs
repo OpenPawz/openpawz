@@ -154,7 +154,7 @@ fn owner_password() -> String {
         //   - 8–64 characters long
         // Older versions of this code generated passwords that failed these.
         if pw.chars().any(|c| c.is_ascii_uppercase()) && pw.len() <= 64 {
-            return pw;
+            return pw.to_string();
         }
         log::info!("[n8n] Existing vault password fails n8n policy — regenerating");
         key_vault::remove(key_vault::PURPOSE_N8N_OWNER);

@@ -26,22 +26,22 @@ const SESSION_TTL_SECS: u64 = 86_400; // 24 hours
 const PURPOSE_WEBCHAT_SESSION: &str = "webchat-session";
 
 /// Get or create the HMAC signing key for webchat sessions.
-fn get_signing_key() -> [u8; 32] {
+fn get_signing_key() -> Result<[u8; 32], String> {
     if let Some(key_b64) = key_vault::get(PURPOSE_WEBCHAT_SESSION) {
-        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(&key_b64) {
+        if let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(key_b64.as_str()) {
             if bytes.len() == 32 {
                 let mut key = [0u8; 32];
                 key.copy_from_slice(&bytes);
-                return key;
+                return Ok(key);
             }
         }
     }
     // Generate on first use
     let mut key = [0u8; 32];
-    getrandom::getrandom(&mut key).expect("OS CSPRNG failed");
+    getrandom::getrandom(&mut key).map_err(|e| format!("OS CSPRNG failed: {}", e))?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(key);
     key_vault::set(PURPOSE_WEBCHAT_SESSION, &b64);
-    key
+    Ok(key)
 }
 
 fn now_secs() -> u64 {
@@ -57,7 +57,13 @@ pub(crate) fn create_session(username: String) -> String {
     let created_at = now_secs();
     let payload = format!("{}|{}", username, created_at);
 
-    let key = get_signing_key();
+    let key = match get_signing_key() {
+        Ok(k) => k,
+        Err(e) => {
+            log::error!("[webchat] Failed to get signing key: {}", e);
+            return String::new();
+        }
+    };
     let mut mac = HmacSha256::new_from_slice(&key).expect("HMAC accepts any key size");
     mac.update(payload.as_bytes());
     let sig = mac.finalize().into_bytes();
@@ -83,7 +89,7 @@ pub(crate) fn validate_session(token: &str) -> Option<String> {
     let (payload, sig_hex) = token_str.rsplit_once('|')?;
 
     // Recompute HMAC
-    let key = get_signing_key();
+    let key = get_signing_key().ok()?;
     let mut mac = HmacSha256::new_from_slice(&key).expect("HMAC accepts any key size");
     mac.update(payload.as_bytes());
     let expected = mac.finalize().into_bytes();

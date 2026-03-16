@@ -19,6 +19,7 @@ fn startup_housekeeping(state: &commands::state::EngineState) {
         CHAT_SESSION_MAX_MESSAGES, STARTUP_EMPTY_SESSION_MAX_AGE_SECS,
         STARTUP_STALE_SESSION_MAX_AGE_DAYS,
     };
+    use openpawz_core::engine::scc;
 
     log::info!("[startup] Running DB housekeeping…");
 
@@ -68,6 +69,32 @@ fn startup_housekeeping(state: &commands::state::EngineState) {
     }
 
     log::info!("[startup] DB housekeeping complete");
+
+    // ── Session Continuity Certificate ────────────────────────────────
+    // Issue a signed SCC at every engine startup to chain sessions together.
+    // The certificate commits to: model, capabilities, audit chain tip.
+    let model_id = {
+        let config = state.config.lock();
+        config
+            .default_model
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string())
+    };
+
+    // Capability set: the static Tauri permissions compiled into the app
+    let capabilities: Vec<String> = vec![
+        "core:default".into(),
+        "sql:default".into(),
+        "fs:default".into(),
+        "fs:scope:appdata".into(),
+        "shell:allow-open".into(),
+        "updater:default".into(),
+    ];
+
+    match scc::issue_certificate(&state.store, &model_id, &capabilities) {
+        Ok(id) => log::info!("[startup] SCC #{} issued", id),
+        Err(e) => log::warn!("[startup] Failed to issue SCC: {}", e),
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

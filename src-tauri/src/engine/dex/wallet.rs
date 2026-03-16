@@ -6,6 +6,7 @@ use super::rpc::eth_chain_id;
 use crate::atoms::error::{EngineError, EngineResult};
 use log::info;
 use std::collections::HashMap;
+use zeroize::Zeroizing;
 
 /// Create a new Ethereum wallet and store the private key in the vault.
 pub async fn execute_dex_wallet_create(
@@ -33,7 +34,7 @@ pub async fn execute_dex_wallet_create(
     let address = address_from_pubkey(pubkey_bytes.as_bytes());
 
     // Store private key encrypted in vault
-    let private_key_hex = hex_encode(&signing_key.to_bytes());
+    let private_key_hex = Zeroizing::new(hex_encode(&signing_key.to_bytes()));
 
     use tauri::Manager;
     let state = app_handle

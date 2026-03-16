@@ -12,6 +12,7 @@ pub mod paths;
 pub mod pricing;
 pub mod provider_registry;
 pub mod providers;
+pub mod scc;
 pub mod sessions;
 pub mod types;
 pub mod util;

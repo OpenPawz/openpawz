@@ -440,6 +440,9 @@ pub fn run_migrations(conn: &Connection) -> EngineResult<()> {
     // ── Unified Signed Audit Log ────────────────────────────────────
     conn.execute_batch(crate::engine::audit::UNIFIED_AUDIT_SCHEMA)?;
 
+    // ── Session Continuity Certificates ──────────────────────────────
+    conn.execute_batch(crate::engine::scc::SCC_SCHEMA)?;
+
     // ── Canvas Components (Agent Canvas) ────────────────────────────
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS canvas_components (

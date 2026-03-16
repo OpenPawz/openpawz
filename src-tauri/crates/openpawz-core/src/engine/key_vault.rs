@@ -73,6 +73,7 @@ pub const PURPOSE_N8N_ENCRYPTION: &str = "n8n-encryption";
 pub const PURPOSE_N8N_OWNER: &str = "n8n-owner";
 pub const PURPOSE_AUDIT_CHAIN: &str = "audit-chain";
 pub const PURPOSE_NOSTR_KEY: &str = "nostr-key";
+pub const PURPOSE_SCC_SIGNING: &str = "scc-signing";
 
 /// Prefetch the vault — triggers the single keychain access so that all
 /// subsequent `get()` calls are pure in-memory lookups.
@@ -94,15 +95,12 @@ pub fn is_loaded() -> bool {
 /// Get a value from the vault by purpose key.
 /// Returns `None` if the key has never been stored.
 ///
-/// The returned `String` is a plain clone — callers that cache it
-/// long-term should wrap it in their own `Zeroizing<String>`.
-pub fn get(purpose: &str) -> Option<String> {
+/// The returned `Zeroizing<String>` is securely zeroed when dropped,
+/// preventing key material from lingering in freed heap memory.
+pub fn get(purpose: &str) -> Option<Zeroizing<String>> {
     ensure_loaded();
     let guard = read_lock(&VAULT_CACHE);
-    guard
-        .as_ref()
-        .and_then(|map| map.get(purpose))
-        .map(|v| String::from(v.as_str()))
+    guard.as_ref().and_then(|map| map.get(purpose)).cloned()
 }
 
 /// Store a value in the vault and persist the whole blob to the keychain.

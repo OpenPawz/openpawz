@@ -98,11 +98,11 @@ pub fn get_db_encryption_key() -> Result<String, String> {
 fn load_db_key_from_keychain() -> Result<Zeroizing<String>, String> {
     if let Some(key) = key_vault::get(key_vault::PURPOSE_DB_ENCRYPTION) {
         info!("Retrieved DB encryption key from unified vault");
-        return Ok(Zeroizing::new(key));
+        return Ok(key);
     }
     // No key exists — generate a new random key using OS CSPRNG
     let mut bytes = [0u8; 32];
-    getrandom::getrandom(&mut bytes).expect("OS CSPRNG failed");
+    getrandom::getrandom(&mut bytes).map_err(|e| format!("OS CSPRNG failed: {}", e))?;
     let key = Zeroizing::new(
         bytes
             .iter()
@@ -132,14 +132,46 @@ pub fn has_db_encryption_key() -> bool {
 }
 
 // ── Lock Screen Passphrase ─────────────────────────────────────────────────
-// The passphrase is SHA-256 hashed before storing in the keychain. The raw
+// The passphrase is hashed with Argon2id before storing in the keychain. The raw
 // passphrase never leaves the WebView→Rust boundary. On verify, we hash the
-// input and compare with the stored hash.
+// input and compare with the stored hash. Legacy SHA-256 hashes are supported
+// for backward compatibility.
 
-fn hash_passphrase(passphrase: &str) -> String {
+/// Hash a passphrase using Argon2id (memory-hard, timing-attack resistant).
+/// Returns the PHC-format string: `$argon2id$v=19$m=...,t=...,p=...$salt$hash`
+fn hash_passphrase(passphrase: &str) -> Result<String, String> {
+    use argon2::password_hash::SaltString;
+    let salt = SaltString::generate(&mut rand_core::OsRng);
+    let argon2 = argon2::Argon2::default();
+    argon2::PasswordHasher::hash_password(&argon2, passphrase.as_bytes(), &salt)
+        .map(|h| h.to_string())
+        .map_err(|e| format!("Argon2id hashing failed: {}", e))
+}
+
+/// Legacy SHA-256 hash for backward-compatible verification of old passphrases.
+fn legacy_sha256_hash(passphrase: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(passphrase.as_bytes());
     format!("{:x}", hasher.finalize())
+}
+
+/// Verify a passphrase against a stored hash (Argon2id or legacy SHA-256).
+fn verify_hash(passphrase: &str, stored: &str) -> bool {
+    if stored.starts_with("$argon2") {
+        // Argon2id: constant-time verification is built into the crate
+        if let Ok(parsed) = argon2::PasswordHash::new(stored) {
+            return argon2::PasswordVerifier::verify_password(
+                &argon2::Argon2::default(),
+                passphrase.as_bytes(),
+                &parsed,
+            )
+            .is_ok();
+        }
+        return false;
+    }
+    // Legacy SHA-256: constant-time comparison
+    let input_hash = legacy_sha256_hash(passphrase);
+    stored.as_bytes().ct_eq(input_hash.as_bytes()).into()
 }
 
 /// Check if a lock screen passphrase has been configured.
@@ -158,19 +190,19 @@ pub fn lock_screen_has_passphrase() -> bool {
     let result = key_vault::get(key_vault::PURPOSE_LOCK_SCREEN);
     if let Some(ref hash) = result {
         let mut guard = LOCK_HASH_CACHE.write().unwrap_or_else(|e| e.into_inner());
-        *guard = Some(Zeroizing::new(hash.clone()));
+        *guard = Some(hash.clone());
     }
     result.is_some()
 }
 
-/// Set (or replace) the lock screen passphrase. Stores SHA-256 hash in keychain.
+/// Set (or replace) the lock screen passphrase. Stores Argon2id hash in keychain.
 /// Also updates the in-memory cache.
 #[tauri::command]
 pub fn lock_screen_set_passphrase(passphrase: String) -> Result<(), String> {
     if passphrase.len() < 4 {
         return Err("Passphrase must be at least 4 characters".into());
     }
-    let hash = hash_passphrase(&passphrase);
+    let hash = hash_passphrase(&passphrase)?;
     key_vault::set(key_vault::PURPOSE_LOCK_SCREEN, &hash);
     // Update cache (write lock, poison-safe, zeroized)
     *LOCK_HASH_CACHE.write().unwrap_or_else(|e| e.into_inner()) = Some(Zeroizing::new(hash));
@@ -179,29 +211,25 @@ pub fn lock_screen_set_passphrase(passphrase: String) -> Result<(), String> {
 }
 
 /// Verify a passphrase against the stored hash.
+/// Supports both Argon2id (new) and legacy SHA-256 hashes transparently.
 /// Uses the in-memory cache when available — the keychain is only read once
 /// per session.
 #[tauri::command]
 pub fn lock_screen_verify_passphrase(passphrase: String) -> Result<bool, String> {
-    let input_hash = hash_passphrase(&passphrase);
-
     // Try cache first (read lock, poison-safe)
     {
         let guard = LOCK_HASH_CACHE.read().unwrap_or_else(|e| e.into_inner());
         if let Some(ref stored_hash) = *guard {
-            // Constant-time comparison to prevent timing side-channel attacks
-            return Ok(stored_hash.as_bytes().ct_eq(input_hash.as_bytes()).into());
+            return Ok(verify_hash(&passphrase, stored_hash));
         }
     }
 
     // Fall through to unified vault
     match key_vault::get(key_vault::PURPOSE_LOCK_SCREEN) {
         Some(stored_hash) => {
-            // Constant-time comparison
-            let matches: bool = stored_hash.as_bytes().ct_eq(input_hash.as_bytes()).into();
+            let matches = verify_hash(&passphrase, &stored_hash);
             // Populate cache (write lock, poison-safe, zeroized)
-            *LOCK_HASH_CACHE.write().unwrap_or_else(|e| e.into_inner()) =
-                Some(Zeroizing::new(stored_hash));
+            *LOCK_HASH_CACHE.write().unwrap_or_else(|e| e.into_inner()) = Some(stored_hash);
             Ok(matches)
         }
         None => Err("No passphrase configured".into()),

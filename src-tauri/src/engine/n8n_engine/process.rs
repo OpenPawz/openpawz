@@ -420,7 +420,7 @@ fn get_n8n_encryption_key_from_keychain() -> Option<String> {
     match key_vault::get(key_vault::PURPOSE_N8N_ENCRYPTION) {
         Some(key) if !key.is_empty() => {
             log::info!("[n8n] Retrieved encryption key from unified vault");
-            Some(key)
+            Some(key.to_string())
         }
         _ => None,
     }

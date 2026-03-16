@@ -5,6 +5,7 @@ use super::rpc::rpc_call;
 use crate::atoms::error::{EngineError, EngineResult};
 use log::info;
 use std::collections::HashMap;
+use zeroize::Zeroizing;
 
 /// Derive Solana public key (base58) from ed25519 secret key bytes
 #[allow(dead_code)]
@@ -39,10 +40,10 @@ pub async fn execute_sol_wallet_create(
 
     let address = bs58::encode(public_key.as_bytes()).into_string();
     // Store as base58-encoded 64-byte keypair (secret + public, Solana convention)
-    let mut keypair_bytes = [0u8; 64];
+    let mut keypair_bytes = Zeroizing::new([0u8; 64]);
     keypair_bytes[..32].copy_from_slice(&signing_key.to_bytes());
     keypair_bytes[32..].copy_from_slice(public_key.as_bytes());
-    let private_key_b58 = bs58::encode(&keypair_bytes).into_string();
+    let private_key_b58 = Zeroizing::new(bs58::encode(&*keypair_bytes).into_string());
 
     let state = app_handle
         .try_state::<crate::engine::state::EngineState>()

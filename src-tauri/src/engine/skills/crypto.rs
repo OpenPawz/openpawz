@@ -73,11 +73,12 @@ pub fn get_vault_key() -> EngineResult<Zeroizing<Vec<u8>>> {
 /// Returns `Zeroizing<Vec<u8>>` so callers don't need to manually zero.
 fn load_vault_key_from_keychain() -> EngineResult<Zeroizing<Vec<u8>>> {
     if let Some(key_b64) = key_vault::get(key_vault::PURPOSE_SKILL_VAULT) {
-        let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
-            .map_err(|e| {
-                error!("[vault] Failed to decode stored vault key: {}", e);
-                EngineError::Other(format!("Failed to decode vault key: {}", e))
-            })?;
+        let decoded =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, key_b64.as_str())
+                .map_err(|e| {
+                    error!("[vault] Failed to decode stored vault key: {}", e);
+                    EngineError::Other(format!("Failed to decode vault key: {}", e))
+                })?;
         return Ok(Zeroizing::new(decoded));
     }
     // No key exists — generate a new random key using OS CSPRNG

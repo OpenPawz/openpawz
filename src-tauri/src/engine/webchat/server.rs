@@ -280,9 +280,14 @@ async fn handle_auth(
     info!("[webchat] Session created for '{}'", name);
 
     let resp_body = json!({"ok": true}).to_string();
+    let secure_flag = if config.tls_cert_path.is_some() {
+        "Secure; "
+    } else {
+        ""
+    };
     let cookie = format!(
-        "paw_session={}; HttpOnly; SameSite=Strict; Secure; Path=/; Max-Age=86400",
-        session_id,
+        "paw_session={}; HttpOnly; SameSite=Strict; {}Path=/; Max-Age=86400",
+        session_id, secure_flag,
     );
     let response = format!(
         "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",

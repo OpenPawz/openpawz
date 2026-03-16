@@ -362,19 +362,21 @@ pub fn get_memory_encryption_key() -> EngineResult<zeroize::Zeroizing<Vec<u8>>> 
 /// Returns `Zeroizing<Vec<u8>>` so callers don't need to manually zero.
 fn load_memory_key_from_keychain() -> EngineResult<zeroize::Zeroizing<Vec<u8>>> {
     if let Some(key_b64) = key_vault::get(key_vault::PURPOSE_MEMORY_VAULT) {
-        let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
-            .map_err(|e| {
-                error!(
-                    "[engram-encryption] Failed to decode memory encryption key: {}",
-                    e
-                );
-                EngineError::Other(format!("Failed to decode memory encryption key: {}", e))
-            })?;
+        let decoded =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, key_b64.as_str())
+                .map_err(|e| {
+                    error!(
+                        "[engram-encryption] Failed to decode memory encryption key: {}",
+                        e
+                    );
+                    EngineError::Other(format!("Failed to decode memory encryption key: {}", e))
+                })?;
         return Ok(zeroize::Zeroizing::new(decoded));
     }
     // No key exists — generate a new random 256-bit key using OS CSPRNG
     let mut key = zeroize::Zeroizing::new(vec![0u8; 32]);
-    getrandom::getrandom(&mut key).expect("OS CSPRNG failed");
+    getrandom::getrandom(&mut key)
+        .map_err(|e| EngineError::Other(format!("OS CSPRNG failed: {}", e)))?;
     let key_b64 = zeroize::Zeroizing::new(base64::Engine::encode(
         &base64::engine::general_purpose::STANDARD,
         key.as_slice(),
@@ -536,7 +538,8 @@ pub fn encrypt_memory_content(content: &str, key: &[u8]) -> EngineResult<String>
         .map_err(|_| EngineError::Other("AES key must be 32 bytes".into()))?;
 
     let mut nonce_bytes = [0u8; 12];
-    getrandom::getrandom(&mut nonce_bytes).expect("OS CSPRNG failed");
+    getrandom::getrandom(&mut nonce_bytes)
+        .map_err(|e| EngineError::Other(format!("OS CSPRNG nonce generation failed: {}", e)))?;
     let nonce = Nonce::from_slice(&nonce_bytes);
 
     let ciphertext = cipher
@@ -972,8 +975,9 @@ fn generate_safe_summary(content: &str, pii_types: &[PiiType]) -> String {
         type_desc.join(", ")
     };
 
-    // Take the first few non-PII words as context
-    let words: Vec<&str> = content.split_whitespace().take(6).collect();
+    // Redact PII BEFORE extracting context words — prevents leaking sensitive data in summary
+    let redacted = redact_for_log(content);
+    let words: Vec<&str> = redacted.split_whitespace().take(6).collect();
     let context = words.join(" ");
 
     format!("[contains {}] {}", types_str, context)

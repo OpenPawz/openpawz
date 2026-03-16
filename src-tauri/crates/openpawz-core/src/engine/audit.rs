@@ -32,6 +32,7 @@ use std::sync::LazyLock;
 use crate::atoms::error::{EngineError, EngineResult};
 use crate::engine::key_vault;
 use crate::engine::sessions::SessionStore;
+use subtle::ConstantTimeEq;
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Types
@@ -160,15 +161,17 @@ const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000
 /// Returns `Zeroizing<Vec<u8>>` so intermediate copies are zeroed on drop.
 fn get_audit_signing_key() -> EngineResult<zeroize::Zeroizing<Vec<u8>>> {
     if let Some(key_b64) = key_vault::get(key_vault::PURPOSE_AUDIT_CHAIN) {
-        let decoded = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &key_b64)
-            .map_err(|e| {
-                EngineError::Other(format!("Failed to decode audit signing key: {}", e))
-            })?;
+        let decoded =
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, key_b64.as_str())
+                .map_err(|e| {
+                    EngineError::Other(format!("Failed to decode audit signing key: {}", e))
+                })?;
         return Ok(zeroize::Zeroizing::new(decoded));
     }
     // No key exists — generate a new random key using OS CSPRNG
     let mut key = zeroize::Zeroizing::new(vec![0u8; 32]);
-    getrandom::getrandom(&mut key).expect("OS CSPRNG failed");
+    getrandom::getrandom(&mut key)
+        .map_err(|e| EngineError::Other(format!("OS CSPRNG failed: {}", e)))?;
     let key_b64 = zeroize::Zeroizing::new(base64::Engine::encode(
         &base64::engine::general_purpose::STANDARD,
         key.as_slice(),
@@ -414,8 +417,8 @@ pub fn verify_chain(store: &SessionStore) -> EngineResult<Result<u64, i64>> {
     for row_result in rows {
         let entry = row_result?;
 
-        // Verify prev_hash matches what we expect
-        if entry.prev_hash != expected_prev {
+        // Verify prev_hash matches what we expect (constant-time)
+        if !bool::from(entry.prev_hash.as_bytes().ct_eq(expected_prev.as_bytes())) {
             warn!(
                 "[audit] Chain broken at row {}: expected prev_hash={}, got={}",
                 entry.id, expected_prev, entry.prev_hash
@@ -423,7 +426,7 @@ pub fn verify_chain(store: &SessionStore) -> EngineResult<Result<u64, i64>> {
             return Ok(Err(entry.id));
         }
 
-        // Verify signature
+        // Verify signature (constant-time comparison prevents timing side-channel)
         let expected_sig = compute_signature(
             key,
             &entry.timestamp,
@@ -437,7 +440,7 @@ pub fn verify_chain(store: &SessionStore) -> EngineResult<Result<u64, i64>> {
             &entry.prev_hash,
         );
 
-        if entry.signature != expected_sig {
+        if !bool::from(entry.signature.as_bytes().ct_eq(expected_sig.as_bytes())) {
             warn!(
                 "[audit] Signature mismatch at row {}: expected={}, got={}",
                 entry.id, expected_sig, entry.signature

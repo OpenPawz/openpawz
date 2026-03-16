@@ -101,7 +101,7 @@ fn keychain_set_private_key(hex_key: &str) -> EngineResult<()> {
 /// Retrieve the Nostr private key from the unified key vault.
 fn keychain_get_private_key() -> EngineResult<Option<String>> {
     match key_vault::get(key_vault::PURPOSE_NOSTR_KEY) {
-        Some(key) if !key.is_empty() => Ok(Some(key)),
+        Some(key) if !key.is_empty() => Ok(Some(key.to_string())),
         _ => Ok(None),
     }
 }

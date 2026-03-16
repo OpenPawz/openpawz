@@ -6,7 +6,7 @@ Pawz is a Tauri v2 desktop AI agent. Every system call flows through the Rust ba
 
 | Metric | Value |
 |--------|-------|
-| Automated tests | 739 (673 Rust + 66 integration) + TypeScript |
+| Automated tests | 1,128 (554 core + 508 app + 66 integration) + TypeScript |
 | CI jobs | 3 parallel (Rust + TypeScript + Security Audit) |
 | Clippy warnings | 0 (enforced via `-D warnings`) |
 | Known CVEs | 0 (`cargo audit` + `npm audit` in CI) |
@@ -195,7 +195,8 @@ All cryptographic keys are read from the OS keychain exactly **once per process 
 | **Zeroization** | All cached keys wrapped in `Zeroizing<T>` (`zeroize` crate) — zeroed on drop via `write_volatile` |
 | **Poison recovery** | `unwrap_or_else(\|e\| e.into_inner())` on all lock operations — poisoned mutex never crashes the app |
 | **Key length validation** | 32 bytes for binary keys, 32+ chars for hex-encoded keys — rejects truncated or corrupted keychain entries |
-| **Passphrase comparison** | Lock screen passphrase verified with `subtle::ConstantTimeEq` — prevents timing side-channel attacks |
+- **Passphrase hashing** | Lock screen passphrase hashed with **Argon2id** (memory-hard, timing-resistant). Legacy SHA-256 hashes are transparently verified for backward compatibility. New passphrases always use Argon2id |
+| **Passphrase comparison** | Argon2id verification is constant-time by design; legacy SHA-256 fallback uses `subtle::ConstantTimeEq` |
 
 This eliminates repeated macOS Keychain password prompts during normal operation (keychain was previously hit 5–20+ times per chat turn for encrypt/decrypt operations).
 
@@ -212,7 +213,24 @@ Blocked requests return an error to the agent without making any network call.
 
 ### Audit Chain Integrity (HMAC)
 
-Every entry in the security audit log is signed with **HMAC-SHA256** using a dedicated signing key stored in the unified key vault (`audit-chain` purpose), separate from all encryption keys. The signing key is cached in a `LazyLock<Option<Zeroizing<Vec<u8>>>>` and generated with `OsRng` on first use. Each audit entry's HMAC covers the timestamp, category, action, agent ID, session ID, and the previous entry's hash — forming a tamper-evident hash chain. Chain integrity can be verified end-to-end via `verify_chain()`.
+Every entry in the security audit log is signed with **HMAC-SHA256** using a dedicated signing key stored in the unified key vault (`audit-chain` purpose), separate from all encryption keys. The signing key is cached in a `LazyLock<Option<Zeroizing<Vec<u8>>>>` and generated with `OsRng` on first use. Each audit entry's HMAC covers the timestamp, category, action, agent ID, session ID, and the previous entry's hash — forming a tamper-evident hash chain. Chain integrity can be verified end-to-end via `verify_chain()`, which uses **constant-time comparison** (`subtle::ConstantTimeEq`) for all hash and signature checks.
+
+### Session Continuity Certificates (SCC)
+
+The audit chain proves within-session integrity, but a separate mechanism is needed to chain sessions together. **Session Continuity Certificates** solve the *Ghost Agent Problem* — the risk that an attacker could swap model weights or objectives between sessions while reusing the same OS keychain credentials.
+
+At every engine startup, a signed SCC is issued that commits to:
+
+| Field | Purpose |
+|-------|---------|
+| `model_id` | Which LLM model is configured |
+| `capability_hash` | SHA-256 of the sorted Tauri capability set |
+| `memory_hash` | Signature of the latest audit chain entry (anchors to audit state) |
+| `prior_cert_hash` | HMAC of the previous SCC (or genesis hash on first boot) |
+
+The SCC is HMAC-SHA256 signed with a dedicated key (`scc-signing` purpose in the unified key vault). Each certificate chains to the previous one — any gap or substitution in the chain is detectable by walking the certificates via `scc::verify_chain()`. Verification uses constant-time comparison to prevent timing side-channels.
+
+This provides **cross-session identity attestation**: you can cryptographically prove that session N was started by the same agent configuration as session N-1, or detect exactly where the chain broke.
 
 ### Inter-Agent Communication Security
 
@@ -390,7 +408,7 @@ Five defense layers prevent agents from ignoring user instructions or getting st
 ## Filesystem Sandboxing
 
 ### Tauri Scope
-Filesystem access scoped via Tauri capabilities (`capabilities/default.json`). Shell access limited to `open` command only.
+Filesystem access scoped via Tauri capabilities (`capabilities/default.json`). The IPC filesystem scope is narrowed to **`$APPDATA`** and **`/tmp/openpawz/`** only — `$HOME` is explicitly excluded. Shell access is limited to the `open` command only.
 
 ### Sensitive Path Blocking
 20+ sensitive paths blocked from project file browsing:

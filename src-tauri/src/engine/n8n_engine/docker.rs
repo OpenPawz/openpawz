@@ -94,12 +94,14 @@ pub async fn provision_docker_container(
 
     // Encryption key: vault is the single source of truth.
     // Generate a new key if none exists yet (first-ever run).
-    let encryption_key = key_vault::get(key_vault::PURPOSE_N8N_ENCRYPTION).unwrap_or_else(|| {
-        log::info!("[n8n] No encryption key in vault — generating new one");
-        let key = generate_random_key();
-        key_vault::set(key_vault::PURPOSE_N8N_ENCRYPTION, &key);
-        key
-    });
+    let encryption_key = key_vault::get(key_vault::PURPOSE_N8N_ENCRYPTION)
+        .map(|z| z.to_string())
+        .unwrap_or_else(|| {
+            log::info!("[n8n] No encryption key in vault — generating new one");
+            let key = generate_random_key();
+            key_vault::set(key_vault::PURPOSE_N8N_ENCRYPTION, &key);
+            key
+        });
 
     // Ensure data dir exists
     std::fs::create_dir_all(&data_dir)

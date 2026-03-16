@@ -37,10 +37,11 @@ No cryptographic key is ever stored on the filesystem. All keys live in the **OS
 | `db-encryption` | `PURPOSE_DB_ENCRYPTION` | AES-256-GCM database field encryption |
 | `skill-vault` | `PURPOSE_SKILL_VAULT` | AES-256-GCM skill credential encryption |
 | `memory-vault` | `PURPOSE_MEMORY_VAULT` | Master key for HKDF per-agent memory encryption |
-| `lock-screen` | `PURPOSE_LOCK_SCREEN` | SHA-256 hashed passphrase |
+| `lock-screen` | `PURPOSE_LOCK_SCREEN` | Argon2id hashed passphrase (legacy SHA-256 supported) |
 | `n8n-encryption` | `PURPOSE_N8N_ENCRYPTION` | n8n integration engine encryption key |
 | `audit-chain` | `PURPOSE_AUDIT_CHAIN` | HMAC-SHA256 audit log signing key |
 | `nostr-key` | `PURPOSE_NOSTR_KEY` | Nostr bridge private key |
+| `scc-signing` | `PURPOSE_SCC_SIGNING` | Session Continuity Certificate signing key |
 | `oauth:{service}` | (dynamic) | Per-service encrypted OAuth tokens |
 
 All in-memory key material is wrapped in `Zeroizing<String>` (via the `zeroize` crate) so secrets are securely overwritten with zeroes when dropped or replaced — preventing key material from lingering in freed heap memory.
@@ -52,6 +53,7 @@ From the memory vault key, three independent key families are derived via **HKDF
 | Agent encryption | `engram-agent-key-v1` | Per-agent AES-256-GCM memory encryption |
 | Snapshot HMAC | `engram-snapshot-hmac-v1` | Tamper detection for working memory snapshots |
 | Capability signing | `engram-platform-cap-v1` | HMAC-SHA256 signing of capability tokens |
+| Edge HMAC | `engram-edge-key-v1` | Keyed HMAC tokenization of edge types |
 
 There is no `device.json`, no key file, and no config file containing secrets. If the OS keychain is unavailable, the app **refuses to store credentials** rather than falling back to plaintext.
 
@@ -629,7 +631,7 @@ All new keys (vault, DB, memory, audit signing) are generated using `OsRng` from
 
 ### Constant-time passphrase comparison
 
-The lock screen passphrase is verified using `subtle::ConstantTimeEq` (the `subtle` crate). This prevents timing side-channel attacks where an attacker could infer how many bytes of the passphrase matched by measuring response time.
+The lock screen passphrase is hashed with **Argon2id** (memory-hard, timing-attack resistant) before storage. Legacy SHA-256 hashes are transparently supported for backward compatibility. Argon2id verification is constant-time by design; the legacy SHA-256 fallback uses `subtle::ConstantTimeEq` to prevent timing side-channel attacks.
 
 ## SSRF protection
 
@@ -654,9 +656,48 @@ Every entry in the security audit log is signed with **HMAC-SHA256** using a ded
 | Key storage | Unified OS keychain vault (`openpawz`), generated with `OsRng` |
 | Key caching | `LazyLock<Option<Zeroizing<Vec<u8>>>>` — loaded once, zeroed on process exit |
 | Chain structure | Each entry's HMAC covers timestamp + category + action + agent ID + session ID + previous entry hash |
+| Comparison | Constant-time via `subtle::ConstantTimeEq` — prevents timing side-channels |
 | Verification | `verify_chain()` walks the full log and validates every HMAC — returns the broken row ID if tampered |
 
 This forms a tamper-evident hash chain: modifying or deleting any audit entry breaks the chain from that point forward.
+
+## Session Continuity Certificates (SCC)
+
+The audit chain proves integrity within a single session, but does not chain sessions together. **Session Continuity Certificates** solve the *Ghost Agent Problem* — the risk that an attacker could swap model weights or agent objectives between sessions while reusing the same OS keychain credentials.
+
+At every engine startup, a signed SCC is issued and stored in the `session_continuity_certs` table alongside the audit log.
+
+### What the SCC commits to
+
+| Field | Purpose |
+|-------|---------|
+| `model_id` | Which LLM model is configured as the default |
+| `capability_hash` | SHA-256 of the sorted Tauri capability/permission set |
+| `memory_hash` | Signature of the latest audit log entry (anchors to the audit chain state) |
+| `prior_cert_hash` | HMAC of the previous SCC (or genesis `000…` on first-ever boot) |
+
+### How it works
+
+1. Engine starts → `startup_housekeeping()` runs DB cleanup
+2. Reads `config.default_model` for the active model ID
+3. Hashes the Tauri capability set (SHA-256 of sorted permission strings)
+4. Reads the audit chain tip as `memory_hash`
+5. Chains to the prior SCC's signature (forward-chain linkage)
+6. HMAC-signs all fields with the dedicated `scc-signing` vault key
+7. Stores the certificate in `session_continuity_certs`
+
+### Verification
+
+`scc::verify_chain()` walks all certificates from genesis to latest, verifying:
+- **Forward chain linkage** — each cert's `prior_cert_hash` must match the previous cert's signature
+- **Signature integrity** — recomputed HMAC must match the stored signature
+- **Constant-time comparison** — all checks use `subtle::ConstantTimeEq`
+
+Any gap, model substitution, or forgery breaks the chain with a descriptive error identifying the exact certificate where continuity was lost.
+
+:::tip Cross-session identity attestation
+The SCC chain lets you cryptographically prove that session N was started by the same agent configuration as session N-1. This is critical for long-running autonomous agents that accumulate reputation and make persistent decisions across many sessions.
+:::
 
 ## Inter-agent communication security
 
