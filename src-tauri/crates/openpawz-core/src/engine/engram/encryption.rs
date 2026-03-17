@@ -1612,7 +1612,7 @@ pub fn quantize_score(score: f32) -> f32 {
 /// Uses Laplace noise with scale `epsilon` to provide (ε,0)-DP.
 /// The noise is bounded to keep scores in [0.0, 1.0].
 pub fn dp_noise_score(score: f32, epsilon: f32) -> f32 {
-    use rand::Rng;
+    use rand::RngExt;
     let scale = 1.0 / epsilon;
     // Laplace noise via inverse CDF: Lap(0, b) = -b * sign(u) * ln(1 - 2|u|)
     let u: f64 = rand::rng().random_range(-0.5_f64..0.5_f64);

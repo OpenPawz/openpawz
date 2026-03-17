@@ -16,7 +16,7 @@
 
 use crate::atoms::error::EngineResult;
 use log::info;
-use rand::Rng;
+use rand::RngExt;
 use rusqlite::Connection;
 
 /// Run Engram-specific migrations. Called from sessions/schema.rs run_migrations().
