@@ -48,9 +48,18 @@ impl SessionStore {
     pub fn get_messages(&self, session_id: &str, limit: i64) -> EngineResult<Vec<StoredMessage>> {
         let conn = self.conn.lock();
 
+        // Subquery gets the NEWEST `limit` messages (DESC), then the outer
+        // query re-sorts ASC so the caller receives chronological order.
+        // Without the subquery, `ORDER BY ASC LIMIT N` returns the oldest N
+        // messages and silently drops the user's latest message once the
+        // session exceeds N messages — causing the model to answer stale context.
+        // Uses rowid as tiebreaker for messages with identical timestamps.
         let mut stmt = conn.prepare(
             "SELECT id, session_id, role, content, tool_calls_json, tool_call_id, name, created_at
-             FROM messages WHERE session_id = ?1 ORDER BY created_at ASC LIMIT ?2",
+             FROM (
+               SELECT id, session_id, role, content, tool_calls_json, tool_call_id, name, created_at, rowid
+               FROM messages WHERE session_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT ?2
+             ) ORDER BY created_at ASC, rowid ASC",
         )?;
 
         let messages = stmt
