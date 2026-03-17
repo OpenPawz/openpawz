@@ -156,6 +156,15 @@ impl HnswIndex {
         self.nodes.is_empty()
     }
 
+    /// Return all (id, vector) pairs in the index. Skips removed nodes (empty vectors).
+    pub fn all_vectors(&self) -> Vec<(String, Vec<f32>)> {
+        self.nodes
+            .iter()
+            .filter(|n| !n.vector.is_empty())
+            .map(|n| (n.id.clone(), n.vector.clone()))
+            .collect()
+    }
+
     /// Assign a random level for a new node using exponential decay.
     fn random_level(&self) -> usize {
         let r: f64 = rand::random::<f64>().max(1e-12);
@@ -574,6 +583,17 @@ pub fn is_empty_shared(shared: &SharedHnswIndex) -> bool {
     match shared.read() {
         Ok(guard) => guard.is_empty(),
         Err(_) => true,
+    }
+}
+
+/// Extract all (id, vector) pairs from the shared index.
+pub fn all_vectors_shared(shared: &SharedHnswIndex) -> Vec<(String, Vec<f32>)> {
+    match shared.read() {
+        Ok(guard) => guard.all_vectors(),
+        Err(e) => {
+            warn!("[hnsw] Read lock poisoned: {}", e);
+            Vec::new()
+        }
     }
 }
 

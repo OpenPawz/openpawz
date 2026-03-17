@@ -622,7 +622,14 @@ impl<'a> ContextBuilder<'a> {
 // ═════════════════════════════════════════════════════════════════════════════
 
 /// Assemble prompt sections into a single string, respecting token budget.
-/// Sections should be pre-sorted by priority (ascending = most important first).
+///
+/// §8.2 / §5 Token-Budget Knapsack Packing:
+/// 1. Critical sections (priority ≤ 2) are always included first (never dropped).
+/// 2. Remaining sections are packed using a greedy knapsack sorted by
+///    importance-per-token ratio (priority inverted as importance, divided by tokens).
+///    This maximizes the total importance value within the budget.
+/// 3. Sections that don't fit use their fallback text if available.
+///
 /// Returns (assembled_prompt, total_tokens).
 fn assemble_sections(
     sections: &[PromptSection],
@@ -640,9 +647,41 @@ fn assemble_sections(
     let mut fallbacks: Vec<String> = Vec::new();
     let mut used_tokens = 0usize;
 
+    // Phase 1: Always include critical sections (priority ≤ 2)
     for section in sections {
+        if section.priority <= 2 {
+            let cost = section.tokens
+                + if included.is_empty() {
+                    0
+                } else {
+                    separator_tokens
+                };
+            if used_tokens + cost <= budget {
+                included.push(&section.content);
+                used_tokens += cost;
+            }
+        }
+    }
+
+    // Phase 2: Pack remaining sections by importance-per-token ratio (greedy knapsack).
+    // Importance = (10 - priority), so priority 3 → importance 7, priority 9 → importance 1.
+    // Ratio = importance / max(tokens, 1) — higher ratio = more value per token.
+    let mut remaining: Vec<(usize, f64)> = sections
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| s.priority > 2)
+        .map(|(i, s)| {
+            let importance = (10u8.saturating_sub(s.priority)) as f64;
+            let ratio = importance / (s.tokens.max(1) as f64);
+            (i, ratio)
+        })
+        .collect();
+    remaining.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    for (idx, _ratio) in remaining {
+        let section = &sections[idx];
         let cost = section.tokens
-            + if included.is_empty() {
+            + if included.is_empty() && fallbacks.is_empty() {
                 0
             } else {
                 separator_tokens

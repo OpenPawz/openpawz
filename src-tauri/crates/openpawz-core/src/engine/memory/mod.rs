@@ -279,6 +279,10 @@ pub async fn search_memories(
 
 /// Merge BM25 and vector search results with weighted scoring.
 /// Normalizes scores from each source to [0,1] range before combining.
+///
+/// §6.3 BM25 normalization fix: when there's a single result (or all results
+/// have the same score), the range is 0. The single result IS the best match
+/// and gets a normalized score of 1.0, not 0.0.
 fn merge_search_results(
     bm25: &[Memory],
     vector: &[Memory],
@@ -292,14 +296,17 @@ fn merge_search_results(
     // Normalize BM25 scores to [0,1]
     let bm25_max = bm25.iter().filter_map(|m| m.score).fold(0.0f64, f64::max);
     let bm25_min = bm25.iter().filter_map(|m| m.score).fold(f64::MAX, f64::min);
-    let bm25_range = if (bm25_max - bm25_min).abs() < 1e-12 {
-        1.0
-    } else {
-        bm25_max - bm25_min
-    };
+    let bm25_range = bm25_max - bm25_min;
 
     for mem in bm25 {
-        let normalized = mem.score.map(|s| (s - bm25_min) / bm25_range);
+        let normalized = mem.score.map(|s| {
+            if bm25_range.abs() < 1e-12 {
+                // §6.3 Single result or all-same-score: these ARE the best results.
+                1.0
+            } else {
+                (s - bm25_min) / bm25_range
+            }
+        });
         score_map.insert(mem.id.clone(), (normalized, None, mem.clone()));
     }
 

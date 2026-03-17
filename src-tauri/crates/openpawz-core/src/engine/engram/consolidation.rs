@@ -52,6 +52,10 @@ const CONTRADICTION_CONFIDENCE_TRANSFER: f32 = 0.2;
 /// Max gap suggestions to surface per consolidation run.
 const MAX_GAP_SUGGESTIONS: usize = 2;
 
+/// §4.2 Minimum cluster size before attempting schema/pattern extraction.
+/// Larger clusters indicate a recurring pattern worth abstracting.
+const SCHEMA_EXTRACTION_MIN_CLUSTER: usize = 5;
+
 // ═════════════════════════════════════════════════════════════════════════════
 // Public API
 // ═════════════════════════════════════════════════════════════════════════════
@@ -133,6 +137,17 @@ pub async fn run_consolidation(
     // ── 3. Cluster similar memories ──────────────────────────────────────
     let clusters = build_clusters(&enriched, threshold);
     report.clusters_formed = clusters.len();
+
+    // ── 3.5 §4.2 Schema/Pattern Extraction from large clusters ──────────
+    // When a cluster has 5+ members, analyze for:
+    //   - Common action sequences → procedural memories
+    //   - Shared terminology → schema abstractions
+    // This turns repeated episodic observations into generalized knowledge.
+    for cluster in &clusters {
+        if cluster.len() >= SCHEMA_EXTRACTION_MIN_CLUSTER {
+            report.schemas_extracted += extract_procedural_patterns(store, cluster)?;
+        }
+    }
 
     // ── 4. Extract semantic triples from clusters ────────────────────────
     for cluster in &clusters {
@@ -230,7 +245,7 @@ pub async fn run_consolidation(
         "system",
         "system",
         Some(&format!(
-            "candidates={} clusters={} triples={} contradictions={} gaps={} metadata={} pii_upgrades={}",
+            "candidates={} clusters={} triples={} contradictions={} gaps={} metadata={} pii_upgrades={} schemas={}",
             report.candidates_found,
             report.clusters_formed,
             report.triples_created,
@@ -238,16 +253,18 @@ pub async fn run_consolidation(
             report.gaps_detected,
             report.metadata_enriched,
             report.pii_upgrades,
+            report.schemas_extracted,
         )),
     )?;
 
     info!(
-        "[engram:consolidation] Done — {} triples, {} contradictions, {} gaps, {} metadata, {} pii",
+        "[engram:consolidation] Done — {} triples, {} contradictions, {} gaps, {} metadata, {} pii, {} schemas",
         report.triples_created,
         report.contradictions_resolved,
         report.gaps_detected,
         report.metadata_enriched,
         report.pii_upgrades,
+        report.schemas_extracted,
     );
 
     Ok(report)
@@ -270,6 +287,8 @@ pub struct ConsolidationReport {
     pub metadata_enriched: usize,
     /// How many memories were upgraded by LLM PII scan (Layer 2).
     pub pii_upgrades: usize,
+    /// §4.2 How many procedural schemas were extracted from large clusters.
+    pub schemas_extracted: usize,
     /// Detected knowledge gaps for injection into working memory (§4.5).
     pub gaps: Vec<KnowledgeGap>,
     /// Whether the consolidation was rolled back due to NDCG quality drop.
@@ -293,6 +312,9 @@ pub enum GapKind {
     UnresolvedContradiction,
     /// Frequently accessed memory that hasn't been updated in a long time.
     StaleHighUse,
+    /// §4.5 Schema-based gap: the system knows WHAT but not enough CONTEXT.
+    /// Includes a natural-language question the agent can ask the user.
+    MissingContext,
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -938,7 +960,365 @@ fn detect_gaps(store: &SessionStore) -> EngineResult<Vec<KnowledgeGap>> {
         }
     }
 
+    // ── 4. §4.5 Schema-based proactive gap detection ────────────────────
+    // For subjects that DO have triples, check if expected related knowledge
+    // is missing. Uses schema templates to generate natural-language questions.
+    if gaps.len() < MAX_GAP_SUGGESTIONS {
+        let conn = store.conn.lock();
+        let remaining = MAX_GAP_SUGGESTIONS - gaps.len();
+
+        // Get subjects with predicates to detect missing context
+        let mut stmt = conn.prepare(
+            "SELECT subject, GROUP_CONCAT(predicate, '|')
+             FROM semantic_memories
+             GROUP BY subject
+             HAVING COUNT(*) >= 1
+             LIMIT 50",
+        )?;
+
+        let subject_predicates: Vec<(String, String)> = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        let mut schema_gaps = 0usize;
+        for (subject, predicates_str) in &subject_predicates {
+            if schema_gaps >= remaining {
+                break;
+            }
+            let existing_predicates: Vec<&str> = predicates_str.split('|').collect();
+            if let Some(question) = generate_schema_gap_question(subject, &existing_predicates) {
+                gaps.push(KnowledgeGap {
+                    kind: GapKind::MissingContext,
+                    description: question,
+                    related_ids: vec![],
+                });
+                schema_gaps += 1;
+            }
+        }
+    }
+
     Ok(gaps)
+}
+
+/// §4.5 Schema Templates — expected knowledge patterns.
+///
+/// For each domain, defines what facts are typically useful together.
+/// When a subject matches a domain but is missing expected predicates,
+/// generates a natural-language question the agent can ask.
+///
+/// This is the "self-healing" feature: the agent actively learns from users,
+/// building a progressively more complete model of their preferences, tools,
+/// and context. Over time, the gap count approaches zero.
+const SCHEMA_TEMPLATES: &[SchemaTemplate] = &[
+    SchemaTemplate {
+        domain_keywords: &["react", "vue", "angular", "svelte", "frontend", "nextjs", "nuxt"],
+        expected_predicates: &[
+            "version",
+            "build_tool",
+            "package_manager",
+            "styling",
+            "testing",
+        ],
+        question_templates: &[
+            ("version", "I know you work with {subject} — which version are you using?"),
+            ("build_tool", "What build tool do you use with {subject}? (e.g., Vite, webpack, Turbopack)"),
+            ("package_manager", "Do you use npm, pnpm, yarn, or bun for {subject}?"),
+            ("styling", "What styling approach do you use with {subject}? (e.g., Tailwind, CSS modules, styled-components)"),
+            ("testing", "What testing framework do you use with {subject}? (e.g., Vitest, Jest, Playwright)"),
+        ],
+    },
+    SchemaTemplate {
+        domain_keywords: &["rust", "cargo", "crate"],
+        expected_predicates: &["edition", "async_runtime", "error_handling", "testing"],
+        question_templates: &[
+            ("edition", "Which Rust edition are you targeting for {subject}?"),
+            ("async_runtime", "Do you use tokio, async-std, or another async runtime?"),
+            ("error_handling", "What error handling approach do you use? (e.g., anyhow, thiserror, custom)"),
+            ("testing", "What testing setup do you use? (e.g., built-in, proptest, criterion for benchmarks)"),
+        ],
+    },
+    SchemaTemplate {
+        domain_keywords: &["python", "django", "flask", "fastapi"],
+        expected_predicates: &["version", "package_manager", "formatter", "testing"],
+        question_templates: &[
+            ("version", "Which Python version are you on?"),
+            ("package_manager", "Do you use pip, poetry, uv, or conda for {subject}?"),
+            ("formatter", "What formatter/linter do you use? (e.g., ruff, black, flake8)"),
+            ("testing", "What testing framework? (pytest, unittest)"),
+        ],
+    },
+    SchemaTemplate {
+        domain_keywords: &["deploy", "hosting", "cloud", "server", "infrastructure"],
+        expected_predicates: &["provider", "container", "ci_cd", "environment"],
+        question_templates: &[
+            ("provider", "Where do you deploy {subject}? (e.g., AWS, GCP, Vercel, self-hosted)"),
+            ("container", "Do you use containers (Docker/Podman) for {subject}?"),
+            ("ci_cd", "What CI/CD pipeline do you use?"),
+            ("environment", "Do you have staging/production environments set up?"),
+        ],
+    },
+    SchemaTemplate {
+        domain_keywords: &["database", "postgres", "mysql", "sqlite", "mongo", "redis"],
+        expected_predicates: &["orm", "migrations", "backup"],
+        question_templates: &[
+            ("orm", "What ORM or query builder do you use with {subject}?"),
+            ("migrations", "How do you handle database migrations?"),
+            ("backup", "Do you have a backup strategy for {subject}?"),
+        ],
+    },
+    SchemaTemplate {
+        domain_keywords: &["editor", "ide", "vscode", "neovim", "vim", "helix", "zed"],
+        expected_predicates: &["theme", "extensions", "keybindings"],
+        question_templates: &[
+            ("theme", "What theme do you use in {subject}?"),
+            ("extensions", "What are your essential {subject} extensions/plugins?"),
+        ],
+    },
+];
+
+struct SchemaTemplate {
+    domain_keywords: &'static [&'static str],
+    #[allow(dead_code)] // reserved for future deep pattern matching
+    expected_predicates: &'static [&'static str],
+    question_templates: &'static [(&'static str, &'static str)],
+}
+
+/// Check if a subject matches a schema template and has missing predicates.
+/// Returns a natural-language question for the first missing predicate found.
+fn generate_schema_gap_question(subject: &str, existing_predicates: &[&str]) -> Option<String> {
+    let subject_lower = subject.to_lowercase();
+
+    for template in SCHEMA_TEMPLATES {
+        // Check if subject matches this domain
+        let domain_match = template
+            .domain_keywords
+            .iter()
+            .any(|kw| subject_lower.contains(kw));
+
+        if !domain_match {
+            continue;
+        }
+
+        // Find first missing predicate with a question template
+        for (predicate, question_tpl) in template.question_templates {
+            let already_known = existing_predicates.iter().any(|p| p.contains(predicate));
+            if !already_known {
+                return Some(question_tpl.replace("{subject}", subject));
+            }
+        }
+    }
+
+    None
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Internal: §4.2 Procedural Pattern Extraction
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// Extract procedural patterns from a large cluster of similar episodic memories.
+///
+/// When ≥5 memories form a cluster, they represent a recurring pattern.
+/// We analyze the cluster for common action sequences and store them as
+/// procedural memories (trigger → steps), which the agent can recall as
+/// "how-to" knowledge rather than individual episodes.
+///
+/// Returns the number of procedural memories created.
+fn extract_procedural_patterns(
+    store: &SessionStore,
+    cluster: &[EpisodicMemory],
+) -> EngineResult<usize> {
+    use crate::atoms::engram_types::{ProceduralMemory, ProceduralStep};
+
+    // Extract common verbs/actions and shared terms across the cluster
+    let mut action_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    let mut term_counts: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+
+    for mem in cluster {
+        let words: Vec<String> = mem
+            .content
+            .full
+            .split_whitespace()
+            .map(|w| {
+                w.trim_matches(|c: char| !c.is_alphanumeric())
+                    .to_lowercase()
+            })
+            .filter(|w| w.len() > 2 && !STOP_WORDS.contains(&w.as_str()))
+            .collect();
+
+        for word in &words {
+            if is_action_word(word) {
+                *action_counts.entry(word.clone()).or_default() += 1;
+            }
+            *term_counts.entry(word.clone()).or_default() += 1;
+        }
+    }
+
+    let cluster_size = cluster.len();
+    let min_frequency = (cluster_size as f64 * 0.4).ceil() as usize;
+
+    let common_actions: Vec<String> = action_counts
+        .iter()
+        .filter(|(_, count)| **count >= min_frequency)
+        .map(|(word, _)| word.clone())
+        .collect();
+
+    let common_terms: Vec<String> = term_counts
+        .iter()
+        .filter(|(_, count)| **count >= min_frequency)
+        .filter(|(word, _)| !common_actions.contains(word))
+        .map(|(word, _)| word.clone())
+        .take(5)
+        .collect();
+
+    if common_actions.is_empty() {
+        return Ok(0);
+    }
+
+    let trigger = if common_terms.is_empty() {
+        format!(
+            "When working with {}",
+            cluster
+                .first()
+                .map(|m| m.category.as_str())
+                .unwrap_or("this topic")
+        )
+    } else {
+        format!("When working with {}", common_terms.join(", "))
+    };
+
+    let scope = cluster.first().map(|m| m.scope.clone()).unwrap_or_default();
+
+    // Check if a similar procedural memory already exists
+    let existing = store.engram_search_procedural(&trigger, &scope, 1)?;
+    if !existing.is_empty() {
+        // Corroborate: bump success count
+        let conn = store.conn.lock();
+        conn.execute(
+            "UPDATE procedural_memories SET success_count = success_count + 1, updated_at = datetime('now') WHERE id = ?1",
+            rusqlite::params![existing[0].id],
+        )?;
+        return Ok(0);
+    }
+
+    let steps: Vec<ProceduralStep> = common_actions
+        .iter()
+        .map(|action| ProceduralStep {
+            description: format!(
+                "{} (observed {} times across {} memories)",
+                action,
+                action_counts[action.as_str()],
+                cluster_size
+            ),
+            tool_name: None,
+            args_pattern: None,
+            expected_outcome: None,
+        })
+        .collect();
+
+    let proc_mem = ProceduralMemory {
+        id: uuid::Uuid::new_v4().to_string(),
+        trigger: trigger.clone(),
+        steps: steps.clone(),
+        success_rate: 0.0,
+        execution_count: 0,
+        scope,
+        created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        updated_at: None,
+    };
+
+    store.engram_store_procedural(&proc_mem)?;
+
+    info!(
+        "[engram:consolidation] §4.2 Extracted procedural pattern: '{}' ({} steps from {} memories)",
+        trigger,
+        steps.len(),
+        cluster_size,
+    );
+
+    store.engram_audit_log(
+        "schema_extraction",
+        &proc_mem.id,
+        cluster
+            .first()
+            .map(|m| m.agent_id.as_str())
+            .unwrap_or("default"),
+        "consolidation",
+        Some(&format!(
+            "trigger='{}' steps={} cluster_size={}",
+            trigger,
+            steps.len(),
+            cluster_size,
+        )),
+    )?;
+
+    Ok(1)
+}
+
+/// Simple heuristic: is this word likely an action verb?
+fn is_action_word(word: &str) -> bool {
+    const ACTION_WORDS: &[&str] = &[
+        "create",
+        "build",
+        "run",
+        "test",
+        "deploy",
+        "install",
+        "configure",
+        "update",
+        "delete",
+        "remove",
+        "add",
+        "modify",
+        "check",
+        "verify",
+        "start",
+        "stop",
+        "restart",
+        "debug",
+        "fix",
+        "refactor",
+        "implement",
+        "migrate",
+        "setup",
+        "commit",
+        "push",
+        "pull",
+        "merge",
+        "rebase",
+        "review",
+        "compile",
+        "link",
+        "format",
+        "lint",
+        "scan",
+        "search",
+        "fetch",
+        "parse",
+        "render",
+        "serve",
+        "connect",
+        "disconnect",
+        "import",
+        "export",
+        "backup",
+        "restore",
+        "encrypt",
+        "decrypt",
+        "sign",
+        "validate",
+        "authorize",
+        "authenticate",
+        "benchmark",
+    ];
+    ACTION_WORDS.contains(&word)
+        || word.ends_with("ing")
+        || word.ends_with("ation")
+        || word.ends_with("ment")
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

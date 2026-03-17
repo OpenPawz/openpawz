@@ -10,6 +10,7 @@ import {
   agentLabel,
 } from './atoms';
 import { renderPalaceGraph } from './graph';
+import { renderAtlas, destroyAtlas } from './embedding-scatter';
 
 // ── Provider fields toggle ─────────────────────────────────────────────────
 
@@ -599,7 +600,19 @@ export function activatePalaceTab(target: string): void {
 
   // Auto-render graph when Map tab is activated
   if (target === 'graph') {
+    destroyAtlas();
     renderPalaceGraph();
+  }
+
+  // Auto-render Atlas when Atlas tab is activated
+  if (target === 'atlas') {
+    const atlasContainer = $('palace-atlas-container');
+    if (atlasContainer) renderAtlas(atlasContainer);
+  }
+
+  // Tear down Atlas when leaving Atlas tab
+  if (target !== 'atlas') {
+    destroyAtlas();
   }
 
   // Auto-render forge data when Forge tab is activated

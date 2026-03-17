@@ -28,6 +28,7 @@ export {
   loadPalaceSidebar,
 } from './molecules';
 export { renderPalaceGraph } from './graph';
+export { renderAtlas, destroyAtlas } from './embedding-scatter';
 
 // ── Module state ───────────────────────────────────────────────────────────
 

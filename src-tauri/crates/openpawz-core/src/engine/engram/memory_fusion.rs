@@ -51,11 +51,15 @@ enum FusionRelation {
 
 /// Classify the relationship between two similar memories.
 ///
+/// Uses multiple signals for contradiction detection (§4.3):
+///   1. Negation-based: one memory negates a claim made by the other
+///   2. Replacement-based: "switched to", "changed to", "no longer", "used to"
+///   3. Temporal-based: "now I use" + high overlap → supersession
+///
 /// Uses word overlap asymmetry to detect subsumption:
 ///   - If A's words are a near-superset of B's → A subsumes B
 ///   - If B's words are a near-superset of A's → A is subsumed by B
 ///   - If overlap is symmetric and high → Compatible
-///   - Otherwise check for contradiction signals
 fn classify_relation(a: &EpisodicMemory, b: &EpisodicMemory) -> FusionRelation {
     let words_a: std::collections::HashSet<&str> = a
         .content
@@ -80,8 +84,10 @@ fn classify_relation(a: &EpisodicMemory, b: &EpisodicMemory) -> FusionRelation {
     let coverage_a = intersection as f64 / words_a.len() as f64; // how much of A is in B
     let coverage_b = intersection as f64 / words_b.len() as f64; // how much of B is in A
 
-    // Check for contradiction signals (negation words near overlap)
-    let contradiction_signals = [
+    // §4.3 Enhanced contradiction detection — three signal types:
+
+    // Signal 1: Negation words (one has, other doesn't)
+    let negation_signals = [
         "not",
         "no",
         "never",
@@ -91,15 +97,55 @@ fn classify_relation(a: &EpisodicMemory, b: &EpisodicMemory) -> FusionRelation {
         "isn't",
         "doesn't",
         "wasn't",
+        "don't",
+        "didn't",
+        "won't",
+        "can't",
+        "neither",
     ];
     let a_has_negation = words_a
         .iter()
-        .any(|w| contradiction_signals.contains(&w.to_lowercase().as_str()));
+        .any(|w| negation_signals.contains(&w.to_lowercase().as_str()));
     let b_has_negation = words_b
         .iter()
-        .any(|w| contradiction_signals.contains(&w.to_lowercase().as_str()));
+        .any(|w| negation_signals.contains(&w.to_lowercase().as_str()));
 
     if a_has_negation != b_has_negation && coverage_a > 0.5 {
+        return FusionRelation::Contradictory;
+    }
+
+    // Signal 2: Replacement/supersession phrases — indicate the newer memory
+    // replaces an older fact (e.g., "switched to Helix" contradicts "uses vim")
+    let replacement_signals = [
+        "switched to",
+        "changed to",
+        "moved to",
+        "migrated to",
+        "no longer",
+        "stopped using",
+        "replaced with",
+        "instead of",
+        "used to",
+        "formerly",
+        "previously",
+        "updated to",
+        "upgraded to",
+    ];
+    let a_lower = a.content.full.to_lowercase();
+    let b_lower = b.content.full.to_lowercase();
+    let a_has_replacement = replacement_signals.iter().any(|s| a_lower.contains(s));
+    let b_has_replacement = replacement_signals.iter().any(|s| b_lower.contains(s));
+
+    if (a_has_replacement || b_has_replacement) && coverage_a > 0.3 {
+        return FusionRelation::Contradictory;
+    }
+
+    // Signal 3: Temporal supersession — "now I use X" + high topic overlap
+    let temporal_signals = ["now use", "now prefer", "currently use", "these days"];
+    let a_has_temporal = temporal_signals.iter().any(|s| a_lower.contains(s));
+    let b_has_temporal = temporal_signals.iter().any(|s| b_lower.contains(s));
+
+    if (a_has_temporal != b_has_temporal) && coverage_a > 0.4 {
         return FusionRelation::Contradictory;
     }
 

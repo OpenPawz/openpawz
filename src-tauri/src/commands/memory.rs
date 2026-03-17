@@ -503,3 +503,273 @@ pub fn engine_message_feedback(
         "total_negative": neg,
     }))
 }
+
+// ── Embedding Projection (Memory Atlas) ────────────────────────────────
+
+/// Return all memory embeddings projected to 3D coordinates via PCA,
+/// along with metadata for each point (category, importance, content snippet).
+/// Used by the Memory Atlas scatter plot visualization.
+///
+/// When real embeddings are available (HNSW index populated), uses PCA
+/// projection of the actual vectors. Otherwise, generates synthetic 3D
+/// positions from memory metadata (category clustering, importance, time)
+/// so the Atlas always has something useful to display.
+#[tauri::command]
+pub fn engine_memory_embedding_projection(
+    state: State<'_, EngineState>,
+    limit: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    use crate::engine::engram::hnsw;
+    use crate::engine::engram::projection;
+
+    let max = limit.unwrap_or(2000).min(5000);
+    let all_vectors = hnsw::all_vectors_shared(&state.hnsw_index);
+    let has_embeddings = !all_vectors.is_empty();
+
+    // Load all memory metadata
+    let scope = crate::atoms::engram_types::MemoryScope {
+        global: true,
+        ..Default::default()
+    };
+    let all_memories = state
+        .store
+        .engram_list_episodic(&scope, None, max)
+        .unwrap_or_default();
+
+    if all_memories.is_empty() {
+        // Also check legacy memories
+        let legacy = state.store.list_memories(max).unwrap_or_default();
+        if legacy.is_empty() {
+            return Ok(serde_json::json!({
+                "points": [],
+                "clusters": [],
+                "total": 0,
+                "has_embeddings": false,
+            }));
+        }
+
+        // Build points from legacy memories with synthetic positions
+        let mut points = Vec::new();
+        let mut cluster_map: std::collections::HashMap<String, (usize, usize)> =
+            std::collections::HashMap::new();
+
+        for (idx, mem) in legacy.iter().enumerate() {
+            let cat = &mem.category;
+            let next_id = cluster_map.len();
+            let entry = cluster_map.entry(cat.clone()).or_insert((0, next_id));
+            entry.0 += 1;
+            let cluster_idx = entry.1;
+
+            let (x, y, z) =
+                _synthetic_position(cluster_idx, idx, entry.0, mem.importance as f32 / 10.0);
+
+            let snippet = if mem.content.len() > 200 {
+                format!("{}...", &mem.content[..197])
+            } else {
+                mem.content.clone()
+            };
+
+            points.push(serde_json::json!({
+                "id": mem.id,
+                "x": x,
+                "y": y,
+                "z": z,
+                "content": snippet,
+                "category": cat,
+                "importance": mem.importance as f32 / 10.0,
+                "created_at": mem.created_at,
+            }));
+        }
+
+        let clusters = _build_clusters(&points);
+
+        return Ok(serde_json::json!({
+            "points": points,
+            "clusters": clusters,
+            "total": points.len(),
+            "has_embeddings": false,
+        }));
+    }
+
+    let mem_map: std::collections::HashMap<String, _> =
+        all_memories.iter().map(|m| (m.id.clone(), m)).collect();
+
+    let mut points = Vec::new();
+
+    if has_embeddings {
+        // Real PCA projection from actual embedding vectors
+        let vectors: Vec<(String, Vec<f32>)> = if all_vectors.len() > max {
+            all_vectors.into_iter().take(max).collect()
+        } else {
+            all_vectors
+        };
+
+        let projected = projection::project_to_3d(&vectors);
+
+        for p in &projected {
+            let (content, category, importance, created_at) = _extract_metadata(&mem_map, &p.id);
+            points.push(serde_json::json!({
+                "id": p.id,
+                "x": p.x,
+                "y": p.y,
+                "z": p.z,
+                "content": content,
+                "category": category,
+                "importance": importance,
+                "created_at": created_at,
+            }));
+        }
+    } else {
+        // Synthetic 3D positions from metadata: cluster by category,
+        // spread by importance, layer by recency
+        let mut cluster_map: std::collections::HashMap<String, (usize, usize)> =
+            std::collections::HashMap::new();
+
+        for (idx, mem) in all_memories.iter().enumerate() {
+            let cat = &mem.category;
+            let next_id = cluster_map.len();
+            let entry = cluster_map.entry(cat.clone()).or_insert((0, next_id));
+            entry.0 += 1;
+            let cluster_idx = entry.1;
+
+            let (x, y, z) = _synthetic_position(cluster_idx, idx, entry.0, mem.importance);
+
+            let (content, category, importance, created_at) = _extract_metadata(&mem_map, &mem.id);
+            points.push(serde_json::json!({
+                "id": mem.id,
+                "x": x,
+                "y": y,
+                "z": z,
+                "content": content,
+                "category": category,
+                "importance": importance,
+                "created_at": created_at,
+            }));
+        }
+    }
+
+    let clusters = _build_clusters(&points);
+
+    // Fetch existing edges from the graph
+    let db_edges = state.store.engram_list_all_edges(500).unwrap_or_default();
+
+    let point_ids: std::collections::HashSet<String> = points
+        .iter()
+        .filter_map(|p| p.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+        .collect();
+
+    let edges: Vec<serde_json::Value> = db_edges
+        .into_iter()
+        .filter(|e| point_ids.contains(&e.source_id) && point_ids.contains(&e.target_id))
+        .map(|e| {
+            serde_json::json!({
+                "source": e.source_id,
+                "target": e.target_id,
+                "type": e.edge_type.to_string(),
+                "weight": e.weight,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "points": points,
+        "clusters": clusters,
+        "edges": edges,
+        "total": points.len(),
+        "has_embeddings": has_embeddings,
+    }))
+}
+
+/// Generate synthetic 3D position for a memory based on its cluster,
+/// index within the cluster, and importance. Creates visually separated
+/// clusters arranged in a ring with per-cluster jitter.
+fn _synthetic_position(
+    cluster_idx: usize,
+    global_idx: usize,
+    within_cluster: usize,
+    importance: f32,
+) -> (f32, f32, f32) {
+    use std::f32::consts::PI;
+
+    // Arrange clusters in a ring (golden angle for even spacing)
+    let golden = PI * (3.0 - 5.0f32.sqrt()); // ~137.5 degrees
+    let cluster_angle = cluster_idx as f32 * golden;
+    let cluster_radius = 0.6;
+
+    // Cluster center
+    let cx = cluster_angle.cos() * cluster_radius;
+    let cz = cluster_angle.sin() * cluster_radius;
+
+    // Spread points within cluster using a spiral pattern
+    let spread_angle = within_cluster as f32 * golden;
+    let spread_r = 0.05 + (within_cluster as f32).sqrt() * 0.06;
+
+    // Use deterministic "random" from global index for variation
+    let jitter_seed = (global_idx as f32 * 7.31 + 0.5).sin() * 0.04;
+    let jitter_seed2 = (global_idx as f32 * 13.17 + 0.3).sin() * 0.04;
+
+    let x = cx + spread_angle.cos() * spread_r + jitter_seed;
+    let z = cz + spread_angle.sin() * spread_r + jitter_seed2;
+    // Y axis: importance-based height with slight jitter
+    let y = (importance - 0.5) * 0.4 + jitter_seed * 0.5;
+
+    // Normalize to [-1, 1]
+    (x.clamp(-1.0, 1.0), y.clamp(-1.0, 1.0), z.clamp(-1.0, 1.0))
+}
+
+/// Extract display metadata for a memory, decrypting content if needed.
+fn _extract_metadata(
+    mem_map: &std::collections::HashMap<String, &crate::atoms::engram_types::EpisodicMemory>,
+    id: &str,
+) -> (String, String, f32, String) {
+    if let Some(mem) = mem_map.get(id) {
+        let decrypted = if let Ok(key) =
+            crate::engine::engram::encryption::get_agent_encryption_key(&mem.agent_id)
+        {
+            crate::engine::engram::encryption::decrypt_memory_content(&mem.content.full, &key)
+                .unwrap_or_else(|_| mem.content.full.clone())
+        } else {
+            mem.content.full.clone()
+        };
+        let snippet = if decrypted.len() > 200 {
+            format!("{}...", &decrypted[..197])
+        } else {
+            decrypted
+        };
+        (
+            snippet,
+            mem.category.clone(),
+            mem.importance,
+            mem.created_at.clone(),
+        )
+    } else {
+        (String::new(), "unknown".to_string(), 0.5, String::new())
+    }
+}
+
+/// Build cluster summary from points JSON array.
+fn _build_clusters(points: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    let mut cluster_map: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for p in points {
+        if let Some(cat) = p.get("category").and_then(|v| v.as_str()) {
+            *cluster_map.entry(cat.to_string()).or_insert(0) += 1;
+        }
+    }
+    let mut clusters: Vec<serde_json::Value> = cluster_map
+        .into_iter()
+        .map(|(id, count)| {
+            serde_json::json!({
+                "id": id,
+                "count": count,
+            })
+        })
+        .collect();
+    clusters.sort_by(|a, b| {
+        b.get("count")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0)
+            .cmp(&a.get("count").and_then(|v| v.as_u64()).unwrap_or(0))
+    });
+    clusters
+}

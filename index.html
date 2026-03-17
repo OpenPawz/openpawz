@@ -2549,6 +2549,10 @@
                 <span class="ms ms-sm">hub</span>
                 Map
               </button>
+              <button class="palace-tab" data-palace-tab="atlas">
+                <span class="ms ms-sm">scatter_plot</span>
+                Atlas
+              </button>
               <button class="palace-tab" data-palace-tab="forge">
                 <span class="ms ms-sm">verified</span>
                 Forge
@@ -2601,6 +2605,18 @@
                   height="600"
                   style="display: none"
                 ></canvas>
+              </div>
+            </div>
+            <!-- Atlas Panel (Embedding Scatter) -->
+            <div class="palace-panel" id="palace-atlas-panel">
+              <div class="palace-atlas-container" id="palace-atlas-container">
+                <div class="atlas-empty">
+                  <span class="ms" style="font-size: 48px; color: var(--text-muted)">scatter_plot</span>
+                  <div class="atlas-empty-title">Memory Atlas</div>
+                  <div class="atlas-empty-subtitle">
+                    3D embedding space visualization — click Atlas tab to project your memories
+                  </div>
+                </div>
               </div>
             </div>
             <!-- Forge Panel -->

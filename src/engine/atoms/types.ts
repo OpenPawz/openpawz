@@ -1190,6 +1190,39 @@ export interface MemoryEdge {
   created_at: string;
 }
 
+// ── Embedding Projection (Memory Atlas) ──────────────────────────────
+
+export interface ProjectedPoint {
+  id: string;
+  x: number;
+  y: number;
+  z: number;
+  content: string;
+  category: string;
+  importance: number;
+  created_at: string;
+}
+
+export interface EmbeddingCluster {
+  id: string;
+  count: number;
+}
+
+export interface ProjectedEdge {
+  source: string;
+  target: string;
+  type: string;
+  weight: number;
+}
+
+export interface EmbeddingProjection {
+  points: ProjectedPoint[];
+  clusters: EmbeddingCluster[];
+  edges: ProjectedEdge[];
+  total: number;
+  has_embeddings: boolean;
+}
+
 /** Persisted flow graph envelope. graph_json holds the full FlowGraph JSON. */
 export interface EngineFlow {
   id: string;

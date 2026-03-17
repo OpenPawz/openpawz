@@ -51,6 +51,7 @@ pub mod meta_cognition;
 pub mod metadata_inference;
 pub mod model_caps;
 pub mod process_hardening;
+pub mod projection;
 pub mod proposition;
 pub mod recall_tuner;
 pub mod reranking;

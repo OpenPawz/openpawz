@@ -394,6 +394,10 @@ pub async fn run_maintenance(
                 GapKind::IncompleteSchema => {
                     format!("[Incomplete Knowledge] Only partial information exists: {}. More context would help.", gap.description)
                 }
+                GapKind::MissingContext => {
+                    // §4.5 Schema-based gap: the description IS the natural question
+                    format!("[Knowledge Gap] {}", gap.description)
+                }
             }
         })
         .collect();

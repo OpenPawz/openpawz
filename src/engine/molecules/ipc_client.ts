@@ -90,6 +90,7 @@ import type {
   ForgeSkillTreeNode,
   ForgeDomainSummary,
   MemoryEdge,
+  EmbeddingProjection,
 } from '../atoms/types';
 
 export class PawEngineClient {
@@ -342,6 +343,10 @@ export class PawEngineClient {
 
   async memoryBackfill(): Promise<{ success: number; failed: number }> {
     return invoke('engine_memory_backfill');
+  }
+
+  async memoryEmbeddingProjection(limit?: number): Promise<EmbeddingProjection> {
+    return invoke<EmbeddingProjection>('engine_memory_embedding_projection', { limit });
   }
 
   async messageFeedback(
