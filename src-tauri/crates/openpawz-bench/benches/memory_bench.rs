@@ -1,8 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use openpawz_bench::*;
 use openpawz_core::atoms::engram_types::{
-    ConsolidationState, EdgeType, EpisodicMemory, MemoryScope, MemorySource, ProceduralMemory,
-    ProceduralStep, SemanticMemory, TieredContent,
+    ConsolidationState, EdgeType, EpisodicMemory, MemoryEdge, MemoryScope, MemorySource,
+    ProceduralMemory, ProceduralStep, SemanticMemory, TieredContent,
 };
 use openpawz_core::engine::engram;
 use openpawz_core::engine::memory;
@@ -631,11 +631,292 @@ criterion_group!(
     bench_gc_candidates,
 );
 criterion_group!(dedup_ops, bench_content_overlap);
+
+// ── Memory single-item ops ───────────────────────────────────────────────
+
+fn bench_get_memory_by_id(c: &mut Criterion) {
+    let store = fresh_store();
+    for (i, content) in MEMORY_CORPUS.iter().enumerate() {
+        store
+            .store_memory(&format!("gm-{}", i), content, "fact", 5, None, Some("a"))
+            .unwrap();
+    }
+    c.bench_function("memory/get_by_id", |b| {
+        let mut i = 0usize;
+        b.iter(|| {
+            i = (i + 1) % MEMORY_CORPUS.len();
+            black_box(
+                store
+                    .get_memory_by_id(black_box(&format!("gm-{}", i)))
+                    .unwrap(),
+            );
+        });
+    });
+}
+
+fn bench_delete_memory(c: &mut Criterion) {
+    let store = fresh_store();
+    static DEL_CTR: AtomicU64 = AtomicU64::new(0);
+    for i in 0..5000 {
+        store
+            .store_memory(
+                &format!("dm-{}", i),
+                MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+                "fact",
+                3,
+                None,
+                None,
+            )
+            .unwrap();
+    }
+    c.bench_function("memory/delete", |b| {
+        b.iter(|| {
+            let i = DEL_CTR.fetch_add(1, Ordering::Relaxed);
+            let _ = store.delete_memory(black_box(&format!("dm-{}", i)));
+        });
+    });
+}
+
+fn bench_search_bm25_scaled(c: &mut Criterion) {
+    let mut group = c.benchmark_group("memory/bm25_scaled");
+    for &count in &[20, 100, 500, 2000] {
+        let store = fresh_store();
+        for i in 0..count {
+            store
+                .store_memory(
+                    &format!("bms-{}", i),
+                    MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+                    "fact",
+                    5,
+                    None,
+                    Some("a"),
+                )
+                .unwrap();
+        }
+        group.bench_with_input(BenchmarkId::from_parameter(count), &store, |b, store| {
+            b.iter(|| {
+                black_box(
+                    store
+                        .search_memories_bm25(black_box("kubernetes deployment scaling"), 10, None)
+                        .unwrap(),
+                )
+            });
+        });
+    }
+    group.finish();
+}
+
+fn bench_search_by_embedding(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..200 {
+        let emb = random_vec_bytes(384);
+        store
+            .store_memory(
+                &format!("emb-{}", i),
+                MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+                "fact",
+                5,
+                Some(&emb),
+                Some("bench-agent"),
+            )
+            .unwrap();
+    }
+    let query_emb = random_vec(384);
+    c.bench_function("memory/search_by_embedding_200", |b| {
+        b.iter(|| {
+            black_box(
+                store
+                    .search_memories_by_embedding(black_box(&query_emb), 10, 0.3, None)
+                    .unwrap()
+                    .len(),
+            )
+        });
+    });
+}
+
+// ── Engram graph edge ops ────────────────────────────────────────────────
+
+static EDGE_CTR: AtomicU64 = AtomicU64::new(0);
+
+fn bench_engram_add_edge(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..50 {
+        store
+            .engram_store_episodic(&make_episodic(
+                &format!("ae-{}", i),
+                MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+            ))
+            .unwrap();
+    }
+    c.bench_function("graph/add_edge", |b| {
+        b.iter(|| {
+            let i = EDGE_CTR.fetch_add(1, Ordering::Relaxed);
+            let edge = MemoryEdge {
+                source_id: format!("ae-{}", i % 50),
+                target_id: format!("ae-{}", (i + 7) % 50),
+                edge_type: EdgeType::RelatedTo,
+                weight: 0.8,
+                created_at: now(),
+            };
+            store.engram_add_edge(black_box(&edge)).unwrap();
+        });
+    });
+}
+
+fn bench_engram_get_edges_from(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..30 {
+        store
+            .engram_store_episodic(&make_episodic(
+                &format!("ef-{}", i),
+                MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+            ))
+            .unwrap();
+    }
+    // Create edges from node 0 to many targets
+    for i in 1..20 {
+        let edge = MemoryEdge {
+            source_id: "ef-0".into(),
+            target_id: format!("ef-{}", i),
+            edge_type: EdgeType::RelatedTo,
+            weight: 0.7,
+            created_at: now(),
+        };
+        store.engram_add_edge(&edge).unwrap();
+    }
+    c.bench_function("graph/get_edges_from", |b| {
+        b.iter(|| {
+            black_box(
+                store
+                    .engram_get_edges_from(black_box("ef-0"))
+                    .unwrap()
+                    .len(),
+            )
+        });
+    });
+}
+
+fn bench_engram_count_edges(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..20 {
+        store
+            .engram_store_episodic(&make_episodic(
+                &format!("ce-{}", i),
+                MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+            ))
+            .unwrap();
+    }
+    for i in 0..19 {
+        let edge = MemoryEdge {
+            source_id: format!("ce-{}", i),
+            target_id: format!("ce-{}", i + 1),
+            edge_type: EdgeType::RelatedTo,
+            weight: 0.6,
+            created_at: now(),
+        };
+        store.engram_add_edge(&edge).unwrap();
+    }
+    c.bench_function("graph/count_edges", |b| {
+        b.iter(|| black_box(store.engram_count_edges().unwrap()));
+    });
+}
+
+// ── Engram procedural search ─────────────────────────────────────────────
+
+fn bench_engram_search_procedural(c: &mut Criterion) {
+    let store = fresh_store();
+    let triggers = &[
+        "user asks to deploy",
+        "user wants to run tests",
+        "user needs database backup",
+        "user asks to set up monitoring",
+        "user wants to configure CI/CD",
+    ];
+    for (i, trigger) in triggers.iter().enumerate() {
+        let mem = ProceduralMemory {
+            id: format!("sp-{}", i),
+            trigger: (*trigger).into(),
+            steps: vec![ProceduralStep {
+                description: "Execute step".into(),
+                tool_name: Some("execute_command".into()),
+                args_pattern: Some("cargo test".into()),
+                expected_outcome: None,
+            }],
+            success_rate: 0.9,
+            execution_count: 5,
+            scope: MemoryScope::default(),
+            created_at: now(),
+            updated_at: None,
+        };
+        engram::store_procedural(&store, &mem).unwrap();
+    }
+    c.bench_function("procedural/search", |b| {
+        b.iter(|| {
+            black_box(
+                store
+                    .engram_search_procedural(
+                        black_box("deploy application"),
+                        &MemoryScope::default(),
+                        5,
+                    )
+                    .unwrap(),
+            )
+        });
+    });
+}
+
+// ── Engram counts ────────────────────────────────────────────────────────
+
+fn bench_engram_counts(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..50 {
+        store
+            .engram_store_episodic(&make_episodic(
+                &format!("cnt-{}", i),
+                MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+            ))
+            .unwrap();
+    }
+    let mut group = c.benchmark_group("engram/count");
+    group.bench_function("episodic", |b| {
+        b.iter(|| black_box(store.engram_count_episodic(None).unwrap()));
+    });
+    group.bench_function("episodic_by_agent", |b| {
+        b.iter(|| black_box(store.engram_count_episodic(Some("bench-agent")).unwrap()));
+    });
+    group.bench_function("semantic", |b| {
+        b.iter(|| black_box(store.engram_count_semantic().unwrap()));
+    });
+    group.bench_function("procedural", |b| {
+        b.iter(|| black_box(store.engram_count_procedural().unwrap()));
+    });
+    group.finish();
+}
+
+criterion_group!(memory_item_ops, bench_get_memory_by_id, bench_delete_memory);
+criterion_group!(
+    memory_search_scaled,
+    bench_search_bm25_scaled,
+    bench_search_by_embedding,
+);
+criterion_group!(
+    graph_edge_ops,
+    bench_engram_add_edge,
+    bench_engram_get_edges_from,
+    bench_engram_count_edges,
+);
+criterion_group!(procedural_search, bench_engram_search_procedural);
+criterion_group!(engram_counts, bench_engram_counts);
 criterion_main!(
     store_ops,
     graph_ops,
     episodic_ops,
     semantic_ops,
     advanced_ops,
-    dedup_ops
+    dedup_ops,
+    memory_item_ops,
+    memory_search_scaled,
+    graph_edge_ops,
+    procedural_search,
+    engram_counts
 );

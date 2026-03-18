@@ -1,6 +1,8 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use openpawz_bench::*;
-use openpawz_core::atoms::types::{Flow, FlowRun, Project, ProjectAgent, Squad, SquadMember};
+use openpawz_core::atoms::types::{
+    AgentMessage, Flow, FlowRun, Project, ProjectAgent, Squad, SquadMember,
+};
 use std::hint::black_box;
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -10,6 +12,13 @@ static SQUAD_CTR: AtomicU64 = AtomicU64::new(0);
 static CANVAS_CTR: AtomicU64 = AtomicU64::new(0);
 static PROJECT_CTR: AtomicU64 = AtomicU64::new(0);
 static TEL_CTR: AtomicU64 = AtomicU64::new(0);
+static DASH_CTR: AtomicU64 = AtomicU64::new(0);
+static TMPL_CTR: AtomicU64 = AtomicU64::new(0);
+static TRADE_CTR: AtomicU64 = AtomicU64::new(0);
+static AMSG_CTR: AtomicU64 = AtomicU64::new(0);
+static SKILL_CTR: AtomicU64 = AtomicU64::new(0);
+static TAB_CTR: AtomicU64 = AtomicU64::new(0);
+static VAULT_CTR: AtomicU64 = AtomicU64::new(0);
 
 // ── Config key/value store ───────────────────────────────────────────────
 
@@ -30,16 +39,18 @@ fn bench_config_set(c: &mut Criterion) {
 
 fn bench_config_get(c: &mut Criterion) {
     let store = fresh_store();
-    for i in 0..50 {
-        store
-            .set_config(&format!("key-{}", i), &format!("value-{}", i))
-            .unwrap();
-    }
+    let keys: Vec<String> = (0..50)
+        .map(|i| {
+            let k = format!("key-{}", i);
+            store.set_config(&k, &format!("value-{}", i)).unwrap();
+            k
+        })
+        .collect();
     c.bench_function("config/get", |b| {
         let mut i = 0usize;
         b.iter(|| {
             i = (i + 1) % 50;
-            black_box(store.get_config(black_box(&format!("key-{}", i))).unwrap());
+            black_box(store.get_config(black_box(&keys[i])).unwrap());
         });
     });
 }
@@ -93,14 +104,18 @@ fn bench_flow_save(c: &mut Criterion) {
 
 fn bench_flow_get(c: &mut Criterion) {
     let store = fresh_store();
-    for i in 0..50 {
-        store.save_flow(&make_flow(&format!("fg-{}", i))).unwrap();
-    }
+    let ids: Vec<String> = (0..50)
+        .map(|i| {
+            let id = format!("fg-{}", i);
+            store.save_flow(&make_flow(&id)).unwrap();
+            id
+        })
+        .collect();
     c.bench_function("flow/get", |b| {
         let mut i = 0usize;
         b.iter(|| {
             i = (i + 1) % 50;
-            black_box(store.get_flow(black_box(&format!("fg-{}", i))).unwrap());
+            black_box(store.get_flow(black_box(&ids[i])).unwrap());
         });
     });
 }
@@ -535,6 +550,325 @@ fn bench_telemetry_range(c: &mut Criterion) {
     });
 }
 
+// ── Dashboard CRUD ───────────────────────────────────────────────────────
+
+fn bench_dashboard_create(c: &mut Criterion) {
+    let store = fresh_store();
+    c.bench_function("dashboard/create", |b| {
+        b.iter(|| {
+            let i = DASH_CTR.fetch_add(1, Ordering::Relaxed);
+            store
+                .create_dashboard(
+                    &format!("dash-{}", i),
+                    "Bench Dashboard",
+                    "chart-bar",
+                    "bench-agent",
+                    None,
+                    None,
+                    false,
+                    None,
+                    None,
+                )
+                .unwrap();
+        });
+    });
+}
+
+fn bench_dashboard_get(c: &mut Criterion) {
+    let store = fresh_store();
+    let ids: Vec<String> = (0..50)
+        .map(|i| {
+            let id = format!("dg-{}", i);
+            store
+                .create_dashboard(
+                    &id,
+                    "Dashboard",
+                    "icon",
+                    "agent",
+                    None,
+                    None,
+                    i % 3 == 0,
+                    None,
+                    None,
+                )
+                .unwrap();
+            id
+        })
+        .collect();
+    c.bench_function("dashboard/get", |b| {
+        let mut i = 0usize;
+        b.iter(|| {
+            i = (i + 1) % 50;
+            black_box(store.get_dashboard(black_box(&ids[i])).unwrap());
+        });
+    });
+}
+
+fn bench_dashboard_list(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..30 {
+        store
+            .create_dashboard(
+                &format!("dl-{}", i),
+                &format!("Dashboard {}", i),
+                "icon",
+                "agent",
+                None,
+                None,
+                i % 5 == 0,
+                None,
+                None,
+            )
+            .unwrap();
+    }
+    c.bench_function("dashboard/list_30", |b| {
+        b.iter(|| black_box(store.list_dashboards().unwrap().len()));
+    });
+}
+
+fn bench_dashboard_list_pinned(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..30 {
+        store
+            .create_dashboard(
+                &format!("dp-{}", i),
+                &format!("Dashboard {}", i),
+                "icon",
+                "agent",
+                None,
+                None,
+                i % 3 == 0,
+                None,
+                None,
+            )
+            .unwrap();
+    }
+    c.bench_function("dashboard/list_pinned", |b| {
+        b.iter(|| black_box(store.list_pinned_dashboards().unwrap().len()));
+    });
+}
+
+// ── Dashboard Templates ──────────────────────────────────────────────────
+
+fn bench_template_create(c: &mut Criterion) {
+    let store = fresh_store();
+    let comps = r#"[{"type":"chart","title":"Metrics"},{"type":"table","title":"Data"}]"#;
+    let tags = r#"["analytics","monitoring"]"#;
+    c.bench_function("template/create", |b| {
+        b.iter(|| {
+            let i = TMPL_CTR.fetch_add(1, Ordering::Relaxed);
+            store
+                .create_template(
+                    &format!("tpl-{}", i),
+                    "Bench Template",
+                    "A template for benchmarking",
+                    "template-icon",
+                    comps,
+                    tags,
+                    Some("Set up monitoring dashboard"),
+                    "builtin",
+                )
+                .unwrap();
+        });
+    });
+}
+
+fn bench_template_list(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..20 {
+        store
+            .create_template(
+                &format!("tl-{}", i),
+                &format!("Template {}", i),
+                "desc",
+                "icon",
+                "[]",
+                "[]",
+                None,
+                if i % 2 == 0 { "builtin" } else { "community" },
+            )
+            .unwrap();
+    }
+    c.bench_function("template/list_all", |b| {
+        b.iter(|| black_box(store.list_templates(None).unwrap().len()));
+    });
+}
+
+// ── Trade History ────────────────────────────────────────────────────────
+
+fn bench_trade_insert(c: &mut Criterion) {
+    let store = fresh_store();
+    c.bench_function("trade/insert", |b| {
+        b.iter(|| {
+            let i = TRADE_CTR.fetch_add(1, Ordering::Relaxed);
+            store
+                .insert_trade(
+                    "spot",
+                    Some("buy"),
+                    Some("BTC-USD"),
+                    Some("USD"),
+                    "0.005",
+                    Some("market"),
+                    Some(&format!("ord-{}", i)),
+                    "filled",
+                    Some("250.00"),
+                    None,
+                    "benchmark trade",
+                    Some("sess-1"),
+                    Some("agent-1"),
+                    None,
+                )
+                .unwrap();
+        });
+    });
+}
+
+fn bench_trade_list(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..100 {
+        store
+            .insert_trade(
+                "spot",
+                Some("buy"),
+                Some("ETH-USD"),
+                Some("USD"),
+                "1.0",
+                Some("limit"),
+                Some(&format!("trl-{}", i)),
+                "filled",
+                Some("3500.00"),
+                None,
+                "test trade",
+                None,
+                None,
+                None,
+            )
+            .unwrap();
+    }
+    c.bench_function("trade/list_100", |b| {
+        b.iter(|| black_box(store.list_trades(black_box(100)).unwrap().len()));
+    });
+}
+
+// ── Agent-to-Agent Messages ──────────────────────────────────────────────
+
+fn bench_agent_message_send(c: &mut Criterion) {
+    let store = fresh_store();
+    c.bench_function("agent_msg/send", |b| {
+        b.iter(|| {
+            let i = AMSG_CTR.fetch_add(1, Ordering::Relaxed);
+            let msg = AgentMessage {
+                id: format!("am-{}", i),
+                from_agent: "agent-alpha".into(),
+                to_agent: "agent-beta".into(),
+                channel: "general".into(),
+                content: "Benchmark inter-agent message content".into(),
+                metadata: None,
+                read: false,
+                created_at: now(),
+            };
+            store.send_agent_message(black_box(&msg)).unwrap();
+        });
+    });
+}
+
+fn bench_agent_message_get(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..200 {
+        store
+            .send_agent_message(&AgentMessage {
+                id: format!("amg-{}", i),
+                from_agent: if i % 2 == 0 {
+                    "agent-alpha"
+                } else {
+                    "agent-beta"
+                }
+                .into(),
+                to_agent: if i % 2 == 0 {
+                    "agent-beta"
+                } else {
+                    "agent-alpha"
+                }
+                .into(),
+                channel: "general".into(),
+                content: format!("Message {}", i),
+                metadata: None,
+                read: false,
+                created_at: now(),
+            })
+            .unwrap();
+    }
+    c.bench_function("agent_msg/get_100", |b| {
+        b.iter(|| {
+            black_box(
+                store
+                    .get_agent_messages(black_box("agent-beta"), None, black_box(100))
+                    .unwrap()
+                    .len(),
+            )
+        });
+    });
+}
+
+// ── Skill KV Store ───────────────────────────────────────────────────────
+
+fn bench_skill_store_set(c: &mut Criterion) {
+    let store = fresh_store();
+    c.bench_function("skill_store/set", |b| {
+        b.iter(|| {
+            let i = SKILL_CTR.fetch_add(1, Ordering::Relaxed);
+            store
+                .skill_store_set(
+                    "bench-skill",
+                    &format!("key-{}", i % 50),
+                    black_box("bench-value-with-realistic-content"),
+                )
+                .unwrap();
+        });
+    });
+}
+
+fn bench_skill_store_get(c: &mut Criterion) {
+    let store = fresh_store();
+    let keys: Vec<String> = (0..50)
+        .map(|i| {
+            let k = format!("sk-{}", i);
+            store.skill_store_set("bench-skill", &k, "value").unwrap();
+            k
+        })
+        .collect();
+    c.bench_function("skill_store/get", |b| {
+        let mut i = 0usize;
+        b.iter(|| {
+            i = (i + 1) % 50;
+            black_box(
+                store
+                    .skill_store_get(black_box("bench-skill"), black_box(&keys[i]))
+                    .unwrap(),
+            );
+        });
+    });
+}
+
+fn bench_skill_store_list(c: &mut Criterion) {
+    let store = fresh_store();
+    for i in 0..30 {
+        store
+            .skill_store_set("list-skill", &format!("key-{}", i), &format!("val-{}", i))
+            .unwrap();
+    }
+    c.bench_function("skill_store/list_30", |b| {
+        b.iter(|| {
+            black_box(
+                store
+                    .skill_store_list(black_box("list-skill"))
+                    .unwrap()
+                    .len(),
+            )
+        });
+    });
+}
+
 criterion_group!(
     config_ops,
     bench_config_set,
@@ -578,11 +912,321 @@ criterion_group!(
     bench_telemetry_model_breakdown,
     bench_telemetry_range,
 );
+criterion_group!(
+    dashboard_ops,
+    bench_dashboard_create,
+    bench_dashboard_get,
+    bench_dashboard_list,
+    bench_dashboard_list_pinned,
+);
+criterion_group!(template_ops, bench_template_create, bench_template_list);
+criterion_group!(trade_ops, bench_trade_insert, bench_trade_list);
+criterion_group!(
+    agent_msg_ops,
+    bench_agent_message_send,
+    bench_agent_message_get,
+);
+criterion_group!(
+    skill_store_ops,
+    bench_skill_store_set,
+    bench_skill_store_get,
+    bench_skill_store_list,
+);
+
+// ── Dashboard tabs ───────────────────────────────────────────────────────
+
+fn bench_tab_open(c: &mut Criterion) {
+    let store = fresh_store();
+    // Pre-create a dashboard for tabs
+    store
+        .create_dashboard(
+            "tab-dash",
+            "Tab Dashboard",
+            "icon",
+            "agent",
+            None,
+            None,
+            false,
+            None,
+            None,
+        )
+        .unwrap();
+    c.bench_function("tab/open", |b| {
+        b.iter(|| {
+            let i = TAB_CTR.fetch_add(1, Ordering::Relaxed);
+            store
+                .open_tab(
+                    black_box(&format!("tab-{}", i)),
+                    black_box("tab-dash"),
+                    black_box("main-window"),
+                )
+                .unwrap();
+        });
+    });
+}
+
+fn bench_tab_list(c: &mut Criterion) {
+    let store = fresh_store();
+    store
+        .create_dashboard(
+            "lt-dash",
+            "Tab Dashboard",
+            "icon",
+            "agent",
+            None,
+            None,
+            false,
+            None,
+            None,
+        )
+        .unwrap();
+    for i in 0..20 {
+        store
+            .open_tab(&format!("lt-{}", i), "lt-dash", "main-window")
+            .unwrap();
+    }
+    c.bench_function("tab/list_20", |b| {
+        b.iter(|| black_box(store.list_tabs(black_box("main-window")).unwrap().len()));
+    });
+}
+
+fn bench_tab_activate(c: &mut Criterion) {
+    let store = fresh_store();
+    store
+        .create_dashboard(
+            "at-dash",
+            "Tab Dashboard",
+            "icon",
+            "agent",
+            None,
+            None,
+            false,
+            None,
+            None,
+        )
+        .unwrap();
+    for i in 0..10 {
+        store
+            .open_tab(&format!("at-{}", i), "at-dash", "main-window")
+            .unwrap();
+    }
+    c.bench_function("tab/activate", |b| {
+        let mut i = 0usize;
+        b.iter(|| {
+            i = (i + 1) % 10;
+            store
+                .activate_tab(black_box(&format!("at-{}", i)), black_box("main-window"))
+                .unwrap();
+        });
+    });
+}
+
+fn bench_tab_get_active(c: &mut Criterion) {
+    let store = fresh_store();
+    store
+        .create_dashboard(
+            "ga-dash",
+            "Tab Dashboard",
+            "icon",
+            "agent",
+            None,
+            None,
+            false,
+            None,
+            None,
+        )
+        .unwrap();
+    store.open_tab("ga-tab", "ga-dash", "main-window").unwrap();
+    store.activate_tab("ga-tab", "main-window").unwrap();
+    c.bench_function("tab/get_active", |b| {
+        b.iter(|| black_box(store.get_active_tab(black_box("main-window")).unwrap()));
+    });
+}
+
+// ── Trading positions ────────────────────────────────────────────────────
+
+fn bench_position_insert(c: &mut Criterion) {
+    let store = fresh_store();
+    c.bench_function("position/insert", |b| {
+        b.iter(|| {
+            store
+                .insert_position(
+                    "So11111111111111111111111111111111111111112",
+                    "SOL",
+                    150.0,
+                    1.0,
+                    10.0,
+                    0.30,
+                    2.0,
+                    Some("bench-agent"),
+                )
+                .unwrap();
+        });
+    });
+}
+
+fn bench_position_list(c: &mut Criterion) {
+    let store = fresh_store();
+    for _ in 0..50 {
+        store
+            .insert_position("mint-xyz", "TOKEN", 1.0, 0.5, 100.0, 0.25, 3.0, None)
+            .unwrap();
+    }
+    c.bench_function("position/list_all", |b| {
+        b.iter(|| black_box(store.list_positions(None).unwrap().len()));
+    });
+}
+
+fn bench_position_list_open(c: &mut Criterion) {
+    let store = fresh_store();
+    for _ in 0..50 {
+        store
+            .insert_position("mint-xyz", "TOKEN", 1.0, 0.5, 100.0, 0.25, 3.0, None)
+            .unwrap();
+    }
+    c.bench_function("position/list_open", |b| {
+        b.iter(|| black_box(store.list_positions(Some("open")).unwrap().len()));
+    });
+}
+
+fn bench_position_update_price(c: &mut Criterion) {
+    let store = fresh_store();
+    let id = store
+        .insert_position("mint-upd", "SOL", 150.0, 1.0, 10.0, 0.30, 2.0, None)
+        .unwrap();
+    c.bench_function("position/update_price", |b| {
+        let mut price = 150.0f64;
+        b.iter(|| {
+            price += 0.01;
+            store
+                .update_position_price(black_box(&id), black_box(price))
+                .unwrap();
+        });
+    });
+}
+
+fn bench_position_close(c: &mut Criterion) {
+    let store = fresh_store();
+    c.bench_function("position/close", |b| {
+        b.iter_with_setup(
+            || {
+                store
+                    .insert_position("mint-cls", "SOL", 150.0, 1.0, 10.0, 0.30, 2.0, None)
+                    .unwrap()
+            },
+            |id| {
+                store
+                    .close_position(black_box(&id), "closed_manual", None)
+                    .unwrap()
+            },
+        );
+    });
+}
+
+// ── Skill vault (credential store) ──────────────────────────────────────
+
+fn bench_skill_vault_set(c: &mut Criterion) {
+    let store = fresh_store();
+    store.init_skill_tables().unwrap();
+    c.bench_function("skill_vault/set", |b| {
+        b.iter(|| {
+            let i = VAULT_CTR.fetch_add(1, Ordering::Relaxed);
+            store
+                .set_skill_credential(
+                    "bench-skill",
+                    &format!("cred-{}", i % 20),
+                    black_box("encrypted-value-AES256GCM-nonce-ct-tag"),
+                )
+                .unwrap();
+        });
+    });
+}
+
+fn bench_skill_vault_get(c: &mut Criterion) {
+    let store = fresh_store();
+    store.init_skill_tables().unwrap();
+    for i in 0..20 {
+        store
+            .set_skill_credential("bench-skill", &format!("vc-{}", i), "encrypted-value")
+            .unwrap();
+    }
+    c.bench_function("skill_vault/get", |b| {
+        let mut i = 0usize;
+        b.iter(|| {
+            i = (i + 1) % 20;
+            black_box(
+                store
+                    .get_skill_credential(black_box("bench-skill"), black_box(&format!("vc-{}", i)))
+                    .unwrap(),
+            );
+        });
+    });
+}
+
+fn bench_skill_vault_list_keys(c: &mut Criterion) {
+    let store = fresh_store();
+    store.init_skill_tables().unwrap();
+    for i in 0..15 {
+        store
+            .set_skill_credential("list-skill", &format!("key-{}", i), "encrypted")
+            .unwrap();
+    }
+    c.bench_function("skill_vault/list_keys", |b| {
+        b.iter(|| {
+            black_box(
+                store
+                    .list_skill_credential_keys(black_box("list-skill"))
+                    .unwrap()
+                    .len(),
+            )
+        });
+    });
+}
+
+fn bench_skill_enabled(c: &mut Criterion) {
+    let store = fresh_store();
+    store.init_skill_tables().unwrap();
+    store.set_skill_enabled("enabled-skill", true).unwrap();
+    c.bench_function("skill_vault/is_enabled", |b| {
+        b.iter(|| black_box(store.is_skill_enabled(black_box("enabled-skill")).unwrap()));
+    });
+}
+
+criterion_group!(
+    tab_ops,
+    bench_tab_open,
+    bench_tab_list,
+    bench_tab_activate,
+    bench_tab_get_active,
+);
+criterion_group!(
+    position_ops,
+    bench_position_insert,
+    bench_position_list,
+    bench_position_list_open,
+    bench_position_update_price,
+    bench_position_close,
+);
+criterion_group!(
+    skill_vault_ops,
+    bench_skill_vault_set,
+    bench_skill_vault_get,
+    bench_skill_vault_list_keys,
+    bench_skill_enabled,
+);
 criterion_main!(
     config_ops,
     flow_ops,
     squad_ops,
     canvas_ops,
     project_ops,
-    telemetry_ops
+    telemetry_ops,
+    dashboard_ops,
+    template_ops,
+    trade_ops,
+    agent_msg_ops,
+    skill_store_ops,
+    tab_ops,
+    position_ops,
+    skill_vault_ops
 );

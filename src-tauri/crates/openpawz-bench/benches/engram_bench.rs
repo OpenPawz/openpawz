@@ -2,6 +2,7 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use openpawz_bench::*;
 use openpawz_core::atoms::engram_types::{HybridSearchConfig, RerankStrategy, TokenizerType};
 
+use openpawz_core::engine::engram::anticipatory::{self, TopicPredictor};
 use openpawz_core::engine::engram::entity_tracking;
 use openpawz_core::engine::engram::gated_search;
 use openpawz_core::engine::engram::hnsw::HnswIndex;
@@ -9,7 +10,9 @@ use openpawz_core::engine::engram::hybrid_search::weighted_rrf_fuse;
 use openpawz_core::engine::engram::intent_classifier;
 use openpawz_core::engine::engram::metadata_inference;
 use openpawz_core::engine::engram::model_caps;
+use openpawz_core::engine::engram::projection;
 use openpawz_core::engine::engram::recall_tuner;
+use openpawz_core::engine::engram::reranking;
 use openpawz_core::engine::engram::retrieval_quality;
 use openpawz_core::engine::engram::temporal_search;
 use openpawz_core::engine::engram::SensoryBuffer;
@@ -575,6 +578,91 @@ fn bench_normalize_model_name(c: &mut Criterion) {
     });
 }
 
+// ── Anticipatory pre-loading (topic predictor) ───────────────────────────
+
+fn bench_topic_predict(c: &mut Criterion) {
+    let topics = &[
+        "kubernetes",
+        "databases",
+        "authentication",
+        "monitoring",
+        "deployment",
+        "testing",
+        "security",
+        "caching",
+    ];
+    let mut predictor = TopicPredictor::new();
+    // Train with realistic transition patterns
+    for _ in 0..20 {
+        for &topic in topics {
+            predictor.observe(topic);
+        }
+        // Add some common transitions
+        predictor.observe("deployment");
+        predictor.observe("monitoring");
+        predictor.observe("deployment");
+        predictor.observe("testing");
+    }
+
+    c.bench_function("anticipatory/predict_next", |b| {
+        b.iter(|| black_box(predictor.predict_next(black_box(5))));
+    });
+}
+
+fn bench_topic_observe(c: &mut Criterion) {
+    c.bench_function("anticipatory/observe", |b| {
+        let mut predictor = TopicPredictor::new();
+        let mut i = 0usize;
+        let topics = &[
+            "rust",
+            "python",
+            "kubernetes",
+            "docker",
+            "aws",
+            "testing",
+            "databases",
+            "security",
+            "monitoring",
+            "deployment",
+        ];
+        b.iter(|| {
+            let topic = topics[i % topics.len()];
+            predictor.observe(black_box(topic));
+            i += 1;
+        });
+    });
+}
+
+fn bench_build_prefetch_queries(c: &mut Criterion) {
+    let mut predictor = TopicPredictor::new();
+    for topic in &["kubernetes", "deployment", "monitoring", "security"] {
+        predictor.observe(topic);
+    }
+    predictor.observe("deployment"); // make deployment the current
+    c.bench_function("anticipatory/build_prefetch", |b| {
+        b.iter(|| black_box(anticipatory::build_prefetch_queries(black_box(&predictor))));
+    });
+}
+
+// ── Projection (embedding → 3D) ─────────────────────────────────────────
+
+fn bench_projection(c: &mut Criterion) {
+    let mut group = c.benchmark_group("projection/to_3d");
+    for &count in &[50, 200, 1000] {
+        let vectors: Vec<(String, Vec<f32>)> = (0..count)
+            .map(|i| (format!("v-{}", i), random_vec(DIMS)))
+            .collect();
+        group.bench_with_input(
+            BenchmarkId::from_parameter(count),
+            &vectors,
+            |b, vectors| {
+                b.iter(|| black_box(projection::project_to_3d(black_box(vectors))));
+            },
+        );
+    }
+    group.finish();
+}
+
 criterion_group!(
     hnsw,
     bench_hnsw_insert,
@@ -620,6 +708,172 @@ criterion_group!(
     bench_resolve_model_caps,
     bench_normalize_model_name,
 );
+criterion_group!(
+    anticipatory,
+    bench_topic_predict,
+    bench_topic_observe,
+    bench_build_prefetch_queries,
+);
+criterion_group!(projection_ops, bench_projection);
+
+// ── Model capabilities extended ──────────────────────────────────────────
+
+fn bench_resolve_context_window(c: &mut Criterion) {
+    let models = &[
+        ("gpt5", "gpt-5.3"),
+        ("claude", "claude-opus-4-6"),
+        ("gemini", "gemini-3.1-pro"),
+        ("llama", "llama-4:70b"),
+        ("unknown", "custom-finetune-v3"),
+    ];
+    let mut group = c.benchmark_group("model_caps/context_window");
+    for (label, model) in models {
+        group.bench_with_input(BenchmarkId::new("model", *label), model, |b, model| {
+            b.iter(|| black_box(model_caps::resolve_context_window(black_box(model), 4096)));
+        });
+    }
+    group.finish();
+}
+
+fn bench_resolve_max_output(c: &mut Criterion) {
+    let models = &["gpt-5.3", "claude-opus-4-6", "gemini-3.1-pro"];
+    let mut group = c.benchmark_group("model_caps/max_output");
+    for model in models {
+        group.bench_with_input(BenchmarkId::new("model", *model), model, |b, model| {
+            b.iter(|| black_box(model_caps::resolve_max_output_tokens(black_box(model))));
+        });
+    }
+    group.finish();
+}
+
+fn bench_resolve_injection_resistance(c: &mut Criterion) {
+    let models = &["gpt-5.3", "claude-opus-4-6", "llama-4:8b"];
+    let mut group = c.benchmark_group("model_caps/injection_resistance");
+    for model in models {
+        group.bench_with_input(BenchmarkId::new("model", *model), model, |b, model| {
+            b.iter(|| black_box(model_caps::resolve_injection_resistance(black_box(model))));
+        });
+    }
+    group.finish();
+}
+
+// ── Cross-type dedup ─────────────────────────────────────────────────────
+
+fn bench_cross_type_dedup(c: &mut Criterion) {
+    let mut group = c.benchmark_group("reranking/cross_type_dedup");
+    for &count in &[10, 50, 200] {
+        group.bench_with_input(BenchmarkId::from_parameter(count), &count, |b, &count| {
+            b.iter_with_setup(
+                || {
+                    (0..count)
+                        .map(|i| {
+                            make_retrieved_memory(
+                                &format!("dedup-{}", i),
+                                MEMORY_CORPUS[i % MEMORY_CORPUS.len()],
+                                0.9 - (i as f32 * 0.003),
+                            )
+                        })
+                        .collect::<Vec<_>>()
+                },
+                |mut results| {
+                    reranking::cross_type_dedup(black_box(&mut results), 0.8);
+                    black_box(results.len());
+                },
+            );
+        });
+    }
+    group.finish();
+}
+
+// ── Metadata serialization round-trip ────────────────────────────────────
+
+fn bench_metadata_serialize(c: &mut Criterion) {
+    let meta = metadata_inference::infer_metadata_full(
+        "On 2025-03-15 we deployed v2.3.0. File src/engine.ts uses TypeScript. \
+         Tech: Rust, React, PostgreSQL, Redis. See https://github.com/org/repo.",
+    );
+    c.bench_function("metadata/serialize", |b| {
+        b.iter(|| black_box(metadata_inference::serialize_metadata(black_box(&meta))));
+    });
+}
+
+fn bench_metadata_deserialize(c: &mut Criterion) {
+    let meta = metadata_inference::infer_metadata_full(
+        "On 2025-03-15 we deployed v2.3.0. File src/engine.ts uses TypeScript.",
+    );
+    let json = metadata_inference::serialize_metadata(&meta).unwrap();
+    c.bench_function("metadata/deserialize", |b| {
+        b.iter(|| black_box(metadata_inference::deserialize_metadata(black_box(&json))));
+    });
+}
+
+fn bench_extract_dates(c: &mut Criterion) {
+    let texts = &[
+        ("none", "The kubernetes cluster runs in us-east-1."),
+        ("one", "Deployed on 2025-03-15 to production."),
+        (
+            "multi",
+            "Between 2025-01-01 and 2025-12-31, we had 3 incidents on 2025-06-15.",
+        ),
+    ];
+    let mut group = c.benchmark_group("metadata/extract_dates");
+    for (label, text) in texts {
+        group.bench_with_input(BenchmarkId::new("content", *label), text, |b, text| {
+            b.iter(|| black_box(metadata_inference::extract_dates(black_box(text))));
+        });
+    }
+    group.finish();
+}
+
+// ── Emotional memory extended ────────────────────────────────────────────
+
+fn bench_modulated_half_life(c: &mut Criterion) {
+    use openpawz_core::engine::engram::modulated_half_life;
+    let text = "The server is on fire but we recovered gracefully.";
+    let affect = score_affect(text);
+    c.bench_function("affect/modulated_half_life", |b| {
+        b.iter(|| black_box(modulated_half_life(black_box(7.0), black_box(&affect))));
+    });
+}
+
+// ── Retrieval quality extended ───────────────────────────────────────────
+
+fn bench_build_quality_metrics(c: &mut Criterion) {
+    let memories: Vec<_> = MEMORY_CORPUS
+        .iter()
+        .enumerate()
+        .map(|(i, content)| {
+            make_retrieved_memory(&format!("qm-{}", i), content, 0.9 - i as f32 * 0.04)
+        })
+        .collect();
+    c.bench_function("quality/build_metrics", |b| {
+        b.iter(|| {
+            black_box(retrieval_quality::build_quality_metrics(
+                black_box(&memories),
+                50,
+                12,
+                None,
+                0.5,
+            ))
+        });
+    });
+}
+
+criterion_group!(
+    model_caps_extended,
+    bench_resolve_context_window,
+    bench_resolve_max_output,
+    bench_resolve_injection_resistance,
+);
+criterion_group!(dedup, bench_cross_type_dedup);
+criterion_group!(
+    metadata_serde,
+    bench_metadata_serialize,
+    bench_metadata_deserialize,
+    bench_extract_dates,
+);
+criterion_group!(affect_extended, bench_modulated_half_life);
+criterion_group!(quality_extended, bench_build_quality_metrics);
 criterion_main!(
     hnsw,
     reranking,
@@ -632,5 +886,12 @@ criterion_main!(
     nlp,
     temporal,
     quality,
-    gate
+    gate,
+    anticipatory,
+    projection_ops,
+    model_caps_extended,
+    dedup,
+    metadata_serde,
+    affect_extended,
+    quality_extended
 );

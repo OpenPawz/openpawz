@@ -1,7 +1,11 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use openpawz_bench::*;
+use openpawz_core::atoms::engram_types::EngramConfig;
+use openpawz_core::engine::engram::cognitive_state::CognitiveState;
+use openpawz_core::engine::engram::gated_search;
 use openpawz_core::engine::engram::memory_fusion;
 use openpawz_core::engine::engram::proposition;
+use openpawz_core::engine::provider_registry;
 use openpawz_core::engine::scc;
 use openpawz_core::engine::tool_metadata;
 use std::hint::black_box;
@@ -181,6 +185,140 @@ fn bench_tool_domain_str(c: &mut Criterion) {
     group.finish();
 }
 
+// ── CognitiveState (per-agent runtime) ───────────────────────────────────
+
+fn make_engram_config() -> EngramConfig {
+    EngramConfig {
+        sensory_buffer_size: 20,
+        working_memory_capacity: 30,
+        ..Default::default()
+    }
+}
+
+fn bench_cognitive_push_message(c: &mut Criterion) {
+    let config = make_engram_config();
+    c.bench_function("cognitive/push_message", |b| {
+        let mut cs = CognitiveState::new("bench-agent".into(), &config, 8000);
+        let mut i = 0usize;
+        b.iter(|| {
+            i += 1;
+            cs.push_message(
+                black_box("How do I deploy to Kubernetes?"),
+                black_box("You can use Helm charts with kubectl apply."),
+            );
+        });
+    });
+}
+
+fn bench_cognitive_classify_query(c: &mut Criterion) {
+    let config = make_engram_config();
+    let cs = CognitiveState::new("bench-agent".into(), &config, 8000);
+    let queries = &[
+        ("factual", "What is the default port for PostgreSQL?"),
+        ("procedural", "How do I set up SSH keys on Ubuntu?"),
+        ("causal", "Why did the deploy fail last night?"),
+    ];
+    let mut group = c.benchmark_group("cognitive/classify_query");
+    for (label, query) in queries {
+        group.bench_with_input(BenchmarkId::new("type", *label), query, |b, query| {
+            b.iter(|| black_box(cs.classify_query(black_box(query))));
+        });
+    }
+    group.finish();
+}
+
+fn bench_cognitive_adapt_wm_budget(c: &mut Criterion) {
+    let config = make_engram_config();
+    let models = &[
+        ("gpt5", "gpt-5.3"),
+        ("claude", "claude-opus-4-6"),
+        ("llama_small", "llama-4:8b"),
+    ];
+    let mut group = c.benchmark_group("cognitive/adapt_budget");
+    for (label, model) in models {
+        group.bench_with_input(BenchmarkId::new("model", *label), model, |b, model| {
+            b.iter(|| {
+                let mut cs = CognitiveState::new("bench-agent".into(), &config, 4096);
+                black_box(cs.adapt_wm_budget(black_box(model)));
+            });
+        });
+    }
+    group.finish();
+}
+
+fn bench_cognitive_snapshot_restore(c: &mut Criterion) {
+    let config = make_engram_config();
+    let mut cs = CognitiveState::new("bench-agent".into(), &config, 8000);
+    // Pre-fill working memory
+    for (i, content) in MEMORY_CORPUS.iter().enumerate() {
+        cs.working_memory
+            .insert_recall(format!("recall-{}", i), (*content).into(), 0.8);
+    }
+    c.bench_function("cognitive/snapshot", |b| {
+        b.iter(|| black_box(cs.snapshot_working_memory()));
+    });
+
+    let snap = cs.snapshot_working_memory();
+    c.bench_function("cognitive/restore", |b| {
+        b.iter(|| {
+            let mut cs2 = CognitiveState::new("bench-agent".into(), &config, 8000);
+            cs2.restore_working_memory(black_box(snap.clone()));
+        });
+    });
+}
+
+// ── Gated search (retrieval gate) ────────────────────────────────────────
+
+fn bench_gate_extended(c: &mut Criterion) {
+    let queries = &[
+        ("skip_greeting", "hello"),
+        ("skip_ack", "thanks"),
+        ("skip_meta", "what is your name"),
+        ("defer_ambiguous", "delete it"),
+        ("retrieve_simple", "What port does PostgreSQL use?"),
+        (
+            "deep_multi_hop",
+            "What is the difference between HNSW and brute-force search?",
+        ),
+        (
+            "deep_history",
+            "summarize all the deployment issues this week",
+        ),
+    ];
+    let mut group = c.benchmark_group("gate/extended");
+    for (label, query) in queries {
+        group.bench_with_input(BenchmarkId::new("type", *label), query, |b, query| {
+            b.iter(|| black_box(gated_search::gate_decision(black_box(query))));
+        });
+    }
+    group.finish();
+}
+
+// ── Provider registry lookups ────────────────────────────────────────────
+
+fn bench_provider_has(c: &mut Criterion) {
+    let ids = &["github", "slack", "notion", "nonexistent_xyz"];
+    let mut group = c.benchmark_group("provider/has");
+    for id in ids {
+        group.bench_with_input(BenchmarkId::new("service", *id), id, |b, id| {
+            b.iter(|| black_box(provider_registry::has_provider(black_box(id))));
+        });
+    }
+    group.finish();
+}
+
+fn bench_provider_registered_ids(c: &mut Criterion) {
+    c.bench_function("provider/registered_ids", |b| {
+        b.iter(|| black_box(provider_registry::registered_service_ids()));
+    });
+}
+
+fn bench_provider_total(c: &mut Criterion) {
+    c.bench_function("provider/total", |b| {
+        b.iter(|| black_box(provider_registry::total_providers()));
+    });
+}
+
 criterion_group!(
     proposition_group,
     bench_decompose_simple,
@@ -203,9 +341,26 @@ criterion_group!(
     bench_auto_approved_tools,
     bench_tool_domain_str,
 );
+criterion_group!(
+    cognitive_ops,
+    bench_cognitive_push_message,
+    bench_cognitive_classify_query,
+    bench_cognitive_adapt_wm_budget,
+    bench_cognitive_snapshot_restore,
+);
+criterion_group!(gate_ops, bench_gate_extended);
+criterion_group!(
+    provider_ops,
+    bench_provider_has,
+    bench_provider_registered_ids,
+    bench_provider_total,
+);
 criterion_main!(
     proposition_group,
     fusion_group,
     scc_extended,
-    tool_meta_extended
+    tool_meta_extended,
+    cognitive_ops,
+    gate_ops,
+    provider_ops
 );
