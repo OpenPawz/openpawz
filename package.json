@@ -36,7 +36,7 @@
     "@types/jsdom": "^28.0.0",
     "@types/three": "^0.183.1",
     "@typescript-eslint/eslint-plugin": "^8.57.0",
-    "@typescript-eslint/parser": "^8.57.0",
+    "@typescript-eslint/parser": "^8.57.2",
     "@vitest/coverage-v8": "^4.0.18",
     "eslint": "^10.0.3",
     "jsdom": "^29.0.0",
