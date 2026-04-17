@@ -147,10 +147,19 @@ pub async fn engine_chat_send(
 
         let raw_model = request.model.clone().unwrap_or_default();
         let base_model = if raw_model.is_empty() || raw_model.eq_ignore_ascii_case("default") {
-            cfg.default_model
+            let dm = cfg.default_model
                 .clone()
-                .unwrap_or_else(|| "gpt-4o".to_string())
+                .unwrap_or_else(|| "gpt-4o".to_string());
+            info!(
+                "[engine] Model resolution: request.model={:?} → using config.default_model={:?} → resolved='{}'",
+                request.model, cfg.default_model, dm
+            );
+            dm
         } else {
+            info!(
+                "[engine] Model resolution: request.model={:?} → using explicit '{}'",
+                request.model, raw_model
+            );
             raw_model
         };
 
@@ -192,7 +201,13 @@ pub async fn engine_chat_send(
         };
 
         match provider {
-            Some(p) => (p, model),
+            Some(ref p) => {
+                info!(
+                    "[engine] Final routing: model='{}' → provider='{}' (kind={:?})",
+                    model, p.id, p.kind
+                );
+                (p.clone(), model)
+            }
             None => {
                 return Err(
                     "No AI provider configured. Go to Settings → Engine to add an API key.".into(),
@@ -415,6 +430,7 @@ pub async fn engine_chat_send(
                     tool_calls: None,
                     tool_call_id: None,
                     name: None,
+            reasoning_content: None,
                 });
             }
             // Convert (role, content) pairs to Message for the agent loop.
@@ -458,6 +474,7 @@ pub async fn engine_chat_send(
                     tool_calls,
                     tool_call_id,
                     name: msg_name,
+                    reasoning_content: None,
                 });
             }
 

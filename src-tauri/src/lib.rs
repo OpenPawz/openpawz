@@ -158,6 +158,15 @@ pub fn run() {
                 });
             }
 
+            // ── PawzOS Unix socket bridge (always-on, binary IPC) ────────
+            {
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    log::info!("[pawzos-socket] Starting Unix socket bridge...");
+                    engine::unix_socket::start(app_handle).await;
+                });
+            }
+
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;

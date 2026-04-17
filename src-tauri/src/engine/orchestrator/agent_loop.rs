@@ -218,6 +218,7 @@ pub(crate) async fn run_orchestrator_loop(
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
+            reasoning_content: None,
             });
 
             if matches!(role, AgentRole::Boss) {
@@ -276,6 +277,7 @@ pub(crate) async fn run_orchestrator_loop(
             tool_calls: Some(tool_calls.clone()),
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         });
 
         // ── Execute tool calls ─────────────────────────────────────
@@ -333,6 +335,7 @@ pub(crate) async fn run_orchestrator_loop(
                     tool_calls: None,
                     tool_call_id: Some(tc.id.clone()),
                     name: Some(tc.function.name.clone()),
+                    reasoning_content: None,
                 });
                 continue;
             }
@@ -381,6 +384,7 @@ pub(crate) async fn run_orchestrator_loop(
                     tool_calls: None,
                     tool_call_id: Some(tc.id.clone()),
                     name: Some(tc.function.name.clone()),
+                    reasoning_content: None,
                 });
                 continue;
             }
@@ -403,6 +407,7 @@ pub(crate) async fn run_orchestrator_loop(
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
                 name: Some(tc.function.name.clone()),
+                reasoning_content: None,
             });
         }
 

@@ -20,7 +20,7 @@ use crate::atoms::error::EngineResult;
 use crate::atoms::types::ToolDefinition;
 use crate::engine::memory::EmbeddingClient;
 use crate::engine::util::safe_truncate;
-use log::{info, warn};
+use log::{debug, warn};
 use std::collections::{HashMap, HashSet};
 
 /// A tool definition paired with its embedding vector.
@@ -313,7 +313,7 @@ impl ToolIndex {
     /// Called once on startup (or lazily on first request_tools call).
     /// Uses the existing Ollama embedding client (~50ms per tool, ~4s total).
     pub async fn build(&mut self, all_tools: &[ToolDefinition], client: &EmbeddingClient) {
-        info!(
+        debug!(
             "[tool-index] Building tool index for {} definitions...",
             all_tools.len()
         );
@@ -380,7 +380,7 @@ impl ToolIndex {
         }
 
         self.ready = true;
-        info!(
+        debug!(
             "[tool-index] Index built: {} tools ({} embedded, {} unembedded)",
             self.tools.len(),
             success,
@@ -433,7 +433,7 @@ impl ToolIndex {
                     .map(|t| t.definition.clone())
                     .collect();
                 if !domain_tools.is_empty() {
-                    info!(
+                    debug!(
                         "[tool-index] Domain keyword match: '{}' → {} tools from '{}' domain",
                         query,
                         domain_tools.len(),
@@ -483,7 +483,7 @@ impl ToolIndex {
 
         for (idx, score) in &top {
             let tool = &self.tools[*idx];
-            info!(
+            debug!(
                 "[tool-index] Match: {} (domain={}, score={:.3})",
                 tool.definition.function.name, tool.domain, score
             );
@@ -506,7 +506,7 @@ impl ToolIndex {
             let hits = domain_hit_count.get(domain).copied().unwrap_or(0);
             if *best_score >= DOMAIN_EXPAND_STRONG || hits >= 2 {
                 matched_domains.insert(domain.clone());
-                info!(
+                debug!(
                     "[tool-index] Expanding domain '{}' (best={:.3}, hits={})",
                     domain, best_score, hits
                 );
@@ -533,7 +533,7 @@ impl ToolIndex {
             }
         }
 
-        info!(
+        debug!(
             "[tool-index] Search '{}' → {} tools (from {} domains)",
             safe_truncate(query, 60),
             results.len(),

@@ -100,6 +100,7 @@ impl SessionStore {
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
+            reasoning_content: None,
             });
         }
 
@@ -123,6 +124,7 @@ impl SessionStore {
                 tool_calls,
                 tool_call_id: sm.tool_call_id.clone(),
                 name: sm.name.clone(),
+                reasoning_content: None,
             });
         }
 
@@ -280,6 +282,7 @@ impl SessionStore {
                         tool_calls: None,
                         tool_call_id: None,
                         name: None,
+            reasoning_content: None,
                     },
                 );
             }
@@ -562,6 +565,7 @@ impl SessionStore {
                         tool_calls: None,
                         tool_call_id: Some(expected_id.clone()),
                         name: Some("_synthetic".into()),
+                        reasoning_content: None,
                     };
                     // Insert right after the assistant message (at position i+1+injected)
                     messages.insert(i + 1 + injected, synthetic);

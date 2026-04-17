@@ -261,8 +261,14 @@ impl GoogleProvider {
             Value::Object(map) => {
                 let mut clean = serde_json::Map::new();
                 for (k, v) in map {
-                    // Gemini rejects these OpenAPI fields
-                    if k == "additionalProperties" || k == "$schema" || k == "$ref" {
+                    // Gemini rejects these OpenAPI/JSON Schema fields
+                    if k == "additionalProperties"
+                        || k == "$schema"
+                        || k == "$ref"
+                        || k == "exclusiveMinimum"
+                        || k == "exclusiveMaximum"
+                        || k == "const"
+                    {
                         continue;
                     }
                     // Strip empty "required": [] — Gemini rejects this

@@ -150,6 +150,7 @@ pub async fn delegate_to_worker(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
         Message {
             role: Role::User,
@@ -157,6 +158,7 @@ pub async fn delegate_to_worker(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
     ];
 
@@ -286,6 +288,7 @@ async fn run_worker_loop(
             tool_calls: Some(tc_list.clone()),
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         });
 
         // Execute each tool call directly via MCP (no recursion through execute_tool)
@@ -328,6 +331,7 @@ async fn run_worker_loop(
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
                 name: Some(tc.function.name.clone()),
+                reasoning_content: None,
             });
         }
 

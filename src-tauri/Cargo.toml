@@ -109,6 +109,13 @@ hkdf = "0.12"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# ── OS Control (AT-SPI accessibility + input injection) ──────
+enigo = "0.2"
+async-recursion = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+atspi = { version = "0.29", features = ["proxies", "tokio"] }
+
 # ── Benchmarks ──────────────────────────────────────────────
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }

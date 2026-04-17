@@ -521,6 +521,7 @@ pub async fn extract_memorable_facts_llm(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
         Message {
             role: Role::User,
@@ -531,6 +532,7 @@ pub async fn extract_memorable_facts_llm(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
     ];
 
@@ -756,6 +758,7 @@ pub async fn generate_session_summary(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
         Message {
             role: Role::User,
@@ -766,6 +769,7 @@ pub async fn generate_session_summary(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
     ];
 
@@ -870,6 +874,7 @@ pub async fn compress_history(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
         Message {
             role: Role::User,
@@ -877,6 +882,7 @@ pub async fn compress_history(
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
     ];
 

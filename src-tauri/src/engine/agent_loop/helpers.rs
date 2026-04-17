@@ -38,6 +38,7 @@ pub fn handle_malformed_tool_call(
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     });
     messages.push(Message {
         role: Role::User,
@@ -50,6 +51,7 @@ pub fn handle_malformed_tool_call(
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     });
     true
 }
@@ -110,6 +112,7 @@ pub fn handle_empty_response(
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     });
     true
 }
@@ -393,6 +396,7 @@ pub fn sanitize_tool_pairs(messages: &mut Vec<Message>) {
                     tool_calls: None,
                     tool_call_id: Some(expected_id.clone()),
                     name: Some("_synthetic".into()),
+                    reasoning_content: None,
                 };
                 messages.insert(i + 1 + injected, synthetic);
                 injected += 1;

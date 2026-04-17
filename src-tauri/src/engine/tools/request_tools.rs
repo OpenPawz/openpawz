@@ -14,7 +14,7 @@ use crate::engine::state::EngineState;
 use crate::engine::tool_index;
 use crate::engine::tool_registry::PersistentToolRegistry;
 use crate::engine::util::safe_truncate;
-use log::info;
+use log::{debug, info};
 use tauri::Manager;
 
 pub fn definitions() -> Vec<ToolDefinition> {

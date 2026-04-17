@@ -223,6 +223,11 @@ impl OpenAiProvider {
                         );
                     }
                 }
+                // Kimi (and other reasoning models) require reasoning_content to be
+                // echoed back on assistant messages when thinking was enabled.
+                if let Some(rc) = &msg.reasoning_content {
+                    m["reasoning_content"] = json!(rc);
+                }
                 if let Some(id) = &msg.tool_call_id {
                     m["tool_call_id"] = json!(id);
                     log::debug!(

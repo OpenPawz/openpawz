@@ -203,6 +203,7 @@ pub async fn run_agent_turn(
 
         // ── 2. Assemble the response from chunks ──────────────────────
         let mut text_accum = String::new();
+        let mut thinking_accum = String::new();
         let mut tool_call_map: std::collections::HashMap<
             usize,
             (String, String, String, Option<String>, Vec<ThoughtPart>),
@@ -233,8 +234,9 @@ pub async fn run_agent_turn(
                 }
             }
 
-            // Emit thinking/reasoning text to frontend
+            // Emit thinking/reasoning text to frontend and accumulate for history
             if let Some(tt) = &chunk.thinking_text {
+                thinking_accum.push_str(tt);
                 fire(
                     app_handle,
                     EngineEvent::ThinkingDelta {
@@ -398,6 +400,7 @@ pub async fn run_agent_turn(
                 tool_calls: None,
                 tool_call_id: None,
                 name: None,
+                reasoning_content: if thinking_accum.is_empty() { None } else { Some(thinking_accum.clone()) },
             });
 
             // ── Phase 3: Flush remaining batched deltas BEFORE Complete ──
@@ -523,13 +526,16 @@ pub async fn run_agent_turn(
             });
         }
 
-        // Add assistant message with tool calls to history
+        // Add assistant message with tool calls to history.
+        // reasoning_content MUST be preserved here — models like Kimi require it
+        // when replaying history that included thinking in a prior round.
         messages.push(Message {
             role: Role::Assistant,
             content: MessageContent::Text(text_accum),
             tool_calls: Some(tool_calls.clone()),
             tool_call_id: None,
             name: None,
+            reasoning_content: if thinking_accum.is_empty() { None } else { Some(thinking_accum.clone()) },
         });
 
         // ── Repetition detector: break tool-calling loops ──────────────
@@ -608,6 +614,7 @@ pub async fn run_agent_turn(
                         tool_calls: None,
                         tool_call_id: None,
                         name: None,
+            reasoning_content: None,
                     });
                     continue; // Go back to model call — it should now produce text
                 }
@@ -652,6 +659,7 @@ pub async fn run_agent_turn(
                             tool_calls: None,
                             tool_call_id: Some(tc.id.clone()),
                             name: Some("execute_plan".to_string()),
+                            reasoning_content: None,
                         });
                         continue;
                     }
@@ -670,6 +678,7 @@ pub async fn run_agent_turn(
                         tool_calls: None,
                         tool_call_id: Some(tc.id.clone()),
                         name: Some("execute_plan".to_string()),
+                        reasoning_content: None,
                     });
                     continue;
                 }
@@ -689,6 +698,7 @@ pub async fn run_agent_turn(
                     tool_calls: None,
                     tool_call_id: Some(tc.id.clone()),
                     name: Some("execute_plan".to_string()),
+                    reasoning_content: None,
                 });
                 continue;
             }
@@ -711,6 +721,7 @@ pub async fn run_agent_turn(
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
                 name: Some("execute_plan".to_string()),
+                reasoning_content: None,
             });
 
             // Continue the loop — model will synthesize results into a response
@@ -902,6 +913,7 @@ pub async fn run_agent_turn(
                         tool_calls: None,
                         tool_call_id: Some(tc.id.clone()),
                         name: Some(tc.function.name.clone()),
+                        reasoning_content: None,
                     });
                     continue;
                 }
@@ -1020,6 +1032,7 @@ pub async fn run_agent_turn(
                     tool_calls: None,
                     tool_call_id: Some(tc.id.clone()),
                     name: Some(tc.function.name.clone()),
+                    reasoning_content: None,
                 });
                 continue;
             }
@@ -1072,6 +1085,7 @@ pub async fn run_agent_turn(
                 tool_calls: None,
                 tool_call_id: Some(tc.id.clone()),
                 name: Some(tc.function.name.clone()),
+                reasoning_content: None,
             });
 
             // ── Circuit breaker: track consecutive failures per tool ──
@@ -1097,6 +1111,7 @@ pub async fn run_agent_turn(
                         tool_calls: None,
                         tool_call_id: None,
                         name: None,
+                        reasoning_content: None,
                     });
                 } else if *count >= MAX_CONSECUTIVE_TOOL_FAILS {
                     warn!(
@@ -1116,6 +1131,7 @@ pub async fn run_agent_turn(
                         tool_calls: None,
                         tool_call_id: None,
                         name: None,
+                        reasoning_content: None,
                     });
                 }
             } else {

@@ -10,7 +10,7 @@ use crate::atoms::types::*;
 use crate::engine::skills;
 use crate::engine::state::EngineState;
 use crate::engine::util::safe_truncate;
-use log::{debug, info};
+use log::debug;
 use tauri::Manager;
 
 pub mod agent_comms;
@@ -41,6 +41,7 @@ pub mod squads;
 pub mod tasks;
 pub mod telegram;
 pub mod web;
+pub mod os_control;
 pub mod worker_delegate;
 
 /// Build the `execute_plan` tool definition (Action DAG pseudo-tool).
@@ -123,6 +124,7 @@ impl ToolDefinition {
         tools.extend(squads::definitions());
         tools.extend(request_tools::definitions());
         tools.extend(n8n::definitions());
+        tools.extend(os_control::definitions());
         tools.push(plan_tool_definition());
         tools
     }
@@ -218,14 +220,14 @@ pub async fn execute_tool(
     // worker (Foreman) so the main model doesn't spend API tokens on
     // data-fetching rounds. The worker is typically a cheaper model.
     if (name == "fetch" || name == "exec") && worker_delegate::has_worker(app_handle) {
-        info!("[engine] Delegating {} to Foreman (worker model)", name);
+        debug!("[engine] Delegating {} to Foreman (worker model)", name);
         if let Some(worker_result) =
             worker_delegate::delegate_to_worker(tool_call, app_handle, agent_id).await
         {
             return worker_result;
         }
         // Worker delegation failed — fall through to direct execution
-        info!(
+        debug!(
             "[engine] Worker delegation failed, executing {} directly",
             name
         );
@@ -260,7 +262,8 @@ pub async fn execute_tool(
         .or(discourse::execute(name, &args, app_handle).await)
         .or(google::execute(name, &args, app_handle).await)
         .or(microsoft::execute(name, &args, app_handle).await)
-        .or(service_api::execute(name, &args, app_handle).await);
+        .or(service_api::execute(name, &args, app_handle).await)
+        .or(os_control::execute(name, &args, app_handle, agent_id).await);
 
     // Try MCP tools (prefixed with `mcp_`) if no built-in handled it.
     // When a worker_model is configured, delegate MCP calls to the local
@@ -279,7 +282,7 @@ pub async fn execute_tool(
                 }
             } else {
                 // No worker configured — fall back to direct MCP execution
-                info!("[engine] No worker model configured, executing MCP tool directly");
+                debug!("[engine] No worker model configured, executing MCP tool directly");
                 if let Some(state) = app_handle.try_state::<EngineState>() {
                     let reg = state.mcp_registry.lock().await;
                     match reg.execute_tool(name, &args).await {

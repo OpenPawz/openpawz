@@ -55,3 +55,5 @@ pub mod web;
 pub mod webchat;
 pub mod webhook;
 pub mod whatsapp;
+pub mod unix_socket;
+pub mod pawzos;

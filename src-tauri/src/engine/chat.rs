@@ -16,7 +16,7 @@ use crate::engine::tool_index;
 use crate::engine::tools;
 use crate::engine::types::*;
 use crate::engine::util::safe_truncate;
-use log::{info, warn};
+use log::{debug, info, warn};
 
 // ── Tool builder ───────────────────────────────────────────────────────────────
 
@@ -55,7 +55,7 @@ pub fn build_chat_tools(
         .map(|s| s.id.clone())
         .collect();
     if !enabled_ids.is_empty() {
-        info!("[engine] Skills enabled: {:?}", enabled_ids);
+        debug!("[engine] Skills enabled: {:?}", enabled_ids);
         all_tools.extend(ToolDefinition::skill_tools(&enabled_ids));
     }
 
@@ -73,7 +73,7 @@ pub fn build_chat_tools(
     // Add MCP tools (always included — they're external servers)
     let mcp_tools = ToolDefinition::mcp_tools(app_handle);
     if !mcp_tools.is_empty() {
-        info!("[engine] Adding {} MCP tools", mcp_tools.len());
+        debug!("[engine] Adding {} MCP tools", mcp_tools.len());
         all_tools.extend(mcp_tools);
     }
 
@@ -105,7 +105,7 @@ pub fn build_chat_tools(
     if let Some(filter) = tool_filter {
         let before = t.len();
         t.retain(|tool| filter.contains(&tool.function.name));
-        info!(
+        debug!(
             "[engine] Tool policy filter applied: {} → {} tools (filter has {} entries)",
             before,
             t.len(),
@@ -113,7 +113,7 @@ pub fn build_chat_tools(
         );
     }
 
-    info!(
+    debug!(
         "[engine] Tool RAG: {} tools active ({} core + {} loaded + MCP) [request_tools available for discovery]",
         t.len(),
         t.iter().filter(|tool| is_core(&tool.function.name)).count(),
@@ -792,6 +792,7 @@ fn inject_loop_break(messages: &mut Vec<Message>, prior_redirect_count: usize) {
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     });
 }
 
@@ -844,6 +845,7 @@ fn inject_topic_redirect(messages: &mut Vec<Message>, prior_redirect_count: usiz
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     });
 }
 
@@ -947,6 +949,7 @@ pub fn detect_user_override(messages: &mut Vec<Message>) -> bool {
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     });
 
     true
@@ -1209,6 +1212,7 @@ pub fn detect_implicit_topic_shift(messages: &mut Vec<Message>) -> bool {
             tool_calls: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
         },
     );
 

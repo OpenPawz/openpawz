@@ -110,6 +110,7 @@ fn build_summary_prompt(messages: &[StoredMessage]) -> Vec<Message> {
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     };
 
     let user = Message {
@@ -121,6 +122,7 @@ fn build_summary_prompt(messages: &[StoredMessage]) -> Vec<Message> {
         tool_calls: None,
         tool_call_id: None,
         name: None,
+            reasoning_content: None,
     };
 
     vec![system, user]
@@ -365,6 +367,7 @@ mod tests {
             tool_calls_json: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
             created_at: "2025-01-01".into(),
         };
         let tokens = estimate_message_tokens(&msg);
@@ -383,6 +386,7 @@ mod tests {
                 tool_calls_json: None,
                 tool_call_id: None,
                 name: None,
+            reasoning_content: None,
                 created_at: "2025-01-01".into(),
             })
             .collect();
@@ -404,6 +408,7 @@ mod tests {
                 tool_calls_json: None,
                 tool_call_id: None,
                 name: None,
+            reasoning_content: None,
                 created_at: "2025-01-01".into(),
             })
             .collect();
@@ -422,6 +427,7 @@ mod tests {
             tool_calls_json: Some(r#"[{"name":"exec","args":"ls -la"}]"#.into()), // 33 chars
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
             created_at: "2025-01-01".into(),
         };
         let tokens = estimate_message_tokens(&msg);
@@ -439,6 +445,7 @@ mod tests {
             tool_calls_json: None,
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
             created_at: "2025-01-01".into(),
         };
         let tokens = estimate_message_tokens(&msg);
@@ -457,6 +464,7 @@ mod tests {
                 tool_calls_json: None,
                 tool_call_id: None,
                 name: None,
+            reasoning_content: None,
                 created_at: "2025-01-01".into(),
             })
             .collect();
@@ -479,6 +487,7 @@ mod tests {
                 tool_calls_json: None,
                 tool_call_id: None,
                 name: None,
+            reasoning_content: None,
                 created_at: "2025-01-01".into(),
             })
             .collect();
@@ -514,6 +523,7 @@ mod tests {
             tool_calls_json: Some(long_json),       // 4000 chars
             tool_call_id: None,
             name: None,
+            reasoning_content: None,
             created_at: "2025-01-01".into(),
         };
         let tokens = estimate_message_tokens(&msg);

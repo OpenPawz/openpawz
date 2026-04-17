@@ -20,7 +20,7 @@ use crate::atoms::error::EngineResult;
 use crate::atoms::types::ToolDefinition;
 use crate::engine::memory::EmbeddingClient;
 use crate::engine::tool_index::tool_domain;
-use log::{info, warn};
+use log::{debug, warn};
 use parking_lot::Mutex;
 use rusqlite::Connection;
 use std::collections::{HashMap, HashSet};
@@ -160,7 +160,7 @@ impl PersistentToolRegistry {
             )?;
         }
 
-        info!("[tool-registry] Pruned {} stale tool embeddings", count);
+        debug!("[tool-registry] Pruned {} stale tool embeddings", count);
         Ok(count)
     }
 
@@ -263,7 +263,7 @@ impl PersistentToolRegistry {
             self.rebuild_centroids(&db);
         }
 
-        info!(
+        debug!(
             "[tool-registry] Incremental index: {} embedded, {} skipped (cached), {} failed. Tier={:?}",
             embedded, skipped, failed, self.current_tier
         );
@@ -292,7 +292,7 @@ impl PersistentToolRegistry {
                 match self.vector_search(query, top_k, emb_client, conn).await {
                     Ok(results) if !results.is_empty() => return Ok(results),
                     Ok(_) => {
-                        info!("[tool-registry] Vector search returned empty, falling back to BM25");
+                        debug!("[tool-registry] Vector search returned empty, falling back to BM25");
                     }
                     Err(e) => {
                         warn!(
@@ -336,7 +336,7 @@ impl PersistentToolRegistry {
                 }
             }
             if best_score >= MIN_RELEVANCE {
-                info!(
+                debug!(
                     "[tool-registry] Hierarchical: top domain '{}' (score={:.3})",
                     best_domain.as_deref().unwrap_or("?"),
                     best_score
@@ -570,7 +570,7 @@ impl PersistentToolRegistry {
             self.domain_centroids.insert(domain.clone(), centroid);
         }
 
-        info!(
+        debug!(
             "[tool-registry] Rebuilt {} domain centroids",
             self.domain_centroids.len()
         );
@@ -579,7 +579,7 @@ impl PersistentToolRegistry {
     /// Check if Ollama is available for embeddings (Tier 1 promotion).
     pub fn promote_tier_if_available(&mut self, tier: SearchTier) {
         if tier as u8 <= self.current_tier as u8 {
-            info!(
+            debug!(
                 "[tool-registry] Promoting search tier: {:?} → {:?}",
                 self.current_tier, tier
             );
